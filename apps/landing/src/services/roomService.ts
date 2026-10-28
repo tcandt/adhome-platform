@@ -7,37 +7,57 @@ import {
   BuildingPublicSummary,
   GalleryPhotoItem,
   LeadInquiryPayload,
-  PortfolioAvailabilitySummary,
+  RoomCatalogResponse,
   RoomListing,
 } from '../types/room';
 
 const PUBLIC_API_BASE = import.meta.env.VITE_PUBLIC_API_URL || '';
 
 /**
- * Fetches all public room listings.
- * Automatically filters out rooms where `isPublic === false` or `status === 'OCCUPIED'`.
- * Ready to bind directly to `GET /api/v1/public/rooms` when Console API is connected.
+ * Fetches public room listings.
+ * - Filters out any room where `isPublic === false` or `status === 'OCCUPIED'`.
+ * - Requirement 8 compliance: If `VITE_PUBLIC_API_URL` is configured on production
+ *   and fails, returns an explicit error state rather than silently falling back to demo seed data.
  */
-export async function fetchPublicRoomListings(): Promise<RoomListing[]> {
+export async function fetchPublicRoomCatalog(): Promise<RoomCatalogResponse> {
   if (PUBLIC_API_BASE) {
     try {
       const response = await fetch(`${PUBLIC_API_BASE}/public/rooms`, {
         headers: { Accept: 'application/json' },
       });
-      if (response.ok) {
-        const data: RoomListing[] = await response.json();
-        return data
-          .filter((room) => room.isPublic && room.status !== 'OCCUPIED')
-          .sort((a, b) => a.displayOrder - b.displayOrder);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
       }
+      const data: RoomListing[] = await response.json();
+      const publicRooms = data
+        .filter((room) => room.isPublic && room.status !== 'OCCUPIED')
+        .sort((a, b) => a.displayOrder - b.displayOrder);
+
+      return {
+        rooms: publicRooms,
+        isSeedData: false,
+        error: null,
+      };
     } catch {
-      // Fallback to verified local seed if API endpoint is unreachable
+      return {
+        rooms: [],
+        isSeedData: false,
+        error:
+          'Không thể tải danh sách phòng từ hệ thống quản lý tại thời điểm này. Vui lòng thử lại hoặc liên hệ trực tiếp để được hỗ trợ.',
+      };
     }
   }
 
-  return ROOMS_PUBLIC_SEED.filter(
+  // Local / preview dataset when Console public API URL is not yet attached
+  const seedPublic = ROOMS_PUBLIC_SEED.filter(
     (room) => room.isPublic && room.status !== 'OCCUPIED'
   ).sort((a, b) => a.displayOrder - b.displayOrder);
+
+  return {
+    rooms: seedPublic,
+    isSeedData: true,
+    error: null,
+  };
 }
 
 export function getAvailableRoomsSync(rooms: RoomListing[]): RoomListing[] {
@@ -60,65 +80,29 @@ export function getGalleryPhotos(): GalleryPhotoItem[] {
   return GALLERY_PHOTOS_SEED;
 }
 
-export function computePortfolioSummary(
-  rooms: RoomListing[]
-): PortfolioAvailabilitySummary {
-  const publicRooms = rooms.filter((r) => r.isPublic);
-  const availableCount = publicRooms.filter((r) => r.status === 'AVAILABLE').length;
-  const comingSoonCount = publicRooms.filter((r) => r.status === 'COMING_SOON').length;
-  const prices = publicRooms.map((r) => r.price);
-  const minPrice = prices.length ? Math.min(...prices) : 4500000;
-  const maxPrice = prices.length ? Math.max(...prices) : 6500000;
-
-  return {
-    totalBuildings: BUILDINGS_PUBLIC_SEED.length,
-    totalRooms: 34, // 4 buildings (7 + 7 + 10 + 10 rooms)
-    availableCount,
-    comingSoonCount,
-    minPrice,
-    maxPrice,
-    areaRange: '28m² – 45m²',
-    locationLabel: 'Khu đô thị Ân Phú, Phường Tân An, Đắk Lắk',
-    lastUpdatedLabel: 'Cập nhật trực tiếp từ hệ thống AdHome',
-  };
-}
-
 export function formatVndPrice(amount: number): string {
   return new Intl.NumberFormat('vi-VN').format(amount) + 'đ';
 }
 
-export function formatVndCompact(amount: number): string {
-  const millions = amount / 1_000_000;
-  return `${millions.toFixed(1).replace('.0', '').replace('.', ',')} triệu`;
-}
-
 export async function submitRentalInquiry(
   payload: LeadInquiryPayload
-): Promise<{ ok: boolean; referenceCode: string; timestamp: string }> {
+): Promise<{ ok: boolean; referenceCode: string }> {
   if (PUBLIC_API_BASE) {
-    try {
-      const response = await fetch(`${PUBLIC_API_BASE}/public/inquiries`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (response.ok) {
-        return await response.json();
-      }
-    } catch {
-      // Fallback to local confirmation
+    const response = await fetch(`${PUBLIC_API_BASE}/public/inquiries`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to submit inquiry');
     }
+    return await response.json();
   }
 
-  // Simulated network delay for smooth UX feedback
-  await new Promise((resolve) => setTimeout(resolve, 450));
+  await new Promise((resolve) => setTimeout(resolve, 300));
   const randomSuffix = Math.floor(1000 + Math.random() * 9000);
   return {
     ok: true,
     referenceCode: `ADH-${randomSuffix}`,
-    timestamp: new Date().toLocaleTimeString('vi-VN', {
-      hour: '2-digit',
-      minute: '2-digit',
-    }),
   };
 }

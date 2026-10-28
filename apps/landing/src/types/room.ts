@@ -12,13 +12,15 @@ export interface RoomImage {
   url: string;
   alt: string;
   caption?: string;
+  isIllustrative?: boolean; // True when using illustrative/reference photography instead of verified unit photo
 }
 
 export interface RoomListing {
   id: string;
   slug: string;
   roomCode: string;
-  title: string;
+  shortTitle: string; // Concise card title e.g. "Phòng 31-06 · Studio Ban Công"
+  title: string;      // Full descriptive title for detail view
   roomType: RoomTypeCategory;
   buildingId: string;
   buildingCode: string;
@@ -30,16 +32,15 @@ export interface RoomListing {
   price: number; // VND / month
   currency: 'VND';
   depositMonths: number;
-  maxOccupants: string; // e.g. "1 - 2 người"
+  maxOccupants: string;
   status: RoomListingStatus;
-  availableFrom: string; // ISO date or display string when available
-  availableFromLabel: string; // e.g. "Dọn vào ở ngay" or "Dự kiến trống từ 10/11/2026"
+  availableFrom: string;
+  availableFromLabel: string;
   shortDescription: string;
   detailedDescription: string;
-  highlightNote?: string; // e.g. "Có thể dọn vào ở ngay", "Chỉ còn 1 phòng"
   amenities: string[];
   furnishedLevel: FurnishedLevel;
-  furnishedLabel: string; // e.g. "Full nội thất đồng bộ"
+  furnishedLabel: string;
   images: RoomImage[];
   featured: boolean;
   displayOrder: number;
@@ -49,9 +50,7 @@ export interface RoomListing {
     water: string;
     wifi: string;
     parking: string;
-    management: string;
   };
-  lastSyncedFromConsole: string;
 }
 
 export interface BuildingPublicSummary {
@@ -61,43 +60,28 @@ export interface BuildingPublicSummary {
   streetAddress: string;
   ward: string;
   province: string;
-  totalUnits: number;
-  availableCount: number;
-  comingSoonCount: number;
-  floorsCount: number;
-  highlights: string[];
-}
-
-export interface PortfolioAvailabilitySummary {
-  totalBuildings: number;
-  totalRooms: number;
-  availableCount: number;
-  comingSoonCount: number;
-  minPrice: number;
-  maxPrice: number;
-  areaRange: string;
-  locationLabel: string;
-  lastUpdatedLabel: string;
 }
 
 export interface GalleryPhotoItem {
   id: string;
-  category: 'STUDIO_1PN' | 'KITCHEN_WORK' | 'BATH_AMENITY' | 'EXTERIOR_AREA';
-  categoryLabel: string;
   title: string;
   subtitle: string;
-  roomRef?: string;
   imageUrl: string;
-  aspect?: 'wide' | 'standard';
+  isIllustrative: boolean;
 }
 
 export interface LeadInquiryPayload {
   fullName: string;
   phone: string;
-  inquiryType: 'VIEW_ROOM' | 'HOLD_COMING_SOON' | 'GENERAL_CONSULT';
+  inquiryType: 'VIEW_ROOM' | 'NOTIFY_COMING_SOON' | 'GENERAL_CONSULT';
   roomCode?: string;
   roomTitle?: string;
   preferredMoveInDate?: string;
-  occupantCount?: string;
   note?: string;
+}
+
+export interface RoomCatalogResponse {
+  rooms: RoomListing[];
+  isSeedData: boolean;
+  error: string | null;
 }

@@ -1,39 +1,40 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Phone, CalendarCheck, Home } from 'lucide-react';
 import { Header } from './components/Header';
 import { HeroSection } from './components/HeroSection';
 import { AvailableRoomsSection } from './components/AvailableRoomsSection';
+import { AllRoomsPage } from './components/AllRoomsPage';
 import { ComingSoonSection } from './components/ComingSoonSection';
-import { WhyChooseAndAmenitiesSection } from './components/WhyChooseAndAmenitiesSection';
-import { PhotoGallerySection } from './components/PhotoGallerySection';
-import { RentalProcessSection } from './components/RentalProcessSection';
-import { PlatformIntroSection } from './components/PlatformIntroSection';
+import { LivingSpaceSection } from './components/LivingSpaceSection';
 import { LocationAndFaqSection } from './components/LocationAndFaqSection';
+import { PlatformIntroSection } from './components/PlatformIntroSection';
 import { Footer } from './components/Footer';
 import { RoomDetailModal } from './components/RoomDetailModal';
 import { LeadInquiryModal } from './components/LeadInquiryModal';
 import {
-  computePortfolioSummary,
-  fetchPublicRoomListings,
+  fetchPublicRoomCatalog,
   getAvailableRoomsSync,
   getComingSoonRoomsSync,
   getGalleryPhotos,
-  getPublicBuildingsSummary,
 } from './services/roomService';
 import { RoomListing } from './types/room';
 
 export function App() {
+  const [currentPath, setCurrentPath] = useState<'/' | '/phong-trong'>(() =>
+    window.location.pathname.startsWith('/phong-trong') ? '/phong-trong' : '/'
+  );
   const [rooms, setRooms] = useState<RoomListing[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
   const [detailRoom, setDetailRoom] = useState<RoomListing | null>(null);
   const [inquiryModalOpen, setInquiryModalOpen] = useState<boolean>(false);
   const [inquiryRoom, setInquiryRoom] = useState<RoomListing | null>(null);
 
   useEffect(() => {
     let mounted = true;
-    fetchPublicRoomListings().then((data) => {
+    fetchPublicRoomCatalog().then((res) => {
       if (mounted) {
-        setRooms(data);
+        setRooms(res.rooms);
+        setCatalogError(res.error);
         setIsLoading(false);
       }
     });
@@ -42,16 +43,43 @@ export function App() {
     };
   }, []);
 
+  useEffect(() => {
+    const handlePopState = () => {
+      setCurrentPath(
+        window.location.pathname.startsWith('/phong-trong')
+          ? '/phong-trong'
+          : '/'
+      );
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const navigateTo = (path: '/' | '/phong-trong', hash?: string) => {
+    if (window.location.pathname !== path) {
+      window.history.pushState({}, '', path + (hash || ''));
+      setCurrentPath(path);
+    } else if (hash) {
+      window.history.replaceState({}, '', path + hash);
+    }
+
+    if (hash) {
+      requestAnimationFrame(() => {
+        const el = document.querySelector(hash);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth' });
+        } else {
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+      });
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
   const availableRooms = useMemo(() => getAvailableRoomsSync(rooms), [rooms]);
   const comingSoonRooms = useMemo(() => getComingSoonRoomsSync(rooms), [rooms]);
-  const summary = useMemo(() => computePortfolioSummary(rooms), [rooms]);
-  const buildings = useMemo(() => getPublicBuildingsSummary(), []);
   const galleryPhotos = useMemo(() => getGalleryPhotos(), []);
-
-  const featuredRoom = useMemo(
-    () => availableRooms.find((r) => r.featured) || availableRooms[0],
-    [availableRooms]
-  );
 
   const handleOpenInquiry = (room?: RoomListing) => {
     setInquiryRoom(room || null);
@@ -60,90 +88,74 @@ export function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-canvas text-ink">
-      {/* 5.1 Sticky Header */}
-      <Header
-        availableCount={availableRooms.length}
-        comingSoonCount={comingSoonRooms.length}
-        onOpenInquiry={() => handleOpenInquiry()}
-      />
+      {/* Sticky Header */}
+      <Header currentPath={currentPath} onNavigate={navigateTo} />
 
-      {/* Main Content */}
       <main className="flex-1">
-        {/* 5.2 Hero Section + Quick Availability Summary */}
-        <HeroSection
-          summary={summary}
-          featuredRoom={featuredRoom}
-          onSelectRoom={(room) => setDetailRoom(room)}
-          onOpenInquiry={handleOpenInquiry}
-        />
+        {currentPath === '/phong-trong' ? (
+          <AllRoomsPage
+            rooms={rooms}
+            isLoading={isLoading}
+            error={catalogError}
+            onSelectRoom={(room) => setDetailRoom(room)}
+            onBackHome={() => navigateTo('/')}
+          />
+        ) : (
+          <>
+            {/* 1. Hero Section */}
+            <HeroSection onOpenInquiry={() => handleOpenInquiry()} />
 
-        {/* 5.3 Section: Phòng đang trống */}
-        <AvailableRoomsSection
-          rooms={availableRooms}
-          isLoading={isLoading}
-          onSelectRoom={(room) => setDetailRoom(room)}
-          onInquireRoom={(room) => handleOpenInquiry(room)}
-        />
+            {/* 2. Featured Available Rooms (3–6 rooms) + Link to /phong-trong */}
+            <AvailableRoomsSection
+              rooms={availableRooms}
+              isLoading={isLoading}
+              error={catalogError}
+              onSelectRoom={(room) => setDetailRoom(room)}
+              onNavigateAllRooms={() => navigateTo('/phong-trong')}
+            />
 
-        {/* 5.4 Section: Phòng sắp có / sắp trống */}
-        <ComingSoonSection
-          rooms={comingSoonRooms}
-          onSelectRoom={(room) => setDetailRoom(room)}
-          onHoldRoom={(room) => handleOpenInquiry(room)}
-        />
+            {/* 3. Coming Soon Rooms (Compact 2-Column Horizontal Layout) */}
+            <ComingSoonSection
+              rooms={comingSoonRooms}
+              onSelectRoom={(room) => setDetailRoom(room)}
+              onNotifyRoom={(room) => handleOpenInquiry(room)}
+            />
 
-        {/* 5.5 & 5.6 Section: Vì sao nên chọn AdHome + Tiện ích & Nội thất */}
-        <WhyChooseAndAmenitiesSection />
+            {/* 4. Merged Living Space, Curated Interior Photos & 3-Step Rental Process */}
+            <LivingSpaceSection photos={galleryPhotos} />
 
-        {/* 5.7 Section: Bộ sưu tập hình ảnh căn hộ */}
-        <PhotoGallerySection photos={galleryPhotos} />
+            {/* 5. Location (Khu đô thị Ân Phú, Tân An, Đắk Lắk) & FAQ */}
+            <LocationAndFaqSection onOpenInquiry={() => handleOpenInquiry()} />
 
-        {/* 5.8 Section: Quy trình thuê phòng */}
-        <RentalProcessSection onOpenInquiry={() => handleOpenInquiry()} />
-
-        {/* 5.9 Section: Giới thiệu nền tảng AdHome */}
-        <PlatformIntroSection />
-
-        {/* 5.10 & 5.11 Section: Khu vực / Vị trí + FAQ */}
-        <LocationAndFaqSection
-          buildings={buildings}
-          onOpenInquiry={() => handleOpenInquiry()}
-        />
+            {/* 6. Subtle Tenant-First Platform Intro at the bottom */}
+            <PlatformIntroSection />
+          </>
+        )}
       </main>
 
-      {/* 5.12 Footer */}
+      {/* 7. Footer */}
       <Footer
-        availableCount={availableRooms.length}
-        comingSoonCount={comingSoonRooms.length}
+        onNavigate={navigateTo}
         onOpenInquiry={() => handleOpenInquiry()}
       />
 
-      {/* Dedicated Mobile Bottom Action Bar */}
-      <div className="sm:hidden fixed bottom-0 inset-x-0 z-30 bg-canvas-pure/95 backdrop-blur-sm border-t border-line px-3 py-2.5 shadow-cardHover">
-        <div className="grid grid-cols-3 gap-2">
-          <a
-            href="#phong-dang-trong"
-            className="py-2.5 px-2 rounded-lg text-xs font-semibold text-ink bg-canvas-warm border border-line flex items-center justify-center gap-1"
-          >
-            <Home className="w-3.5 h-3.5 text-green-700" />
-            <span>Trống ({availableRooms.length})</span>
-          </a>
-          <a
-            href="tel:0905889123"
-            className="py-2.5 px-2 rounded-lg text-xs font-semibold text-ink bg-canvas-warm border border-line flex items-center justify-center gap-1"
-          >
-            <Phone className="w-3.5 h-3.5 text-brand-600" />
-            <span>Gọi / Zalo</span>
-          </a>
-          <button
-            type="button"
-            onClick={() => handleOpenInquiry()}
-            className="py-2.5 px-2 rounded-lg text-xs font-semibold text-white bg-brand-600 flex items-center justify-center gap-1"
-          >
-            <CalendarCheck className="w-3.5 h-3.5" />
-            <span>Hẹn xem</span>
-          </button>
+      {/* Compact Mobile Sticky Contact Bar (Requirement 10: compact & non-intrusive) */}
+      <div className="sm:hidden fixed bottom-0 inset-x-0 z-30 bg-canvas-pure/95 backdrop-blur-sm border-t border-line px-4 py-2 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <span className="text-xs font-semibold text-ink block truncate">
+            Căn hộ dịch vụ KĐT Ân Phú
+          </span>
+          <span className="text-[11px] text-ink-muted block truncate">
+            Từ 4,5 triệu/tháng · Full nội thất
+          </span>
         </div>
+        <button
+          type="button"
+          onClick={() => handleOpenInquiry()}
+          className="px-4 py-2 rounded-lg text-xs font-semibold text-white bg-brand-600 shrink-0"
+        >
+          Liên hệ tư vấn
+        </button>
       </div>
 
       {/* Interactive Modals */}

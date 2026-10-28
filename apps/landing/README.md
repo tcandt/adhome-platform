@@ -1,4 +1,4 @@
-# AdHome Landing Page (`https://adhome.ductinh.one`)
+# AdHome Landing Page (`https://adhome.ductinh.one`) — Editorial Redesign Gate 02
 
 Trang web cho thuê căn hộ dịch vụ, phòng Studio, 1PN và 2PN mini full nội thất tại **Khu đô thị Ân Phú, Phường Tân An, Đắk Lắk**, đồng thời giới thiệu nền tảng quản lý vận hành **AdHome**.
 
@@ -10,85 +10,71 @@ Trang web cho thuê căn hộ dịch vụ, phòng Studio, 1PN và 2PN mini full 
 apps/landing/
 ├── index.html                           # SEO meta, OpenGraph, Schema.org ApartmentComplex
 ├── package.json                         # @adhome/landing (Vite + React + TS + Tailwind)
-├── tailwind.config.js                   # Hệ màu phẳng (Editorial / Warm Alabaster & Brand Navy)
+├── tailwind.config.js                   # Hệ màu phẳng (Warm Off-White #F8F7F4, White, Navy #0F172A, Brand Blue #1E5EFF)
 ├── public/
 │   ├── brand/                           # Bộ logo SVG chính thức của AdHome
-│   └── images/rooms/                    # Bộ 10 ảnh thực tế căn hộ dịch vụ đồng bộ phong cách
+│   └── images/rooms/                    # Bộ 10 ảnh căn hộ dịch vụ đồng bộ phong cách
 └── src/
     ├── types/
     │   └── room.ts                      # Định nghĩa kiểu dữ liệu RoomListing, BuildingPublicSummary, GalleryPhotoItem
     ├── data/
-    │   └── roomsSeed.ts                 # Seed data cho 4 tòa (LK01-31, LK01-32, LK08-24, LK08-25)
+    │   └── roomsSeed.ts                 # Seed data cho danh sách căn hộ và khu nhà tại KĐT Ân Phú
     ├── services/
-    │   └── roomService.ts               # Lớp truy xuất dữ liệu (tự động lọc phòng public, sẵn sàng nối API)
+    │   └── roomService.ts               # Lớp truy xuất dữ liệu (tự động lọc phòng public, không fallback dữ liệu mẫu khi cấu hình Production API)
     ├── components/
-    │   ├── Header.tsx                   # Sticky Header + Mobile Navigation Drawer
-    │   ├── HeroSection.tsx              # Hero + Quick Availability Summary (4 chỉ số nhanh)
-    │   ├── AvailableRoomsSection.tsx    # Danh sách phòng đang trống + Bộ lọc + Skeleton/Empty state
-    │   ├── ComingSoonSection.tsx        # Danh sách phòng sắp trống / dự kiến có phòng
-    │   ├── WhyChooseAndAmenitiesSection.tsx # Vì sao chọn AdHome + Bảng tiện ích & Biểu phí dịch vụ
-    │   ├── PhotoGallerySection.tsx      # Bộ sưu tập hình ảnh thực tế + Lightbox xem ảnh lớn
-    │   ├── RentalProcessSection.tsx     # Quy trình thuê phòng 5 bước
-    │   ├── PlatformIntroSection.tsx     # Giới thiệu nền tảng vận hành AdHome Console (30%)
-    │   ├── LocationAndFaqSection.tsx    # Vị trí Khu đô thị Ân Phú, Tân An, Đắk Lắk + FAQ
+    │   ├── Header.tsx                   # Sticky Header tối giản (5 mục điều hướng + 1 CTA chính + Mobile Sheet)
+    │   ├── HeroSection.tsx              # Hero tinh gọn: ảnh căn hộ lớn, tiêu đề 2-3 dòng, 1 CTA chính + 1 CTA phụ
+    │   ├── RoomCard.tsx                 # Thẻ phòng chuẩn 6 phần tử (Ảnh lớn, Trạng thái, Tên ngắn, Thông số, Giá thuê, 1 CTA)
+    │   ├── AvailableRoomsSection.tsx    # Hiển thị 3–6 phòng nổi bật trên trang chủ + nút điều hướng tới /phong-trong
+    │   ├── AllRoomsPage.tsx             # Trang danh sách đầy đủ (/phong-trong): bộ lọc, sắp xếp, phân trang, Mobile Filter Sheet
+    │   ├── ComingSoonSection.tsx        # Danh sách phòng sắp có: thẻ ngang 2 cột gọn gàng, ghi rõ ngày dự kiến
+    │   ├── LivingSpaceSection.tsx       # Không gian sống & tiện nghi (gộp tiện ích + ảnh chi tiết + quy trình 3 bước)
+    │   ├── LocationAndFaqSection.tsx    # Vị trí Khu đô thị Ân Phú, Tân An, Đắk Lắk + FAQ gọn nhẹ
+    │   ├── PlatformIntroSection.tsx     # Giới thiệu nền tảng AdHome hướng tới lợi ích người thuê
     │   ├── RoomDetailModal.tsx          # Modal xem chi tiết căn hộ, nội thất và biểu phí
-    │   ├── LeadInquiryModal.tsx         # Modal đặt lịch xem phòng / giữ chỗ trước
+    │   ├── LeadInquiryModal.tsx         # Modal đặt lịch xem phòng / đăng ký nhận thông báo phòng sắp có
     │   └── Footer.tsx                   # Footer thông tin liên hệ & điều hướng
-    ├── App.tsx                          # Bố cục tổng thể Landing Page + Mobile Sticky Action Bar
+    ├── App.tsx                          # Điều hướng SPA (/ và /phong-trong) + quản lý Modal
     └── main.tsx                         # Entry point
 ```
 
 ---
 
-## 2. Nguồn dữ liệu (`Data Source`)
+## 2. Nguồn dữ liệu & Tính xác thực (`Data Source & Authenticity`)
 
-Toàn bộ dữ liệu phòng hiện tại nằm tại [`src/data/roomsSeed.ts`](./src/data/roomsSeed.ts) và được truy xuất thông qua [`src/services/roomService.ts`](./src/services/roomService.ts) chứ **không hardcode vào các component giao diện**.
+Toàn bộ dữ liệu phòng hiện tại nằm tại [`src/data/roomsSeed.ts`](./src/data/roomsSeed.ts) và được truy xuất thông qua [`src/services/roomService.ts`](./src/services/roomService.ts).
 
-Mỗi bản ghi `RoomListing` tuân thủ schema:
+Mỗi bản ghi `RoomListing` bao gồm:
 - `id`, `slug`, `roomCode`, `title`, `roomType` (`'Studio' | 'Studio Ban Công' | '1 Phòng Ngủ' | '2PN Mini + PK'`)
 - `buildingId`, `buildingCode`, `buildingName`, `buildingAddress`, `floorNumber`, `floorName`
 - `area` (m²), `price` (VND/tháng), `currency`, `depositMonths`, `maxOccupants`
 - `status`: `'AVAILABLE'` (Đang trống) | `'COMING_SOON'` (Sắp có) | `'RESERVED'` | `'OCCUPIED'`
 - `availableFrom`, `availableFromLabel`, `shortDescription`, `detailedDescription`, `highlightNote`
-- `amenities`, `furnishedLevel`, `furnishedLabel`, `images`, `featured`, `displayOrder`, `isPublic`
-
-Hàm `fetchPublicRoomListings()` tự động ẩn các phòng có `isPublic: false` hoặc `status === 'OCCUPIED'`.
+- `amenities`, `furnishedLevel`, `furnishedLabel`, `images`, `isIllustrativeImage` (`true` nếu là ảnh minh họa, `false` nếu là ảnh chụp thực tế của phòng), `featured`, `displayOrder`, `isPublic`
 
 ---
 
-## 3. Cách thêm hoặc chỉnh sửa phòng (`How to Add / Update Rooms`)
-
-1. Mở file [`src/data/roomsSeed.ts`](./src/data/roomsSeed.ts).
-2. Thêm một object mới vào mảng `ROOMS_PUBLIC_SEED`:
-   - Đặt `status: 'AVAILABLE'` và `isPublic: true` để hiển thị tại khu vực **Phòng đang trống**.
-   - Đặt `status: 'COMING_SOON'`, `availableFromLabel: 'Dự kiến trống từ DD/MM/YYYY'` và `isPublic: true` để hiển thị tại khu vực **Phòng sắp trống**.
-   - Đặt `featured: true` nếu muốn đánh dấu nổi bật.
-3. Các bộ đếm trên Header, Hero Quick Summary và bộ lọc sẽ tự động tính toán lại theo danh sách mới.
-
----
-
-## 4. Cách thay ảnh (`How to Replace Room Photos`)
+## 3. Cách thay ảnh thực tế (`How to Replace Room Photos`)
 
 1. Đặt file ảnh chụp thực tế mới vào thư mục `apps/landing/public/images/rooms/`.
-2. Cập nhật đường dẫn `url: '/images/rooms/<ten-file-anh>'` trong mảng `images` của phòng tương ứng tại [`src/data/roomsSeed.ts`](./src/data/roomsSeed.ts) hoặc trong mảng `GALLERY_PHOTOS_SEED`.
-3. Khi đồng bộ với Console về sau, trường `url` có thể nhận trực tiếp URL CDN/Object Storage từ API mà không cần sửa component.
+2. Cập nhật đường dẫn `url: '/images/rooms/<ten-file-anh>'` trong mảng `images` của phòng tương ứng tại [`src/data/roomsSeed.ts`](./src/data/roomsSeed.ts) và chuyển `isIllustrativeImage: false` khi đã sử dụng ảnh chụp thực tế của đúng căn hộ đó (nhãn `"Ảnh minh họa"` sẽ tự động ẩn).
 
 ---
 
-## 5. Hướng đồng bộ trực tiếp với AdHome Console về sau (`Console API Sync`)
+## 4. Hướng đồng bộ với AdHome Console (`Console API Sync`)
 
-Lớp dịch vụ [`src/services/roomService.ts`](./src/services/roomService.ts) đã được chuẩn bị sẵn cơ chế gọi API thông qua biến môi trường `VITE_PUBLIC_API_URL`:
+Lớp dịch vụ [`src/services/roomService.ts`](./src/services/roomService.ts) gọi API thông qua biến môi trường `VITE_PUBLIC_API_URL`:
 
 - **Lấy danh sách phòng công khai**: `GET ${VITE_PUBLIC_API_URL}/public/rooms`
-- **Gửi yêu cầu hẹn xem phòng / đăng ký giữ chỗ**: `POST ${VITE_PUBLIC_API_URL}/public/inquiries`
+- **Gửi yêu cầu hẹn xem phòng / đăng ký nhận thông báo**: `POST ${VITE_PUBLIC_API_URL}/public/inquiries`
 
-Khi Backend API của `console-adhome.ductinh.one` sẵn sàng xuất bản dữ liệu phòng trống:
-1. Khai báo `VITE_PUBLIC_API_URL=https://console-adhome.ductinh.one/api/v1` trong `.env.production`.
-2. `roomService.ts` sẽ tự động lấy dữ liệu thời gian thực từ Console và giữ `roomsSeed.ts` làm dữ liệu dự phòng an toàn (graceful fallback) nếu mất kết nối.
+**Nguyên tắc an toàn dữ liệu trên Production:**
+- Khi chưa cấu hình `VITE_PUBLIC_API_URL` (giai đoạn chạy độc lập), hệ thống sử dụng dữ liệu từ `roomsSeed.ts`.
+- Khi đã cấu hình `VITE_PUBLIC_API_URL` trên Production, nếu API gặp sự cố, hệ thống hiển thị thông báo lỗi minh bạch và **không tự động fallback về dữ liệu mẫu** để tránh hiển thị nhầm phòng demo cho khách thuê thật.
 
 ---
 
-## 6. Lệnh chạy phát triển & Build (Không dùng Docker)
+## 5. Lệnh chạy phát triển & Build (Không dùng Docker)
 
 Từ thư mục gốc `d:\AdHome-Platform`:
 

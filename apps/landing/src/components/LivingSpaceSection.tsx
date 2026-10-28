@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { GalleryPhotoItem } from '../types/room';
@@ -11,6 +11,20 @@ export const LivingSpaceSection: React.FC<LivingSpaceSectionProps> = ({
   photos,
 }) => {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (lightboxIndex === null) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLightboxIndex(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [lightboxIndex]);
 
   const highlights = [
     {
@@ -72,7 +86,7 @@ export const LivingSpaceSection: React.FC<LivingSpaceSectionProps> = ({
             <p className="text-xs font-semibold uppercase tracking-wider text-brand-700">
               Tiêu chuẩn căn hộ dịch vụ
             </p>
-            <h2 className="mt-2 text-2xl sm:text-[32px] font-bold text-ink tracking-[-0.015em] leading-[1.2]">
+            <h2 className="mt-2 text-2xl sm:text-[32px] font-bold text-ink tracking-[-0.015em] leading-[1.26]">
               Không gian sống &amp; tiện nghi
             </h2>
             <p className="mt-3 text-[15px] sm:text-base text-ink-secondary leading-relaxed">
@@ -102,22 +116,27 @@ export const LivingSpaceSection: React.FC<LivingSpaceSectionProps> = ({
                 <figure
                   key={photo.id}
                   onClick={() => setLightboxIndex(idx)}
-                  className="group bg-canvas-pure rounded-card border border-line overflow-hidden cursor-pointer shadow-subtle hover:shadow-cardHover transition-shadow"
+                  className="group bg-canvas-pure rounded-card border border-line overflow-hidden cursor-pointer shadow-subtle hover:shadow-cardHover transition-shadow flex flex-col"
                 >
                   <div className="relative aspect-[4/3] bg-canvas-warm overflow-hidden">
                     <img
                       src={photo.imageUrl}
+                      srcSet={photo.srcSet}
+                      sizes="(max-width: 640px) 92vw, 340px"
+                      width={photo.width || 1024}
+                      height={photo.height || 764}
                       alt={photo.title}
                       loading="lazy"
+                      decoding="async"
                       className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
                     />
                     {photo.isIllustrative && (
-                      <span className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded text-[11px] font-medium bg-canvas-pure/90 text-ink-secondary border border-line">
+                      <span className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded text-[11px] font-medium bg-canvas-pure/95 text-ink-secondary border border-line">
                         Ảnh minh họa
                       </span>
                     )}
                   </div>
-                  <figcaption className="p-4">
+                  <figcaption className="p-4 flex-1">
                     <h3 className="text-sm font-semibold text-ink">
                       {photo.title}
                     </h3>
@@ -184,7 +203,7 @@ export const LivingSpaceSection: React.FC<LivingSpaceSectionProps> = ({
                   type="button"
                   onClick={() => setLightboxIndex(null)}
                   aria-label="Đóng xem ảnh"
-                  className="absolute top-3 right-3 p-2 rounded-lg bg-canvas-pure/90 text-ink"
+                  className="absolute top-3 right-3 p-2.5 rounded-lg bg-canvas-pure/95 text-ink"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -199,7 +218,7 @@ export const LivingSpaceSection: React.FC<LivingSpaceSectionProps> = ({
                         )
                       }
                       aria-label="Ảnh trước"
-                      className="absolute left-3 top-1/2 -translate-y-1/2 p-2 rounded-lg bg-canvas-pure/90 text-ink"
+                      className="absolute left-3 top-1/2 -translate-y-1/2 p-2.5 rounded-lg bg-canvas-pure/95 text-ink"
                     >
                       <ChevronLeft className="w-5 h-5" />
                     </button>
@@ -211,7 +230,7 @@ export const LivingSpaceSection: React.FC<LivingSpaceSectionProps> = ({
                         )
                       }
                       aria-label="Ảnh tiếp theo"
-                      className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-lg bg-canvas-pure/90 text-ink"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 p-2.5 rounded-lg bg-canvas-pure/95 text-ink"
                     >
                       <ChevronRight className="w-5 h-5" />
                     </button>

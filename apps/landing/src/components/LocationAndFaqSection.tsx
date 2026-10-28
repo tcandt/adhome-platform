@@ -60,7 +60,7 @@ export const LocationAndFaqSection: React.FC<LocationAndFaqSectionProps> = ({
                 <MapPin className="w-3.5 h-3.5" />
                 <span>Vị trí khu căn hộ</span>
               </p>
-              <h2 className="mt-2 text-2xl sm:text-[32px] font-bold text-ink tracking-[-0.015em] leading-[1.2]">
+              <h2 className="mt-2 text-2xl sm:text-[32px] font-bold text-ink tracking-[-0.015em] leading-[1.26]">
                 Khu đô thị Ân Phú, Phường Tân An, Đắk Lắk
               </h2>
               <p className="mt-3 text-[15px] sm:text-base text-ink-secondary leading-relaxed">

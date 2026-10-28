@@ -1,12 +1,16 @@
 import React, { useMemo, useState } from 'react';
-import { ArrowRight } from 'lucide-react';
-import { RoomListing } from '../types/room';
+import { ArrowRight, AlertCircle, RefreshCw } from 'lucide-react';
+import { DataMode, RoomListing } from '../types/room';
 import { RoomCard } from './RoomCard';
 
 interface AvailableRoomsSectionProps {
   rooms: RoomListing[];
   isLoading?: boolean;
   error?: string | null;
+  dataMode?: DataMode;
+  sourceVerified?: boolean;
+  onRetry?: () => void;
+  onOpenInquiry?: () => void;
   onSelectRoom: (room: RoomListing) => void;
   onNavigateAllRooms: () => void;
 }
@@ -17,6 +21,10 @@ export const AvailableRoomsSection: React.FC<AvailableRoomsSectionProps> = ({
   rooms,
   isLoading = false,
   error = null,
+  dataMode = 'LIVE',
+  sourceVerified = true,
+  onRetry,
+  onOpenInquiry,
   onSelectRoom,
   onNavigateAllRooms,
 }) => {
@@ -41,7 +49,6 @@ export const AvailableRoomsSection: React.FC<AvailableRoomsSectionProps> = ({
     } else if (activeCategory === '2PN') {
       list = list.filter((r) => r.roomType === '2PN Mini + PK');
     } else {
-      // Sort featured first
       list.sort((a, b) => {
         if (a.featured !== b.featured) return a.featured ? -1 : 1;
         return a.displayOrder - b.displayOrder;
@@ -49,6 +56,8 @@ export const AvailableRoomsSection: React.FC<AvailableRoomsSectionProps> = ({
     }
     return list.slice(0, 6);
   }, [rooms, activeCategory]);
+
+  const isVerifiedSource = sourceVerified && dataMode === 'LIVE';
 
   return (
     <section
@@ -59,7 +68,7 @@ export const AvailableRoomsSection: React.FC<AvailableRoomsSectionProps> = ({
         {/* Clean Section Header + Quick Category Filter */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 pb-8 border-b border-line">
           <div>
-            <h2 className="text-2xl sm:text-[32px] font-bold text-ink tracking-[-0.015em] leading-[1.2]">
+            <h2 className="text-2xl sm:text-[32px] font-bold text-ink tracking-[-0.015em] leading-[1.26]">
               Phòng đang trống tại Khu đô thị Ân Phú
             </h2>
             <p className="mt-2 text-[15px] sm:text-base text-ink-secondary">
@@ -81,7 +90,7 @@ export const AvailableRoomsSection: React.FC<AvailableRoomsSectionProps> = ({
                   role="tab"
                   aria-selected={active}
                   onClick={() => setActiveCategory(tab.id)}
-                  className={`px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium border transition-colors ${
+                  className={`px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium border transition-colors min-h-[40px] ${
                     active
                       ? 'bg-ink text-white border-ink'
                       : 'bg-canvas-pure text-ink-secondary border-line hover:bg-canvas-warm hover:text-ink'
@@ -94,7 +103,24 @@ export const AvailableRoomsSection: React.FC<AvailableRoomsSectionProps> = ({
           </div>
         </div>
 
-        {/* Content: Loading / Error / 3-Column Grid */}
+        {/* Explicit DEMO MODE Notice when unverified seed data is active */}
+        {dataMode === 'DEMO' && (
+          <div
+            role="status"
+            data-testid="demo-mode-banner"
+            className="mt-6 p-3.5 rounded-card bg-amber-50 border border-amber-200 text-amber-950 text-xs sm:text-sm flex items-start gap-2.5"
+          >
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-800" />
+            <span>
+              <strong>Chế độ Dữ liệu mẫu (Demo Mode):</strong> Danh sách dưới đây
+              là dữ liệu minh họa khi chưa gắn nguồn Public Listings API. Tình
+              trạng phòng chính thức chỉ được công bố khi kết nối ở chế độ Live
+              Mode.
+            </span>
+          </div>
+        )}
+
+        {/* Content: Loading / API Error (No Seed Fallback!) / 3-Column Grid */}
         {isLoading ? (
           <div className="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[1, 2, 3].map((n) => (
@@ -115,8 +141,41 @@ export const AvailableRoomsSection: React.FC<AvailableRoomsSectionProps> = ({
             ))}
           </div>
         ) : error ? (
-          <div className="mt-8 bg-canvas-pure rounded-section border border-line p-8 text-center max-w-xl mx-auto">
-            <p className="text-sm sm:text-base text-ink-secondary">{error}</p>
+          <div
+            role="alert"
+            data-testid="catalog-api-error"
+            className="mt-8 bg-canvas-pure rounded-section border border-line p-8 text-center max-w-xl mx-auto space-y-4"
+          >
+            <div className="w-10 h-10 rounded-full bg-amber-50 border border-amber-200 text-amber-800 flex items-center justify-center mx-auto">
+              <AlertCircle className="w-5 h-5" />
+            </div>
+            <h3 className="text-base sm:text-lg font-bold text-ink">
+              Tạm thời chưa thể tải danh sách phòng khả dụng
+            </h3>
+            <p className="text-sm text-ink-secondary leading-relaxed">
+              {error}
+            </p>
+            <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
+              {onRetry && (
+                <button
+                  type="button"
+                  onClick={onRetry}
+                  className="px-4 py-2.5 rounded-lg text-xs sm:text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 inline-flex items-center gap-1.5"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Thử tải lại dữ liệu</span>
+                </button>
+              )}
+              {onOpenInquiry && (
+                <button
+                  type="button"
+                  onClick={onOpenInquiry}
+                  className="px-4 py-2.5 rounded-lg text-xs sm:text-sm font-medium text-ink bg-canvas hover:bg-canvas-warm border border-line"
+                >
+                  Liên hệ trực tiếp quản lý
+                </button>
+              )}
+            </div>
           </div>
         ) : displayedRooms.length === 0 ? (
           <div className="mt-8 bg-canvas-pure rounded-section border border-line p-8 text-center max-w-xl mx-auto">
@@ -141,6 +200,7 @@ export const AvailableRoomsSection: React.FC<AvailableRoomsSectionProps> = ({
               <RoomCard
                 key={room.id}
                 room={room}
+                sourceVerified={isVerifiedSource}
                 onSelect={(r) => onSelectRoom(r)}
               />
             ))}
@@ -148,19 +208,21 @@ export const AvailableRoomsSection: React.FC<AvailableRoomsSectionProps> = ({
         )}
 
         {/* Prominent Navigation to Dedicated /phong-trong Catalog Page */}
-        <div className="mt-10 flex items-center justify-center">
-          <a
-            href="/phong-trong"
-            onClick={(e) => {
-              e.preventDefault();
-              onNavigateAllRooms();
-            }}
-            className="px-6 py-3 rounded-lg text-sm font-semibold text-ink bg-canvas-pure hover:bg-canvas-warm border border-line transition-colors inline-flex items-center gap-2 shadow-subtle"
-          >
-            <span>Xem tất cả phòng trống</span>
-            <ArrowRight className="w-4 h-4 text-brand-600" />
-          </a>
-        </div>
+        {!error && (
+          <div className="mt-10 flex items-center justify-center">
+            <a
+              href="/phong-trong"
+              onClick={(e) => {
+                e.preventDefault();
+                onNavigateAllRooms();
+              }}
+              className="px-6 py-3 rounded-lg text-sm font-semibold text-ink bg-canvas-pure hover:bg-canvas-warm border border-line transition-colors inline-flex items-center gap-2 shadow-subtle min-h-[44px]"
+            >
+              <span>Xem tất cả phòng trống</span>
+              <ArrowRight className="w-4 h-4 text-brand-600" />
+            </a>
+          </div>
+        )}
       </div>
     </section>
   );

@@ -3,24 +3,24 @@ import { Menu, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 
 interface HeaderProps {
-  currentPath: '/' | '/phong-trong';
-  onNavigate: (path: '/' | '/phong-trong', hash?: string) => void;
+  currentPath: string;
+  onNavigate: (path: string, hash?: string) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const navItems = [
-    { label: 'Trang chủ', path: '/' as const, hash: '#trang-chu' },
-    { label: 'Phòng cho thuê', path: '/' as const, hash: '#phong-dang-trong' },
-    { label: 'Phòng sắp có', path: '/' as const, hash: '#phong-sap-co' },
-    { label: 'Về AdHome', path: '/' as const, hash: '#ve-adhome' },
-    { label: 'Liên hệ', path: '/' as const, hash: '#lien-he' },
+    { label: 'Trang chủ', path: '/', hash: '#trang-chu' },
+    { label: 'Phòng cho thuê', path: '/phong-trong', hash: undefined },
+    { label: 'Phòng sắp có', path: '/', hash: '#phong-sap-co' },
+    { label: 'Về AdHome', path: '/', hash: '#ve-adhome' },
+    { label: 'Liên hệ', path: '/', hash: '#lien-he' },
   ];
 
   const handleNavClick = (
     e: React.MouseEvent<HTMLAnchorElement>,
-    path: '/' | '/phong-trong',
+    path: string,
     hash?: string
   ) => {
     e.preventDefault();
@@ -29,7 +29,7 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate }) => {
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-canvas-pure/95 backdrop-blur-sm border-b border-line">
+    <header className="sticky top-0 z-40 bg-canvas-pure/95 border-b border-line">
       <div className="max-w-[1220px] mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between gap-6">
         {/* Brand Logo — generous spacing, never squeezed */}
         <a
@@ -41,6 +41,8 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate }) => {
           <img
             src="/brand/adhome-icon.svg"
             alt="AdHome"
+            width={40}
+            height={40}
             className="w-9 h-9 sm:w-10 sm:h-10 object-contain"
           />
           <div className="flex flex-col">
@@ -60,11 +62,16 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate }) => {
         >
           {navItems.map((item) => {
             const isActive =
-              currentPath === '/phong-trong' && item.hash === '#phong-dang-trong';
+              (item.path === '/phong-trong' &&
+                (currentPath.startsWith('/phong-trong') ||
+                  currentPath.startsWith('/phong/'))) ||
+              (item.path === '/' &&
+                item.hash === '#trang-chu' &&
+                currentPath === '/');
             return (
               <a
                 key={item.label}
-                href={item.hash || item.path}
+                href={item.hash ? `${item.path}${item.hash}` : item.path}
                 onClick={(e) => handleNavClick(e, item.path, item.hash)}
                 className={`text-sm font-medium transition-colors whitespace-nowrap ${
                   isActive
@@ -81,9 +88,9 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate }) => {
         {/* Single Prominent CTA on Desktop */}
         <div className="hidden md:flex items-center shrink-0">
           <a
-            href="#phong-dang-trong"
-            onClick={(e) => handleNavClick(e, '/', '#phong-dang-trong')}
-            className="px-4 py-2.5 rounded-lg text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 transition-colors"
+            href="/phong-trong"
+            onClick={(e) => handleNavClick(e, '/phong-trong')}
+            className="px-4 py-2.5 rounded-lg text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 transition-colors min-h-[42px] inline-flex items-center"
           >
             Xem phòng trống
           </a>
@@ -92,16 +99,16 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate }) => {
         {/* Mobile Header Right: Quick Room Link + Drawer Toggle */}
         <div className="flex md:hidden items-center gap-2">
           <a
-            href="#phong-dang-trong"
-            onClick={(e) => handleNavClick(e, '/', '#phong-dang-trong')}
-            className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-brand-600"
+            href="/phong-trong"
+            onClick={(e) => handleNavClick(e, '/phong-trong')}
+            className="px-3 py-2 rounded-lg text-xs font-semibold text-white bg-brand-600 min-h-[38px] inline-flex items-center"
           >
             Xem phòng
           </a>
           <button
             type="button"
             onClick={() => setMobileMenuOpen((v) => !v)}
-            className="p-2 rounded-lg border border-line text-ink hover:bg-canvas-warm transition-colors"
+            className="p-2 rounded-lg border border-line text-ink hover:bg-canvas-warm transition-colors min-h-[38px] min-w-[38px] inline-flex items-center justify-center"
             aria-expanded={mobileMenuOpen}
             aria-label="Menu điều hướng"
           >
@@ -131,7 +138,7 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate }) => {
               {navItems.map((item) => (
                 <a
                   key={item.label}
-                  href={item.hash || item.path}
+                  href={item.hash ? `${item.path}${item.hash}` : item.path}
                   onClick={(e) => handleNavClick(e, item.path, item.hash)}
                   className="block px-3 py-3 rounded-lg text-base font-medium text-ink hover:bg-canvas-warm"
                 >

@@ -120,3 +120,4 @@ Captured before code changes:
   - Border Token: `#E6E4DD` (1px subtle warm border)
   - Radius Token: `8px` (`rounded-lg`) for buttons/inputs, `10px` (`rounded-[10px]`) for cards
   - Shadow Token: `0 1px 3px rgba(17, 24, 39, 0.04)` (ultra-light, border-first hierarchy)
+

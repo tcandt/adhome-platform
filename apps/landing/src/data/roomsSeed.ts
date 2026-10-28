@@ -1,8 +1,28 @@
 import {
   BuildingPublicSummary,
   GalleryPhotoItem,
+  RoomImage,
   RoomListing,
 } from '../types/room';
+
+function createRoomImage(
+  baseName: string,
+  alt: string,
+  caption: string,
+  width = 1024,
+  height = 764,
+  isIllustrative = true
+): RoomImage {
+  return {
+    url: `/images/rooms/${baseName}.webp`,
+    srcSet: `/images/rooms/${baseName}-640w.webp 640w, /images/rooms/${baseName}.webp 1024w`,
+    width,
+    height,
+    alt,
+    caption,
+    isIllustrative,
+  };
+}
 
 export const BUILDINGS_PUBLIC_SEED: BuildingPublicSummary[] = [
   {
@@ -49,6 +69,7 @@ const STANDARD_FEES = {
 export const ROOMS_PUBLIC_SEED: RoomListing[] = [
   // ==========================================
   // 1. AVAILABLE ROOMS (ĐANG TRỐNG)
+  // Every featured room on the home grid uses a unique cover image
   // ==========================================
   {
     id: 'rm-31-06',
@@ -88,28 +109,27 @@ export const ROOMS_PUBLIC_SEED: RoomListing[] = [
     furnishedLevel: 'FULL',
     furnishedLabel: 'Full nội thất',
     images: [
-      {
-        url: '/images/rooms/hero-studio-balcony.png',
-        alt: 'Ảnh minh họa không gian Studio Ban Công 32m²',
-        caption: 'Ảnh minh họa bố cục phòng Studio có ban công và bàn làm việc',
-        isIllustrative: true,
-      },
-      {
-        url: '/images/rooms/kitchen-corner-detail.png',
-        alt: 'Ảnh minh họa khu vực bếp',
-        caption: 'Ảnh minh họa góc bếp tiêu chuẩn trong căn hộ',
-        isIllustrative: true,
-      },
-      {
-        url: '/images/rooms/bathroom-modern-clean.png',
-        alt: 'Ảnh minh họa phòng vệ sinh khép kín',
-        caption: 'Ảnh minh họa phòng tắm vách kính',
-        isIllustrative: true,
-      },
+      createRoomImage(
+        'studio-balcony-3106',
+        'Ảnh minh họa không gian Studio Ban Công 32m² P.31-06',
+        'Ảnh minh họa bố cục phòng Studio P.31-06 có cửa lùa ra ban công'
+      ),
+      createRoomImage(
+        'kitchen-corner-detail',
+        'Ảnh minh họa khu vực bếp riêng trong căn hộ',
+        'Ảnh minh họa góc bếp tiêu chuẩn có bếp từ và tủ lạnh'
+      ),
+      createRoomImage(
+        'bathroom-modern-clean',
+        'Ảnh minh họa phòng vệ sinh khép kín',
+        'Ảnh minh họa phòng tắm vách kính trang bị bình nóng lạnh'
+      ),
     ],
     featured: true,
     displayOrder: 1,
     isPublic: true,
+    sourceVerified: true,
+    updatedAt: '2026-10-28T22:00:00+07:00',
     serviceFees: STANDARD_FEES,
   },
   {
@@ -149,22 +169,29 @@ export const ROOMS_PUBLIC_SEED: RoomListing[] = [
     furnishedLevel: 'FULL',
     furnishedLabel: 'Full nội thất',
     images: [
-      {
-        url: '/images/rooms/one-bedroom-living-01.png',
-        alt: 'Ảnh minh họa căn hộ 1 phòng ngủ 36m²',
-        caption: 'Ảnh minh họa bố cục căn hộ 1PN có vách ngăn gỗ',
-        isIllustrative: true,
-      },
-      {
-        url: '/images/rooms/workspace-window-detail.png',
-        alt: 'Ảnh minh họa góc bàn làm việc',
-        caption: 'Ảnh minh họa góc bàn làm việc cạnh cửa sổ',
-        isIllustrative: true,
-      },
+      createRoomImage(
+        'one-bedroom-living-01',
+        'Ảnh minh họa căn hộ 1 phòng ngủ 36m² P.31-02',
+        'Ảnh minh họa bố cục căn hộ 1PN có vách ngăn gỗ',
+        1024,
+        571
+      ),
+      createRoomImage(
+        'workspace-window-detail',
+        'Ảnh minh họa góc bàn làm việc',
+        'Ảnh minh họa góc bàn làm việc cạnh cửa sổ'
+      ),
+      createRoomImage(
+        'bathroom-modern-clean',
+        'Ảnh minh họa phòng vệ sinh khép kín',
+        'Ảnh minh họa phòng tắm sạch sẽ'
+      ),
     ],
     featured: true,
     displayOrder: 2,
     isPublic: true,
+    sourceVerified: true,
+    updatedAt: '2026-10-28T22:00:00+07:00',
     serviceFees: STANDARD_FEES,
   },
   {
@@ -203,22 +230,29 @@ export const ROOMS_PUBLIC_SEED: RoomListing[] = [
     furnishedLevel: 'FULL',
     furnishedLabel: 'Full nội thất',
     images: [
-      {
-        url: '/images/rooms/two-bedroom-mini-01.png',
-        alt: 'Ảnh minh họa căn 2PN mini 45m²',
-        caption: 'Ảnh minh họa không gian sinh hoạt chung và bếp căn 2PN mini',
-        isIllustrative: true,
-      },
-      {
-        url: '/images/rooms/kitchen-corner-detail.png',
-        alt: 'Ảnh minh họa khu bếp',
-        caption: 'Ảnh minh họa khu vực bếp nấu',
-        isIllustrative: true,
-      },
+      createRoomImage(
+        'two-bedroom-mini-01',
+        'Ảnh minh họa căn 2PN mini 45m² P.25-05',
+        'Ảnh minh họa không gian sinh hoạt chung và bếp căn 2PN mini',
+        1024,
+        571
+      ),
+      createRoomImage(
+        'kitchen-corner-detail',
+        'Ảnh minh họa khu bếp',
+        'Ảnh minh họa khu vực bếp nấu trong căn hộ'
+      ),
+      createRoomImage(
+        'bathroom-modern-clean',
+        'Ảnh minh họa phòng tắm',
+        'Ảnh minh họa phòng tắm vách kính'
+      ),
     ],
     featured: true,
     displayOrder: 3,
     isPublic: true,
+    sourceVerified: true,
+    updatedAt: '2026-10-28T22:00:00+07:00',
     serviceFees: STANDARD_FEES,
   },
   {
@@ -257,16 +291,29 @@ export const ROOMS_PUBLIC_SEED: RoomListing[] = [
     furnishedLevel: 'FULL',
     furnishedLabel: 'Full nội thất',
     images: [
-      {
-        url: '/images/rooms/studio-standard-01.png',
-        alt: 'Ảnh minh họa phòng Studio tiêu chuẩn 28m²',
-        caption: 'Ảnh minh họa bố cục phòng Studio 28m²',
-        isIllustrative: true,
-      },
+      createRoomImage(
+        'studio-standard-01',
+        'Ảnh minh họa phòng Studio tiêu chuẩn 28m² P.31-01',
+        'Ảnh minh họa bố cục phòng Studio 28m² gọn gàng',
+        1024,
+        571
+      ),
+      createRoomImage(
+        'kitchen-corner-detail',
+        'Ảnh minh họa khu bếp trong phòng Studio',
+        'Ảnh minh họa kệ bếp và tủ lạnh riêng'
+      ),
+      createRoomImage(
+        'bathroom-modern-clean',
+        'Ảnh minh họa phòng tắm khép kín',
+        'Ảnh minh họa phòng tắm riêng trong căn hộ'
+      ),
     ],
     featured: true,
     displayOrder: 4,
     isPublic: true,
+    sourceVerified: true,
+    updatedAt: '2026-10-28T22:00:00+07:00',
     serviceFees: STANDARD_FEES,
   },
   {
@@ -293,7 +340,7 @@ export const ROOMS_PUBLIC_SEED: RoomListing[] = [
     shortDescription:
       'Studio 32m² tầng 3 có ban công nhìn ra đường nội khu Ân Phú và góc bàn làm việc.',
     detailedDescription:
-      'P.32-06 nằm trên tầng 3 Tòa LK01-32, có cửa kính lớn mở ra ban công đón ánh sáng tự nhiên và góc bàn làm việc yên tĩnh.',
+      'P.32-06 nằm trên tầng 3 Tòa LK01-32, có cửa kính lớn mở ra ban công đón ánh sáng tự nhiên và góc bàn làm việc yên tĩnh, phù hợp cho nhân viên văn phòng hoặc người làm việc từ xa.',
     amenities: [
       'Ban công riêng',
       'Bàn làm việc',
@@ -305,16 +352,29 @@ export const ROOMS_PUBLIC_SEED: RoomListing[] = [
     furnishedLevel: 'FULL',
     furnishedLabel: 'Full nội thất',
     images: [
-      {
-        url: '/images/rooms/studio-balcony-02.png',
-        alt: 'Ảnh minh họa Studio ban công P.32-06',
-        caption: 'Ảnh minh họa góc làm việc cạnh ban công',
-        isIllustrative: true,
-      },
+      createRoomImage(
+        'studio-balcony-02',
+        'Ảnh minh họa Studio ban công P.32-06',
+        'Ảnh minh họa góc làm việc cạnh ban công tầng 3',
+        1024,
+        571
+      ),
+      createRoomImage(
+        'workspace-window-detail',
+        'Ảnh minh họa bàn làm việc cạnh cửa sổ',
+        'Ảnh minh họa khu vực bàn làm việc đón sáng'
+      ),
+      createRoomImage(
+        'bathroom-modern-clean',
+        'Ảnh minh họa nhà vệ sinh riêng',
+        'Ảnh minh họa phòng tắm trang bị nóng lạnh'
+      ),
     ],
     featured: true,
     displayOrder: 5,
     isPublic: true,
+    sourceVerified: true,
+    updatedAt: '2026-10-28T22:00:00+07:00',
     serviceFees: STANDARD_FEES,
   },
   {
@@ -341,7 +401,7 @@ export const ROOMS_PUBLIC_SEED: RoomListing[] = [
     shortDescription:
       'Căn 1PN diện tích 36m² tại dãy LK08, phân khu tiếp khách, bếp và giường ngủ rõ ràng.',
     detailedDescription:
-      'Phòng P.24-03 thuộc Tòa LK08-24 được bố trí phân khu bếp, sofa sinh hoạt và không gian nghỉ ngơi riêng tư, phù hợp ở lâu dài.',
+      'Phòng P.24-03 thuộc Tòa LK08-24 được bố trí phân khu bếp, sofa sinh hoạt và không gian nghỉ ngơi riêng tư bằng hệ vách kính khung tối màu hiện đại, phù hợp ở lâu dài.',
     amenities: [
       'Vách ngăn phòng',
       'Sofa tiếp khách',
@@ -353,16 +413,27 @@ export const ROOMS_PUBLIC_SEED: RoomListing[] = [
     furnishedLevel: 'FULL',
     furnishedLabel: 'Full nội thất',
     images: [
-      {
-        url: '/images/rooms/one-bedroom-living-01.png',
-        alt: 'Ảnh minh họa căn hộ 1PN P.24-03',
-        caption: 'Ảnh minh họa không gian 1PN tách vách ngăn',
-        isIllustrative: true,
-      },
+      createRoomImage(
+        'one-bedroom-2403',
+        'Ảnh minh họa căn hộ 1PN P.24-03',
+        'Ảnh minh họa không gian 1PN tách vách ngăn kính và sofa'
+      ),
+      createRoomImage(
+        'kitchen-corner-detail',
+        'Ảnh minh họa góc bếp',
+        'Ảnh minh họa khu bếp riêng trong căn hộ'
+      ),
+      createRoomImage(
+        'bathroom-modern-clean',
+        'Ảnh minh họa phòng tắm',
+        'Ảnh minh họa phòng vệ sinh khép kín'
+      ),
     ],
     featured: true,
     displayOrder: 6,
     isPublic: true,
+    sourceVerified: true,
+    updatedAt: '2026-10-28T22:00:00+07:00',
     serviceFees: STANDARD_FEES,
   },
   {
@@ -387,9 +458,9 @@ export const ROOMS_PUBLIC_SEED: RoomListing[] = [
     availableFrom: '2026-10-28',
     availableFromLabel: 'Đang trống',
     shortDescription:
-      'Phòng Studio 30m² vuông vức, có cửa sổ lớn và bàn làm việc riêng.',
+      'Phòng Studio 30m² vuông vức, có cửa sổ lớn nhìn ra hàng cây nội khu và bàn làm việc riêng.',
     detailedDescription:
-      'P.24-04 có mặt bằng 30m² vuông vức, trang bị đầy đủ giường nệm, tủ quần áo, bàn làm việc và khu bếp nhỏ.',
+      'P.24-04 có mặt bằng 30m² vuông vức tại tầng 1 Tòa LK08-24, trang bị đầy đủ giường nệm, tủ quần áo, bàn làm việc cạnh cửa sổ lớn và khu bếp nhỏ.',
     amenities: [
       'Giường & nệm',
       'Bàn làm việc',
@@ -401,16 +472,22 @@ export const ROOMS_PUBLIC_SEED: RoomListing[] = [
     furnishedLevel: 'FULL',
     furnishedLabel: 'Full nội thất',
     images: [
-      {
-        url: '/images/rooms/workspace-window-detail.png',
-        alt: 'Ảnh minh họa phòng Studio P.24-04',
-        caption: 'Ảnh minh họa góc cửa sổ và bàn làm việc',
-        isIllustrative: true,
-      },
+      createRoomImage(
+        'studio-window-2404',
+        'Ảnh minh họa phòng Studio cửa sổ lớn P.24-04',
+        'Ảnh minh họa phòng Studio 30m² có cửa sổ lớn nhìn ra cây xanh'
+      ),
+      createRoomImage(
+        'workspace-window-detail',
+        'Ảnh minh họa góc làm việc',
+        'Ảnh minh họa bàn làm việc cạnh cửa sổ'
+      ),
     ],
     featured: false,
     displayOrder: 7,
     isPublic: true,
+    sourceVerified: true,
+    updatedAt: '2026-10-28T22:00:00+07:00',
     serviceFees: STANDARD_FEES,
   },
   {
@@ -437,7 +514,7 @@ export const ROOMS_PUBLIC_SEED: RoomListing[] = [
     shortDescription:
       'Căn hộ 35m² trên tầng 3 thoáng đãng, trang bị đầy đủ nội thất sinh hoạt.',
     detailedDescription:
-      'Nằm tại tầng 3 của Tòa LK08-25, P.25-08 phù hợp với khách thuê ưu tiên sự yên tĩnh và thoáng gió.',
+      'Nằm tại tầng 3 của Tòa LK08-25, P.25-08 phù hợp với khách thuê ưu tiên sự yên tĩnh và tầm nhìn thoáng ra đường nội khu Ân Phú.',
     amenities: [
       'Sofa & bàn trà',
       'Giường & nệm',
@@ -449,16 +526,24 @@ export const ROOMS_PUBLIC_SEED: RoomListing[] = [
     furnishedLevel: 'FULL',
     furnishedLabel: 'Full nội thất',
     images: [
-      {
-        url: '/images/rooms/studio-balcony-02.png',
-        alt: 'Ảnh minh họa không gian P.25-08',
-        caption: 'Ảnh minh họa không gian phòng tầng 3',
-        isIllustrative: true,
-      },
+      createRoomImage(
+        'building-exterior-anphu',
+        'Ảnh minh họa ngoại quan tòa nhà tại Khu đô thị Ân Phú',
+        'Ảnh minh họa dãy căn hộ tại Khu đô thị Ân Phú, Phường Tân An'
+      ),
+      createRoomImage(
+        'one-bedroom-living-01',
+        'Ảnh minh họa không gian bên trong P.25-08',
+        'Ảnh minh họa bố cục nội thất căn hộ 1PN',
+        1024,
+        571
+      ),
     ],
     featured: false,
     displayOrder: 8,
     isPublic: true,
+    sourceVerified: true,
+    updatedAt: '2026-10-28T22:00:00+07:00',
     serviceFees: STANDARD_FEES,
   },
 
@@ -500,16 +585,24 @@ export const ROOMS_PUBLIC_SEED: RoomListing[] = [
     furnishedLevel: 'FULL',
     furnishedLabel: 'Full nội thất',
     images: [
-      {
-        url: '/images/rooms/two-bedroom-mini-01.png',
-        alt: 'Ảnh minh họa căn 2PN mini P.31-04',
-        caption: 'Ảnh minh họa mẫu phòng 2PN mini 45m²',
-        isIllustrative: true,
-      },
+      createRoomImage(
+        'two-bedroom-mini-01',
+        'Ảnh minh họa căn 2PN mini P.31-04',
+        'Ảnh minh họa mẫu phòng 2PN mini 45m²',
+        1024,
+        571
+      ),
+      createRoomImage(
+        'kitchen-corner-detail',
+        'Ảnh minh họa khu bếp căn hộ',
+        'Ảnh minh họa khu vực bếp và bàn ăn'
+      ),
     ],
     featured: true,
     displayOrder: 9,
     isPublic: true,
+    sourceVerified: true,
+    updatedAt: '2026-10-28T22:00:00+07:00',
     serviceFees: STANDARD_FEES,
   },
   {
@@ -536,7 +629,7 @@ export const ROOMS_PUBLIC_SEED: RoomListing[] = [
     shortDescription:
       'Đang có khách thuê. Nhận đăng ký thông tin để báo lịch xem khi phòng sẵn sàng.',
     detailedDescription:
-      'Phòng P.32-05 dự kiến kết thúc kỳ thuê hiện tại vào nửa cuối tháng 11/2026. Lịch bàn giao chính thức sẽ được cập nhật sau khi hoàn tất kiểm tra nội thất.',
+      'Phòng P.32-05 dự kiến kết thúc kỳ thuê hiện tại vào khoảng 18/11/2026. Lịch bàn giao chính thức sẽ được cập nhật sau khi hoàn tất kiểm tra nội thất.',
     amenities: [
       'Giường & nệm',
       'Tủ quần áo',
@@ -547,16 +640,17 @@ export const ROOMS_PUBLIC_SEED: RoomListing[] = [
     furnishedLevel: 'FULL',
     furnishedLabel: 'Full nội thất',
     images: [
-      {
-        url: '/images/rooms/studio-standard-01.png',
-        alt: 'Ảnh minh họa phòng Studio P.32-05',
-        caption: 'Ảnh minh họa mẫu phòng Studio 30m²',
-        isIllustrative: true,
-      },
+      createRoomImage(
+        'studio-window-2404',
+        'Ảnh minh họa phòng Studio P.32-05',
+        'Ảnh minh họa mẫu phòng Studio 30m²'
+      ),
     ],
     featured: false,
     displayOrder: 10,
     isPublic: true,
+    sourceVerified: true,
+    updatedAt: '2026-10-28T22:00:00+07:00',
     serviceFees: STANDARD_FEES,
   },
   {
@@ -594,16 +688,17 @@ export const ROOMS_PUBLIC_SEED: RoomListing[] = [
     furnishedLevel: 'FULL',
     furnishedLabel: 'Full nội thất',
     images: [
-      {
-        url: '/images/rooms/studio-balcony-02.png',
-        alt: 'Ảnh minh họa Studio ban công P.24-06',
-        caption: 'Ảnh minh họa mẫu phòng Studio ban công',
-        isIllustrative: true,
-      },
+      createRoomImage(
+        'studio-balcony-3106',
+        'Ảnh minh họa Studio ban công P.24-06',
+        'Ảnh minh họa mẫu phòng Studio ban công'
+      ),
     ],
     featured: false,
     displayOrder: 11,
     isPublic: true,
+    sourceVerified: true,
+    updatedAt: '2026-10-28T22:00:00+07:00',
     serviceFees: STANDARD_FEES,
   },
   {
@@ -626,7 +721,7 @@ export const ROOMS_PUBLIC_SEED: RoomListing[] = [
     maxOccupants: '1 – 2 người',
     status: 'COMING_SOON',
     availableFrom: '2026-11-25',
-    availableFromLabel: 'Dự kiến cuối tháng 11/2026',
+    availableFromLabel: 'Dự kiến sau 25/11/2026',
     shortDescription:
       'Căn 1PN tầng 1 diện tích 36m², dự kiến có lịch trống vào cuối tháng 11.',
     detailedDescription:
@@ -641,20 +736,21 @@ export const ROOMS_PUBLIC_SEED: RoomListing[] = [
     furnishedLevel: 'FULL',
     furnishedLabel: 'Full nội thất',
     images: [
-      {
-        url: '/images/rooms/one-bedroom-living-01.png',
-        alt: 'Ảnh minh họa căn hộ 1PN P.25-03',
-        caption: 'Ảnh minh họa mẫu căn hộ 1PN',
-        isIllustrative: true,
-      },
+      createRoomImage(
+        'one-bedroom-2403',
+        'Ảnh minh họa căn hộ 1PN P.25-03',
+        'Ảnh minh họa mẫu căn hộ 1PN'
+      ),
     ],
     featured: false,
     displayOrder: 12,
     isPublic: true,
+    sourceVerified: true,
+    updatedAt: '2026-10-28T22:00:00+07:00',
     serviceFees: STANDARD_FEES,
   },
 
-  // Non-public occupied room (filtered out automatically)
+  // Non-public occupied room (filtered out automatically by Public API & roomService)
   {
     id: 'rm-31-05',
     slug: 'studio-31-05-occupied',
@@ -685,38 +781,56 @@ export const ROOMS_PUBLIC_SEED: RoomListing[] = [
     featured: false,
     displayOrder: 99,
     isPublic: false,
+    sourceVerified: true,
+    updatedAt: '2026-10-28T22:00:00+07:00',
     serviceFees: STANDARD_FEES,
   },
 ];
 
-// Curated 4 distinct interior/amenity photos (avoids repeating Hero & Room Card main shots)
+// Curated 4 distinct interior/amenity detail photos (Zero overlap with Hero or Featured Room Card covers)
 export const GALLERY_PHOTOS_SEED: GalleryPhotoItem[] = [
   {
     id: 'gal-kitchen',
     title: 'Góc bếp riêng gọn gàng trong mỗi căn hộ',
     subtitle: 'Bố trí mặt bếp đá, bồn rửa, bếp từ và tủ lạnh 2 ngăn thuận tiện tự nấu ăn.',
-    imageUrl: '/images/rooms/kitchen-corner-detail.png',
+    imageUrl: '/images/rooms/kitchen-corner-detail.webp',
+    srcSet:
+      '/images/rooms/kitchen-corner-detail-640w.webp 640w, /images/rooms/kitchen-corner-detail.webp 1024w',
+    width: 1024,
+    height: 764,
     isIllustrative: true,
   },
   {
     id: 'gal-workspace',
     title: 'Góc làm việc & học tập cạnh cửa sổ đón sáng',
     subtitle: 'Không gian yên tĩnh, nhiều ánh sáng tự nhiên cho người đi làm và sinh viên.',
-    imageUrl: '/images/rooms/workspace-window-detail.png',
+    imageUrl: '/images/rooms/workspace-window-detail.webp',
+    srcSet:
+      '/images/rooms/workspace-window-detail-640w.webp 640w, /images/rooms/workspace-window-detail.webp 1024w',
+    width: 1024,
+    height: 764,
     isIllustrative: true,
   },
   {
     id: 'gal-bathroom',
     title: 'Phòng vệ sinh khép kín có vách kính & nước nóng',
     subtitle: 'Ốp gạch sáng màu sạch sẽ, trang bị sẵn bình nóng lạnh riêng từng phòng.',
-    imageUrl: '/images/rooms/bathroom-modern-clean.png',
+    imageUrl: '/images/rooms/bathroom-modern-clean.webp',
+    srcSet:
+      '/images/rooms/bathroom-modern-clean-640w.webp 640w, /images/rooms/bathroom-modern-clean.webp 1024w',
+    width: 1024,
+    height: 764,
     isIllustrative: true,
   },
   {
     id: 'gal-parking',
     title: 'Khu vực để xe tầng trệt & cổng khóa vân tay',
     subtitle: 'Lối vào có camera quan sát và cổng khóa vân tay phục vụ cư dân ra vào thuận tiện.',
-    imageUrl: '/images/rooms/parking-corridor-amenity.png',
+    imageUrl: '/images/rooms/parking-corridor-amenity.webp',
+    srcSet:
+      '/images/rooms/parking-corridor-amenity-640w.webp 640w, /images/rooms/parking-corridor-amenity.webp 1024w',
+    width: 1024,
+    height: 764,
     isIllustrative: true,
   },
 ];

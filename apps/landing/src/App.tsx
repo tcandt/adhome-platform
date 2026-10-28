@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Header } from './components/Header';
 import { HeroSection } from './components/HeroSection';
 import { AvailableRoomsSection } from './components/AvailableRoomsSection';
 import { AllRoomsPage } from './components/AllRoomsPage';
+import { RoomDetailPage } from './components/RoomDetailPage';
 import { ComingSoonSection } from './components/ComingSoonSection';
 import { LivingSpaceSection } from './components/LivingSpaceSection';
 import { LocationAndFaqSection } from './components/LocationAndFaqSection';
@@ -16,51 +17,65 @@ import {
   getComingSoonRoomsSync,
   getGalleryPhotos,
 } from './services/roomService';
-import { RoomListing } from './types/room';
+import {
+  applyPageSeo,
+  getCatalogSeoConfig,
+  getHomeSeoConfig,
+  getRoomDetailSeoConfig,
+} from './services/seoService';
+import { DataMode, RoomListing } from './types/room';
+
+function normalizePathname(rawPathname: string): string {
+  const trimmed = rawPathname.replace(/\/+$/, '');
+  return trimmed || '/';
+}
 
 export function App() {
-  const [currentPath, setCurrentPath] = useState<'/' | '/phong-trong'>(() =>
-    window.location.pathname.startsWith('/phong-trong') ? '/phong-trong' : '/'
+  const [currentPath, setCurrentPath] = useState<string>(() =>
+    normalizePathname(window.location.pathname)
   );
   const [rooms, setRooms] = useState<RoomListing[]>([]);
+  const [dataMode, setDataMode] = useState<DataMode>('LIVE');
+  const [sourceVerified, setSourceVerified] = useState<boolean>(true);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [catalogError, setCatalogError] = useState<string | null>(null);
-  const [detailRoom, setDetailRoom] = useState<RoomListing | null>(null);
+  const [quickViewRoom, setQuickViewRoom] = useState<RoomListing | null>(null);
   const [inquiryModalOpen, setInquiryModalOpen] = useState<boolean>(false);
   const [inquiryRoom, setInquiryRoom] = useState<RoomListing | null>(null);
 
-  useEffect(() => {
-    let mounted = true;
+  const loadCatalog = useCallback(() => {
+    setIsLoading(true);
     fetchPublicRoomCatalog().then((res) => {
-      if (mounted) {
-        setRooms(res.rooms);
-        setCatalogError(res.error);
-        setIsLoading(false);
-      }
+      setRooms(res.rooms);
+      setDataMode(res.dataMode);
+      setSourceVerified(res.sourceVerified);
+      setCatalogError(res.error);
+      setIsLoading(false);
     });
-    return () => {
-      mounted = false;
-    };
   }, []);
 
   useEffect(() => {
+    loadCatalog();
+  }, [loadCatalog]);
+
+  useEffect(() => {
     const handlePopState = () => {
-      setCurrentPath(
-        window.location.pathname.startsWith('/phong-trong')
-          ? '/phong-trong'
-          : '/'
-      );
+      setCurrentPath(normalizePathname(window.location.pathname));
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  const navigateTo = (path: '/' | '/phong-trong', hash?: string) => {
-    if (window.location.pathname !== path) {
-      window.history.pushState({}, '', path + (hash || ''));
-      setCurrentPath(path);
+  const navigateTo = useCallback((path: string, hash?: string) => {
+    const normalized = normalizePathname(path);
+    const search = window.location.search;
+    const targetUrl = `${normalized}${search}${hash || ''}`;
+
+    if (normalizePathname(window.location.pathname) !== normalized) {
+      window.history.pushState({}, '', targetUrl);
+      setCurrentPath(normalized);
     } else if (hash) {
-      window.history.replaceState({}, '', path + hash);
+      window.history.replaceState({}, '', targetUrl);
     }
 
     if (hash) {
@@ -75,7 +90,43 @@ export function App() {
     } else {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
-  };
+  }, []);
+
+  const activeRoomSlug = useMemo(() => {
+    if (currentPath.startsWith('/phong/')) {
+      return decodeURIComponent(currentPath.slice('/phong/'.length));
+    }
+    return null;
+  }, [currentPath]);
+
+  const activeDetailRoom = useMemo(() => {
+    if (!activeRoomSlug) return null;
+    return (
+      rooms.find(
+        (r) => r.slug === activeRoomSlug || r.id === activeRoomSlug
+      ) || null
+    );
+  }, [rooms, activeRoomSlug]);
+
+  // Dynamic SEO Metadata & Canonical updates per route
+  useEffect(() => {
+    if (activeRoomSlug) {
+      if (activeDetailRoom) {
+        applyPageSeo(getRoomDetailSeoConfig(activeDetailRoom));
+      } else if (!isLoading) {
+        applyPageSeo({
+          title: 'Không tìm thấy phòng | AdHome Khu đô thị Ân Phú',
+          description:
+            'Phòng bạn đang tìm không tồn tại hoặc đã ngừng mở thuê công khai.',
+          canonicalPath: `/phong/${activeRoomSlug}`,
+        });
+      }
+    } else if (currentPath === '/phong-trong') {
+      applyPageSeo(getCatalogSeoConfig());
+    } else {
+      applyPageSeo(getHomeSeoConfig());
+    }
+  }, [currentPath, activeRoomSlug, activeDetailRoom, isLoading]);
 
   const availableRooms = useMemo(() => getAvailableRoomsSync(rooms), [rooms]);
   const comingSoonRooms = useMemo(() => getComingSoonRoomsSync(rooms), [rooms]);
@@ -92,12 +143,28 @@ export function App() {
       <Header currentPath={currentPath} onNavigate={navigateTo} />
 
       <main className="flex-1">
-        {currentPath === '/phong-trong' ? (
+        {activeRoomSlug ? (
+          <RoomDetailPage
+            room={activeDetailRoom}
+            allRooms={rooms}
+            isLoading={isLoading}
+            error={catalogError}
+            dataMode={dataMode}
+            sourceVerified={sourceVerified}
+            onBackCatalog={() => navigateTo('/phong-trong')}
+            onBackHome={() => navigateTo('/')}
+            onInquireRoom={(room) => handleOpenInquiry(room)}
+            onNavigateRoom={(room) => navigateTo(`/phong/${room.slug}`)}
+          />
+        ) : currentPath === '/phong-trong' ? (
           <AllRoomsPage
             rooms={rooms}
             isLoading={isLoading}
             error={catalogError}
-            onSelectRoom={(room) => setDetailRoom(room)}
+            dataMode={dataMode}
+            sourceVerified={sourceVerified}
+            onRetry={loadCatalog}
+            onSelectRoom={(room) => setQuickViewRoom(room)}
             onBackHome={() => navigateTo('/')}
           />
         ) : (
@@ -110,14 +177,19 @@ export function App() {
               rooms={availableRooms}
               isLoading={isLoading}
               error={catalogError}
-              onSelectRoom={(room) => setDetailRoom(room)}
+              dataMode={dataMode}
+              sourceVerified={sourceVerified}
+              onRetry={loadCatalog}
+              onOpenInquiry={() => handleOpenInquiry()}
+              onSelectRoom={(room) => setQuickViewRoom(room)}
               onNavigateAllRooms={() => navigateTo('/phong-trong')}
             />
 
             {/* 3. Coming Soon Rooms (Compact 2-Column Horizontal Layout) */}
             <ComingSoonSection
               rooms={comingSoonRooms}
-              onSelectRoom={(room) => setDetailRoom(room)}
+              sourceVerified={sourceVerified && dataMode === 'LIVE'}
+              onSelectRoom={(room) => setQuickViewRoom(room)}
               onNotifyRoom={(room) => handleOpenInquiry(room)}
             />
 
@@ -139,30 +211,13 @@ export function App() {
         onOpenInquiry={() => handleOpenInquiry()}
       />
 
-      {/* Compact Mobile Sticky Contact Bar (Requirement 10: compact & non-intrusive) */}
-      <div className="sm:hidden fixed bottom-0 inset-x-0 z-30 bg-canvas-pure/95 backdrop-blur-sm border-t border-line px-4 py-2 flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <span className="text-xs font-semibold text-ink block truncate">
-            Căn hộ dịch vụ KĐT Ân Phú
-          </span>
-          <span className="text-[11px] text-ink-muted block truncate">
-            Từ 4,5 triệu/tháng · Full nội thất
-          </span>
-        </div>
-        <button
-          type="button"
-          onClick={() => handleOpenInquiry()}
-          className="px-4 py-2 rounded-lg text-xs font-semibold text-white bg-brand-600 shrink-0"
-        >
-          Liên hệ tư vấn
-        </button>
-      </div>
-
-      {/* Interactive Modals */}
+      {/* Interactive Modals: Quick View + Lead Inquiry */}
       <RoomDetailModal
-        room={detailRoom}
-        onClose={() => setDetailRoom(null)}
+        room={quickViewRoom}
+        sourceVerified={sourceVerified && dataMode === 'LIVE'}
+        onClose={() => setQuickViewRoom(null)}
         onInquire={(room) => handleOpenInquiry(room)}
+        onOpenFullPage={(room) => navigateTo(`/phong/${room.slug}`)}
       />
 
       <LeadInquiryModal

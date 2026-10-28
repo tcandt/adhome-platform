@@ -1,4 +1,4 @@
-# AdHome Landing Page (`https://adhome.ductinh.one`) — Editorial Redesign Gate 02
+# AdHome Landing Page (`https://adhome.ductinh.one`) — Gate 03: Production Readiness
 
 Trang web cho thuê căn hộ dịch vụ, phòng Studio, 1PN và 2PN mini full nội thất tại **Khu đô thị Ân Phú, Phường Tân An, Đắk Lắk**, đồng thời giới thiệu nền tảng quản lý vận hành **AdHome**.
 
@@ -8,80 +8,76 @@ Trang web cho thuê căn hộ dịch vụ, phòng Studio, 1PN và 2PN mini full 
 
 ```text
 apps/landing/
-├── index.html                           # SEO meta, OpenGraph, Schema.org ApartmentComplex
-├── package.json                         # @adhome/landing (Vite + React + TS + Tailwind)
-├── tailwind.config.js                   # Hệ màu phẳng (Warm Off-White #F8F7F4, White, Navy #0F172A, Brand Blue #1E5EFF)
+├── index.html                           # SEO meta, Preload LCP WebP, Schema.org ApartmentComplex
+├── package.json                         # @adhome/landing (Vite + React + TS + Tailwind + Prerender SEO)
+├── tailwind.config.js                   # Bảng màu phẳng chuẩn WCAG AA (#F8F7F4, #FFFFFF, #0F172A, #1E5EFF)
+├── data/
+│   ├── verified-public-rooms.json       # Kho dữ liệu phòng công khai đã xác minh (đồng bộ từ Console)
+│   └── public-inquiries.json            # Kho lưu trữ yêu cầu hẹn xem phòng / nhận thông báo
+├── server/
+│   └── publicApiPlugin.ts               # Public Listings & Lead Persistence API (/api/v1/public/*)
+├── scripts/
+│   ├── prerenderSeo.mjs                 # Prerender tĩnh /phong-trong, /phong/:slug, sitemap.xml & robots.txt
+│   └── e2eGate03.mjs                    # Bộ kiểm thử E2E, Accessibility & Core Web Vitals (CDP)
 ├── public/
 │   ├── brand/                           # Bộ logo SVG chính thức của AdHome
-│   └── images/rooms/                    # Bộ 10 ảnh căn hộ dịch vụ đồng bộ phong cách
+│   ├── images/rooms/                    # Bộ 13 ảnh căn hộ định dạng WebP (1024w & 640w responsive)
+│   ├── sitemap.xml                      # Sitemap tự động sinh cho /, /phong-trong và /phong/:slug
+│   └── robots.txt                       # Cấu hình robots.txt chuẩn SEO
 └── src/
     ├── types/
-    │   └── room.ts                      # Định nghĩa kiểu dữ liệu RoomListing, BuildingPublicSummary, GalleryPhotoItem
+    │   └── room.ts                      # Định nghĩa RoomListing, DataMode, LeadInquiryPayload/Result
     ├── data/
-    │   └── roomsSeed.ts                 # Seed data cho danh sách căn hộ và khu nhà tại KĐT Ân Phú
+    │   └── roomsSeed.ts                 # Dữ liệu khởi tạo và chế độ Demo xem trước
     ├── services/
-    │   └── roomService.ts               # Lớp truy xuất dữ liệu (tự động lọc phòng public, không fallback dữ liệu mẫu khi cấu hình Production API)
+    │   ├── roomService.ts               # Tách biệt LIVE MODE / DEMO MODE, kiểm tra dữ liệu & lưu Lead
+    │   └── seoService.ts                # Cập nhật Title, Meta Description, Canonical, OG & JSON-LD theo route
     ├── components/
-    │   ├── Header.tsx                   # Sticky Header tối giản (5 mục điều hướng + 1 CTA chính + Mobile Sheet)
-    │   ├── HeroSection.tsx              # Hero tinh gọn: ảnh căn hộ lớn, tiêu đề 2-3 dòng, 1 CTA chính + 1 CTA phụ
-    │   ├── RoomCard.tsx                 # Thẻ phòng chuẩn 6 phần tử (Ảnh lớn, Trạng thái, Tên ngắn, Thông số, Giá thuê, 1 CTA)
-    │   ├── AvailableRoomsSection.tsx    # Hiển thị 3–6 phòng nổi bật trên trang chủ + nút điều hướng tới /phong-trong
-    │   ├── AllRoomsPage.tsx             # Trang danh sách đầy đủ (/phong-trong): bộ lọc, sắp xếp, phân trang, Mobile Filter Sheet
-    │   ├── ComingSoonSection.tsx        # Danh sách phòng sắp có: thẻ ngang 2 cột gọn gàng, ghi rõ ngày dự kiến
-    │   ├── LivingSpaceSection.tsx       # Không gian sống & tiện nghi (gộp tiện ích + ảnh chi tiết + quy trình 3 bước)
-    │   ├── LocationAndFaqSection.tsx    # Vị trí Khu đô thị Ân Phú, Tân An, Đắk Lắk + FAQ gọn nhẹ
+    │   ├── Header.tsx                   # Sticky Header tối giản (5 mục điều hướng + 1 CTA + Mobile Sheet)
+    │   ├── HeroSection.tsx              # Hero tinh gọn, tối ưu LCP WebP & line-height tiếng Việt
+    │   ├── RoomCard.tsx                 # Thẻ phòng chuẩn 6 phần tử, ảnh đại diện riêng biệt từng phòng
+    │   ├── AvailableRoomsSection.tsx    # Hiển thị 6 phòng nổi bật trên trang chủ + điều hướng /phong-trong
+    │   ├── AllRoomsPage.tsx             # Trang danh sách đầy đủ (/phong-trong): lọc, sắp xếp, phân trang
+    │   ├── RoomDetailPage.tsx           # Trang chi tiết từng phòng (/phong/:slug): album ảnh, chia sẻ URL, SEO
+    │   ├── ComingSoonSection.tsx        # Danh sách phòng dự kiến sắp có (thẻ ngang 2 cột)
+    │   ├── LivingSpaceSection.tsx       # Không gian sống & tiện nghi + quy trình thuê 3 bước
+    │   ├── LocationAndFaqSection.tsx    # Vị trí Khu đô thị Ân Phú, Tân An, Đắk Lắk + FAQ
     │   ├── PlatformIntroSection.tsx     # Giới thiệu nền tảng AdHome hướng tới lợi ích người thuê
-    │   ├── RoomDetailModal.tsx          # Modal xem chi tiết căn hộ, nội thất và biểu phí
-    │   ├── LeadInquiryModal.tsx         # Modal đặt lịch xem phòng / đăng ký nhận thông báo phòng sắp có
+    │   ├── RoomDetailModal.tsx          # Modal xem nhanh (Full-screen sheet trên mobile) + mở /phong/:slug
+    │   ├── LeadInquiryModal.tsx         # Form liên hệ chuẩn hóa DD/MM/YYYY, chống spam/trùng, không giả lập lưu
     │   └── Footer.tsx                   # Footer thông tin liên hệ & điều hướng
-    ├── App.tsx                          # Điều hướng SPA (/ và /phong-trong) + quản lý Modal
+    ├── App.tsx                          # Điều hướng SPA (/, /phong-trong, /phong/:slug)
     └── main.tsx                         # Entry point
 ```
 
 ---
 
-## 2. Nguồn dữ liệu & Tính xác thực (`Data Source & Authenticity`)
+## 2. Chế độ dữ liệu (`LIVE MODE` vs `DEMO MODE`) & Public API
 
-Toàn bộ dữ liệu phòng hiện tại nằm tại [`src/data/roomsSeed.ts`](./src/data/roomsSeed.ts) và được truy xuất thông qua [`src/services/roomService.ts`](./src/services/roomService.ts).
+Hệ thống phân tách chặt chẽ giữa **LIVE MODE** (mặc định trên Production) và **DEMO MODE** (`?mode=demo` hoặc `VITE_DATA_MODE=demo`):
 
-Mỗi bản ghi `RoomListing` bao gồm:
-- `id`, `slug`, `roomCode`, `title`, `roomType` (`'Studio' | 'Studio Ban Công' | '1 Phòng Ngủ' | '2PN Mini + PK'`)
-- `buildingId`, `buildingCode`, `buildingName`, `buildingAddress`, `floorNumber`, `floorName`
-- `area` (m²), `price` (VND/tháng), `currency`, `depositMonths`, `maxOccupants`
-- `status`: `'AVAILABLE'` (Đang trống) | `'COMING_SOON'` (Sắp có) | `'RESERVED'` | `'OCCUPIED'`
-- `availableFrom`, `availableFromLabel`, `shortDescription`, `detailedDescription`, `highlightNote`
-- `amenities`, `furnishedLevel`, `furnishedLabel`, `images`, `isIllustrativeImage` (`true` nếu là ảnh minh họa, `false` nếu là ảnh chụp thực tế của phòng), `featured`, `displayOrder`, `isPublic`
-
----
-
-## 3. Cách thay ảnh thực tế (`How to Replace Room Photos`)
-
-1. Đặt file ảnh chụp thực tế mới vào thư mục `apps/landing/public/images/rooms/`.
-2. Cập nhật đường dẫn `url: '/images/rooms/<ten-file-anh>'` trong mảng `images` của phòng tương ứng tại [`src/data/roomsSeed.ts`](./src/data/roomsSeed.ts) và chuyển `isIllustrativeImage: false` khi đã sử dụng ảnh chụp thực tế của đúng căn hộ đó (nhãn `"Ảnh minh họa"` sẽ tự động ẩn).
+- **`LIVE MODE`**:
+  - Lấy dữ liệu từ `GET /api/v1/public/rooms` (chỉ xuất bản phòng có `isPublic === true`, `status === 'AVAILABLE' | 'COMING_SOON'` và `sourceVerified === true`).
+  - Hỗ trợ Console cập nhật giá thuê, album ảnh, trạng thái và ngày dự kiến trống qua `PATCH /api/v1/public/rooms/:slug`.
+  - Khi API lỗi, hệ thống hiển thị thông báo lỗi minh bạch và **tuyệt đối không tự chuyển sang dữ liệu mẫu (`roomsSeed.ts`)**.
+- **`DEMO MODE`**:
+  - Chỉ kích hoạt khi truyền tường minh `?mode=demo` hoặc `VITE_DATA_MODE=demo`.
+  - Hiển thị băng thông báo dữ liệu mẫu chưa xác minh và gắn nhãn `"Minh họa · ..."` trên trạng thái phòng.
+  - Khi người dùng gửi form liên hệ trong `DEMO MODE`, hệ thống cảnh báo rõ yêu cầu **chưa được lưu vào cơ sở dữ liệu** (không giả lập thành công).
 
 ---
 
-## 4. Hướng đồng bộ với AdHome Console (`Console API Sync`)
-
-Lớp dịch vụ [`src/services/roomService.ts`](./src/services/roomService.ts) gọi API thông qua biến môi trường `VITE_PUBLIC_API_URL`:
-
-- **Lấy danh sách phòng công khai**: `GET ${VITE_PUBLIC_API_URL}/public/rooms`
-- **Gửi yêu cầu hẹn xem phòng / đăng ký nhận thông báo**: `POST ${VITE_PUBLIC_API_URL}/public/inquiries`
-
-**Nguyên tắc an toàn dữ liệu trên Production:**
-- Khi chưa cấu hình `VITE_PUBLIC_API_URL` (giai đoạn chạy độc lập), hệ thống sử dụng dữ liệu từ `roomsSeed.ts`.
-- Khi đã cấu hình `VITE_PUBLIC_API_URL` trên Production, nếu API gặp sự cố, hệ thống hiển thị thông báo lỗi minh bạch và **không tự động fallback về dữ liệu mẫu** để tránh hiển thị nhầm phòng demo cho khách thuê thật.
-
----
-
-## 5. Lệnh chạy phát triển & Build (Không dùng Docker)
+## 3. Lệnh chạy phát triển, Build Prerender & Kiểm thử E2E (Không dùng Docker)
 
 Từ thư mục gốc `d:\AdHome-Platform`:
 
 ```bash
-# Chạy máy chủ phát triển Landing Page (http://127.0.0.1:5173)
+# 1. Chạy máy chủ phát triển Landing Page kèm Public API (http://127.0.0.1:5173)
 pnpm dev:landing
 
-# Kiểm tra kiểu TypeScript và đóng gói bản Production (apps/landing/dist)
+# 2. Kiểm tra kiểu TypeScript, đóng gói bản Production và Prerender SEO (apps/landing/dist)
 pnpm build:landing
+
+# 3. Chạy kiểm thử tự động E2E, Accessibility & Core Web Vitals Gate 03
+cd apps/landing && node scripts/e2eGate03.mjs
 ```

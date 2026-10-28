@@ -1,19 +1,24 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   ArrowLeft,
   SlidersHorizontal,
   X,
   ChevronLeft,
   ChevronRight,
+  AlertCircle,
+  RefreshCw,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { RoomListing } from '../types/room';
+import { DataMode, RoomListing } from '../types/room';
 import { RoomCard } from './RoomCard';
 
 interface AllRoomsPageProps {
   rooms: RoomListing[];
   isLoading?: boolean;
   error?: string | null;
+  dataMode?: DataMode;
+  sourceVerified?: boolean;
+  onRetry?: () => void;
   onSelectRoom: (room: RoomListing) => void;
   onBackHome: () => void;
 }
@@ -26,6 +31,9 @@ export const AllRoomsPage: React.FC<AllRoomsPageProps> = ({
   rooms,
   isLoading = false,
   error = null,
+  dataMode = 'LIVE',
+  sourceVerified = true,
+  onRetry,
   onSelectRoom,
   onBackHome,
 }) => {
@@ -35,6 +43,16 @@ export const AllRoomsPage: React.FC<AllRoomsPageProps> = ({
   const [sortBy, setSortBy] = useState<SortKey>('DEFAULT');
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [mobileFilterSheetOpen, setMobileFilterSheetOpen] = useState<boolean>(false);
+
+  // Lock body scroll when Mobile Filter Sheet is open
+  useEffect(() => {
+    if (!mobileFilterSheetOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [mobileFilterSheetOpen]);
 
   // Dynamically derive room types & buildings from data (no hardcoded limits)
   const availableTypes = useMemo(() => {
@@ -92,6 +110,8 @@ export const AllRoomsPage: React.FC<AllRoomsPageProps> = ({
     (typeFilter !== 'ALL' ? 1 : 0) +
     (buildingFilter !== 'ALL' ? 1 : 0);
 
+  const isVerifiedSource = sourceVerified && dataMode === 'LIVE';
+
   return (
     <section className="py-10 sm:py-16 bg-canvas min-h-[75vh]">
       <div className="max-w-[1220px] mx-auto px-4 sm:px-6 lg:px-8">
@@ -122,7 +142,7 @@ export const AllRoomsPage: React.FC<AllRoomsPageProps> = ({
               <button
                 type="button"
                 onClick={() => setMobileFilterSheetOpen(true)}
-                className="px-3.5 py-2.5 rounded-lg text-xs font-semibold text-ink bg-canvas-pure border border-line inline-flex items-center gap-2"
+                className="px-3.5 py-2.5 rounded-lg text-xs font-semibold text-ink bg-canvas-pure border border-line inline-flex items-center gap-2 min-h-[42px]"
               >
                 <SlidersHorizontal className="w-4 h-4 text-brand-600" />
                 <span>Bộ lọc {activeFilterCount > 0 ? `(${activeFilterCount})` : ''}</span>
@@ -135,7 +155,7 @@ export const AllRoomsPage: React.FC<AllRoomsPageProps> = ({
                   setSortBy(e.target.value as SortKey);
                   setCurrentPage(1);
                 }}
-                className="px-3 py-2.5 rounded-lg text-xs font-medium text-ink bg-canvas-pure border border-line"
+                className="px-3 py-2.5 rounded-lg text-xs font-medium text-ink bg-canvas-pure border border-line min-h-[42px]"
               >
                 <option value="DEFAULT">Sắp xếp: Mặc định</option>
                 <option value="PRICE_ASC">Giá: Thấp đến cao</option>
@@ -145,6 +165,21 @@ export const AllRoomsPage: React.FC<AllRoomsPageProps> = ({
             </div>
           </div>
         </div>
+
+        {/* Explicit DEMO MODE Notice */}
+        {dataMode === 'DEMO' && (
+          <div
+            role="status"
+            className="mt-6 p-3.5 rounded-card bg-amber-50 border border-amber-200 text-amber-950 text-xs sm:text-sm flex items-start gap-2.5"
+          >
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-800" />
+            <span>
+              <strong>Chế độ Dữ liệu mẫu (Demo Mode):</strong> Danh sách phòng
+              đang hiển thị từ dữ liệu mẫu xem trước, chưa kết nối với nguồn dữ
+              liệu đã xác minh từ Console.
+            </span>
+          </div>
+        )}
 
         {/* Desktop Filter Bar (Hidden on Mobile — Mobile uses Filter Sheet) */}
         <div className="hidden md:flex mt-6 p-4 rounded-section bg-canvas-pure border border-line items-center justify-between gap-4 flex-wrap">
@@ -243,8 +278,30 @@ export const AllRoomsPage: React.FC<AllRoomsPageProps> = ({
             ))}
           </div>
         ) : error ? (
-          <div className="mt-8 bg-canvas-pure rounded-section border border-line p-8 text-center">
-            <p className="text-sm text-ink-secondary">{error}</p>
+          <div
+            role="alert"
+            data-testid="catalog-api-error"
+            className="mt-8 bg-canvas-pure rounded-section border border-line p-8 text-center max-w-xl mx-auto space-y-4"
+          >
+            <div className="w-10 h-10 rounded-full bg-amber-50 border border-amber-200 text-amber-800 flex items-center justify-center mx-auto">
+              <AlertCircle className="w-5 h-5" />
+            </div>
+            <h2 className="text-base sm:text-lg font-bold text-ink">
+              Không thể tải danh sách phòng công khai
+            </h2>
+            <p className="text-sm text-ink-secondary leading-relaxed">
+              {error}
+            </p>
+            {onRetry && (
+              <button
+                type="button"
+                onClick={onRetry}
+                className="px-4 py-2.5 rounded-lg text-xs sm:text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 inline-flex items-center gap-1.5"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Thử tải lại</span>
+              </button>
+            )}
           </div>
         ) : paginatedRooms.length === 0 ? (
           <div className="mt-8 bg-canvas-pure rounded-section border border-line p-10 text-center max-w-lg mx-auto">
@@ -269,6 +326,7 @@ export const AllRoomsPage: React.FC<AllRoomsPageProps> = ({
                 <RoomCard
                   key={room.id}
                   room={room}
+                  sourceVerified={isVerifiedSource}
                   onSelect={(r) => onSelectRoom(r)}
                 />
               ))}
@@ -284,7 +342,7 @@ export const AllRoomsPage: React.FC<AllRoomsPageProps> = ({
                   type="button"
                   disabled={safePage <= 1}
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  className="p-2 rounded-lg border border-line bg-canvas-pure text-ink disabled:opacity-40"
+                  className="p-2.5 rounded-lg border border-line bg-canvas-pure text-ink disabled:opacity-40"
                   aria-label="Trang trước"
                 >
                   <ChevronLeft className="w-4 h-4" />
@@ -295,7 +353,7 @@ export const AllRoomsPage: React.FC<AllRoomsPageProps> = ({
                       key={page}
                       type="button"
                       onClick={() => setCurrentPage(page)}
-                      className={`w-9 h-9 rounded-lg text-xs font-semibold border transition-colors tabular-nums ${
+                      className={`w-10 h-10 rounded-lg text-xs font-semibold border transition-colors tabular-nums ${
                         page === safePage
                           ? 'bg-ink text-white border-ink'
                           : 'bg-canvas-pure text-ink-secondary border-line hover:bg-canvas-warm'
@@ -311,7 +369,7 @@ export const AllRoomsPage: React.FC<AllRoomsPageProps> = ({
                   onClick={() =>
                     setCurrentPage((p) => Math.min(totalPages, p + 1))
                   }
-                  className="p-2 rounded-lg border border-line bg-canvas-pure text-ink disabled:opacity-40"
+                  className="p-2.5 rounded-lg border border-line bg-canvas-pure text-ink disabled:opacity-40"
                   aria-label="Trang tiếp theo"
                 >
                   <ChevronRight className="w-4 h-4" />
@@ -322,7 +380,7 @@ export const AllRoomsPage: React.FC<AllRoomsPageProps> = ({
         )}
       </div>
 
-      {/* Dedicated Mobile Filter Sheet (Requirement 10) */}
+      {/* Dedicated Mobile Filter Sheet */}
       <AnimatePresence>
         {mobileFilterSheetOpen && (
           <motion.div
@@ -337,7 +395,7 @@ export const AllRoomsPage: React.FC<AllRoomsPageProps> = ({
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               transition={{ duration: 0.22, ease: 'easeOut' }}
-              className="bg-canvas-pure w-full rounded-t-2xl border-t border-line p-5 space-y-5 max-h-[85vh] overflow-y-auto"
+              className="bg-canvas-pure w-full rounded-t-2xl border-t border-line p-5 space-y-5 max-h-[85dvh] overflow-y-auto pb-[max(1.25rem,env(safe-area-inset-bottom))]"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between pb-3 border-b border-line">
@@ -346,7 +404,7 @@ export const AllRoomsPage: React.FC<AllRoomsPageProps> = ({
                   type="button"
                   onClick={() => setMobileFilterSheetOpen(false)}
                   aria-label="Đóng bộ lọc"
-                  className="p-1.5 rounded-lg text-ink-secondary"
+                  className="p-2 rounded-lg text-ink-secondary"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -370,7 +428,7 @@ export const AllRoomsPage: React.FC<AllRoomsPageProps> = ({
                           setStatusFilter(st.id as 'ALL' | 'AVAILABLE' | 'COMING_SOON');
                           setCurrentPage(1);
                         }}
-                        className={`py-2 px-2.5 rounded-lg text-xs font-medium border ${
+                        className={`py-2.5 px-2.5 rounded-lg text-xs font-medium border ${
                           statusFilter === st.id
                             ? 'bg-ink text-white border-ink'
                             : 'bg-canvas text-ink-secondary border-line'

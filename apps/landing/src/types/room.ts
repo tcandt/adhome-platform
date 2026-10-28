@@ -1,5 +1,7 @@
 export type RoomListingStatus = 'AVAILABLE' | 'COMING_SOON' | 'RESERVED' | 'OCCUPIED';
 
+export type DataMode = 'LIVE' | 'DEMO';
+
 export type RoomTypeCategory =
   | 'Studio'
   | 'Studio Ban Công'
@@ -10,9 +12,12 @@ export type FurnishedLevel = 'FULL' | 'BASIC' | 'UNFURNISHED';
 
 export interface RoomImage {
   url: string;
+  srcSet?: string;
+  width?: number;
+  height?: number;
   alt: string;
   caption?: string;
-  isIllustrative?: boolean; // True when using illustrative/reference photography instead of verified unit photo
+  isIllustrative?: boolean; // True when using illustrative/AI reference photography instead of verified unit photo
 }
 
 export interface RoomListing {
@@ -34,8 +39,8 @@ export interface RoomListing {
   depositMonths: number;
   maxOccupants: string;
   status: RoomListingStatus;
-  availableFrom: string;
-  availableFromLabel: string;
+  availableFrom: string; // ISO YYYY-MM-DD
+  availableFromLabel: string; // Display label with DD/MM/YYYY
   shortDescription: string;
   detailedDescription: string;
   amenities: string[];
@@ -45,6 +50,8 @@ export interface RoomListing {
   featured: boolean;
   displayOrder: number;
   isPublic: boolean;
+  sourceVerified?: boolean;
+  updatedAt?: string;
   serviceFees: {
     electricity: string;
     water: string;
@@ -67,6 +74,9 @@ export interface GalleryPhotoItem {
   title: string;
   subtitle: string;
   imageUrl: string;
+  srcSet?: string;
+  width?: number;
+  height?: number;
   isIllustrative: boolean;
 }
 
@@ -74,14 +84,39 @@ export interface LeadInquiryPayload {
   fullName: string;
   phone: string;
   inquiryType: 'VIEW_ROOM' | 'NOTIFY_COMING_SOON' | 'GENERAL_CONSULT';
+  roomId?: string;
+  roomSlug?: string;
   roomCode?: string;
   roomTitle?: string;
-  preferredMoveInDate?: string;
+  preferredMoveInDate?: string; // ISO YYYY-MM-DD
+  preferredMoveInDateDisplay?: string; // DD/MM/YYYY
   note?: string;
+  privacyConsent: boolean;
+  honeypot?: string;
+  clientTimestamp?: number;
+}
+
+export type LeadInquiryErrorCode =
+  | 'DEMO_MODE_UNSAVED'
+  | 'BACKEND_UNAVAILABLE'
+  | 'VALIDATION_ERROR'
+  | 'DUPLICATE_SUBMISSION'
+  | 'SPAM_DETECTED'
+  | 'API_ERROR';
+
+export interface LeadInquiryResult {
+  ok: boolean;
+  referenceCode?: string;
+  savedAt?: string;
+  errorCode?: LeadInquiryErrorCode;
+  message?: string;
 }
 
 export interface RoomCatalogResponse {
   rooms: RoomListing[];
+  dataMode: DataMode;
+  sourceVerified: boolean;
+  updatedAt: string | null;
   isSeedData: boolean;
   error: string | null;
 }

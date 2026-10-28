@@ -1,0 +1,19 @@
+{
+  "name": "adhome-v2",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AdHome V2 — SaaS Quản lý Căn hộ Dịch vụ Native Monorepo",
+  "scripts": {
+    "dev": "pnpm --filter @adhome/console dev",
+    "dev:console": "pnpm --filter @adhome/console dev --host 0.0.0.0 --port 5174",
+    "dev:console:host": "pnpm --filter @adhome/console dev --host 0.0.0.0 --port 5174",
+    "dev:landing": "pnpm --filter @adhome/landing dev --host 127.0.0.1 --port 5173",
+    "dev:api": "pnpm --filter @adhome/api dev",
+    "build": "pnpm -r build",
+    "build:console": "pnpm --filter @adhome/console build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint"
+  },
+  "packageManager": "pnpm@11.14.0",
+  "devDependencies": {}
+}

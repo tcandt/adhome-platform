@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --brand-primary: #2563EB;
+  --brand-hover: #1D4ED8;
+  --success: #16A34A;
+  --warning: #D97706;
+  --danger: #DC2626;
+  --surface: #FFFFFF;
+  --background: #F7F9FC;
+  --text: #101828;
+  --border: #E5E7EB;
+  --radius-card: 12px;
+
+  --sidebar-width-expanded: 256px;
+  --sidebar-width-collapsed: 72px;
+  --header-height: 64px;
+}
+
+.dark {
+  --brand-primary: #3B82F6;
+  --brand-hover: #2563EB;
+  --surface: #111827;
+  --background: #0B0F19;
+  --text: #F8FAFC;
+  --border: #1E293B;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 9999px;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+/* Smooth motion rules conforming to Blueprint Motion Budget */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

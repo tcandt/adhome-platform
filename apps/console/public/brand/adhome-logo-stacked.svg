@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="150" viewBox="0 0 200 150" role="img" aria-label="AdHome Stacked Logo">
+  <defs>
+    <linearGradient id="adh-stk-roof" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="45%" stop-color="#2563EB"/>
+      <stop offset="100%" stop-color="#1D4ED8"/>
+    </linearGradient>
+    <linearGradient id="adh-stk-tower" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#2DD4BF"/>
+      <stop offset="100%" stop-color="#0D9488"/>
+    </linearGradient>
+    <linearGradient id="adh-stk-front" x1="0" y1="0" x2="0.7" y2="1">
+      <stop offset="0%" stop-color="#14B8A6"/>
+      <stop offset="100%" stop-color="#0F766E"/>
+    </linearGradient>
+    <linearGradient id="adh-stk-flow" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#1D4ED8"/>
+      <stop offset="42%" stop-color="#2563EB"/>
+      <stop offset="100%" stop-color="#06B6D4"/>
+    </linearGradient>
+  </defs>
+  <!-- Centered Icon at 72x72: x=(200-72)/2=64, y=10 -->
+  <g transform="translate(64, 8) scale(0.75)">
+    <path d="M60 14.5C60 9.2 64.7 7.5 68.5 10.3L77.5 17C80.3 19 81 21.3 81 25V71.7C81 76.7 77.5 80.3 72.5 80.3H60V14.5Z" fill="url(#adh-stk-tower)"/>
+    <path d="M77.5 26L88.5 33.4C91.4 35.4 92 37.5 92 41V70.2C92 76.2 87.5 80.3 81.5 80.3H77.5V26Z" fill="url(#adh-stk-front)"/>
+    <path d="M6 45.2C6 41.2 7.7 38.4 11.4 35.4L41 11.3C44.5 8.45 47.4 8.45 50.7 11.1L64.6 22.35C71.8 28.2 74 32.8 74 40.4V70.5H61V44.7C61 41.7 60.4 40.4 58 38.5L47.7 29.9C46 28.5 44.9 28.6 43.3 29.9L23.8 46.1C21.8 47.8 21 49.4 21 52V80.3H14.4C9 80.3 6 77.4 6 72V45.2Z" fill="url(#adh-stk-roof)"/>
+    <rect x="34.5" y="46" width="8.3" height="8.3" rx="2" fill="#2563EB"/>
+    <rect x="45.1" y="46" width="8.3" height="8.3" rx="2" fill="#2563EB"/>
+    <rect x="34.5" y="56.5" width="8.3" height="8.3" rx="2" fill="#2563EB"/>
+    <rect x="45.1" y="56.5" width="8.3" height="8.3" rx="2" fill="#2563EB"/>
+    <rect x="83.3" y="40.8" width="3.9" height="7.3" rx="1.95" fill="#F0FDFA"/>
+    <rect x="83.3" y="52.2" width="3.9" height="7.3" rx="1.95" fill="#F0FDFA"/>
+    <rect x="83.3" y="63.6" width="3.9" height="7.3" rx="1.95" fill="#F0FDFA"/>
+    <path d="M21.4 68.8C29.4 63.2 39.1 62 49.5 64.7C59.6 67.3 70 74.9 79.5 77C83.5 77.9 87.5 77.8 92.7 74.7C87.9 84.5 76.5 88.5 65.8 85.9C50.9 82.3 37.7 70.9 21.4 68.8Z" fill="url(#adh-stk-flow)"/>
+  </g>
+  <!-- Wordmark "AdHome" centered at x=100, y=105 -->
+  <text x="100" y="112" font-family="Inter, system-ui, -apple-system, sans-serif" font-size="28" font-weight="800" text-anchor="middle">
+    <tspan fill="#2563EB">Ad</tspan><tspan fill="#0F172A">Home</tspan>
+  </text>
+  <!-- Tagline centered at x=100, y=130 -->
+  <text x="100" y="132" font-family="Inter, system-ui, -apple-system, sans-serif" font-size="9.5" font-weight="600" letter-spacing="1.1" fill="#64748B" text-anchor="middle">
+    QUẢN LÝ CĂN HỘ DỊCH VỤ
+  </text>
+</svg>

@@ -1,0 +1,72 @@
+:root { --ad-navy:#13243B; --ad-blue:#0B6EF7; --ad-muted:#6D7C94; --ad-border:#E5ECF4; }
+* { box-sizing: border-box; }
+body { margin:0; font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif; color:var(--ad-navy); background:#F5F8FD; }
+button { font:inherit; }
+.ad-shell { --ad-sidebar-width:260px; min-height:100dvh; }
+.ad-shell--collapsed { --ad-sidebar-width:76px; }
+.ad-sidebar { width:var(--ad-sidebar-width); position:fixed; inset:0 auto 0 0; display:flex; flex-direction:column; background:#fff; border-right:1px solid var(--ad-border); box-shadow:2px 0 24px #10264706; z-index:20; transition:width .24s cubic-bezier(.2,.8,.2,1); overflow:hidden; }
+.ad-brand-row { height:86px; min-height:86px; display:flex; align-items:center; padding:0 15px 0 16px; position:relative; justify-content:space-between; }
+.ad-brand { display:block; width:185px; height:58px; position:relative; flex-shrink:0; }
+.ad-brand img { display:block; position:absolute; left:0; top:50%; transform:translateY(-50%); object-fit:contain; transition:opacity .12s ease; }
+.ad-brand-full { width:176px; max-height:56px; opacity:1; }
+.ad-brand-icon { width:44px; height:44px; opacity:0; pointer-events:none; }
+.ad-desktop-toggle { width:28px; height:28px; flex-shrink:0; border:0; background:#F2F6FB; color:#64748B; border-radius:8px; display:grid; place-items:center; cursor:pointer; }
+.ad-desktop-toggle svg { width:18px; height:18px; }
+.ad-desktop-toggle:hover { background:#E3EDFF; color:var(--ad-blue); }
+.ad-nav-caption { margin:20px 16px 10px; color:#9BA8BB; font-size:10px; font-weight:750; letter-spacing:1.3px; white-space:nowrap; }
+.ad-nav { padding:0 10px; display:flex; flex-direction:column; gap:4px; overflow-y:auto; }
+.ad-nav-item { height:44px; min-height:44px; display:flex; align-items:center; gap:13px; width:100%; border:0; background:transparent; border-radius:11px; color:#60738E; text-align:left; padding:0 14px; cursor:pointer; font-size:13.5px; font-weight:600; white-space:nowrap; }
+.ad-nav-item:hover { background:#F3F7FF; }
+.ad-nav-item--active { color:var(--ad-blue); background:#EAF3FF; }
+.ad-nav-icon { width:20px; height:20px; min-width:20px; }
+.ad-nav-label { opacity:1; transition:opacity .13s ease; }
+.ad-nav-count { margin-left:auto; border-radius:6px; color:#E77A19; background:#FFF2E8; font-size:11px; padding:2px 6px; }
+.ad-sidebar-foot { margin-top:auto; min-height:80px; border-top:1px solid var(--ad-border); padding:17px 20px; display:flex; align-items:center; gap:11px; white-space:nowrap; }
+.ad-avatar { height:34px; width:34px; min-width:34px; border-radius:12px; color:white; display:grid; place-items:center; background:linear-gradient(140deg,#087BFF,#00BEAD); font-weight:800; }
+.ad-profile-copy { display:flex; flex-direction:column; gap:4px; font-size:12px; }
+.ad-profile-copy small { font-size:11px; color:var(--ad-muted); }
+.ad-main { margin-left:var(--ad-sidebar-width); min-height:100dvh; transition:margin-left .24s cubic-bezier(.2,.8,.2,1); }
+.ad-topbar { height:70px; background:#FFF; border-bottom:1px solid var(--ad-border); display:flex; align-items:center; gap:18px; padding:0 28px; }
+.ad-topbar-caption { color:#8290A4; font-size:12px; margin-left:auto; }
+.ad-mobile-trigger { display:none; border:0; background:#EAF3FF; width:40px; height:40px; border-radius:12px; cursor:pointer; color:var(--ad-blue); }
+.ad-mobile-overlay { display:none; }
+.ad-page-content { padding:32px; }
+.ad-page-content h1 { font-size:25px; margin:0 0 10px; }
+.ad-page-content p { color:#64748B; font-size:14px; }
+.ad-sample-grid { margin-top:28px; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:15px; }
+.ad-sample-card { background:white; padding:23px; border:1px solid var(--ad-border); border-radius:17px; display:flex; flex-direction:column; gap:11px; }
+.ad-sample-card small { color:#718198; font-size:12px; }
+.ad-sample-card strong { font-size:24px; }
+.ad-shell--collapsed .ad-brand-row { padding:0; justify-content:center; align-items:center; }
+.ad-shell--collapsed .ad-brand { width:44px; height:44px; margin-top:-10px; }
+.ad-shell--collapsed .ad-brand-full { opacity:0; pointer-events:none; }
+.ad-shell--collapsed .ad-brand-icon { opacity:1; }
+.ad-shell--collapsed .ad-desktop-toggle { position:absolute; bottom:2px; right:24px; width:28px; height:24px; }
+.ad-shell--collapsed .ad-nav-caption { opacity:0; }
+.ad-shell--collapsed .ad-nav-item { justify-content:center; padding:0; }
+.ad-shell--collapsed .ad-nav-label,.ad-shell--collapsed .ad-nav-count,.ad-shell--collapsed .ad-profile-copy { display:none; }
+.ad-shell--collapsed .ad-sidebar-foot { justify-content:center; padding:17px 10px; }
+@media (max-width:768px) {
+ .ad-sidebar,.ad-shell--collapsed .ad-sidebar { width:280px; max-width:88vw; transform:translateX(-100%); transition:transform .24s ease; }
+ .ad-shell--mobile-open .ad-sidebar { transform:translateX(0); }
+ .ad-shell--mobile-open .ad-mobile-overlay { display:block; position:fixed; inset:0; z-index:19; border:0; background:#0F233C70; }
+ .ad-main,.ad-shell--collapsed .ad-main { margin-left:0; }
+ .ad-mobile-trigger { display:block; }
+ .ad-desktop-toggle { display:none; }
+ .ad-shell--collapsed .ad-brand-row { padding:0 15px 0 16px; justify-content:space-between; }
+ .ad-shell--collapsed .ad-brand { width:185px; height:58px; margin-top:0; }
+ .ad-shell--collapsed .ad-brand-full { opacity:1; pointer-events:auto; }
+ .ad-shell--collapsed .ad-brand-icon { opacity:0; }
+ .ad-shell--collapsed .ad-nav-caption { opacity:1; }
+ .ad-shell--collapsed .ad-nav-item { justify-content:flex-start; padding:0 14px; }
+ .ad-shell--collapsed .ad-nav-label,.ad-shell--collapsed .ad-nav-count,.ad-shell--collapsed .ad-profile-copy { display:initial; }
+ .ad-shell--collapsed .ad-sidebar-foot { justify-content:flex-start; padding:17px 20px; }
+ .ad-topbar { padding:0 16px; }
+ .ad-topbar-caption { display:none; }
+ .ad-page-content { padding:22px 16px; }
+ .ad-sample-grid { grid-template-columns:1fr; }
+ .ad-page-content h1 { font-size:22px; }
+}
+@media (prefers-reduced-motion:reduce) {
+ .ad-sidebar,.ad-main,.ad-brand img,.ad-nav-label { transition:none; }
+}

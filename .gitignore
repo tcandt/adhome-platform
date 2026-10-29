@@ -11,6 +11,9 @@ out/
 
 # Environment files
 .env
+.env.*
+*.env
+apps/*/.env*
 .env.local
 .env.*.local
 !.env.example

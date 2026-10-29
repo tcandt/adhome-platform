@@ -1,6 +1,9 @@
 import crypto from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import type { PrismaClient } from '@prisma/client';
+import { loadAdhomeEnv } from './envLoader.js';
+
+loadAdhomeEnv();
 
 export type ConsoleRole = 'ADMIN' | 'MANAGER' | 'VIEWER';
 
@@ -34,17 +37,31 @@ export interface AuthoritativeConsoleActor {
   kid: string;
 }
 
-export const ACTIVE_KEY_ID = 'k3-2026-10';
-export const PREVIOUS_KEY_ID = 'k2-2026-10';
+export const ACTIVE_KEY_ID = 'k4-2026-10';
+export const PREVIOUS_KEY_ID = 'k3-2026-10';
 
-export const CONSOLE_SECRET_KEYRING: Record<string, string> = {
-  [ACTIVE_KEY_ID]:
-    process.env.ADHOME_CONSOLE_JWT_SECRET ||
-    'adhome-v2-sec-k3-8f0a29b71e4d3c907158a4c18402ef917e8b63',
-  [PREVIOUS_KEY_ID]:
-    process.env.ADHOME_CONSOLE_JWT_SECRET_PREV ||
-    'adhome-v2-console-hmac-secret-daklak-2026-k2',
-};
+export function getConsoleSecretKeyring(): Record<string, string> {
+  loadAdhomeEnv();
+
+  const activeSecret = process.env.ADHOME_CONSOLE_JWT_SECRET;
+  const prevSecret = process.env.ADHOME_CONSOLE_JWT_SECRET_PREV;
+
+  if (!activeSecret || activeSecret.trim().length < 32) {
+    throw new Error(
+      'FATAL SECURITY CONFIGURATION: ADHOME_CONSOLE_JWT_SECRET environment variable is missing or shorter than 32 characters. Server refuses to boot with insecure credentials. Hardcoded fallback secrets are strictly forbidden.'
+    );
+  }
+
+  const keyring: Record<string, string> = {
+    [ACTIVE_KEY_ID]: activeSecret.trim(),
+  };
+
+  if (prevSecret && prevSecret.trim().length >= 32) {
+    keyring[PREVIOUS_KEY_ID] = prevSecret.trim();
+  }
+
+  return keyring;
+}
 
 function base64UrlEncode(input: Buffer | string): string {
   const buf = typeof input === 'string' ? Buffer.from(input, 'utf-8') : input;
@@ -74,6 +91,7 @@ export function signConsoleToken(
         kid?: string;
       }
 ): string {
+  const keyring = getConsoleSecretKeyring();
   const nowSec = Math.floor(Date.now() / 1000);
   const kid =
     typeof secretOrOptions === 'object' && secretOrOptions?.kid
@@ -83,8 +101,12 @@ export function signConsoleToken(
     typeof secretOrOptions === 'string'
       ? secretOrOptions
       : secretOrOptions?.secret ||
-        CONSOLE_SECRET_KEYRING[kid] ||
-        CONSOLE_SECRET_KEYRING[ACTIVE_KEY_ID];
+        keyring[kid] ||
+        keyring[ACTIVE_KEY_ID];
+
+  if (!secret) {
+    throw new Error(`FATAL: No signing secret found for key ID '${kid}'.`);
+  }
 
   const fullClaims: ConsoleTokenClaims = {
     jti: payload.jti || `jti-${crypto.randomUUID()}`,
@@ -122,12 +144,13 @@ export function verifyConsoleToken(
     return { ok: false, reason: 'MALFORMED_HEADER' };
   }
 
+  const keyring = getConsoleSecretKeyring();
   const signingInput = `${headerB64}.${payloadB64}`;
   const candidateSecrets: Array<{ kid: string; secret: string }> = explicitSecret
     ? [{ kid: headerObj.kid || 'explicit', secret: explicitSecret }]
-    : headerObj.kid && CONSOLE_SECRET_KEYRING[headerObj.kid]
-    ? [{ kid: headerObj.kid, secret: CONSOLE_SECRET_KEYRING[headerObj.kid] }]
-    : Object.entries(CONSOLE_SECRET_KEYRING).map(([k, s]) => ({
+    : headerObj.kid && keyring[headerObj.kid]
+    ? [{ kid: headerObj.kid, secret: keyring[headerObj.kid] }]
+    : Object.entries(keyring).map(([k, s]) => ({
         kid: k,
         secret: s,
       }));

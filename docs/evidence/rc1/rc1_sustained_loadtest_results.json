@@ -1,0 +1,255 @@
+{
+  "testName": "ADHOME Landing RC1 Sustained Load Test",
+  "timestamp": "2026-10-29T13:34:54.531Z",
+  "baseUrl": "http://127.0.0.1:8081",
+  "canonicalDomain": "https://adhome.ductinh.one",
+  "databaseEngine": "PostgreSQL 18.0.4 (x64 Windows)",
+  "runtime": "Node v24.15.0",
+  "operatingSystem": "Windows_NT 10.0.26200 (x64)",
+  "cpuModel": "11th Gen Intel(R) Core(TM) i9-11950H @ 2.60GHz",
+  "cpuCores": 16,
+  "publicContentSustainedTiers": [
+    {
+      "vuCount": 100,
+      "activeWorkers": 100,
+      "testSchedule": {
+        "rampUpSec": 2,
+        "sustainedDurationSec": 15,
+        "rampDownSec": 2,
+        "totalDurationSec": 19.1
+      },
+      "requests": {
+        "total": 18260,
+        "status2xx": 18260,
+        "status4xx": 0,
+        "status5xxOrNetErr": 0,
+        "throughputReqSec": 958.05,
+        "infrastructureErrorRatePct": 0
+      },
+      "latencyMs": {
+        "min": 1.78,
+        "avg": 42.2,
+        "p50": 42.59,
+        "p90": 54.43,
+        "p95": 69.65,
+        "p99": 108.91,
+        "max": 125.35
+      },
+      "resourceUsage": {
+        "cpuUsagePct": 33.89,
+        "heapInitialMb": 18.97,
+        "heapPeakMb": 37.76,
+        "heapFinalMb": 17.81,
+        "memoryGrowthMb": -1.16,
+        "memoryGrowthPct": -6.1,
+        "rssPeakMb": 149.33
+      },
+      "postgresqlConnectionPool": {
+        "peakTotalConnections": 20,
+        "peakActiveConnections": 5,
+        "peakIdleConnections": 19,
+        "poolExhaustionOccurred": false
+      },
+      "scenarioBreakdown": [
+        {
+          "scenario": "PUBLIC_ROOMS_API",
+          "requests": 10043,
+          "successRatePct": 100,
+          "p95Ms": 69.44,
+          "p99Ms": 108.35,
+          "avgMs": 41.94
+        },
+        {
+          "scenario": "SSR_ROOM_DETAIL",
+          "requests": 6391,
+          "successRatePct": 100,
+          "p95Ms": 69.72,
+          "p99Ms": 109.74,
+          "avgMs": 42.3
+        },
+        {
+          "scenario": "CATALOG_PAGE",
+          "requests": 1826,
+          "successRatePct": 100,
+          "p95Ms": 70.5,
+          "p99Ms": 107.58,
+          "avgMs": 43.3
+        }
+      ],
+      "slaPass": true
+    },
+    {
+      "vuCount": 500,
+      "activeWorkers": 500,
+      "testSchedule": {
+        "rampUpSec": 2,
+        "sustainedDurationSec": 15,
+        "rampDownSec": 2,
+        "totalDurationSec": 19.1
+      },
+      "requests": {
+        "total": 18827,
+        "status2xx": 18827,
+        "status4xx": 0,
+        "status5xxOrNetErr": 0,
+        "throughputReqSec": 987.28,
+        "infrastructureErrorRatePct": 0
+      },
+      "latencyMs": {
+        "min": 1.96,
+        "avg": 402.13,
+        "p50": 451.34,
+        "p90": 467.83,
+        "p95": 475.07,
+        "p99": 490.23,
+        "max": 672.26
+      },
+      "resourceUsage": {
+        "cpuUsagePct": 32.05,
+        "heapInitialMb": 26.15,
+        "heapPeakMb": 40.44,
+        "heapFinalMb": 22.29,
+        "memoryGrowthMb": -3.86,
+        "memoryGrowthPct": -14.76,
+        "rssPeakMb": 160.25
+      },
+      "postgresqlConnectionPool": {
+        "peakTotalConnections": 20,
+        "peakActiveConnections": 5,
+        "peakIdleConnections": 19,
+        "poolExhaustionOccurred": false
+      },
+      "scenarioBreakdown": [
+        {
+          "scenario": "PUBLIC_ROOMS_API",
+          "requests": 10358,
+          "successRatePct": 100,
+          "p95Ms": 474.67,
+          "p99Ms": 489.35,
+          "avgMs": 401.6
+        },
+        {
+          "scenario": "SSR_ROOM_DETAIL",
+          "requests": 6587,
+          "successRatePct": 100,
+          "p95Ms": 475.25,
+          "p99Ms": 491.09,
+          "avgMs": 402.65
+        },
+        {
+          "scenario": "CATALOG_PAGE",
+          "requests": 1882,
+          "successRatePct": 100,
+          "p95Ms": 476.28,
+          "p99Ms": 491.06,
+          "avgMs": 403.29
+        }
+      ],
+      "slaPass": true
+    },
+    {
+      "vuCount": 1000,
+      "activeWorkers": 1000,
+      "testSchedule": {
+        "rampUpSec": 3,
+        "sustainedDurationSec": 15,
+        "rampDownSec": 2,
+        "totalDurationSec": 20.2
+      },
+      "requests": {
+        "total": 19732,
+        "status2xx": 19732,
+        "status4xx": 0,
+        "status5xxOrNetErr": 0,
+        "throughputReqSec": 978.41,
+        "infrastructureErrorRatePct": 0
+      },
+      "latencyMs": {
+        "min": 23.59,
+        "avg": 853.74,
+        "p50": 956.2,
+        "p90": 980.26,
+        "p95": 1003.25,
+        "p99": 1018.15,
+        "max": 1029.22
+      },
+      "resourceUsage": {
+        "cpuUsagePct": 32.07,
+        "heapInitialMb": 30.42,
+        "heapPeakMb": 65.89,
+        "heapFinalMb": 28.69,
+        "memoryGrowthMb": -1.73,
+        "memoryGrowthPct": -5.69,
+        "rssPeakMb": 207.11
+      },
+      "postgresqlConnectionPool": {
+        "peakTotalConnections": 20,
+        "peakActiveConnections": 5,
+        "peakIdleConnections": 19,
+        "poolExhaustionOccurred": false
+      },
+      "scenarioBreakdown": [
+        {
+          "scenario": "PUBLIC_ROOMS_API",
+          "requests": 10856,
+          "successRatePct": 100,
+          "p95Ms": 1002.54,
+          "p99Ms": 1017.75,
+          "avgMs": 853.18
+        },
+        {
+          "scenario": "SSR_ROOM_DETAIL",
+          "requests": 6904,
+          "successRatePct": 100,
+          "p95Ms": 1003.85,
+          "p99Ms": 1018.36,
+          "avgMs": 854.29
+        },
+        {
+          "scenario": "CATALOG_PAGE",
+          "requests": 1972,
+          "successRatePct": 100,
+          "p95Ms": 1004.81,
+          "p99Ms": 1019.71,
+          "avgMs": 854.89
+        }
+      ],
+      "slaPass": true
+    }
+  ],
+  "validLeadCapacityBenchmark": {
+    "testName": "Valid Lead Ingestion Capacity Benchmark",
+    "totalProspectsSubmitted": 50,
+    "acceptedHttp2xx": 50,
+    "rejectedNon2xx": 0,
+    "businessSuccessRatePct": 100,
+    "throughputReqSec": 31.99,
+    "dbRowsVerifiedMatch": true,
+    "latencyMs": {
+      "min": 3.91,
+      "avg": 9.17,
+      "p50": 9.8,
+      "p95": 11.6,
+      "max": 24.28
+    },
+    "slaPass": true
+  },
+  "antiSpamAndRateLimitBenchmark": {
+    "testName": "Anti-Spam & Rate Limiting Enforcement Benchmark",
+    "singleIpBurstBlockedWith429": true,
+    "rateLimitKeySpoofPrevented": true,
+    "missingConsentBlockedWith422": true,
+    "invalidPhoneBlockedWith422": true,
+    "allAbuseVectorsBlocked": true
+  },
+  "summary": {
+    "totalSustainedRequests": 56819,
+    "maxThroughputReqSec": 987.28,
+    "worstP95Ms": 1003.25,
+    "worstP99Ms": 1018.15,
+    "infrastructureZeroErrors": true,
+    "leadAcceptancePass": true,
+    "antiSpamProtectionPass": true,
+    "overallPass": true
+  }
+}

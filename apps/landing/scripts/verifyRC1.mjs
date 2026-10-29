@@ -5,6 +5,10 @@ import { spawn } from 'node:child_process';
 import { PrismaClient } from '@prisma/client';
 import { runBackupAndRestoreVerification } from './verifyBackupRestoreRC1.mjs';
 import { runSustainedLoadTestSuite } from './sustainedLoadTestRC1.mjs';
+import { purgeTestLeads } from './purgeTestLeads.mjs';
+import { loadAdhomeEnv } from '../server/envLoader.js';
+
+loadAdhomeEnv();
 
 const BASE_URL = process.env.RC1_BASE_URL || 'http://127.0.0.1:8081';
 const CANONICAL_ORIGIN = 'https://adhome.ductinh.one';
@@ -13,14 +17,19 @@ const ARTIFACT_DIR =
   'C:\\Users\\TINH-NGUYEN\\.gemini\\antigravity\\brain\\28c40a83-4f86-4432-98db-0577f31a9633';
 const RC1_OUTPUT_DIR = path.join(process.cwd(), 'apps', 'landing', 'rc1');
 
-const ACTIVE_KEY_ID = 'k3-2026-10';
-const PREVIOUS_KEY_ID = 'k2-2026-10';
-const ACTIVE_SECRET =
-  process.env.ADHOME_CONSOLE_JWT_SECRET ||
-  'adhome-v2-sec-k3-8f0a29b71e4d3c907158a4c18402ef917e8b63';
-const PREVIOUS_SECRET =
-  process.env.ADHOME_CONSOLE_JWT_SECRET_PREV ||
-  'adhome-v2-console-hmac-secret-daklak-2026-k2';
+const ACTIVE_KEY_ID = 'k4-2026-10';
+const PREVIOUS_KEY_ID = 'k3-2026-10';
+const BURNED_OLD_KEY_ID = 'k2-2026-10';
+
+const ACTIVE_SECRET = process.env.ADHOME_CONSOLE_JWT_SECRET;
+const PREVIOUS_SECRET = process.env.ADHOME_CONSOLE_JWT_SECRET_PREV;
+const BURNED_OLD_SECRET = 'adhome-v2-console-hmac-secret-daklak-2026-k2';
+
+if (!ACTIVE_SECRET || ACTIVE_SECRET.length < 32) {
+  throw new Error(
+    'FATAL: ADHOME_CONSOLE_JWT_SECRET must be set in environment or .env. Refusing to run with insecure credentials.'
+  );
+}
 
 const prisma = new PrismaClient({
   datasources: {
@@ -397,7 +406,8 @@ async function runSecuritySeoAndDomainAudit() {
       headers: {
         'Content-Type': 'application/json',
         'X-Forwarded-For': rateLimitClientIp,
-        // Attempt arbitrary bypass header - must be ignored/ineffective!
+        // Attempt arbitrary bypass headers - must be ignored/ineffective!
+        'x-rate-limit-key': `malicious-bypass-${i}`,
         'x-load-test-bypass-ratelimit': '1',
       },
       body: JSON.stringify({
@@ -478,7 +488,7 @@ async function runSecuritySeoAndDomainAudit() {
   );
   const wrongBuildingBody = await wrongBuildingRes.json();
 
-  // 6. Secret Rotation: Token signed with PREVIOUS_KEY_ID (`k2-2026-10`)
+  // 6. Secret Rotation: Token signed with PREVIOUS_KEY_ID (`k3-2026-10`) is accepted
   const { token: rotatedPrevKeyToken } = signToken(
     {
       sub: 'usr-admin-01',
@@ -499,6 +509,28 @@ async function runSecuritySeoAndDomainAudit() {
     }
   );
   const rotatedPrevBody = await rotatedPrevRes.json();
+
+  // 6b. Burned/Revoked Old Key (`k2-2026-10`) must be strictly REJECTED (HTTP 401)
+  const { token: burnedOldKeyToken } = signToken(
+    {
+      sub: 'usr-admin-01',
+      email: 'admin@adhome.vn',
+      sessionVersion: adminActor?.sessionVersion ?? 1,
+    },
+    { secret: BURNED_OLD_SECRET, kid: BURNED_OLD_KEY_ID }
+  );
+  const burnedOldKeyRes = await fetch(
+    `${BASE_URL}/api/v1/console/rooms/studio-ban-cong-31-06-lk01-31-an-phu`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${burnedOldKeyToken}`,
+      },
+      body: JSON.stringify({ price: 5000000 }),
+    }
+  );
+  const burnedOldKeyBody = await burnedOldKeyRes.json();
 
   // 7. Token Revocation by JTI
   const { token: revocableToken, jti: revocableJti } = signToken({
@@ -679,6 +711,10 @@ async function runSecuritySeoAndDomainAudit() {
         wrongBuildingBody.errorCode === 'BUILDING_SCOPE_FORBIDDEN'),
     secretRotationDualKeyAccepted:
       rotatedPrevRes.status === 200 && rotatedPrevBody.ok === true,
+    burnedOldKeyRejected401:
+      burnedOldKeyRes.status === 401 &&
+      (burnedOldKeyBody.errorCode === 'INVALID_SIGNATURE' ||
+        burnedOldKeyBody.reason === 'INVALID_SIGNATURE'),
     tokenRevocationByJtiWorks:
       revokeCallRes.status === 200 &&
       afterRevokeRes.status === 401 &&
@@ -717,6 +753,9 @@ export async function runFullRC1Verification() {
 
   fs.mkdirSync(RC1_OUTPUT_DIR, { recursive: true });
   fs.mkdirSync(ARTIFACT_DIR, { recursive: true });
+
+  console.log('Ensuring PostgreSQL database is clean of automated test leads...');
+  await purgeTestLeads();
 
   // Step 1: PostgreSQL 18 Native Backup & Restore Test
   const backupRestoreReport = await runBackupAndRestoreVerification();
@@ -1127,6 +1166,7 @@ export async function runFullRC1Verification() {
         viewerRoleMutationForbidden403: securityAndSeoReport.viewerRoleMutationBlocked,
         buildingManagerScopingForbidden403: securityAndSeoReport.buildingScopeEnforced,
         secretRotationDualKeyAccepted: securityAndSeoReport.secretRotationDualKeyAccepted,
+        burnedOldKeyRejected401: securityAndSeoReport.burnedOldKeyRejected401,
         tokenRevocationByJtiWorks: securityAndSeoReport.tokenRevocationByJtiWorks,
         sessionVersionInvalidationWorks: securityAndSeoReport.sessionVersionInvalidationWorks,
         zeroPrivateDataLeakage: securityAndSeoReport.zeroTenantDataLeakage,
@@ -1137,23 +1177,26 @@ export async function runFullRC1Verification() {
           securityAndSeoReport.viewerRoleMutationBlocked &&
           securityAndSeoReport.buildingScopeEnforced &&
           securityAndSeoReport.secretRotationDualKeyAccepted &&
+          securityAndSeoReport.burnedOldKeyRejected401 &&
           securityAndSeoReport.tokenRevocationByJtiWorks &&
           securityAndSeoReport.sessionVersionInvalidationWorks &&
           securityAndSeoReport.zeroTenantDataLeakage,
       },
       rc04_sustainedLoadTesting: {
         summary: sustainedLoadReport.summary,
-        tiers: sustainedLoadReport.tiers.map((t) => ({
+        publicContentTiers: sustainedLoadReport.publicContentSustainedTiers.map((t) => ({
           vuCount: t.vuCount,
           activeWorkers: t.activeWorkers,
           throughputReqSec: t.requests.throughputReqSec,
           p95Ms: t.latencyMs.p95,
           p99Ms: t.latencyMs.p99,
-          errorRatePct: t.requests.errorRatePct,
+          infrastructureErrorRatePct: t.requests.infrastructureErrorRatePct,
           peakPostgresConnections: t.postgresqlConnectionPool.peakTotalConnections,
           memoryGrowthPct: t.resourceUsage.memoryGrowthPct,
           slaPass: t.slaPass,
         })),
+        validLeadCapacityBenchmark: sustainedLoadReport.validLeadCapacityBenchmark,
+        antiSpamAndRateLimitBenchmark: sustainedLoadReport.antiSpamAndRateLimitBenchmark,
         pass: sustainedLoadReport.summary.overallPass,
       },
       rc05_databaseAndSeo: {

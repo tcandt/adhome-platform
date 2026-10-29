@@ -4,6 +4,7 @@ import { PrismaClient, Prisma } from '@prisma/client';
 import type { Plugin } from 'vite';
 import { ROOMS_PUBLIC_SEED } from '../src/data/roomsSeed';
 import type { RoomListing } from '../src/types/room';
+import { loadAdhomeEnv } from './envLoader.js';
 import {
   authorizeRoomPublishAccess,
   checkRateLimit,
@@ -16,6 +17,8 @@ import {
   renderDynamicSitemapXml,
   syncPrerenderedSeoFiles,
 } from './seoPrerenderer';
+
+loadAdhomeEnv();
 
 const DEFAULT_ORG_ID = 'org-adhome-anphu';
 const EMPTY_SAAS_ORG_ID = 'org-empty-saas';
@@ -175,71 +178,74 @@ export async function ensurePostgreSqlSeeded(): Promise<void> {
       },
     });
 
-    // 2. Seed Authoritative Console Actors in PostgreSQL (Server-side RBAC source of truth)
-    const actorsToSeed = [
-      {
-        id: 'usr-admin-01',
-        email: 'admin@adhome.vn',
-        orgId: DEFAULT_ORG_ID,
-        role: 'ADMIN',
-        permissions: ['rooms.publish.write', 'rooms.read', 'leads.read'],
-        buildingScopes: ['*'],
-        sessionVersion: 1,
-        isActive: true,
-      },
-      {
-        id: 'usr-mgr-lk01',
-        email: 'manager.lk01@adhome.vn',
-        orgId: DEFAULT_ORG_ID,
-        role: 'MANAGER',
-        permissions: ['rooms.publish.write', 'rooms.read', 'leads.read'],
-        buildingScopes: ['BLD-LK01-31', 'BLD-LK01-32'],
-        sessionVersion: 1,
-        isActive: true,
-      },
-      {
-        id: 'usr-viewer-01',
-        email: 'viewer@adhome.vn',
-        orgId: DEFAULT_ORG_ID,
-        role: 'VIEWER',
-        permissions: ['rooms.read'],
-        buildingScopes: ['*'],
-        sessionVersion: 1,
-        isActive: true,
-      },
-      {
-        id: 'usr-other-org-01',
-        email: 'admin@other-tenant.vn',
-        orgId: EMPTY_SAAS_ORG_ID,
-        role: 'ADMIN',
-        permissions: ['rooms.publish.write', 'rooms.read', 'leads.read'],
-        buildingScopes: ['*'],
-        sessionVersion: 1,
-        isActive: true,
-      },
-    ];
+    // 2. Seed Authoritative Console Actors in PostgreSQL (Only in non-production development environments)
+    const isProduction = process.env.NODE_ENV === 'production';
+    if (!isProduction && process.env.ALLOW_SAMPLE_ACTORS !== 'false') {
+      const actorsToSeed = [
+        {
+          id: 'usr-admin-01',
+          email: 'admin@adhome.vn',
+          orgId: DEFAULT_ORG_ID,
+          role: 'ADMIN',
+          permissions: ['rooms.publish.write', 'rooms.read', 'leads.read'],
+          buildingScopes: ['*'],
+          sessionVersion: 1,
+          isActive: true,
+        },
+        {
+          id: 'usr-mgr-lk01',
+          email: 'manager.lk01@adhome.vn',
+          orgId: DEFAULT_ORG_ID,
+          role: 'MANAGER',
+          permissions: ['rooms.publish.write', 'rooms.read', 'leads.read'],
+          buildingScopes: ['BLD-LK01-31', 'BLD-LK01-32'],
+          sessionVersion: 1,
+          isActive: true,
+        },
+        {
+          id: 'usr-viewer-01',
+          email: 'viewer@adhome.vn',
+          orgId: DEFAULT_ORG_ID,
+          role: 'VIEWER',
+          permissions: ['rooms.read'],
+          buildingScopes: ['*'],
+          sessionVersion: 1,
+          isActive: true,
+        },
+        {
+          id: 'usr-other-org-01',
+          email: 'admin@other-tenant.vn',
+          orgId: EMPTY_SAAS_ORG_ID,
+          role: 'ADMIN',
+          permissions: ['rooms.publish.write', 'rooms.read', 'leads.read'],
+          buildingScopes: ['*'],
+          sessionVersion: 1,
+          isActive: true,
+        },
+      ];
 
-    for (const actor of actorsToSeed) {
-      await prisma.consoleActor.upsert({
-        where: { id: actor.id },
-        update: {
-          orgId: actor.orgId,
-          role: actor.role,
-          permissions: actor.permissions as Prisma.InputJsonValue,
-          buildingScopes: actor.buildingScopes as Prisma.InputJsonValue,
-          isActive: actor.isActive,
-        },
-        create: {
-          id: actor.id,
-          email: actor.email,
-          orgId: actor.orgId,
-          role: actor.role,
-          permissions: actor.permissions as Prisma.InputJsonValue,
-          buildingScopes: actor.buildingScopes as Prisma.InputJsonValue,
-          sessionVersion: actor.sessionVersion,
-          isActive: actor.isActive,
-        },
-      });
+      for (const actor of actorsToSeed) {
+        await prisma.consoleActor.upsert({
+          where: { id: actor.id },
+          update: {
+            orgId: actor.orgId,
+            role: actor.role,
+            permissions: actor.permissions as Prisma.InputJsonValue,
+            buildingScopes: actor.buildingScopes as Prisma.InputJsonValue,
+            isActive: actor.isActive,
+          },
+          create: {
+            id: actor.id,
+            email: actor.email,
+            orgId: actor.orgId,
+            role: actor.role,
+            permissions: actor.permissions as Prisma.InputJsonValue,
+            buildingScopes: actor.buildingScopes as Prisma.InputJsonValue,
+            sessionVersion: actor.sessionVersion,
+            isActive: actor.isActive,
+          },
+        });
+      }
     }
 
     const roomCount = await prisma.publicRoomListing.count();
@@ -585,16 +591,40 @@ function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
   });
 }
 
+const TRUST_PROXY =
+  process.env.TRUST_PROXY === 'true' ||
+  process.env.NODE_ENV === 'production';
+
 function getClientIp(req: IncomingMessage): string {
-  const testKey = req.headers['x-rate-limit-key'];
-  if (typeof testKey === 'string' && testKey.trim()) {
-    return testKey.trim();
+  const remoteAddr = req.socket?.remoteAddress || '127.0.0.1';
+
+  // Only trust upstream proxy headers if TRUST_PROXY is enabled AND the immediate TCP connection
+  // originates from a trusted local reverse proxy or loopback address.
+  // Directly connected external clients cannot spoof X-Forwarded-For or CF-Connecting-IP.
+  const isLoopbackOrLocal =
+    remoteAddr === '127.0.0.1' ||
+    remoteAddr === '::1' ||
+    remoteAddr === '::ffff:127.0.0.1' ||
+    remoteAddr.startsWith('10.') ||
+    remoteAddr.startsWith('172.16.') ||
+    remoteAddr.startsWith('192.168.');
+
+  if (TRUST_PROXY && isLoopbackOrLocal) {
+    // Cloudflare CF-Connecting-IP takes precedence when behind Cloudflare
+    const cfIp = req.headers['cf-connecting-ip'];
+    if (typeof cfIp === 'string' && cfIp.trim()) {
+      return cfIp.trim();
+    }
+    // X-Forwarded-For: client, proxy1, proxy2
+    const xff = req.headers['x-forwarded-for'];
+    if (typeof xff === 'string' && xff.trim()) {
+      const firstIp = xff.split(',')[0].trim();
+      if (firstIp) return firstIp;
+    }
   }
-  const xff = req.headers['x-forwarded-for'];
-  if (typeof xff === 'string' && xff.trim()) {
-    return xff.split(',')[0].trim();
-  }
-  return req.socket?.remoteAddress || '127.0.0.1';
+
+  // Fallback strictly to direct TCP remote socket address
+  return remoteAddr;
 }
 
 function percentile(sorted: number[], p: number): number {

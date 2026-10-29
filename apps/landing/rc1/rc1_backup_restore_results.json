@@ -1,42 +1,42 @@
 {
   "testName": "ADHOME RC1 PostgreSQL 18 Backup and Restore Verification",
-  "timestamp": "2026-10-29T13:07:04.702Z",
+  "timestamp": "2026-10-29T13:33:47.115Z",
   "databaseEngine": "PostgreSQL 18.0.4",
   "sourceDatabase": "adhome_v2",
-  "databaseSize": "19 MB",
-  "databaseSizeBytes": 19674815,
+  "databaseSize": "14 MB",
+  "databaseSizeBytes": 14341823,
   "backupFile": {
     "path": "D:\\AdHome-Platform\\backups\\adhome_v2_rc1_backup.dump",
-    "sizeBytes": 764424,
-    "sizeKb": 746.51,
+    "sizeBytes": 32496,
+    "sizeKb": 31.73,
     "format": "custom (-F c, compressed)",
-    "sha256": "195f66c220619f5d9fd6b721d171e7ddbb6b2a05b6bc411a0b715608857d08f6",
-    "dumpDurationMs": 480
+    "sha256": "bac0964d2e4d548712d3e913e43f6b672c946f5a05e9d6ab96b239b79973af01",
+    "dumpDurationMs": 159
   },
   "restoreVerification": {
     "tempDatabase": "adhome_v2_restore_verify",
-    "restoreDurationMs": 610,
+    "restoreDurationMs": 156,
     "sourceCounts": {
       "organizations": 2,
       "buildings": 4,
       "floors": 11,
       "rooms": 13,
-      "leadInquiries": 14549,
+      "leadInquiries": 1,
       "consoleActors": 4,
-      "revokedTokens": 14,
-      "roomAuditLogs": 26,
-      "seoSyncJobs": 26
+      "revokedTokens": 15,
+      "roomAuditLogs": 29,
+      "seoSyncJobs": 29
     },
     "restoredCounts": {
       "organizations": 2,
       "buildings": 4,
       "floors": 11,
       "rooms": 13,
-      "leadInquiries": 14549,
+      "leadInquiries": 1,
       "consoleActors": 4,
-      "revokedTokens": 14,
-      "roomAuditLogs": 26,
-      "seoSyncJobs": 26
+      "revokedTokens": 15,
+      "roomAuditLogs": 29,
+      "seoSyncJobs": 29
     },
     "countsMatch": true,
     "sampleRoomIntegrityMatch": true,

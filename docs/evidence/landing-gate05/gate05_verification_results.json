@@ -1,0 +1,313 @@
+{
+  "verifiedAt": "2026-10-29T09:24:42.244Z",
+  "targetUrl": "http://127.0.0.1:8081",
+  "performanceAndRealInp": {
+    "measurementMethod": "Native CDP Input.dispatchMouseEvent + Input.dispatchKeyEvent + PerformanceObserver(event/longtask) + 2-frame rAF presentation latency",
+    "desktopWebVitals": {
+      "lcpMs": 384,
+      "clsScore": 0.0006,
+      "longTaskCount": 1,
+      "tbtMs": 35,
+      "heroTitleLines": 2,
+      "gradientCount": 0,
+      "backdropBlurCount": 0
+    },
+    "maxRealInteractionInpMs": 48.7,
+    "all8InteractionsNonZeroAndUnder200ms": true,
+    "interactions": [
+      {
+        "interaction": "4a. Filter Rooms on Home (Select Studio Tab)",
+        "selector": "[role=\"tab\"]:nth-child(2)",
+        "coordinates": {
+          "x": 1015,
+          "y": 450
+        },
+        "eventTimingMs": 24,
+        "rafPresentationMs": 41.9,
+        "effectiveInpMs": 41.9,
+        "recordedEvents": 3,
+        "passUnder200ms": true
+      },
+      {
+        "interaction": "1. Click Room Card (Phòng 31-06)",
+        "selector": "[data-testid=\"room-card-studio-ban-cong-31-06-lk01-31-an-phu\"]",
+        "coordinates": {
+          "x": 324,
+          "y": 450
+        },
+        "eventTimingMs": 40,
+        "rafPresentationMs": 48.7,
+        "effectiveInpMs": 48.7,
+        "recordedEvents": 3,
+        "passUnder200ms": true
+      },
+      {
+        "interaction": "2. Open/Close Quick View Modal",
+        "selector": "[aria-label=\"Đóng xem nhanh\"]",
+        "coordinates": {
+          "x": 943,
+          "y": 140
+        },
+        "eventTimingMs": 32,
+        "rafPresentationMs": 35.6,
+        "effectiveInpMs": 35.6,
+        "recordedEvents": 3,
+        "passUnder200ms": true
+      },
+      {
+        "interaction": "8a. Navigate Home -> Catalog (/phong-trong)",
+        "selector": "a[href=\"/phong-trong\"]",
+        "coordinates": {
+          "x": 615,
+          "y": 40
+        },
+        "eventTimingMs": 24,
+        "rafPresentationMs": 8.71,
+        "effectiveInpMs": 24,
+        "recordedEvents": 3,
+        "passUnder200ms": true
+      },
+      {
+        "interaction": "3. Switch Photo in Room Detail Album",
+        "selector": "[aria-label=\"Album ảnh phòng\"] button:nth-child(2)",
+        "coordinates": {
+          "x": 291,
+          "y": 450
+        },
+        "eventTimingMs": 16,
+        "rafPresentationMs": 43.1,
+        "effectiveInpMs": 43.1,
+        "recordedEvents": 3,
+        "passUnder200ms": true
+      },
+      {
+        "interaction": "5. Open/Close Mobile Navigation Drawer",
+        "selector": "header button[aria-expanded]",
+        "coordinates": {
+          "x": 354,
+          "y": 32
+        },
+        "eventTimingMs": 0,
+        "rafPresentationMs": 25.7,
+        "effectiveInpMs": 25.7,
+        "recordedEvents": 0,
+        "passUnder200ms": true
+      },
+      {
+        "interaction": "6b. Type into Lead Modal (#lead-name)",
+        "selector": "#lead-name",
+        "typedLength": 16,
+        "eventTimingMs": 16,
+        "perKeystrokeLatencyMs": 3.35,
+        "effectiveInpMs": 16,
+        "recordedEvents": 30,
+        "passUnder200ms": true,
+        "openModalInpMs": 41.7
+      },
+      {
+        "interaction": "7a. Submit Lead Form & Trigger Unchecked Consent Validation",
+        "selector": "form button[type=\"submit\"]",
+        "coordinates": {
+          "x": 315,
+          "y": 809
+        },
+        "eventTimingMs": 32,
+        "rafPresentationMs": 40.2,
+        "effectiveInpMs": 40.2,
+        "recordedEvents": 3,
+        "passUnder200ms": true
+      }
+    ],
+    "browserRumState": {
+      "lcpMs": 76,
+      "clsScore": 0,
+      "longTaskCount": 0,
+      "tbtMs": 0,
+      "totalInpEventsObserved": 0
+    },
+    "serverRumSummary": {
+      "totalSamplesReceived": 51,
+      "metrics": {
+        "INP": {
+          "count": 43,
+          "p50": 16,
+          "p75": 24,
+          "p95": 32,
+          "max": 40
+        },
+        "LCP": {
+          "count": 7,
+          "p50": 56,
+          "p75": 84,
+          "p95": 384,
+          "max": 384
+        },
+        "CLS": {
+          "count": 0,
+          "p50": 0,
+          "p75": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "LONG_TASK": {
+          "count": 1,
+          "p50": 85,
+          "p75": 85,
+          "p95": 85,
+          "max": 85
+        },
+        "TBT": {
+          "count": 0,
+          "p50": 0,
+          "p75": 0,
+          "p95": 0,
+          "max": 0
+        }
+      }
+    }
+  },
+  "mobileUxFinalFixes": {
+    "fix1And2StickyCtaScrollBehavior": {
+      "beforeScroll": {
+        "scrollY": 0,
+        "topCtaVisibleInViewport": true,
+        "stickyDataVisibleAttr": "false",
+        "stickyDisplayStyle": "none",
+        "stickyIsHiddenAtTop": true
+      },
+      "afterScroll": {
+        "scrollY": 680,
+        "topCtaAboveViewport": true,
+        "stickyDataVisibleAttr": "true",
+        "stickyDisplayStyle": "flex",
+        "stickyHeightPx": 67,
+        "stickyIsShownAfterScroll": true
+      }
+    },
+    "fix3QuickViewTwoSpecRows": {
+      "specRowCount": 2,
+      "oldFourCardGridCount": 0,
+      "availabilityLabel": "Có thể vào ở ngay",
+      "modalHeightPx": 639
+    },
+    "fix4FirstRoomCardPriceVisibleOn390x844": {
+      "heroPriceSummaryText": "Từ 4,5 triệu/tháng · Studio · 1PN · 2PN (28–45m²) — vào ở ngay.",
+      "firstCardTopY": 536,
+      "firstCardPriceTopY": 793,
+      "firstCardPriceBottomY": 816,
+      "firstCardPriceText": "5.000.000đ",
+      "firstCardPriceVisibleInFirstScreen": true,
+      "horizontalOverflowPx": 0
+    },
+    "fix5AndLeadPrivacyUncheckedDefault": {
+      "initialModalState": {
+        "privacyCheckboxCheckedByDefault": false,
+        "dateInputValue": "29/10/2026",
+        "dateBadgeText": "29/10/2026",
+        "matchesDdMmYyyy": true,
+        "redundantDateHintRemoved": true
+      },
+      "uncheckedValidationTriggered": {
+        "errorShown": true,
+        "errorText": "Vui lòng xác nhận đồng ý để AdHome sử dụng thông tin liên hệ tư vấn."
+      },
+      "persistedLeadInPostgres": {
+        "id": "e7180ee8-7378-4d51-8953-10b03f248ab2",
+        "referenceCode": "ADH-9769-01C6DD",
+        "orgId": "org-adhome-anphu",
+        "roomId": "rm-31-06",
+        "roomCode": "P.31-06",
+        "preferredMoveInDateDisplay": "29/10/2026",
+        "privacyConsent": true
+      }
+    }
+  },
+  "backendSecuritySeoAndSaas": {
+    "publicSurfaceProtection": {
+      "roomWriteStatuses": {
+        "POST": 405,
+        "PUT": 405,
+        "PATCH": 405,
+        "DELETE": 405
+      },
+      "inquiryNonPostStatuses": {
+        "GET": 405,
+        "PUT": 405,
+        "PATCH": 405,
+        "DELETE": 405
+      },
+      "zeroPrivateFieldLeakage": true
+    },
+    "tokenLifecycleAndRbac": {
+      "unauthenticatedStatus": 401,
+      "expiredTokenStatus": 401,
+      "expiredTokenReason": "TOKEN_EXPIRED",
+      "forgedTokenStatus": 401,
+      "selfDeclaredClientEscalationBlocked": {
+        "status": 403,
+        "errorCode": "INSUFFICIENT_PERMISSION"
+      },
+      "crossTenantBlocked": {
+        "status": 403,
+        "errorCode": "CROSS_TENANT_FORBIDDEN"
+      },
+      "wrongBuildingBlocked": {
+        "status": 403,
+        "errorCode": "BUILDING_SCOPE_FORBIDDEN"
+      },
+      "secretRotationGracePeriodKeyAccepted": {
+        "status": 200,
+        "usedKeyId": "k1-2026-09"
+      },
+      "jtiRevocationEnforced": {
+        "revokeStatus": 200,
+        "revokedJti": "jti-3253c912-506f-4c0e-a8bf-5c3279c2e465",
+        "subsequentRequestStatus": 401,
+        "subsequentRequestReason": "TOKEN_REVOKED"
+      },
+      "sessionVersionInvalidationEnforced": {
+        "subsequentRequestStatus": 401,
+        "subsequentRequestReason": "SESSION_INVALIDATED"
+      }
+    },
+    "seoConsistencyAndOutbox": {
+      "dynamicSsrReflectsUpdatedPrice5350000": true,
+      "outboxRetryRecoveredFromSimulatedFailure": {
+        "jobStatus": "SYNCED",
+        "attempts": 2,
+        "transientErrorLogged": "SIMULATED_FS_LOCK_ERROR: Temporary EBUSY on static snapshot write (attempt 1)"
+      },
+      "occupiedTransition": {
+        "httpStatus": 404,
+        "xRobotsTag": "noindex, nofollow",
+        "hasNoindexMeta": true,
+        "removedFromSitemap": true,
+        "removedFromPublicApi": true
+      },
+      "reservedTransition": {
+        "httpStatus": 404,
+        "xRobotsTag": "noindex, nofollow"
+      },
+      "slugRenameRedirect301": {
+        "oldSlugHttpStatus": 301,
+        "oldSlugLocationHeader": "/phong/studio-ban-cong-31-06-lk01-31-an-phu-renamed",
+        "newSlugHttpStatus": 200,
+        "sitemapHasNewSlug": true,
+        "sitemapRemovedOldSlug": true
+      }
+    },
+    "saasMultiTenant0ToNModel": {
+      "primaryOrgCounts": {
+        "buildings": 4,
+        "floors": 11,
+        "publicRooms": 12
+      },
+      "emptyOrgCounts": {
+        "buildings": 0,
+        "floors": 0,
+        "publicRooms": 0
+      },
+      "emptyOrgRoomsApiWorksWithZeroBuildings": true
+    }
+  }
+}

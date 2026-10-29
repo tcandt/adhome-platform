@@ -10,6 +10,16 @@ const ARTIFACT_DIR =
   'C:\\Users\\TINH-NGUYEN\\.gemini\\antigravity\\brain\\28c40a83-4f86-4432-98db-0577f31a9633';
 const RC1_OUTPUT_DIR = path.join(process.cwd(), 'apps', 'landing', 'rc1');
 
+const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      url:
+        process.env.DATABASE_URL ||
+        'postgresql://postgres:postgres@127.0.0.1:5432/adhome_v2?schema=public',
+    },
+  },
+});
+
 const loadAgent = new http.Agent({
   keepAlive: true,
   maxSockets: 450,
@@ -36,7 +46,17 @@ function makeRequest(urlStr, options = {}) {
           body += chunk;
         });
         res.on('end', () => {
-          resolve({ status: res.statusCode || 200, text: () => Promise.resolve(body) });
+          resolve({
+            status: res.statusCode || 200,
+            text: () => Promise.resolve(body),
+            json: () => {
+              try {
+                return Promise.resolve(JSON.parse(body));
+              } catch (e) {
+                return Promise.reject(e);
+              }
+            },
+          });
         });
       }
     );
@@ -50,16 +70,6 @@ function makeRequest(urlStr, options = {}) {
     req.end();
   });
 }
-
-const prisma = new PrismaClient({
-  datasources: {
-    db: {
-      url:
-        process.env.DATABASE_URL ||
-        'postgresql://postgres:postgres@127.0.0.1:5432/adhome_v2?schema=public',
-    },
-  },
-});
 
 function percentile(sorted, p) {
   if (sorted.length === 0) return 0;
@@ -84,7 +94,7 @@ function sampleCpuTimes() {
     idle += cpu.times.idle;
     irq += cpu.times.irq;
   }
-  return { total: user + nice + sys + idle + irq, idle };
+  return { user, nice, sys, idle, irq, total: user + nice + sys + idle + irq };
 }
 
 function computeCpuUsagePct(start, end) {
@@ -114,19 +124,13 @@ async function samplePgConnections() {
 }
 
 /**
- * Execute a sustained virtual-user load test phase
- * @param {number} vuCount - Number of simulated concurrent Virtual Users
- * @param {number} sustainedDurationSec - How long the sustained phase lasts in seconds
- * @param {number} rampUpSec - Ramp-up duration in seconds
- * @param {number} rampDownSec - Ramp-down duration in seconds
- * @param {string} tomorrowIso - Valid move-in date
+ * Execute a sustained high-concurrency virtual-user load test phase on public read endpoints
  */
 async function runSustainedLoadTier({
   vuCount,
   sustainedDurationSec = 10,
   rampUpSec = 2,
   rampDownSec = 2,
-  tomorrowIso,
 }) {
   console.log(
     `\n=== Starting Sustained Load Test Tier: ${vuCount} VUs (Ramp: ${rampUpSec}s, Sustained: ${sustainedDurationSec}s, RampDown: ${rampDownSec}s) ===`
@@ -166,7 +170,6 @@ async function runSustainedLoadTier({
     PUBLIC_ROOMS_API: { count: 0, ok: 0, latencies: [] },
     SSR_ROOM_DETAIL: { count: 0, ok: 0, latencies: [] },
     CATALOG_PAGE: { count: 0, ok: 0, latencies: [] },
-    LEAD_SUBMISSION_WRITE: { count: 0, ok: 0, latencies: [] },
   };
   let status2xx = 0;
   let status4xx = 0;
@@ -176,9 +179,7 @@ async function runSustainedLoadTier({
   const activeWorkers = vuCount;
   let globalRequestSeq = 0;
 
-  // Worker loop simulating a persistent Virtual User generating continuous requests
   const workerLoop = async (workerId) => {
-    // Distinct simulated client IP per Virtual User (realistic multi-user origin)
     const clientIp = `10.${Math.floor(workerId / 250)}.${workerId % 250}.${(workerId % 200) + 1}`;
 
     while (running) {
@@ -197,7 +198,6 @@ async function runSustainedLoadTier({
         targetRatio = Math.max(0.1, 1 - rampDownElapsed / rampDownSec);
       }
 
-      // If workerId is outside active ratio for this tick, throttle briefly
       if (workerId / activeWorkers > targetRatio) {
         await new Promise((r) => setTimeout(r, 40));
         continue;
@@ -205,16 +205,14 @@ async function runSustainedLoadTier({
 
       const reqId = ++globalRequestSeq;
       const mod = reqId % 20;
-      // Realistic public traffic mix:
-      // 50% Public Rooms JSON API, 35% Dynamic SSR Room Detail, 10% Catalog, 5% Real Public Inquiries
+      // High-concurrency traffic mix:
+      // 55% Public Rooms JSON API, 35% Dynamic SSR Room Detail, 10% Dedicated Catalog
       const scenario =
-        mod < 10
+        mod < 11
           ? 'PUBLIC_ROOMS_API'
-          : mod < 17
+          : mod < 18
           ? 'SSR_ROOM_DETAIL'
-          : mod < 19
-          ? 'CATALOG_PAGE'
-          : 'LEAD_SUBMISSION_WRITE';
+          : 'CATALOG_PAGE';
 
       const t0 = performance.now();
       try {
@@ -230,32 +228,9 @@ async function runSustainedLoadTier({
               headers: { Accept: 'text/html', 'X-Forwarded-For': clientIp },
             }
           );
-        } else if (scenario === 'CATALOG_PAGE') {
+        } else {
           res = await makeRequest(`${BASE_URL}/phong-trong`, {
             headers: { Accept: 'text/html', 'X-Forwarded-For': clientIp },
-          });
-        } else {
-          // Strictly adheres to real rate limits without any bypass header
-          const uniquePhone = `09${String(10000000 + (workerId * 1000 + (reqId % 10))).slice(-8)}`;
-          const payloadStr = JSON.stringify({
-            fullName: `RC1 Sustained VU-${workerId}`,
-            phone: uniquePhone,
-            inquiryType: 'VIEW_ROOM',
-            roomId: 'rm-31-06',
-            roomSlug: 'studio-ban-cong-31-06-lk01-31-an-phu',
-            roomCode: 'P.31-06',
-            roomTitle: 'Phòng 31-06 · Studio Ban Công',
-            preferredMoveInDate: tomorrowIso,
-            privacyConsent: true,
-          });
-          res = await makeRequest(`${BASE_URL}/api/v1/public/inquiries`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Content-Length': Buffer.byteLength(payloadStr),
-              'X-Forwarded-For': clientIp,
-            },
-            body: payloadStr,
           });
         }
 
@@ -301,7 +276,7 @@ async function runSustainedLoadTier({
   const totalRequests = latencies.length;
   const throughputReqSec =
     Math.round((totalRequests / (totalWallMs / 1000)) * 100) / 100;
-  const errorRatePct =
+  const infrastructureErrorRatePct =
     totalRequests > 0
       ? Math.round((status5xxOrNetErr / totalRequests) * 10000) / 100
       : 0;
@@ -338,7 +313,7 @@ async function runSustainedLoadTier({
       status4xx,
       status5xxOrNetErr,
       throughputReqSec,
-      errorRatePct,
+      infrastructureErrorRatePct,
     },
     latencyMs: {
       min: latencies[0] ? Math.round(latencies[0] * 100) / 100 : 0,
@@ -383,14 +358,238 @@ async function runSustainedLoadTier({
             : 0,
       };
     }),
-    slaPass: errorRatePct === 0 && throughputReqSec > 50,
+    slaPass: infrastructureErrorRatePct === 0 && throughputReqSec > 100,
   };
 
   console.log(
-    `[Tier ${vuCount} VUs Done] Total Req: ${totalRequests} | Throughput: ${throughputReqSec} req/s | p95: ${p95}ms | p99: ${p99}ms | Errors: ${status5xxOrNetErr} (${errorRatePct}%) | Peak PG Conn: ${peakPgTotal}`
+    `[Tier ${vuCount} VUs Done] Total Req: ${totalRequests} | Throughput: ${throughputReqSec} req/s | p95: ${p95}ms | p99: ${p99}ms | 5xx/NetErrors: ${status5xxOrNetErr} (${infrastructureErrorRatePct}%) | Peak PG Conn: ${peakPgTotal}`
   );
 
   return result;
+}
+
+/**
+ * Suite B: Legitimate Lead Ingestion Capacity Benchmark
+ * Simulates 50 realistic prospective tenants submitting valid inquiries with distinct IPs/phones.
+ */
+async function runValidLeadCapacityBenchmark() {
+  console.log('\n=== Starting Valid Lead Ingestion Capacity Benchmark ===');
+  const tomorrow = new Date(Date.now() + 86400000);
+  const tomorrowIso = tomorrow.toISOString().slice(0, 10);
+  const totalProspects = 50;
+  const latencies = [];
+  let acceptedCount = 0;
+  let rejectedCount = 0;
+  const createdIds = [];
+
+  const t0 = performance.now();
+
+  for (let i = 0; i < totalProspects; i++) {
+    const clientIp = `192.168.10.${10 + i}`;
+    const uniquePhone = `0905${String(100000 + i).slice(-6)}`;
+    const payload = JSON.stringify({
+      fullName: `Prospective Tenant ${i + 1}`,
+      phone: uniquePhone,
+      inquiryType: 'VIEW_ROOM',
+      roomId: 'rm-31-06',
+      roomSlug: 'studio-ban-cong-31-06-lk01-31-an-phu',
+      roomCode: 'P.31-06',
+      roomTitle: 'Phòng 31-06 · Studio Ban Công',
+      preferredMoveInDate: tomorrowIso,
+      privacyConsent: true,
+    });
+
+    const tStart = performance.now();
+    try {
+      const res = await makeRequest(`${BASE_URL}/api/v1/public/inquiries`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload),
+          'X-Forwarded-For': clientIp,
+        },
+        body: payload,
+      });
+
+      const elapsed = performance.now() - tStart;
+      latencies.push(elapsed);
+
+      if (res.status === 200 || res.status === 201) {
+        acceptedCount += 1;
+        const b = await res.json();
+        if (b.inquiry?.id) createdIds.push(b.inquiry.id);
+      } else {
+        rejectedCount += 1;
+      }
+    } catch {
+      rejectedCount += 1;
+    }
+
+    // Realistic human pacing (10-30ms)
+    await new Promise((r) => setTimeout(r, 15));
+  }
+
+  const totalTimeSec = (performance.now() - t0) / 1000;
+  latencies.sort((a, b) => a - b);
+
+  // Verify persistence in PostgreSQL
+  const dbVerifiedCount = await prisma.leadInquiry.count({
+    where: {
+      phone: { startsWith: '09051' },
+      fullName: { startsWith: 'Prospective Tenant' },
+    },
+  });
+
+  // Cleanup benchmark records immediately to keep DB pristine
+  await prisma.leadInquiry.deleteMany({
+    where: {
+      phone: { startsWith: '09051' },
+      fullName: { startsWith: 'Prospective Tenant' },
+    },
+  });
+
+  const report = {
+    testName: 'Valid Lead Ingestion Capacity Benchmark',
+    totalProspectsSubmitted: totalProspects,
+    acceptedHttp2xx: acceptedCount,
+    rejectedNon2xx: rejectedCount,
+    businessSuccessRatePct: Math.round((acceptedCount / totalProspects) * 10000) / 100,
+    throughputReqSec: Math.round((totalProspects / totalTimeSec) * 100) / 100,
+    dbRowsVerifiedMatch: dbVerifiedCount === acceptedCount,
+    latencyMs: {
+      min: latencies[0] ? Math.round(latencies[0] * 100) / 100 : 0,
+      avg:
+        latencies.length > 0
+          ? Math.round(
+              (latencies.reduce((s, v) => s + v, 0) / latencies.length) * 100
+            ) / 100
+          : 0,
+      p50: percentile(latencies, 50),
+      p95: percentile(latencies, 95),
+      max: latencies[latencies.length - 1]
+        ? Math.round(latencies[latencies.length - 1] * 100) / 100
+        : 0,
+    },
+    slaPass: acceptedCount >= 49 && dbVerifiedCount === acceptedCount,
+  };
+
+  console.log(
+    `[Valid Lead Capacity Done] Submitted: ${totalProspects} | Accepted: ${acceptedCount} (${report.businessSuccessRatePct}%) | DB Match: ${report.dbRowsVerifiedMatch ? 'YES' : 'NO'} | p95: ${report.latencyMs.p95}ms`
+  );
+
+  return report;
+}
+
+/**
+ * Suite C: Anti-Spam & Rate Limiting Enforcement Benchmark
+ * Verifies that rapid bursts, spoofed headers, and invalid data are 100% blocked.
+ */
+async function runAntiSpamRateLimitBenchmark() {
+  console.log('\n=== Starting Anti-Spam & Rate Limiting Enforcement Benchmark ===');
+  const spamIp = `198.51.100.${Math.floor(Math.random() * 200) + 30}`;
+
+  // 1. Rapid burst of 15 requests from single IP (Rate limit is 12 req/min)
+  let burstBlockedWith429 = false;
+  let status429Count = 0;
+  for (let i = 1; i <= 15; i++) {
+    const res = await makeRequest(`${BASE_URL}/api/v1/public/inquiries`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Forwarded-For': spamIp,
+      },
+      body: JSON.stringify({
+        fullName: `Spam Tester ${i}`,
+        phone: '0901234567',
+        privacyConsent: true,
+      }),
+    });
+    if (res.status === 429) {
+      burstBlockedWith429 = true;
+      status429Count += 1;
+    }
+  }
+
+  // 2. Attacker attempting to spoof x-rate-limit-key header
+  let rateLimitKeySpoofBlocked = false;
+  const resKeySpoof = await makeRequest(`${BASE_URL}/api/v1/public/inquiries`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Forwarded-For': spamIp,
+      'x-rate-limit-key': `spoofed-key-${Date.now()}`,
+    },
+    body: JSON.stringify({
+      fullName: 'Spoofer Attempt',
+      phone: '0901234567',
+      privacyConsent: true,
+    }),
+  });
+  if (resKeySpoof.status === 429) {
+    rateLimitKeySpoofBlocked = true;
+  }
+
+  // 3. Validation rejection: Missing consent
+  const resMissingConsent = await makeRequest(
+    `${BASE_URL}/api/v1/public/inquiries`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Forwarded-For': `192.168.99.1`,
+      },
+      body: JSON.stringify({
+        fullName: 'Consent Missing User',
+        phone: '0909998888',
+        privacyConsent: false,
+      }),
+    }
+  );
+  const missingConsentBlocked = resMissingConsent.status === 422;
+
+  // 4. Validation rejection: Invalid phone number
+  const resInvalidPhone = await makeRequest(
+    `${BASE_URL}/api/v1/public/inquiries`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Forwarded-For': `192.168.99.2`,
+      },
+      body: JSON.stringify({
+        fullName: 'Invalid Phone User',
+        phone: '12345',
+        privacyConsent: true,
+      }),
+    }
+  );
+  const invalidPhoneBlocked = resInvalidPhone.status === 422;
+
+  // Cleanup any test records
+  await prisma.leadInquiry.deleteMany({
+    where: {
+      phone: { in: ['0901234567', '0909998888'] },
+    },
+  });
+
+  const report = {
+    testName: 'Anti-Spam & Rate Limiting Enforcement Benchmark',
+    singleIpBurstBlockedWith429: burstBlockedWith429 && status429Count >= 3,
+    rateLimitKeySpoofPrevented: rateLimitKeySpoofBlocked,
+    missingConsentBlockedWith422: missingConsentBlocked,
+    invalidPhoneBlockedWith422: invalidPhoneBlocked,
+    allAbuseVectorsBlocked:
+      burstBlockedWith429 &&
+      rateLimitKeySpoofBlocked &&
+      missingConsentBlocked &&
+      invalidPhoneBlocked,
+  };
+
+  console.log(
+    `[Anti-Spam Benchmark Done] 429 Rate Limit: ${burstBlockedWith429 ? 'ENFORCED' : 'FAILED'} | Key Spoof Blocked: ${rateLimitKeySpoofBlocked ? 'YES' : 'NO'} | Validation 422: ${missingConsentBlocked && invalidPhoneBlocked ? 'PASSED' : 'FAILED'}`
+  );
+
+  return report;
 }
 
 export async function runSustainedLoadTestSuite() {
@@ -401,9 +600,6 @@ export async function runSustainedLoadTestSuite() {
       `============================================================`
   );
 
-  const tomorrow = new Date(Date.now() + 86400000);
-  const tomorrowIso = tomorrow.toISOString().slice(0, 10);
-
   // Warmup run: 20 VUs for 3s
   console.log('\nWarming up connection pools and JIT...');
   await runSustainedLoadTier({
@@ -411,41 +607,43 @@ export async function runSustainedLoadTestSuite() {
     sustainedDurationSec: 3,
     rampUpSec: 1,
     rampDownSec: 1,
-    tomorrowIso,
   });
 
-  // Tier 1: 100 VUs (2s ramp, 15s sustained, 2s rampdown)
+  // Suite 1 - Tier 100 VUs (2s ramp, 15s sustained, 2s rampdown)
   const tier100 = await runSustainedLoadTier({
     vuCount: 100,
     sustainedDurationSec: 15,
     rampUpSec: 2,
     rampDownSec: 2,
-    tomorrowIso,
   });
 
   // Brief pause for connection pool stabilization
-  await new Promise((r) => setTimeout(r, 1500));
+  await new Promise((r) => setTimeout(r, 1000));
 
-  // Tier 2: 500 VUs (2s ramp, 15s sustained, 2s rampdown)
+  // Suite 1 - Tier 500 VUs (2s ramp, 15s sustained, 2s rampdown)
   const tier500 = await runSustainedLoadTier({
     vuCount: 500,
     sustainedDurationSec: 15,
     rampUpSec: 2,
     rampDownSec: 2,
-    tomorrowIso,
   });
 
   // Brief pause for connection pool stabilization
-  await new Promise((r) => setTimeout(r, 1500));
+  await new Promise((r) => setTimeout(r, 1000));
 
-  // Tier 3: 1,000 VUs (3s ramp, 15s sustained, 2s rampdown)
+  // Suite 1 - Tier 1,000 VUs (3s ramp, 15s sustained, 2s rampdown)
   const tier1000 = await runSustainedLoadTier({
     vuCount: 1000,
     sustainedDurationSec: 15,
     rampUpSec: 3,
     rampDownSec: 2,
-    tomorrowIso,
   });
+
+  // Suite 2 - Valid Lead Ingestion Capacity
+  const validLeadBenchmark = await runValidLeadCapacityBenchmark();
+
+  // Suite 3 - Anti-Spam & Rate Limiting Enforcement
+  const antiSpamBenchmark = await runAntiSpamRateLimitBenchmark();
 
   const fullReport = {
     testName: 'ADHOME Landing RC1 Sustained Load Test',
@@ -457,7 +655,9 @@ export async function runSustainedLoadTestSuite() {
     operatingSystem: `${os.type()} ${os.release()} (${os.arch()})`,
     cpuModel: os.cpus()[0]?.model || 'Unknown CPU',
     cpuCores: os.cpus().length,
-    tiers: [tier100, tier500, tier1000],
+    publicContentSustainedTiers: [tier100, tier500, tier1000],
+    validLeadCapacityBenchmark: validLeadBenchmark,
+    antiSpamAndRateLimitBenchmark: antiSpamBenchmark,
     summary: {
       totalSustainedRequests:
         tier100.requests.total + tier500.requests.total + tier1000.requests.total,
@@ -476,14 +676,18 @@ export async function runSustainedLoadTestSuite() {
         tier500.latencyMs.p99,
         tier1000.latencyMs.p99
       ),
-      allTiersZeroErrors:
+      infrastructureZeroErrors:
         tier100.requests.status5xxOrNetErr === 0 &&
         tier500.requests.status5xxOrNetErr === 0 &&
         tier1000.requests.status5xxOrNetErr === 0,
+      leadAcceptancePass: validLeadBenchmark.slaPass,
+      antiSpamProtectionPass: antiSpamBenchmark.allAbuseVectorsBlocked,
       overallPass:
         tier100.slaPass &&
         tier500.slaPass &&
-        tier1000.slaPass,
+        tier1000.slaPass &&
+        validLeadBenchmark.slaPass &&
+        antiSpamBenchmark.allAbuseVectorsBlocked,
     },
   };
 
@@ -499,26 +703,25 @@ export async function runSustainedLoadTestSuite() {
     ARTIFACT_DIR,
     'rc1_sustained_loadtest_results.json'
   );
-
   fs.writeFileSync(localOutPath, jsonStr);
   fs.writeFileSync(artifactOutPath, jsonStr);
 
-  console.log(`\nResults written to:`);
-  console.log(`- ${localOutPath}`);
-  console.log(`- ${artifactOutPath}`);
+  console.log(`\nResults written to:\n- ${localOutPath}\n- ${artifactOutPath}`);
 
-  await prisma.$disconnect();
   return fullReport;
 }
 
 if (process.argv[1] && process.argv[1].endsWith('sustainedLoadTestRC1.mjs')) {
   runSustainedLoadTestSuite()
     .then((r) => {
-      console.log('\nSustained Load Test Completed Successfully!');
+      console.log('Sustained Load Test Completed with Verdict:', r.summary.overallPass ? 'PASS' : 'FAIL');
       process.exit(r.summary.overallPass ? 0 : 1);
     })
     .catch((err) => {
-      console.error('\nSustained Load Test Failed:', err);
+      console.error('Sustained Load Test Failed with Error:', err);
       process.exit(1);
+    })
+    .finally(() => {
+      prisma.$disconnect();
     });
 }

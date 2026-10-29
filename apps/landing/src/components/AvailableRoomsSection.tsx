@@ -62,16 +62,16 @@ export const AvailableRoomsSection: React.FC<AvailableRoomsSectionProps> = ({
   return (
     <section
       id="phong-dang-trong"
-      className="py-8 sm:py-20 bg-canvas border-b border-line scroll-mt-20"
+      className="py-3 sm:py-20 bg-canvas border-b border-line scroll-mt-20"
     >
       <div className="max-w-[1220px] mx-auto px-4 sm:px-6 lg:px-8">
         {/* Clean Section Header + Quick Category Filter */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-3.5 sm:gap-4 pb-5 sm:pb-8 border-b border-line">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-2 sm:gap-4 pb-2.5 sm:pb-8 border-b border-line">
           <div>
             <h2 className="text-xl sm:text-[32px] font-bold text-ink tracking-[-0.015em] leading-[1.26]">
               Phòng đang trống tại Khu đô thị Ân Phú
             </h2>
-            <p className="mt-1 sm:mt-2 text-xs sm:text-base text-ink-secondary">
+            <p className="hidden sm:block mt-2 text-base text-ink-secondary">
               Các căn hộ sẵn sàng đón khách thuê tại Phường Tân An, Đắk Lắk.
             </p>
           </div>
@@ -90,7 +90,7 @@ export const AvailableRoomsSection: React.FC<AvailableRoomsSectionProps> = ({
                   role="tab"
                   aria-selected={active}
                   onClick={() => setActiveCategory(tab.id)}
-                  className={`px-3 sm:px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium border transition-colors min-h-[38px] sm:min-h-[40px] whitespace-nowrap shrink-0 ${
+                  className={`px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium border transition-colors min-h-[36px] sm:min-h-[40px] whitespace-nowrap shrink-0 ${
                     active
                       ? 'bg-ink text-white border-ink'
                       : 'bg-canvas-pure text-ink-secondary border-line hover:bg-canvas-warm hover:text-ink'
@@ -108,7 +108,7 @@ export const AvailableRoomsSection: React.FC<AvailableRoomsSectionProps> = ({
           <div
             role="status"
             data-testid="demo-mode-banner"
-            className="mt-6 p-3.5 rounded-card bg-amber-50 border border-amber-200 text-amber-950 text-xs sm:text-sm flex items-start gap-2.5"
+            className="mt-4 sm:mt-6 p-3.5 rounded-card bg-amber-50 border border-amber-200 text-amber-950 text-xs sm:text-sm flex items-start gap-2.5"
           >
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-800" />
             <span>
@@ -122,17 +122,17 @@ export const AvailableRoomsSection: React.FC<AvailableRoomsSectionProps> = ({
 
         {/* Content: Loading / API Error (No Seed Fallback!) / 3-Column Grid */}
         {isLoading ? (
-          <div className="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="mt-2.5 sm:mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
             {[1, 2, 3].map((n) => (
               <div
                 key={n}
                 className="bg-canvas-pure rounded-card border border-line overflow-hidden animate-pulse"
               >
-                <div className="aspect-[4/3] bg-canvas-muted" />
-                <div className="p-5 space-y-3">
+                <div className="aspect-[16/9] sm:aspect-[4/3] bg-canvas-muted" />
+                <div className="p-4 sm:p-5 space-y-3">
                   <div className="h-5 bg-canvas-muted rounded w-2/3" />
                   <div className="h-4 bg-canvas-muted rounded w-1/2" />
-                  <div className="pt-4 border-t border-line flex justify-between items-center">
+                  <div className="pt-3 border-t border-line flex justify-between items-center">
                     <div className="h-6 bg-canvas-muted rounded w-24" />
                     <div className="h-9 bg-canvas-muted rounded w-28" />
                   </div>
@@ -144,7 +144,7 @@ export const AvailableRoomsSection: React.FC<AvailableRoomsSectionProps> = ({
           <div
             role="alert"
             data-testid="catalog-api-error"
-            className="mt-8 bg-canvas-pure rounded-section border border-line p-8 text-center max-w-xl mx-auto space-y-4"
+            className="mt-6 sm:mt-8 bg-canvas-pure rounded-section border border-line p-8 text-center max-w-xl mx-auto space-y-4"
           >
             <div className="w-10 h-10 rounded-full bg-amber-50 border border-amber-200 text-amber-800 flex items-center justify-center mx-auto">
               <AlertCircle className="w-5 h-5" />
@@ -178,7 +178,7 @@ export const AvailableRoomsSection: React.FC<AvailableRoomsSectionProps> = ({
             </div>
           </div>
         ) : displayedRooms.length === 0 ? (
-          <div className="mt-8 bg-canvas-pure rounded-section border border-line p-8 text-center max-w-xl mx-auto">
+          <div className="mt-6 sm:mt-8 bg-canvas-pure rounded-section border border-line p-8 text-center max-w-xl mx-auto">
             <p className="text-base font-semibold text-ink">
               Hiện chưa có phòng trống thuộc phân loại này
             </p>
@@ -195,7 +195,7 @@ export const AvailableRoomsSection: React.FC<AvailableRoomsSectionProps> = ({
             </button>
           </div>
         ) : (
-          <div className="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="mt-2.5 sm:mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
             {displayedRooms.map((room) => (
               <RoomCard
                 key={room.id}
@@ -209,7 +209,7 @@ export const AvailableRoomsSection: React.FC<AvailableRoomsSectionProps> = ({
 
         {/* Prominent Navigation to Dedicated /phong-trong Catalog Page */}
         {!error && (
-          <div className="mt-10 flex items-center justify-center">
+          <div className="mt-8 sm:mt-10 flex items-center justify-center">
             <a
               href="/phong-trong"
               onClick={(e) => {

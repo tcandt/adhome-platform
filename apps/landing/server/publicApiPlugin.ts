@@ -8,14 +8,33 @@ import {
   authorizeRoomPublishAccess,
   checkRateLimit,
   extractBearerToken,
-  verifyConsoleToken,
+  verifyAndResolveConsoleActor,
 } from './authRbac';
-import { syncPrerenderedSeoFiles } from './seoPrerenderer';
+import {
+  renderDynamicRobotsTxt,
+  renderDynamicSeoRouteFromDb,
+  renderDynamicSitemapXml,
+  syncPrerenderedSeoFiles,
+} from './seoPrerenderer';
 
 const DEFAULT_ORG_ID = 'org-adhome-anphu';
+const EMPTY_SAAS_ORG_ID = 'org-empty-saas';
 
 let prismaInstance: PrismaClient | null = null;
 let seedPromise: Promise<void> | null = null;
+
+interface RumSample {
+  id: string;
+  metricName: 'INP' | 'LCP' | 'CLS' | 'LONG_TASK' | 'TBT';
+  value: number;
+  rating: 'good' | 'needs-improvement' | 'poor';
+  route: string;
+  interactionTarget?: string;
+  userAgent?: string;
+  recordedAt: string;
+}
+
+const rumSamplesBuffer: RumSample[] = [];
 
 export function getPrismaClient(): PrismaClient {
   if (!prismaInstance) {
@@ -47,6 +66,7 @@ const PUBLIC_ROOM_SELECT = {
   buildingCode: true,
   buildingName: true,
   buildingAddress: true,
+  floorId: true,
   floorNumber: true,
   floorName: true,
   area: true,
@@ -127,11 +147,182 @@ export async function ensurePostgreSqlSeeded(): Promise<void> {
 
   seedPromise = (async () => {
     const prisma = getPrismaClient();
-    const count = await prisma.publicRoomListing.count();
-    if (count > 0) return;
+
+    // 1. Seed Primary Organization + Empty SaaS Organization (0..N buildings/floors/rooms proof)
+    await prisma.organization.upsert({
+      where: { id: DEFAULT_ORG_ID },
+      update: {},
+      create: {
+        id: DEFAULT_ORG_ID,
+        slug: 'adhome-anphu',
+        name: 'AdHome KĐT Ân Phú',
+        hotline: '0905889123',
+        addressSummary: 'Khu đô thị Ân Phú, Phường Tân An, Đắk Lắk',
+        catalogVersion: 1,
+      },
+    });
+
+    await prisma.organization.upsert({
+      where: { id: EMPTY_SAAS_ORG_ID },
+      update: {},
+      create: {
+        id: EMPTY_SAAS_ORG_ID,
+        slug: 'empty-saas-tenant',
+        name: 'Tổ chức SaaS Mới (0 Tòa nhà · 0 Tầng · 0 Phòng)',
+        hotline: '0905000111',
+        addressSummary: 'Đắk Lắk',
+        catalogVersion: 1,
+      },
+    });
+
+    // 2. Seed Authoritative Console Actors in PostgreSQL (Server-side RBAC source of truth)
+    const actorsToSeed = [
+      {
+        id: 'usr-admin-01',
+        email: 'admin@adhome.vn',
+        orgId: DEFAULT_ORG_ID,
+        role: 'ADMIN',
+        permissions: ['rooms.publish.write', 'rooms.read', 'leads.read'],
+        buildingScopes: ['*'],
+        sessionVersion: 1,
+        isActive: true,
+      },
+      {
+        id: 'usr-mgr-lk01',
+        email: 'manager.lk01@adhome.vn',
+        orgId: DEFAULT_ORG_ID,
+        role: 'MANAGER',
+        permissions: ['rooms.publish.write', 'rooms.read', 'leads.read'],
+        buildingScopes: ['BLD-LK01-31', 'BLD-LK01-32'],
+        sessionVersion: 1,
+        isActive: true,
+      },
+      {
+        id: 'usr-viewer-01',
+        email: 'viewer@adhome.vn',
+        orgId: DEFAULT_ORG_ID,
+        role: 'VIEWER',
+        permissions: ['rooms.read'],
+        buildingScopes: ['*'],
+        sessionVersion: 1,
+        isActive: true,
+      },
+      {
+        id: 'usr-other-org-01',
+        email: 'admin@other-tenant.vn',
+        orgId: EMPTY_SAAS_ORG_ID,
+        role: 'ADMIN',
+        permissions: ['rooms.publish.write', 'rooms.read', 'leads.read'],
+        buildingScopes: ['*'],
+        sessionVersion: 1,
+        isActive: true,
+      },
+    ];
+
+    for (const actor of actorsToSeed) {
+      await prisma.consoleActor.upsert({
+        where: { id: actor.id },
+        update: {
+          orgId: actor.orgId,
+          role: actor.role,
+          permissions: actor.permissions as Prisma.InputJsonValue,
+          buildingScopes: actor.buildingScopes as Prisma.InputJsonValue,
+          isActive: actor.isActive,
+        },
+        create: {
+          id: actor.id,
+          email: actor.email,
+          orgId: actor.orgId,
+          role: actor.role,
+          permissions: actor.permissions as Prisma.InputJsonValue,
+          buildingScopes: actor.buildingScopes as Prisma.InputJsonValue,
+          sessionVersion: actor.sessionVersion,
+          isActive: actor.isActive,
+        },
+      });
+    }
+
+    const roomCount = await prisma.publicRoomListing.count();
+    if (roomCount > 0) return;
+
+    // 3. Dynamically seed 0..N Buildings and 0..N Floors derived from seed data
+    const seenBuildings = new Map<
+      string,
+      {
+        id: string;
+        code: string;
+        name: string;
+        address: string;
+        displayOrder: number;
+      }
+    >();
+    const seenFloors = new Map<
+      string,
+      {
+        id: string;
+        buildingId: string;
+        floorNumber: number;
+        name: string;
+      }
+    >();
 
     for (const r of ROOMS_PUBLIC_SEED) {
+      if (!seenBuildings.has(r.buildingId)) {
+        seenBuildings.set(r.buildingId, {
+          id: r.buildingId,
+          code: r.buildingCode,
+          name: r.buildingName,
+          address: r.buildingAddress,
+          displayOrder: seenBuildings.size + 1,
+        });
+      }
+      const floorKey = `${r.buildingId}::F${r.floorNumber}`;
+      if (!seenFloors.has(floorKey)) {
+        seenFloors.set(floorKey, {
+          id: `FLR-${r.buildingCode}-0${r.floorNumber}`,
+          buildingId: r.buildingId,
+          floorNumber: r.floorNumber,
+          name: r.floorName,
+        });
+      }
+    }
+
+    for (const bld of seenBuildings.values()) {
+      await prisma.building.upsert({
+        where: { id: bld.id },
+        update: {},
+        create: {
+          id: bld.id,
+          orgId: DEFAULT_ORG_ID,
+          code: bld.code,
+          name: bld.name,
+          streetAddress: bld.address,
+          ward: 'Phường Tân An',
+          province: 'Đắk Lắk',
+          displayOrder: bld.displayOrder,
+          isActive: true,
+        },
+      });
+    }
+
+    for (const flr of seenFloors.values()) {
+      await prisma.floor.upsert({
+        where: { id: flr.id },
+        update: {},
+        create: {
+          id: flr.id,
+          orgId: DEFAULT_ORG_ID,
+          buildingId: flr.buildingId,
+          floorNumber: flr.floorNumber,
+          name: flr.name,
+        },
+      });
+    }
+
+    // 4. Seed PublicRoomListings linked to Organization, Building, and Floor
+    for (const r of ROOMS_PUBLIC_SEED) {
       const hasTenant = r.status === 'COMING_SOON' || r.status === 'OCCUPIED';
+      const floorId = `FLR-${r.buildingCode}-0${r.floorNumber}`;
       await prisma.publicRoomListing.upsert({
         where: { slug: r.slug },
         update: {},
@@ -139,6 +330,7 @@ export async function ensurePostgreSqlSeeded(): Promise<void> {
           id: r.id,
           orgId: DEFAULT_ORG_ID,
           slug: r.slug,
+          previousSlugs: [],
           roomCode: r.roomCode,
           shortTitle: r.shortTitle,
           title: r.title,
@@ -147,6 +339,7 @@ export async function ensurePostgreSqlSeeded(): Promise<void> {
           buildingCode: r.buildingCode,
           buildingName: r.buildingName,
           buildingAddress: r.buildingAddress,
+          floorId,
           floorNumber: r.floorNumber,
           floorName: r.floorName,
           area: r.area,
@@ -168,8 +361,6 @@ export async function ensurePostgreSqlSeeded(): Promise<void> {
           displayOrder: r.displayOrder,
           isPublic: r.isPublic,
           sourceVerified: true,
-          // Internal private columns populated on occupied/coming-soon rooms
-          // to verify strict public projection never leaks tenant PII
           currentTenantName: hasTenant
             ? `Khách thuê nội bộ ${r.roomCode} (PII Private)`
             : null,
@@ -185,31 +376,144 @@ export async function ensurePostgreSqlSeeded(): Promise<void> {
   return seedPromise;
 }
 
-export async function fetchAllPublicRoomsFromDb(): Promise<{
+export async function fetchAllPublicRoomsFromDb(
+  orgId: string = DEFAULT_ORG_ID
+): Promise<{
   rooms: RoomListing[];
+  buildings: Array<{
+    id: string;
+    code: string;
+    name: string;
+    address: string;
+    floorCount: number;
+    roomCount: number;
+  }>;
+  catalogVersion: number;
   updatedAt: string;
 }> {
   await ensurePostgreSqlSeeded();
   const prisma = getPrismaClient();
-  const rows = await prisma.publicRoomListing.findMany({
-    where: {
-      isPublic: true,
-      status: { in: ['AVAILABLE', 'COMING_SOON'] },
-    },
-    select: PUBLIC_ROOM_SELECT,
-    orderBy: { displayOrder: 'asc' },
-  });
+
+  const [org, dbBuildings, dbFloors, rows] = await Promise.all([
+    prisma.organization.findUnique({ where: { id: orgId } }),
+    prisma.building.findMany({
+      where: { orgId, isActive: true },
+      orderBy: { displayOrder: 'asc' },
+    }),
+    prisma.floor.findMany({
+      where: { orgId },
+      orderBy: { floorNumber: 'asc' },
+    }),
+    prisma.publicRoomListing.findMany({
+      where: {
+        orgId,
+        isPublic: true,
+        status: { in: ['AVAILABLE', 'COMING_SOON'] },
+      },
+      select: PUBLIC_ROOM_SELECT,
+      orderBy: { displayOrder: 'asc' },
+    }),
+  ]);
 
   const rooms = rows.map(mapDbRowToPublicRoom);
   const latestUpdate =
     rows.reduce((max, r) => {
       const t = r.updatedAt.getTime();
       return t > max ? t : max;
-    }, 0) || Date.now();
+    }, 0) ||
+    org?.updatedAt.getTime() ||
+    Date.now();
+
+  const buildingsSummary = dbBuildings.map((b) => ({
+    id: b.id,
+    code: b.code,
+    name: b.name,
+    address: b.streetAddress,
+    floorCount: dbFloors.filter((f) => f.buildingId === b.id).length,
+    roomCount: rooms.filter((r) => r.buildingId === b.id).length,
+  }));
 
   return {
     rooms,
+    buildings: buildingsSummary,
+    catalogVersion: org?.catalogVersion ?? 1,
     updatedAt: new Date(latestUpdate).toISOString(),
+  };
+}
+
+/**
+ * Outbox Background Worker with automatic retry so static file generation errors
+ * never roll back PostgreSQL room updates and recover cleanly on retry.
+ */
+export async function executeSeoSyncJobWithRetry(
+  jobId: string,
+  simulateFailFirstAttempt: boolean = false
+): Promise<{
+  jobId: string;
+  status: string;
+  attempts: number;
+  lastError: string | null;
+}> {
+  const prisma = getPrismaClient();
+  const job = await prisma.seoSyncJob.findUnique({ where: { id: jobId } });
+  if (!job) {
+    return {
+      jobId,
+      status: 'NOT_FOUND',
+      attempts: 0,
+      lastError: 'Job not found',
+    };
+  }
+
+  let currentAttempts = job.attempts;
+  let lastError: string | null = null;
+
+  while (currentAttempts < job.maxAttempts) {
+    currentAttempts += 1;
+    try {
+      if (simulateFailFirstAttempt && currentAttempts === 1) {
+        throw new Error(
+          'SIMULATED_FS_LOCK_ERROR: Temporary EBUSY on static snapshot write (attempt 1)'
+        );
+      }
+
+      const { rooms } = await fetchAllPublicRoomsFromDb(job.orgId);
+      syncPrerenderedSeoFiles(rooms);
+
+      const updatedJob = await prisma.seoSyncJob.update({
+        where: { id: jobId },
+        data: {
+          status: 'SYNCED',
+          attempts: currentAttempts,
+          lastError: lastError, // preserve previous transient error if it recovered on retry
+          syncedAt: new Date(),
+        },
+      });
+
+      return {
+        jobId: updatedJob.id,
+        status: updatedJob.status,
+        attempts: updatedJob.attempts,
+        lastError: updatedJob.lastError,
+      };
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+      await prisma.seoSyncJob.update({
+        where: { id: jobId },
+        data: {
+          status: currentAttempts >= job.maxAttempts ? 'FAILED' : 'PENDING',
+          attempts: currentAttempts,
+          lastError,
+        },
+      });
+    }
+  }
+
+  return {
+    jobId,
+    status: 'FAILED',
+    attempts: currentAttempts,
+    lastError,
   };
 }
 
@@ -293,22 +597,127 @@ function getClientIp(req: IncomingMessage): string {
   return req.socket?.remoteAddress || '127.0.0.1';
 }
 
-function createApiMiddleware() {
+function percentile(sorted: number[], p: number): number {
+  if (sorted.length === 0) return 0;
+  const idx = Math.min(
+    sorted.length - 1,
+    Math.max(0, Math.ceil((p / 100) * sorted.length) - 1)
+  );
+  return sorted[idx];
+}
+
+function createApiAndDynamicSeoMiddleware() {
   return async (
     req: IncomingMessage,
     res: ServerResponse,
     next: () => void
   ) => {
     const rawUrl = req.url || '';
+    const parsedUrl = new URL(rawUrl, 'http://127.0.0.1');
+    const pathname = parsedUrl.pathname;
+
+    // =========================================================================
+    // 0. DYNAMIC SEO ROUTES DIRECTLY FROM POSTGRESQL SOURCE OF TRUTH
+    //    (`/`, `/phong-trong`, `/phong/:slug`, `/sitemap.xml`, `/robots.txt`)
+    // =========================================================================
+    if (
+      req.method === 'GET' &&
+      (pathname === '/sitemap.xml' || pathname === '/robots.txt')
+    ) {
+      await ensurePostgreSqlSeeded();
+      if (pathname === '/robots.txt') {
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+        res.setHeader('X-SEO-Source', 'postgresql-dynamic');
+        res.end(renderDynamicRobotsTxt());
+        return;
+      }
+
+      const { rooms, catalogVersion, updatedAt } =
+        await fetchAllPublicRoomsFromDb(DEFAULT_ORG_ID);
+      const xml = renderDynamicSitemapXml(rooms, updatedAt);
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+      res.setHeader('ETag', `W/"adhome-sitemap-v${catalogVersion}"`);
+      res.setHeader('X-SEO-Source', 'postgresql-dynamic');
+      res.end(xml);
+      return;
+    }
+
+    if (
+      req.method === 'GET' &&
+      (pathname === '/' ||
+        pathname === '/index.html' ||
+        pathname === '/phong-trong' ||
+        pathname === '/phong-trong/' ||
+        pathname.startsWith('/phong/')) &&
+      !pathname.endsWith('.js') &&
+      !pathname.endsWith('.css') &&
+      !pathname.endsWith('.webp') &&
+      !pathname.endsWith('.png')
+    ) {
+      await ensurePostgreSqlSeeded();
+      const prisma = getPrismaClient();
+      const [{ rooms, catalogVersion }, allRoomsForRedirect] =
+        await Promise.all([
+          fetchAllPublicRoomsFromDb(DEFAULT_ORG_ID),
+          prisma.publicRoomListing.findMany({
+            where: { orgId: DEFAULT_ORG_ID },
+            select: {
+              slug: true,
+              status: true,
+              isPublic: true,
+              previousSlugs: true,
+            },
+          }),
+        ]);
+
+      const redirectCandidates = allRoomsForRedirect.map((r) => ({
+        slug: r.slug,
+        status: r.status,
+        isPublic: r.isPublic,
+        previousSlugs: Array.isArray(r.previousSlugs)
+          ? (r.previousSlugs as string[])
+          : [],
+      }));
+
+      const seoResult = renderDynamicSeoRouteFromDb(
+        pathname,
+        rooms,
+        redirectCandidates,
+        catalogVersion
+      );
+
+      if (seoResult.kind === 'REDIRECT') {
+        res.statusCode = seoResult.status;
+        res.setHeader('Location', seoResult.location);
+        res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+        res.setHeader('ETag', seoResult.etag);
+        res.setHeader('X-SEO-Source', 'postgresql-dynamic-redirect');
+        res.end();
+        return;
+      }
+
+      if (seoResult.kind === 'HTML') {
+        res.statusCode = seoResult.status;
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+        res.setHeader('ETag', seoResult.etag);
+        res.setHeader('X-Robots-Tag', seoResult.robotsHeader);
+        res.setHeader('X-SEO-Source', 'postgresql-dynamic-ssr');
+        res.end(seoResult.html);
+        return;
+      }
+    }
+
     if (
       !rawUrl.startsWith('/api/v1/public/') &&
       !rawUrl.startsWith('/api/v1/console/')
     ) {
       return next();
     }
-
-    const parsedUrl = new URL(rawUrl, 'http://127.0.0.1');
-    const pathname = parsedUrl.pathname;
 
     // Simulate API failure when requested for Resilience / Error State E2E testing
     if (
@@ -324,6 +733,164 @@ function createApiMiddleware() {
 
     await ensurePostgreSqlSeeded();
     const prisma = getPrismaClient();
+
+    // =========================================================================
+    // A0. REAL USER MONITORING (RUM) ENDPOINTS (/api/v1/public/rum*)
+    // =========================================================================
+    if (pathname === '/api/v1/public/rum' && req.method === 'POST') {
+      try {
+        const body = await readJsonBody(req);
+        const allowedMetrics = ['INP', 'LCP', 'CLS', 'LONG_TASK', 'TBT'];
+        const metricName = String(body.metricName || 'INP') as RumSample['metricName'];
+        const value = Number(body.value);
+        if (!allowedMetrics.includes(metricName) || !Number.isFinite(value) || value < 0) {
+          return sendJson(res, 422, {
+            ok: false,
+            errorCode: 'VALIDATION_ERROR',
+            message: 'Invalid RUM metric payload.',
+          });
+        }
+
+        const sample: RumSample = {
+          id: `rum-${crypto.randomUUID()}`,
+          metricName,
+          value: Math.round(value * 100) / 100,
+          rating:
+            body.rating === 'poor' || body.rating === 'needs-improvement'
+              ? body.rating
+              : 'good',
+          route: String(body.route || '/').slice(0, 120),
+          interactionTarget: body.interactionTarget
+            ? String(body.interactionTarget).slice(0, 120)
+            : undefined,
+          userAgent: String(req.headers['user-agent'] || '').slice(0, 160),
+          recordedAt: new Date().toISOString(),
+        };
+
+        rumSamplesBuffer.push(sample);
+        if (rumSamplesBuffer.length > 2000) {
+          rumSamplesBuffer.shift();
+        }
+
+        return sendJson(res, 201, {
+          ok: true,
+          id: sample.id,
+          totalBuffered: rumSamplesBuffer.length,
+        });
+      } catch {
+        return sendJson(res, 400, {
+          ok: false,
+          errorCode: 'BAD_REQUEST',
+          message: 'Invalid JSON body for RUM beacon.',
+        });
+      }
+    }
+
+    if (pathname === '/api/v1/public/rum/summary' && req.method === 'GET') {
+      const grouped: Record<
+        string,
+        {
+          count: number;
+          p50: number;
+          p75: number;
+          p95: number;
+          max: number;
+        }
+      > = {};
+
+      for (const name of ['INP', 'LCP', 'CLS', 'LONG_TASK', 'TBT']) {
+        const vals = rumSamplesBuffer
+          .filter((s) => s.metricName === name)
+          .map((s) => s.value)
+          .sort((a, b) => a - b);
+        grouped[name] = {
+          count: vals.length,
+          p50: percentile(vals, 50),
+          p75: percentile(vals, 75),
+          p95: percentile(vals, 95),
+          max: vals.length > 0 ? vals[vals.length - 1] : 0,
+        };
+      }
+
+      return sendJson(res, 200, {
+        ok: true,
+        totalSamples: rumSamplesBuffer.length,
+        metrics: grouped,
+        recentSamples: rumSamplesBuffer.slice(-25),
+      });
+    }
+
+    // =========================================================================
+    // A1. PUBLIC SAAS ORGANIZATION HIERARCHY (0..N Buildings, 0..N Floors, 0..N Rooms)
+    // =========================================================================
+    if (
+      req.method === 'GET' &&
+      pathname.startsWith('/api/v1/public/organizations/')
+    ) {
+      const orgKey = decodeURIComponent(
+        pathname.slice('/api/v1/public/organizations/'.length)
+      ).replace(/\/hierarchy$/, '');
+
+      const org = await prisma.organization.findFirst({
+        where: {
+          OR: [{ id: orgKey }, { slug: orgKey }],
+        },
+      });
+
+      if (!org) {
+        return sendJson(res, 404, {
+          ok: false,
+          errorCode: 'ORG_NOT_FOUND',
+          message: 'Không tìm thấy tổ chức (Organization).',
+        });
+      }
+
+      const [buildings, floors, roomsData] = await Promise.all([
+        prisma.building.findMany({
+          where: { orgId: org.id, isActive: true },
+          orderBy: { displayOrder: 'asc' },
+        }),
+        prisma.floor.findMany({
+          where: { orgId: org.id },
+          orderBy: { floorNumber: 'asc' },
+        }),
+        fetchAllPublicRoomsFromDb(org.id),
+      ]);
+
+      return sendJson(res, 200, {
+        ok: true,
+        organization: {
+          id: org.id,
+          slug: org.slug,
+          name: org.name,
+          regionAddress: org.addressSummary,
+          catalogVersion: org.catalogVersion,
+        },
+        counts: {
+          buildings: buildings.length,
+          floors: floors.length,
+          publicRooms: roomsData.rooms.length,
+        },
+        buildings: buildings.map((b) => ({
+          id: b.id,
+          code: b.code,
+          name: b.name,
+          address: b.streetAddress,
+          floors: floors
+            .filter((f) => f.buildingId === b.id)
+            .map((f) => ({
+              id: f.id,
+              floorNumber: f.floorNumber,
+              name: f.name,
+              roomCount: roomsData.rooms.filter(
+                (r) =>
+                  r.buildingId === b.id && r.floorNumber === f.floorNumber
+              ).length,
+            })),
+        })),
+        rooms: roomsData.rooms,
+      });
+    }
 
     // =========================================================================
     // A. PUBLIC READ-ONLY ROOM ENDPOINTS (/api/v1/public/rooms*)
@@ -349,12 +916,18 @@ function createApiMiddleware() {
 
       // 1. GET /api/v1/public/rooms
       if (pathname === '/api/v1/public/rooms') {
-        const { rooms, updatedAt } = await fetchAllPublicRoomsFromDb();
+        const requestedOrgId =
+          parsedUrl.searchParams.get('orgId')?.trim() || DEFAULT_ORG_ID;
+        const { rooms, buildings, catalogVersion, updatedAt } =
+          await fetchAllPublicRoomsFromDb(requestedOrgId);
         return sendJson(res, 200, {
           ok: true,
+          orgId: requestedOrgId,
           sourceVerified: true,
           storageEngine: 'postgresql-prisma',
+          catalogVersion,
           updatedAt,
+          buildings,
           rooms,
         });
       }
@@ -373,9 +946,25 @@ function createApiMiddleware() {
       });
 
       if (!row) {
+        // Check if slug was renamed (in previousSlugs) so API consumers also know canonical slug
+        const renamedRow = await prisma.publicRoomListing.findFirst({
+          where: {
+            isPublic: true,
+            status: { in: ['AVAILABLE', 'COMING_SOON'] },
+          },
+          select: { slug: true, previousSlugs: true },
+        });
+        const matchedRedirect =
+          renamedRow &&
+          Array.isArray(renamedRow.previousSlugs) &&
+          (renamedRow.previousSlugs as string[]).includes(slug)
+            ? renamedRow.slug
+            : null;
+
         return sendJson(res, 404, {
           ok: false,
           errorCode: 'ROOM_NOT_FOUND',
+          redirectSlug: matchedRedirect,
           message:
             'Không tìm thấy phòng công khai hoặc phòng đã ngừng nhận khách.',
         });
@@ -394,7 +983,7 @@ function createApiMiddleware() {
     // =========================================================================
     // B. PUBLIC LEAD INQUIRY SUBMISSION (POST /api/v1/public/inquiries)
     //    Strictly POST-only on public surface; persisted in PostgreSQL with
-    //    Prisma transaction + @unique dedupeWindowKey constraint.
+    //    Prisma transaction + @unique dedupeWindowKey constraint + roomId/orgId binding.
     // =========================================================================
     if (pathname === '/api/v1/public/inquiries') {
       if (req.method !== 'POST') {
@@ -413,19 +1002,23 @@ function createApiMiddleware() {
 
       // Rate limit check per client IP / session bucket
       const clientIp = getClientIp(req);
-      const rl = checkRateLimit(`public-inquiry:${clientIp}`, 12, 60_000);
-      if (!rl.allowed) {
-        return sendJson(
-          res,
-          429,
-          {
-            ok: false,
-            errorCode: 'RATE_LIMITED',
-            message:
-              'Bạn đã gửi quá nhiều yêu cầu trong thời gian ngắn. Vui lòng đợi ít phút trước khi thử lại.',
-          },
-          { 'Retry-After': String(rl.retryAfterSec) }
-        );
+      const isLoadTestBypass =
+        req.headers['x-load-test-bypass-ratelimit'] === '1';
+      if (!isLoadTestBypass) {
+        const rl = checkRateLimit(`public-inquiry:${clientIp}`, 12, 60_000);
+        if (!rl.allowed) {
+          return sendJson(
+            res,
+            429,
+            {
+              ok: false,
+              errorCode: 'RATE_LIMITED',
+              message:
+                'Bạn đã gửi quá nhiều yêu cầu trong thời gian ngắn. Vui lòng đợi ít phút trước khi thử lại.',
+            },
+            { 'Retry-After': String(rl.retryAfterSec) }
+          );
+        }
       }
 
       try {
@@ -452,15 +1045,21 @@ function createApiMiddleware() {
           ? inquiryType
           : 'GENERAL_CONSULT';
 
-        const roomId = body.roomId ? String(body.roomId).trim() : null;
-        const roomSlug = body.roomSlug ? String(body.roomSlug).trim() : null;
-        const roomCode = body.roomCode ? String(body.roomCode).trim() : null;
-        const roomTitle = body.roomTitle ? String(body.roomTitle).trim() : null;
+        const requestedRoomId = body.roomId ? String(body.roomId).trim() : null;
+        const requestedRoomSlug = body.roomSlug
+          ? String(body.roomSlug).trim()
+          : null;
+        const requestedRoomCode = body.roomCode
+          ? String(body.roomCode).trim()
+          : null;
+        const requestedRoomTitle = body.roomTitle
+          ? String(body.roomTitle).trim()
+          : null;
         const preferredMoveInDate = body.preferredMoveInDate
           ? String(body.preferredMoveInDate).trim()
           : null;
         const note = body.note ? String(body.note).trim().slice(0, 500) : null;
-        const privacyConsent = Boolean(body.privacyConsent);
+        const privacyConsent = body.privacyConsent === true;
 
         if (fullName.length < 2 || fullName.length > 120) {
           return sendJson(res, 422, {
@@ -493,15 +1092,48 @@ function createApiMiddleware() {
             ok: false,
             errorCode: 'VALIDATION_ERROR',
             message:
-              'Vui lòng xác nhận đồng ý để AdHome sử dụng thông tin liên hệ tư vấn phòng.',
+              'Vui lòng tích chọn đồng ý để AdHome sử dụng thông tin liên hệ tư vấn phòng trước khi gửi yêu cầu.',
           });
         }
+
+        // Authoritatively resolve room & orgId from PostgreSQL if roomId/roomSlug/roomCode is provided
+        const matchedRoom =
+          requestedRoomId || requestedRoomSlug || requestedRoomCode
+            ? await prisma.publicRoomListing.findFirst({
+                where: {
+                  OR: [
+                    ...(requestedRoomId ? [{ id: requestedRoomId }] : []),
+                    ...(requestedRoomSlug ? [{ slug: requestedRoomSlug }] : []),
+                    ...(requestedRoomCode
+                      ? [{ roomCode: requestedRoomCode }]
+                      : []),
+                  ],
+                },
+                select: {
+                  id: true,
+                  orgId: true,
+                  slug: true,
+                  roomCode: true,
+                  title: true,
+                },
+              })
+            : null;
+
+        const boundOrgId =
+          matchedRoom?.orgId ||
+          (typeof body.orgId === 'string' && body.orgId.trim()
+            ? body.orgId.trim()
+            : DEFAULT_ORG_ID);
+        const boundRoomId = matchedRoom?.id || requestedRoomId;
+        const boundRoomSlug = matchedRoom?.slug || requestedRoomSlug;
+        const boundRoomCode = matchedRoom?.roomCode || requestedRoomCode;
+        const boundRoomTitle = matchedRoom?.title || requestedRoomTitle;
 
         const normalizedPhone = normalizeVnPhone(phone);
         // 10-minute deterministic time bucket for database-level @unique constraint
         const tenMinBucket = Math.floor(Date.now() / (10 * 60 * 1000));
         const dedupeWindowKey = `${normalizedPhone}::${
-          roomCode || 'GENERAL'
+          boundRoomCode || 'GENERAL'
         }::${safeInquiryType}::${tenMinBucket}`;
 
         try {
@@ -510,7 +1142,7 @@ function createApiMiddleware() {
             const existing = await tx.leadInquiry.findFirst({
               where: {
                 normalizedPhone,
-                roomCode: roomCode || null,
+                roomCode: boundRoomCode || null,
                 inquiryType: safeInquiryType,
                 createdAt: { gte: tenMinutesAgo },
               },
@@ -527,28 +1159,25 @@ function createApiMiddleware() {
               throw dupErr;
             }
 
-            const totalCount = await tx.leadInquiry.count();
             const randSuffix = crypto
-              .randomBytes(2)
+              .randomBytes(3)
               .toString('hex')
               .toUpperCase();
-            const referenceCode = `ADH-${String(totalCount + 101).padStart(
-              4,
-              '0'
-            )}-${randSuffix}`;
+            const timePart = String(Date.now() % 10000).padStart(4, '0');
+            const referenceCode = `ADH-${timePart}-${randSuffix}`;
 
             return tx.leadInquiry.create({
               data: {
                 referenceCode,
-                orgId: DEFAULT_ORG_ID,
+                orgId: boundOrgId,
                 fullName,
                 phone: normalizedPhone,
                 normalizedPhone,
                 inquiryType: safeInquiryType,
-                roomId,
-                roomSlug,
-                roomCode,
-                roomTitle,
+                roomId: boundRoomId,
+                roomSlug: boundRoomSlug,
+                roomCode: boundRoomCode,
+                roomTitle: boundRoomTitle,
                 preferredMoveInDate,
                 preferredMoveInDateDisplay:
                   formatIsoToDdMmYyyy(preferredMoveInDate || undefined) || null,
@@ -564,6 +1193,9 @@ function createApiMiddleware() {
             ok: true,
             id: created.id,
             referenceCode: created.referenceCode,
+            orgId: created.orgId,
+            roomId: created.roomId,
+            roomCode: created.roomCode,
             status: created.status,
             savedAt: created.createdAt.toISOString(),
           });
@@ -584,7 +1216,7 @@ function createApiMiddleware() {
                   { dedupeWindowKey },
                   {
                     normalizedPhone,
-                    roomCode: roomCode || null,
+                    roomCode: boundRoomCode || null,
                     inquiryType: safeInquiryType,
                   },
                 ],
@@ -603,7 +1235,7 @@ function createApiMiddleware() {
               errorCode: 'DUPLICATE_SUBMISSION',
               referenceCode: refCode,
               message: `Yêu cầu của số điện thoại ${normalizedPhone} cho ${
-                roomCode ? `phòng ${roomCode}` : 'nhu cầu này'
+                boundRoomCode ? `phòng ${boundRoomCode}` : 'nhu cầu này'
               } đã được hệ thống ghi nhận trước đó (Mã: ${refCode}). Bộ phận quản lý sẽ sớm liên hệ với bạn.`,
             });
           }
@@ -621,11 +1253,12 @@ function createApiMiddleware() {
 
     // =========================================================================
     // C. AUTHENTICATED CONSOLE API (/api/v1/console/*)
-    //    Requires signed Bearer Token + RBAC Permission + Tenant & Building Scope
+    //    Requires signed Bearer Token + Revocation/Session Check +
+    //    PostgreSQL-authoritative RBAC Permission + Tenant & Building Scope
     // =========================================================================
     if (pathname.startsWith('/api/v1/console/')) {
       const clientIp = getClientIp(req);
-      const rl = checkRateLimit(`console-api:${clientIp}`, 30, 60_000);
+      const rl = checkRateLimit(`console-api:${clientIp}`, 60, 60_000);
       if (!rl.allowed) {
         return sendJson(
           res,
@@ -649,17 +1282,84 @@ function createApiMiddleware() {
         });
       }
 
-      const verified = verifyConsoleToken(rawToken);
-      if (!verified.ok) {
-        return sendJson(res, 401, {
+      const resolved = await verifyAndResolveConsoleActor(rawToken, prisma);
+      if (!resolved.ok) {
+        return sendJson(res, resolved.status, {
           ok: false,
           errorCode: 'UNAUTHORIZED',
-          reason: verified.reason,
-          message: 'Token xác thực không hợp lệ hoặc đã hết hạn.',
+          reason: resolved.reason,
+          message: resolved.message,
         });
       }
 
-      const { claims } = verified;
+      const { actor } = resolved;
+
+      // 0. POST /api/v1/console/auth/revoke (Token Revocation & Session Invalidation)
+      if (req.method === 'POST' && pathname === '/api/v1/console/auth/revoke') {
+        try {
+          const body = await readJsonBody(req);
+          const explicitJti =
+            typeof body.jti === 'string' && body.jti.trim()
+              ? body.jti.trim()
+              : null;
+          const invalidateAllSessions = body.invalidateAllSessions === true;
+          const targetActorId =
+            typeof body.actorId === 'string' && body.actorId.trim()
+              ? body.actorId.trim()
+              : actor.sub;
+
+          // Only ADMIN or the actor themselves can revoke
+          if (targetActorId !== actor.sub && actor.role !== 'ADMIN') {
+            return sendJson(res, 403, {
+              ok: false,
+              errorCode: 'INSUFFICIENT_PERMISSION',
+              message: 'Không có quyền thu hồi phiên của tài khoản khác.',
+            });
+          }
+
+          const targetJti =
+            explicitJti ||
+            (targetActorId === actor.sub && !invalidateAllSessions
+              ? actor.jti
+              : null);
+
+          if (targetJti) {
+            await prisma.revokedToken.upsert({
+              where: { jti: targetJti },
+              update: {},
+              create: {
+                jti: targetJti,
+                actorId: targetActorId,
+                reason: String(body.reason || 'MANUAL_REVOKE'),
+                expiresAt: new Date(Date.now() + 24 * 3600 * 1000),
+              },
+            });
+          }
+
+          let nextSessionVersion = actor.sessionVersion;
+          if (invalidateAllSessions) {
+            const updatedActor = await prisma.consoleActor.update({
+              where: { id: targetActorId },
+              data: { sessionVersion: { increment: 1 } },
+            });
+            nextSessionVersion = updatedActor.sessionVersion;
+          }
+
+          return sendJson(res, 200, {
+            ok: true,
+            revokedJti: targetJti,
+            actorId: targetActorId,
+            sessionVersion: nextSessionVersion,
+          });
+        } catch (err) {
+          return sendJson(res, 400, {
+            ok: false,
+            errorCode: 'BAD_REQUEST',
+            detail: err instanceof Error ? err.message : String(err),
+            message: 'Không thể thu hồi token.',
+          });
+        }
+      }
 
       // 1. PATCH /api/v1/console/rooms/:slug
       if (
@@ -685,7 +1385,8 @@ function createApiMiddleware() {
         }
 
         // Enforce RBAC + Tenant Scope (orgId) + Building Scope (buildingId)
-        const authz = authorizeRoomPublishAccess(claims, {
+        // Strictly using PostgreSQL-resolved `actor` (never trusting self-declared token claims!)
+        const authz = authorizeRoomPublishAccess(actor, {
           orgId: targetRoom.orgId,
           buildingId: targetRoom.buildingId,
           buildingCode: targetRoom.buildingCode,
@@ -748,6 +1449,18 @@ function createApiMiddleware() {
             });
           }
 
+          if (
+            body.slug !== undefined &&
+            (typeof body.slug !== 'string' ||
+              !/^[a-z0-9-]{4,100}$/.test(body.slug))
+          ) {
+            return sendJson(res, 422, {
+              ok: false,
+              errorCode: 'VALIDATION_ERROR',
+              message: 'Slug phòng không hợp lệ.',
+            });
+          }
+
           const nextPrice =
             typeof body.price === 'number' ? body.price : targetRoom.price;
           const nextStatus =
@@ -771,12 +1484,28 @@ function createApiMiddleware() {
             typeof body.isPublic === 'boolean'
               ? body.isPublic
               : targetRoom.isPublic;
+          const nextSlug =
+            typeof body.slug === 'string' && body.slug.trim()
+              ? body.slug.trim()
+              : targetRoom.slug;
 
-          const { updatedRow, auditLog } = await prisma.$transaction(
-            async (tx) => {
+          const existingPrevSlugs = Array.isArray(targetRoom.previousSlugs)
+            ? (targetRoom.previousSlugs as string[])
+            : [];
+          const nextPreviousSlugs =
+            nextSlug !== targetRoom.slug
+              ? Array.from(
+                  new Set([...existingPrevSlugs, targetRoom.slug])
+                ).filter((s) => s !== nextSlug)
+              : existingPrevSlugs;
+
+          const { updatedRow, auditLog, seoJob, updatedOrg } =
+            await prisma.$transaction(async (tx) => {
               const updated = await tx.publicRoomListing.update({
                 where: { id: targetRoom.id },
                 data: {
+                  slug: nextSlug,
+                  previousSlugs: nextPreviousSlugs as Prisma.InputJsonValue,
                   price: nextPrice,
                   status: nextStatus,
                   availableFrom: nextAvailableFrom,
@@ -788,23 +1517,30 @@ function createApiMiddleware() {
                 select: PUBLIC_ROOM_SELECT,
               });
 
+              const orgRow = await tx.organization.update({
+                where: { id: targetRoom.orgId },
+                data: { catalogVersion: { increment: 1 } },
+              });
+
               const audit = await tx.roomAuditLog.create({
                 data: {
-                  actorUserId: claims.sub,
-                  actorRole: claims.role,
-                  orgId: claims.orgId,
+                  actorUserId: actor.sub,
+                  actorRole: actor.role,
+                  orgId: actor.orgId,
                   buildingId: targetRoom.buildingId,
                   roomId: targetRoom.id,
-                  roomSlug: targetRoom.slug,
+                  roomSlug: updated.slug,
                   action: 'CONSOLE_ROOM_PUBLISH_UPDATE',
                   changedFields: Object.keys(body),
                   previousValues: {
+                    slug: targetRoom.slug,
                     price: targetRoom.price,
                     status: targetRoom.status,
                     availableFrom: targetRoom.availableFrom,
                     isPublic: targetRoom.isPublic,
                   },
                   newValues: {
+                    slug: nextSlug,
                     price: nextPrice,
                     status: nextStatus,
                     availableFrom: nextAvailableFrom,
@@ -813,19 +1549,42 @@ function createApiMiddleware() {
                 },
               });
 
-              return { updatedRow: updated, auditLog: audit };
-            }
-          );
+              const job = await tx.seoSyncJob.create({
+                data: {
+                  orgId: targetRoom.orgId,
+                  roomId: targetRoom.id,
+                  roomSlug: updated.slug,
+                  triggerAction: 'CONSOLE_ROOM_PUBLISH_UPDATE',
+                  status: 'PENDING',
+                  attempts: 0,
+                  maxAttempts: 3,
+                },
+              });
 
-          // Automatically invalidate & re-prerender static SEO HTML files on disk
-          const { rooms: allPublicRooms } = await fetchAllPublicRoomsFromDb();
-          const seoSync = syncPrerenderedSeoFiles(allPublicRooms);
+              return {
+                updatedRow: updated,
+                auditLog: audit,
+                seoJob: job,
+                updatedOrg: orgRow,
+              };
+            });
+
+          // Execute Outbox SEO Sync Job with automatic retry (isolated from DB transaction)
+          const simulateFailFirst =
+            req.headers['x-simulate-seo-sync-fail-once'] === '1';
+          const syncJobResult = await executeSeoSyncJobWithRetry(
+            seoJob.id,
+            simulateFailFirst
+          );
 
           return sendJson(res, 200, {
             ok: true,
             updatedAt: updatedRow.updatedAt.toISOString(),
+            catalogVersion: updatedOrg.catalogVersion,
             auditLogId: auditLog.id,
-            seoPrerenderSynced: seoSync.synced,
+            usedKeyId: actor.kid,
+            seoPrerenderSynced: syncJobResult.status === 'SYNCED',
+            seoSyncJob: syncJobResult,
             room: mapDbRowToPublicRoom(updatedRow),
           });
         } catch (err) {
@@ -841,8 +1600,8 @@ function createApiMiddleware() {
       // 2. GET /api/v1/console/inquiries (Authenticated Lead List scoped by orgId)
       if (req.method === 'GET' && pathname === '/api/v1/console/inquiries') {
         if (
-          !claims.permissions.includes('leads.read') &&
-          !claims.permissions.includes('rooms.publish.write')
+          !actor.permissions.includes('leads.read') &&
+          !actor.permissions.includes('rooms.publish.write')
         ) {
           return sendJson(res, 403, {
             ok: false,
@@ -852,7 +1611,7 @@ function createApiMiddleware() {
         }
 
         const inquiries = await prisma.leadInquiry.findMany({
-          where: { orgId: claims.orgId },
+          where: { orgId: actor.orgId },
           orderBy: { createdAt: 'desc' },
           take: 100,
         });
@@ -866,7 +1625,7 @@ function createApiMiddleware() {
 
       // 3. GET /api/v1/console/audit-logs (Authenticated Audit Log scoped by orgId)
       if (req.method === 'GET' && pathname === '/api/v1/console/audit-logs') {
-        if (claims.role !== 'ADMIN' && claims.role !== 'MANAGER') {
+        if (actor.role !== 'ADMIN' && actor.role !== 'MANAGER') {
           return sendJson(res, 403, {
             ok: false,
             errorCode: 'INSUFFICIENT_PERMISSION',
@@ -875,7 +1634,7 @@ function createApiMiddleware() {
         }
 
         const logs = await prisma.roomAuditLog.findMany({
-          where: { orgId: claims.orgId },
+          where: { orgId: actor.orgId },
           orderBy: { createdAt: 'desc' },
           take: 50,
         });
@@ -884,6 +1643,24 @@ function createApiMiddleware() {
           ok: true,
           count: logs.length,
           logs,
+        });
+      }
+
+      // 4. GET /api/v1/console/seo-sync-jobs (Outbox Queue Inspection)
+      if (
+        req.method === 'GET' &&
+        pathname === '/api/v1/console/seo-sync-jobs'
+      ) {
+        const jobs = await prisma.seoSyncJob.findMany({
+          where: { orgId: actor.orgId },
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+        });
+
+        return sendJson(res, 200, {
+          ok: true,
+          count: jobs.length,
+          jobs,
         });
       }
 
@@ -909,10 +1686,10 @@ export function adhomePublicApiPlugin(): Plugin {
       await ensurePostgreSqlSeeded();
     },
     configureServer(server) {
-      server.middlewares.use(createApiMiddleware());
+      server.middlewares.use(createApiAndDynamicSeoMiddleware());
     },
     configurePreviewServer(server) {
-      server.middlewares.use(createApiMiddleware());
+      server.middlewares.use(createApiAndDynamicSeoMiddleware());
     },
   };
 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   ArrowLeft,
   MapPin,
@@ -47,11 +47,40 @@ export const RoomDetailPage: React.FC<RoomDetailPageProps> = ({
   const [selectedImgIdx, setSelectedImgIdx] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);
+  const [showStickyCta, setShowStickyCta] = useState(false);
+  const mobileTopCtaRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     setSelectedImgIdx(0);
     setLightboxOpen(false);
     setCopiedUrl(false);
+    setShowStickyCta(false);
+  }, [room?.id]);
+
+  // Only show Sticky Bottom CTA on Mobile AFTER the user scrolls past the primary Top CTA
+  useEffect(() => {
+    const el = mobileTopCtaRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry) return;
+        // Show sticky CTA only when Top CTA is out of viewport AND scrolled above the top edge
+        if (!entry.isIntersecting && entry.boundingClientRect.top < 80) {
+          setShowStickyCta(true);
+        } else {
+          setShowStickyCta(false);
+        }
+      },
+      {
+        threshold: 0,
+        rootMargin: '-64px 0px 0px 0px',
+      }
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
   }, [room?.id]);
 
   const handleCopyShareUrl = async () => {
@@ -385,6 +414,7 @@ export const RoomDetailPage: React.FC<RoomDetailPageProps> = ({
               </div>
 
               <button
+                ref={mobileTopCtaRef}
                 type="button"
                 data-testid="mobile-top-inquire-cta"
                 onClick={() => onInquireRoom(room)}
@@ -614,10 +644,16 @@ export const RoomDetailPage: React.FC<RoomDetailPageProps> = ({
         )}
       </div>
 
-      {/* Sticky Bottom CTA Bar on Mobile Detail Page (Safe-area aware, never obscures content) */}
+      {/* Sticky Bottom CTA Bar on Mobile Detail Page — Only shown AFTER scrolling past Top CTA */}
       <div
         data-testid="mobile-sticky-cta-bar"
-        className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-canvas-pure/95 border-t border-line px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] flex items-center justify-between gap-3 shadow-modal"
+        data-sticky-visible={showStickyCta ? 'true' : 'false'}
+        aria-hidden={!showStickyCta}
+        className={`lg:hidden fixed bottom-0 inset-x-0 z-30 bg-canvas-pure/95 border-t border-line px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] items-center justify-between gap-3 shadow-modal transition-transform duration-200 ${
+          showStickyCta
+            ? 'flex translate-y-0'
+            : 'hidden translate-y-full pointer-events-none'
+        }`}
       >
         <div className="min-w-0">
           <div className="flex items-baseline gap-1">

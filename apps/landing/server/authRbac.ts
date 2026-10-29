@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
+import type { PrismaClient } from '@prisma/client';
 
 export type ConsoleRole = 'ADMIN' | 'MANAGER' | 'VIEWER';
 
@@ -9,19 +10,41 @@ export type ConsolePermission =
   | 'leads.read';
 
 export interface ConsoleTokenClaims {
+  jti?: string;
+  sub: string;
+  email: string;
+  orgId?: string;
+  role?: ConsoleRole;
+  permissions?: ConsolePermission[];
+  buildingScopes?: string[];
+  sessionVersion?: number;
+  iat: number;
+  exp: number;
+}
+
+export interface AuthoritativeConsoleActor {
   sub: string;
   email: string;
   orgId: string;
   role: ConsoleRole;
   permissions: ConsolePermission[];
   buildingScopes: string[];
-  iat: number;
-  exp: number;
+  sessionVersion: number;
+  jti: string;
+  kid: string;
 }
 
-const DEFAULT_CONSOLE_SECRET =
-  process.env.ADHOME_CONSOLE_JWT_SECRET ||
-  'adhome-v2-console-hmac-secret-daklak-2026';
+export const ACTIVE_KEY_ID = 'k2-2026-10';
+export const PREVIOUS_KEY_ID = 'k1-2026-09';
+
+export const CONSOLE_SECRET_KEYRING: Record<string, string> = {
+  [ACTIVE_KEY_ID]:
+    process.env.ADHOME_CONSOLE_JWT_SECRET ||
+    'adhome-v2-console-hmac-secret-daklak-2026-k2',
+  [PREVIOUS_KEY_ID]:
+    process.env.ADHOME_CONSOLE_JWT_SECRET_PREV ||
+    'adhome-v2-console-hmac-secret-daklak-2026',
+};
 
 function base64UrlEncode(input: Buffer | string): string {
   const buf = typeof input === 'string' ? Buffer.from(input, 'utf-8') : input;
@@ -44,16 +67,34 @@ export function signConsoleToken(
     iat?: number;
     exp?: number;
   },
-  secret: string = DEFAULT_CONSOLE_SECRET
+  secretOrOptions?:
+    | string
+    | {
+        secret?: string;
+        kid?: string;
+      }
 ): string {
   const nowSec = Math.floor(Date.now() / 1000);
+  const kid =
+    typeof secretOrOptions === 'object' && secretOrOptions?.kid
+      ? secretOrOptions.kid
+      : ACTIVE_KEY_ID;
+  const secret =
+    typeof secretOrOptions === 'string'
+      ? secretOrOptions
+      : secretOrOptions?.secret ||
+        CONSOLE_SECRET_KEYRING[kid] ||
+        CONSOLE_SECRET_KEYRING[ACTIVE_KEY_ID];
+
   const fullClaims: ConsoleTokenClaims = {
+    jti: payload.jti || `jti-${crypto.randomUUID()}`,
     ...payload,
+    sessionVersion: payload.sessionVersion ?? 1,
     iat: payload.iat ?? nowSec,
     exp: payload.exp ?? nowSec + 3600,
   };
   const headerB64 = base64UrlEncode(
-    JSON.stringify({ alg: 'HS256', typ: 'JWT' })
+    JSON.stringify({ alg: 'HS256', typ: 'JWT', kid })
   );
   const payloadB64 = base64UrlEncode(JSON.stringify(fullClaims));
   const signingInput = `${headerB64}.${payloadB64}`;
@@ -65,40 +106,160 @@ export function signConsoleToken(
 
 export function verifyConsoleToken(
   token: string,
-  secret: string = DEFAULT_CONSOLE_SECRET
-): { ok: true; claims: ConsoleTokenClaims } | { ok: false; reason: string } {
+  explicitSecret?: string
+):
+  | { ok: true; claims: ConsoleTokenClaims; kid: string }
+  | { ok: false; reason: string } {
   const parts = token.split('.');
   if (parts.length !== 3) {
     return { ok: false, reason: 'MALFORMED_TOKEN' };
   }
   const [headerB64, payloadB64, sigB64] = parts;
-  const signingInput = `${headerB64}.${payloadB64}`;
-  const expectedSig = base64UrlEncode(
-    crypto.createHmac('sha256', secret).update(signingInput).digest()
-  );
+  let headerObj: { alg?: string; typ?: string; kid?: string } = {};
+  try {
+    headerObj = JSON.parse(base64UrlDecode(headerB64));
+  } catch {
+    return { ok: false, reason: 'MALFORMED_HEADER' };
+  }
 
+  const signingInput = `${headerB64}.${payloadB64}`;
+  const candidateSecrets: Array<{ kid: string; secret: string }> = explicitSecret
+    ? [{ kid: headerObj.kid || 'explicit', secret: explicitSecret }]
+    : headerObj.kid && CONSOLE_SECRET_KEYRING[headerObj.kid]
+    ? [{ kid: headerObj.kid, secret: CONSOLE_SECRET_KEYRING[headerObj.kid] }]
+    : Object.entries(CONSOLE_SECRET_KEYRING).map(([k, s]) => ({
+        kid: k,
+        secret: s,
+      }));
+
+  let matchedKid: string | null = null;
   const actualBuf = Buffer.from(sigB64, 'utf-8');
-  const expectedBuf = Buffer.from(expectedSig, 'utf-8');
-  if (
-    actualBuf.length !== expectedBuf.length ||
-    !crypto.timingSafeEqual(actualBuf, expectedBuf)
-  ) {
+
+  for (const candidate of candidateSecrets) {
+    const expectedSig = base64UrlEncode(
+      crypto
+        .createHmac('sha256', candidate.secret)
+        .update(signingInput)
+        .digest()
+    );
+    const expectedBuf = Buffer.from(expectedSig, 'utf-8');
+    if (
+      actualBuf.length === expectedBuf.length &&
+      crypto.timingSafeEqual(actualBuf, expectedBuf)
+    ) {
+      matchedKid = candidate.kid;
+      break;
+    }
+  }
+
+  if (!matchedKid) {
     return { ok: false, reason: 'INVALID_SIGNATURE' };
   }
 
   try {
-    const claims = JSON.parse(base64UrlDecode(payloadB64)) as ConsoleTokenClaims;
+    const claims = JSON.parse(
+      base64UrlDecode(payloadB64)
+    ) as ConsoleTokenClaims;
     const nowSec = Math.floor(Date.now() / 1000);
     if (typeof claims.exp !== 'number' || claims.exp < nowSec) {
       return { ok: false, reason: 'TOKEN_EXPIRED' };
     }
-    if (!claims.sub || !claims.orgId || !claims.role) {
+    if (!claims.sub) {
       return { ok: false, reason: 'MISSING_CLAIMS' };
     }
-    return { ok: true, claims };
+    return { ok: true, claims, kid: matchedKid };
   } catch {
     return { ok: false, reason: 'INVALID_PAYLOAD' };
   }
+}
+
+/**
+ * Verifies token signature + expiration, checks token revocation (`RevokedToken`)
+ * and session version (`ConsoleActor.sessionVersion`), and resolves `orgId`,
+ * `role`, `permissions`, and `buildingScopes` strictly from PostgreSQL so
+ * client-supplied self-declared claims in the token payload are NEVER trusted.
+ */
+export async function verifyAndResolveConsoleActor(
+  token: string,
+  prisma: PrismaClient
+): Promise<
+  | { ok: true; actor: AuthoritativeConsoleActor }
+  | { ok: false; status: 401 | 403; reason: string; message: string }
+> {
+  const verified = verifyConsoleToken(token);
+  if (!verified.ok) {
+    return {
+      ok: false,
+      status: 401,
+      reason: verified.reason,
+      message: 'Token xác thực không hợp lệ hoặc đã hết hạn.',
+    };
+  }
+
+  const { claims, kid } = verified;
+  const jti = claims.jti || `legacy-${claims.sub}-${claims.iat}`;
+
+  // 1. Check JTI revocation table in PostgreSQL
+  const revoked = await prisma.revokedToken.findUnique({
+    where: { jti },
+  });
+  if (revoked) {
+    return {
+      ok: false,
+      status: 401,
+      reason: 'TOKEN_REVOKED',
+      message: 'Token đã bị thu hồi (Revoked). Vui lòng đăng nhập lại.',
+    };
+  }
+
+  // 2. Load authoritative actor record from PostgreSQL ConsoleActor table
+  const dbActor = await prisma.consoleActor.findUnique({
+    where: { id: claims.sub },
+  });
+
+  if (!dbActor || !dbActor.isActive) {
+    return {
+      ok: false,
+      status: 401,
+      reason: 'ACTOR_INACTIVE_OR_NOT_FOUND',
+      message:
+        'Tài khoản quản trị không tồn tại hoặc đã bị vô hiệu hóa trên hệ thống.',
+    };
+  }
+
+  // 3. Verify sessionVersion for instant all-device session invalidation
+  const tokenSessionVersion = claims.sessionVersion ?? 1;
+  if (tokenSessionVersion < dbActor.sessionVersion) {
+    return {
+      ok: false,
+      status: 401,
+      reason: 'SESSION_INVALIDATED',
+      message:
+        'Phiên đăng nhập đã hết hiệu lực do thay đổi quyền hoặc thu hồi phiên.',
+    };
+  }
+
+  const dbPermissions = Array.isArray(dbActor.permissions)
+    ? (dbActor.permissions as ConsolePermission[])
+    : [];
+  const dbBuildingScopes = Array.isArray(dbActor.buildingScopes)
+    ? (dbActor.buildingScopes as string[])
+    : [];
+
+  return {
+    ok: true,
+    actor: {
+      sub: dbActor.id,
+      email: dbActor.email,
+      orgId: dbActor.orgId,
+      role: dbActor.role as ConsoleRole,
+      permissions: dbPermissions,
+      buildingScopes: dbBuildingScopes,
+      sessionVersion: dbActor.sessionVersion,
+      jti,
+      kid,
+    },
+  };
 }
 
 export function extractBearerToken(req: IncomingMessage): string | null {
@@ -109,7 +270,10 @@ export function extractBearerToken(req: IncomingMessage): string | null {
 }
 
 export function authorizeRoomPublishAccess(
-  claims: ConsoleTokenClaims,
+  actor: Pick<
+    AuthoritativeConsoleActor,
+    'role' | 'permissions' | 'orgId' | 'buildingScopes'
+  >,
   targetRoom: { orgId: string; buildingId: string; buildingCode: string }
 ):
   | { allowed: true }
@@ -122,11 +286,11 @@ export function authorizeRoomPublishAccess(
         | 'BUILDING_SCOPE_FORBIDDEN';
       message: string;
     } {
-  // 1. Role & Permission check
-  const hasRole = claims.role === 'ADMIN' || claims.role === 'MANAGER';
+  // 1. Role & Permission check (strictly from DB-resolved actor)
+  const hasRole = actor.role === 'ADMIN' || actor.role === 'MANAGER';
   const hasPermission =
-    Array.isArray(claims.permissions) &&
-    claims.permissions.includes('rooms.publish.write');
+    Array.isArray(actor.permissions) &&
+    actor.permissions.includes('rooms.publish.write');
 
   if (!hasRole || !hasPermission) {
     return {
@@ -134,12 +298,12 @@ export function authorizeRoomPublishAccess(
       status: 403,
       errorCode: 'INSUFFICIENT_PERMISSION',
       message:
-        'Tài khoản không có quyền cập nhật dữ liệu phòng công khai (yêu cầu quyền rooms.publish.write).',
+        'Tài khoản không có quyền cập nhật dữ liệu phòng công khai (yêu cầu quyền rooms.publish.write được cấp trên hệ thống).',
     };
   }
 
   // 2. Tenant / Organization Isolation (Multi-tenant boundary)
-  if (claims.orgId !== targetRoom.orgId) {
+  if (actor.orgId !== targetRoom.orgId) {
     return {
       allowed: false,
       status: 403,
@@ -150,9 +314,9 @@ export function authorizeRoomPublishAccess(
   }
 
   // 3. Building Scope Isolation for MANAGER role
-  if (claims.role === 'MANAGER') {
-    const scopes = Array.isArray(claims.buildingScopes)
-      ? claims.buildingScopes
+  if (actor.role === 'MANAGER') {
+    const scopes = Array.isArray(actor.buildingScopes)
+      ? actor.buildingScopes
       : [];
     const hasBuildingScope =
       scopes.includes('*') ||

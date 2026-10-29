@@ -399,6 +399,8 @@ export async function submitRentalInquiry(
     return {
       ok: true,
       referenceCode: data.referenceCode,
+      orgId: data.orgId,
+      roomId: data.roomId,
       savedAt: data.savedAt,
     };
   } catch {

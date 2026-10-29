@@ -9,8 +9,8 @@ interface RoomCardProps {
 }
 
 /**
- * Gate 02 / Gate 03 Room Card — Strict 6-Element Minimalist Hierarchy:
- * 1. Large 4:3 photo (WebP + responsive srcSet + lazy loading)
+ * Gate 02 / Gate 05 Room Card — Strict 6-Element Minimalist Hierarchy:
+ * 1. Large photo (16:9 on mobile so first card price is visible inside 390x844 viewport; 4:3 on tablet/desktop)
  * 2. Verified status badge (+ "Ảnh minh họa" label if illustrative)
  * 3. Short room name (semantic link to /phong/:slug)
  * 4. Area · Room type · Furnished level
@@ -38,11 +38,12 @@ export const RoomCard: React.FC<RoomCardProps> = ({
 
   return (
     <article
+      data-testid={`room-card-${room.slug}`}
       onClick={() => onSelect(room)}
       className="group bg-canvas-pure rounded-card border border-line overflow-hidden shadow-card hover:shadow-cardHover transition-shadow duration-200 cursor-pointer flex flex-col h-full"
     >
-      {/* 1. Large 4:3 Photo + 2. Status */}
-      <div className="relative aspect-[4/3] bg-canvas-warm overflow-hidden shrink-0">
+      {/* 1. Large Photo (19:9 on mobile, 4:3 on sm+) + 2. Status */}
+      <div className="relative aspect-[19/9] sm:aspect-[4/3] bg-canvas-warm overflow-hidden shrink-0">
         <img
           src={primaryImage.url}
           srcSet={primaryImage.srcSet}
@@ -75,7 +76,7 @@ export const RoomCard: React.FC<RoomCardProps> = ({
       </div>
 
       {/* Card Body: Uniform Height & Spacing */}
-      <div className="p-5 flex-1 flex flex-col justify-between">
+      <div className="p-3 sm:p-5 flex-1 flex flex-col justify-between">
         <div>
           {/* 3. Short room name */}
           <h3 className="text-[17px] font-semibold text-ink group-hover:text-brand-700 transition-colors leading-snug">
@@ -93,15 +94,21 @@ export const RoomCard: React.FC<RoomCardProps> = ({
           </h3>
 
           {/* 4. Area, room type, furnished */}
-          <p className="mt-1.5 text-sm text-ink-secondary tabular-nums">
+          <p className="mt-1 sm:mt-1.5 text-sm text-ink-secondary tabular-nums">
             {room.area}m² · {room.roomType} · {room.furnishedLabel}
           </p>
         </div>
 
         {/* 5. Price & 6. Single Primary CTA */}
-        <div className="mt-5 pt-4 border-t border-line flex items-center justify-between gap-3">
+        <div
+          data-testid="room-card-price-row"
+          className="mt-2.5 pt-2.5 sm:mt-5 sm:pt-4 border-t border-line flex items-center justify-between gap-3"
+        >
           <div>
-            <span className="text-lg font-bold text-ink tabular-nums">
+            <span
+              data-testid="room-card-price"
+              className="text-lg font-bold text-ink tabular-nums"
+            >
               {formatVndPrice(room.price)}
             </span>
             <span className="text-xs text-ink-secondary"> / tháng</span>
@@ -114,7 +121,7 @@ export const RoomCard: React.FC<RoomCardProps> = ({
               e.stopPropagation();
               onSelect(room);
             }}
-            className="px-4 py-2.5 rounded-lg text-xs sm:text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 transition-colors inline-flex items-center justify-center min-h-[40px]"
+            className="px-4 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 transition-colors inline-flex items-center justify-center min-h-[38px] sm:min-h-[40px]"
           >
             Xem chi tiết
           </a>

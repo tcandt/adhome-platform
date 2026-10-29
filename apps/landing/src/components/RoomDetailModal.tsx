@@ -242,34 +242,26 @@ export const RoomDetailModal: React.FC<RoomDetailModalProps> = ({
                 </div>
               </div>
 
-              {/* 3. Strictly 4 Core Specifications */}
+              {/* 3. Two Concise Horizontal Specification Rows (More breathing room than 4 boxed cards) */}
               <div
-                data-testid="quickview-4-specs"
-                className="grid grid-cols-2 gap-2.5 text-xs"
+                data-testid="quickview-2-spec-rows"
+                className="rounded-lg bg-canvas border border-line divide-y divide-line text-xs"
               >
-                <div className="p-2.5 rounded-lg bg-canvas border border-line">
-                  <span className="text-ink-muted block">Diện tích</span>
-                  <strong className="text-ink font-semibold tabular-nums mt-0.5 block">
-                    {room.area}m²
+                <div className="px-3.5 py-2.5 flex items-center justify-between gap-3">
+                  <span className="text-ink-muted shrink-0">
+                    Thông số &amp; Nội thất
+                  </span>
+                  <strong className="text-ink font-semibold tabular-nums text-right">
+                    {room.area}m² · {room.roomType} · {room.furnishedLabel}
                   </strong>
                 </div>
-                <div className="p-2.5 rounded-lg bg-canvas border border-line">
-                  <span className="text-ink-muted block">Loại phòng</span>
-                  <strong className="text-ink font-semibold mt-0.5 block">
-                    {room.roomType}
-                  </strong>
-                </div>
-                <div className="p-2.5 rounded-lg bg-canvas border border-line">
-                  <span className="text-ink-muted block">Mức nội thất</span>
-                  <strong className="text-ink font-semibold mt-0.5 block">
-                    {room.furnishedLabel}
-                  </strong>
-                </div>
-                <div className="p-2.5 rounded-lg bg-canvas border border-line">
-                  <span className="text-ink-muted block">Khả dụng</span>
+                <div className="px-3.5 py-2.5 flex items-center justify-between gap-3">
+                  <span className="text-ink-muted shrink-0">
+                    Thời điểm khả dụng
+                  </span>
                   <strong
                     data-testid="quickview-availability-label"
-                    className="text-ink font-semibold tabular-nums mt-0.5 block"
+                    className="text-ink font-semibold tabular-nums text-right"
                   >
                     {formatRoomAvailabilityLabel(room)}
                   </strong>

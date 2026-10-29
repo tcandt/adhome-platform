@@ -45,7 +45,7 @@ export const LeadInquiryModal: React.FC<LeadInquiryModalProps> = ({
     formatIsoDateDdMmYyyy(todayIso)
   );
   const [note, setNote] = useState('');
-  const [privacyConsent, setPrivacyConsent] = useState(true);
+  const [privacyConsent, setPrivacyConsent] = useState(false);
   const [honeypot, setHoneypot] = useState('');
 
   const [fieldErrors, setFieldErrors] = useState<{
@@ -71,6 +71,7 @@ export const LeadInquiryModal: React.FC<LeadInquiryModalProps> = ({
       setSubmitResult(null);
       setFieldErrors({});
       setCopiedFallback(false);
+      setPrivacyConsent(false);
       const defaultDate =
         selectedRoom?.availableFrom && selectedRoom.availableFrom > todayIso
           ? selectedRoom.availableFrom
@@ -594,9 +595,7 @@ export const LeadInquiryModal: React.FC<LeadInquiryModalProps> = ({
                         onChange={(e) => handleDateTextChange(e.target.value)}
                         aria-invalid={Boolean(fieldErrors.date)}
                         aria-describedby={
-                          fieldErrors.date
-                            ? 'lead-date-error'
-                            : 'lead-date-hint'
+                          fieldErrors.date ? 'lead-date-error' : undefined
                         }
                         className="w-full pl-3 pr-10 py-2.5 rounded-lg text-sm bg-canvas border border-line text-ink focus:outline-none focus:border-brand-600 tabular-nums font-medium"
                       />
@@ -678,13 +677,6 @@ export const LeadInquiryModal: React.FC<LeadInquiryModalProps> = ({
                       })}
                     </div>
 
-                    <p
-                      id="lead-date-hint"
-                      className="mt-1 text-[11px] text-ink-secondary"
-                    >
-                      Định dạng ngày Việt Nam: DD/MM/YYYY (từ{' '}
-                      {formatIsoDateDdMmYyyy(todayIso)} trở đi).
-                    </p>
                     {fieldErrors.date && (
                       <p
                         id="lead-date-error"
@@ -715,11 +707,12 @@ export const LeadInquiryModal: React.FC<LeadInquiryModalProps> = ({
                     />
                   </div>
 
-                  {/* Privacy Notice & Consent */}
+                  {/* Privacy Notice & Active Opt-In Consent (Unchecked by Default) */}
                   <div className="pt-1">
                     <label className="flex items-start gap-2.5 cursor-pointer text-xs text-ink-secondary leading-relaxed">
                       <input
                         id="lead-privacy"
+                        data-testid="lead-privacy-checkbox"
                         type="checkbox"
                         checked={privacyConsent}
                         onChange={(e) => {
@@ -738,10 +731,9 @@ export const LeadInquiryModal: React.FC<LeadInquiryModalProps> = ({
                         className="mt-0.5 w-4 h-4 rounded border-line text-brand-600 focus:ring-brand-600 shrink-0"
                       />
                       <span>
-                        Tôi đồng ý để <strong>AdHome</strong> sử dụng họ tên và
-                        số điện thoại nhằm liên hệ tư vấn, xác nhận lịch xem
-                        phòng tại Khu đô thị Ân Phú. Thông tin được bảo mật và
-                        không chia sẻ cho bên thứ ba.
+                        Tôi đồng ý để <strong>AdHome</strong> lưu trữ và sử dụng
+                        họ tên, số điện thoại đã cung cấp nhằm liên hệ tư vấn và
+                        xác nhận lịch xem phòng tại Khu đô thị Ân Phú.
                       </span>
                     </label>
                     {fieldErrors.privacy && (

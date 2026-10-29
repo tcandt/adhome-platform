@@ -107,6 +107,8 @@ export type LeadInquiryErrorCode =
 export interface LeadInquiryResult {
   ok: boolean;
   referenceCode?: string;
+  orgId?: string;
+  roomId?: string;
   savedAt?: string;
   errorCode?: LeadInquiryErrorCode;
   message?: string;

@@ -7,15 +7,75 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Organization {
+  id             String   @id
+  slug           String   @unique
+  name           String
+  hotline        String
+  addressSummary String   @map("address_summary")
+  isActive       Boolean  @default(true) @map("is_active")
+  catalogVersion Int      @default(1) @map("catalog_version")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  buildings Building[]
+  floors    Floor[]
+  rooms     PublicRoomListing[]
+
+  @@map("organizations")
+}
+
+model Building {
+  id            String   @id
+  orgId         String   @map("org_id")
+  code          String
+  name          String
+  streetAddress String   @map("street_address")
+  ward          String
+  province      String
+  displayOrder  Int      @default(1) @map("display_order")
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  organization Organization        @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  floors       Floor[]
+  rooms        PublicRoomListing[]
+
+  @@unique([orgId, code])
+  @@index([orgId, isActive, displayOrder])
+  @@map("buildings")
+}
+
+model Floor {
+  id          String   @id
+  orgId       String   @map("org_id")
+  buildingId  String   @map("building_id")
+  floorNumber Int      @map("floor_number")
+  name        String
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  organization Organization        @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  building     Building            @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  rooms        PublicRoomListing[]
+
+  @@unique([buildingId, floorNumber])
+  @@index([orgId, buildingId])
+  @@map("floors")
+}
+
 model PublicRoomListing {
   id                  String   @id
   orgId               String   @default("org-adhome-anphu") @map("org_id")
+  buildingId          String   @map("building_id")
+  floorId             String?  @map("floor_id")
   slug                String   @unique
+  previousSlugs       Json     @default("[]") @map("previous_slugs")
   roomCode            String   @map("room_code")
   shortTitle          String   @map("short_title")
   title               String
   roomType            String   @map("room_type")
-  buildingId          String   @map("building_id")
   buildingCode        String   @map("building_code")
   buildingName        String   @map("building_name")
   buildingAddress     String   @map("building_address")
@@ -47,6 +107,10 @@ model PublicRoomListing {
   updatedAt           DateTime @updatedAt @map("updated_at")
   createdAt           DateTime @default(now()) @map("created_at")
 
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  building     Building     @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  floor        Floor?       @relation(fields: [floorId], references: [id], onDelete: SetNull)
+
   @@index([orgId, buildingId])
   @@index([isPublic, status, displayOrder])
   @@map("public_room_listings")
@@ -73,6 +137,7 @@ model LeadInquiry {
   createdAt                  DateTime @default(now()) @map("created_at")
   updatedAt                  DateTime @updatedAt @map("updated_at")
 
+  @@index([orgId, createdAt])
   @@index([normalizedPhone, createdAt])
   @@index([roomId, createdAt])
   @@map("lead_inquiries")
@@ -94,4 +159,52 @@ model RoomAuditLog {
 
   @@index([orgId, roomId, createdAt])
   @@map("room_audit_logs")
+}
+
+model ConsoleActor {
+  id             String   @id
+  email          String   @unique
+  orgId          String   @map("org_id")
+  role           String
+  permissions    Json
+  buildingScopes Json     @map("building_scopes")
+  sessionVersion Int      @default(1) @map("session_version")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@index([orgId, isActive])
+  @@map("console_actors")
+}
+
+model RevokedToken {
+  jti       String   @id
+  actorId   String   @map("actor_id")
+  reason    String
+  expiresAt DateTime @map("expires_at")
+  revokedAt DateTime @default(now()) @map("revoked_at")
+
+  @@index([actorId])
+  @@map("revoked_tokens")
+}
+
+model SeoSyncJob {
+  id            String    @id @default(uuid())
+  orgId         String    @map("org_id")
+  roomId        String    @map("room_id")
+  roomSlug      String    @map("room_slug")
+  previousSlug  String?   @map("previous_slug")
+  triggerAction String    @map("trigger_action")
+  status        String    @default("PENDING")
+  attempts      Int       @default(0)
+  maxAttempts   Int       @default(3) @map("max_attempts")
+  lastError     String?   @map("last_error")
+  catalogVer    Int       @default(1) @map("catalog_ver")
+  syncedAt      DateTime? @map("synced_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@index([status, createdAt])
+  @@index([roomId, createdAt])
+  @@map("seo_sync_jobs")
 }

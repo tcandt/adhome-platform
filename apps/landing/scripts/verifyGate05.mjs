@@ -784,8 +784,12 @@ async function main() {
   const { cdp, cleanup } = await launchHeadlessBrowser(9346);
 
   try {
+    const landingDir = path.resolve(
+      path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')),
+      '..'
+    );
     const outDirs = [
-      path.join(process.cwd(), 'screenshots'),
+      path.join(landingDir, 'gate05'),
       ARTIFACT_DIR,
     ];
     const saveShot = async (filename) => {

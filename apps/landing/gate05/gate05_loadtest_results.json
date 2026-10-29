@@ -1,0 +1,165 @@
+{
+  "executedAt": "2026-10-29T09:22:18.749Z",
+  "targetOrigin": "http://127.0.0.1:8081",
+  "databaseEngine": "PostgreSQL 18.3 Native Windows (127.0.0.1:5432 / adhome_v2)",
+  "totalUniqueLoadTestLeadsCommitted": 222,
+  "steps": [
+    {
+      "virtualUsers": 10,
+      "totalRequests": 10,
+      "durationMs": 76,
+      "throughputReqPerSec": 131.58,
+      "status2xx": 10,
+      "status4xx": 0,
+      "status5xxOrNetErr": 0,
+      "errorRatePct": 0,
+      "latencyMs": {
+        "min": 20.67,
+        "p50": 21.38,
+        "p95": 39.69,
+        "p99": 39.69,
+        "max": 39.69,
+        "mean": 25.12
+      },
+      "resources": {
+        "cpuUsagePct": 17.21,
+        "processRssMb": 70.58,
+        "processHeapUsedMb": 11.08,
+        "systemFreeMemMb": 44852,
+        "postgresPeakTotalConnections": 18,
+        "postgresPeakActiveConnections": 1
+      },
+      "scenarioBreakdown": {
+        "PUBLIC_ROOMS_API": {
+          "requests": 5,
+          "ok": 5,
+          "p50Ms": 20.86,
+          "p95Ms": 39.69,
+          "p99Ms": 39.69
+        },
+        "SSR_ROOM_DETAIL": {
+          "requests": 3,
+          "ok": 3,
+          "p50Ms": 22.29,
+          "p95Ms": 23.33,
+          "p99Ms": 23.33
+        },
+        "LEAD_SUBMISSION_WRITE": {
+          "requests": 2,
+          "ok": 2,
+          "p50Ms": 30.37,
+          "p95Ms": 31.14,
+          "p99Ms": 31.14
+        }
+      }
+    },
+    {
+      "virtualUsers": 100,
+      "totalRequests": 100,
+      "durationMs": 190.18,
+      "throughputReqPerSec": 525.82,
+      "status2xx": 100,
+      "status4xx": 0,
+      "status5xxOrNetErr": 0,
+      "errorRatePct": 0,
+      "latencyMs": {
+        "min": 19.28,
+        "p50": 93.14,
+        "p95": 145.62,
+        "p99": 147.23,
+        "max": 147.61,
+        "mean": 91.91
+      },
+      "resources": {
+        "cpuUsagePct": 22.86,
+        "processRssMb": 79.2,
+        "processHeapUsedMb": 13.56,
+        "systemFreeMemMb": 44814,
+        "postgresPeakTotalConnections": 18,
+        "postgresPeakActiveConnections": 11
+      },
+      "scenarioBreakdown": {
+        "PUBLIC_ROOMS_API": {
+          "requests": 50,
+          "ok": 50,
+          "p50Ms": 81.14,
+          "p95Ms": 120.3,
+          "p99Ms": 124.33
+        },
+        "SSR_ROOM_DETAIL": {
+          "requests": 30,
+          "ok": 30,
+          "p50Ms": 86.04,
+          "p95Ms": 126.66,
+          "p99Ms": 128.11
+        },
+        "LEAD_SUBMISSION_WRITE": {
+          "requests": 20,
+          "ok": 20,
+          "p50Ms": 144.53,
+          "p95Ms": 147.23,
+          "p99Ms": 147.61
+        }
+      }
+    },
+    {
+      "virtualUsers": 1000,
+      "totalRequests": 1000,
+      "durationMs": 1258.65,
+      "throughputReqPerSec": 794.5,
+      "status2xx": 1000,
+      "status4xx": 0,
+      "status5xxOrNetErr": 0,
+      "errorRatePct": 0,
+      "latencyMs": {
+        "min": 40.49,
+        "p50": 210.01,
+        "p95": 442.54,
+        "p99": 553.24,
+        "max": 626.79,
+        "mean": 231.64
+      },
+      "resources": {
+        "cpuUsagePct": 31.54,
+        "processRssMb": 144.65,
+        "processHeapUsedMb": 29.63,
+        "systemFreeMemMb": 44616,
+        "postgresPeakTotalConnections": 18,
+        "postgresPeakActiveConnections": 3
+      },
+      "scenarioBreakdown": {
+        "PUBLIC_ROOMS_API": {
+          "requests": 500,
+          "ok": 500,
+          "p50Ms": 204.21,
+          "p95Ms": 297.69,
+          "p99Ms": 417.02
+        },
+        "SSR_ROOM_DETAIL": {
+          "requests": 300,
+          "ok": 300,
+          "p50Ms": 201.89,
+          "p95Ms": 301.59,
+          "p99Ms": 416.55
+        },
+        "LEAD_SUBMISSION_WRITE": {
+          "requests": 200,
+          "ok": 200,
+          "p50Ms": 388.13,
+          "p95Ms": 553.24,
+          "p99Ms": 620.67
+        }
+      }
+    }
+  ],
+  "duplicateRaceBurst50": {
+    "simultaneousRequests": 50,
+    "elapsedMs": 43.25,
+    "created201": 1,
+    "duplicate409": 49,
+    "otherStatuses": 0,
+    "dbPersistedCount": 1,
+    "passed": true
+  },
+  "allStepsZeroErrors": true
+}

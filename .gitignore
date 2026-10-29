@@ -31,3 +31,5 @@ Thumbs.db
 coverage/
 .playwright/
 test-results/
+
+.chrome-profile-*

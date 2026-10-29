@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://adhome.vn/sitemap.xml
+Sitemap: https://adhome.ductinh.one/sitemap.xml

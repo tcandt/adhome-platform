@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Menu, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 
@@ -9,6 +9,24 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setMobileMenuOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [mobileMenuOpen]);
 
   const navItems = [
     { label: 'Trang chủ', path: '/', hash: '#trang-chu' },
@@ -114,41 +132,54 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate }) => {
         </div>
       </div>
 
-      {/* Dedicated Mobile Navigation Sheet */}
+      {/* Dedicated Mobile Navigation Sheet & Backdrop Overlay */}
       <AnimatePresence>
         {mobileMenuOpen && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.18, ease: 'easeOut' }}
-            className="md:hidden bg-canvas-pure border-b border-line overflow-hidden"
-          >
-            <nav
-              aria-label="Điều hướng di động"
-              className="px-4 pt-2 pb-5 space-y-1"
+          <>
+            <motion.div
+              data-testid="mobile-nav-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              onClick={() => setMobileMenuOpen(false)}
+              aria-hidden="true"
+              className="fixed inset-0 top-16 sm:top-20 z-40 bg-ink/60 md:hidden backdrop-blur-[1px]"
+            />
+            <motion.div
+              data-testid="mobile-nav-drawer"
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
+              className="fixed inset-x-0 top-16 sm:top-20 z-50 md:hidden bg-canvas-pure border-b border-line shadow-modal max-h-[calc(100dvh-4rem)] sm:max-h-[calc(100dvh-5rem)] overflow-y-auto"
             >
-              {navItems.map((item) => (
-                <a
-                  key={item.label}
-                  href={item.hash ? `${item.path}${item.hash}` : item.path}
-                  onClick={(e) => handleNavClick(e, item.path, item.hash)}
-                  className="block px-3 py-3 rounded-lg text-base font-medium text-ink hover:bg-canvas-warm"
-                >
-                  {item.label}
-                </a>
-              ))}
-              <div className="pt-3 border-t border-line">
-                <a
-                  href="/phong-trong"
-                  onClick={(e) => handleNavClick(e, '/phong-trong')}
-                  className="block w-full py-3 px-4 rounded-lg text-center text-sm font-semibold text-white bg-brand-600"
-                >
-                  Xem toàn bộ danh sách phòng
-                </a>
-              </div>
-            </nav>
-          </motion.div>
+              <nav
+                aria-label="Điều hướng di động"
+                className="px-4 pt-2 pb-[max(1.5rem,env(safe-area-inset-bottom))] space-y-1"
+              >
+                {navItems.map((item) => (
+                  <a
+                    key={item.label}
+                    href={item.hash ? `${item.path}${item.hash}` : item.path}
+                    onClick={(e) => handleNavClick(e, item.path, item.hash)}
+                    className="block px-3 py-3 rounded-lg text-base font-medium text-ink hover:bg-canvas-warm transition-colors"
+                  >
+                    {item.label}
+                  </a>
+                ))}
+                <div className="pt-3 border-t border-line">
+                  <a
+                    href="/phong-trong"
+                    onClick={(e) => handleNavClick(e, '/phong-trong')}
+                    className="block w-full py-3 px-4 rounded-lg text-center text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 transition-colors"
+                  >
+                    Xem toàn bộ danh sách phòng
+                  </a>
+                </div>
+              </nav>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
     </header>

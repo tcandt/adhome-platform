@@ -1,7 +1,7 @@
 import { RoomListing } from '../types/room';
 import { formatVndPrice } from './roomService';
 
-const SITE_ORIGIN = 'https://adhome.vn';
+const SITE_ORIGIN = 'https://adhome.ductinh.one';
 
 interface SeoMetaConfig {
   title: string;

@@ -1,0 +1,46 @@
+{
+  "testName": "ADHOME RC1 PostgreSQL 18 Backup and Restore Verification",
+  "timestamp": "2026-10-29T13:07:04.702Z",
+  "databaseEngine": "PostgreSQL 18.0.4",
+  "sourceDatabase": "adhome_v2",
+  "databaseSize": "19 MB",
+  "databaseSizeBytes": 19674815,
+  "backupFile": {
+    "path": "D:\\AdHome-Platform\\backups\\adhome_v2_rc1_backup.dump",
+    "sizeBytes": 764424,
+    "sizeKb": 746.51,
+    "format": "custom (-F c, compressed)",
+    "sha256": "195f66c220619f5d9fd6b721d171e7ddbb6b2a05b6bc411a0b715608857d08f6",
+    "dumpDurationMs": 480
+  },
+  "restoreVerification": {
+    "tempDatabase": "adhome_v2_restore_verify",
+    "restoreDurationMs": 610,
+    "sourceCounts": {
+      "organizations": 2,
+      "buildings": 4,
+      "floors": 11,
+      "rooms": 13,
+      "leadInquiries": 14549,
+      "consoleActors": 4,
+      "revokedTokens": 14,
+      "roomAuditLogs": 26,
+      "seoSyncJobs": 26
+    },
+    "restoredCounts": {
+      "organizations": 2,
+      "buildings": 4,
+      "floors": 11,
+      "rooms": 13,
+      "leadInquiries": 14549,
+      "consoleActors": 4,
+      "revokedTokens": 14,
+      "roomAuditLogs": 26,
+      "seoSyncJobs": 26
+    },
+    "countsMatch": true,
+    "sampleRoomIntegrityMatch": true,
+    "tempDbCleanedUp": true,
+    "pass": true
+  }
+}

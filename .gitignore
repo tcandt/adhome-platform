@@ -33,3 +33,13 @@ coverage/
 test-results/
 
 .chrome-profile-*
+
+# Database Backups & Dumps (Strictly Forbidden from Git)
+*.dump
+*.sql
+*.backup
+*.rdb
+backups/
+adhome_v2_*.dump
+rc1/adhome_v2_*.dump
+

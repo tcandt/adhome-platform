@@ -318,24 +318,18 @@ export const LeadInquiryModal: React.FC<LeadInquiryModalProps> = ({
           >
             {/* Sticky Header */}
             <div className="px-5 py-4 border-b border-line flex items-center justify-between gap-3 bg-canvas shrink-0">
-              <div>
-                <h3
-                  id="lead-inquiry-modal-title"
-                  className="text-base font-bold text-ink"
-                >
-                  {isComingSoon
-                    ? `Nhận thông báo khi có ${selectedRoom?.roomCode}`
-                    : selectedRoom
-                    ? `Đăng ký xem ${selectedRoom.shortTitle}`
-                    : 'Liên hệ tư vấn thuê phòng'}
-                </h3>
-                {selectedRoom && (
-                  <p className="text-xs text-ink-secondary mt-0.5 tabular-nums">
-                    Mã phòng: <strong>{selectedRoom.roomCode}</strong> (ID:{' '}
-                    {selectedRoom.id})
-                  </p>
-                )}
-              </div>
+              <h3
+                id="lead-inquiry-modal-title"
+                className="text-base font-bold text-ink"
+              >
+                {isComingSoon
+                  ? selectedRoom
+                    ? `Nhận thông báo phòng ${selectedRoom.roomCode}`
+                    : 'Nhận thông báo khi có phòng'
+                  : selectedRoom
+                  ? `Đăng ký xem phòng ${selectedRoom.roomCode}`
+                  : 'Liên hệ tư vấn thuê phòng'}
+              </h3>
               <button
                 type="button"
                 onClick={onClose}
@@ -358,7 +352,10 @@ export const LeadInquiryModal: React.FC<LeadInquiryModalProps> = ({
                   </h4>
                   <p className="text-sm text-ink-secondary leading-relaxed">
                     Mã xác nhận lưu trữ:{' '}
-                    <strong className="text-ink tabular-nums">
+                    <strong
+                      data-testid="inquiry-reference-code"
+                      className="text-ink tabular-nums font-semibold"
+                    >
                       {submitResult.referenceCode}
                     </strong>
                     .

@@ -196,11 +196,12 @@ export const AvailableRoomsSection: React.FC<AvailableRoomsSectionProps> = ({
           </div>
         ) : (
           <div className="mt-2.5 sm:mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
-            {displayedRooms.map((room) => (
+            {displayedRooms.map((room, idx) => (
               <RoomCard
                 key={room.id}
                 room={room}
                 sourceVerified={isVerifiedSource}
+                priority={idx < 3}
                 onSelect={(r) => onSelectRoom(r)}
               />
             ))}

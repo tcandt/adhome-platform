@@ -1,0 +1,252 @@
+{
+  "testName": "ADHOME Landing RC1 Sustained Load Test",
+  "timestamp": "2026-10-29T13:08:11.875Z",
+  "baseUrl": "http://127.0.0.1:8081",
+  "canonicalDomain": "https://adhome.ductinh.one",
+  "databaseEngine": "PostgreSQL 18.0.4 (x64 Windows)",
+  "runtime": "Node v24.15.0",
+  "operatingSystem": "Windows_NT 10.0.26200 (x64)",
+  "cpuModel": "11th Gen Intel(R) Core(TM) i9-11950H @ 2.60GHz",
+  "cpuCores": 16,
+  "tiers": [
+    {
+      "vuCount": 100,
+      "activeWorkers": 100,
+      "testSchedule": {
+        "rampUpSec": 2,
+        "sustainedDurationSec": 15,
+        "rampDownSec": 2,
+        "totalDurationSec": 19.1
+      },
+      "requests": {
+        "total": 15583,
+        "status2xx": 14885,
+        "status4xx": 698,
+        "status5xxOrNetErr": 0,
+        "throughputReqSec": 816.13,
+        "errorRatePct": 0
+      },
+      "latencyMs": {
+        "min": 0.44,
+        "avg": 58.18,
+        "p50": 57.4,
+        "p90": 68.28,
+        "p95": 90.05,
+        "p99": 177.52,
+        "max": 267.86
+      },
+      "resourceUsage": {
+        "cpuUsagePct": 32.08,
+        "heapInitialMb": 18.38,
+        "heapPeakMb": 37.55,
+        "heapFinalMb": 16.62,
+        "memoryGrowthMb": -1.76,
+        "memoryGrowthPct": -9.57,
+        "rssPeakMb": 149.88
+      },
+      "postgresqlConnectionPool": {
+        "peakTotalConnections": 19,
+        "peakActiveConnections": 4,
+        "peakIdleConnections": 18,
+        "poolExhaustionOccurred": false
+      },
+      "scenarioBreakdown": [
+        {
+          "scenario": "PUBLIC_ROOMS_API",
+          "requests": 7793,
+          "successRatePct": 100,
+          "p95Ms": 70.54,
+          "p99Ms": 88.32,
+          "avgMs": 52.92
+        },
+        {
+          "scenario": "SSR_ROOM_DETAIL",
+          "requests": 5453,
+          "successRatePct": 100,
+          "p95Ms": 70.38,
+          "p99Ms": 90.1,
+          "avgMs": 53.64
+        },
+        {
+          "scenario": "CATALOG_PAGE",
+          "requests": 1558,
+          "successRatePct": 100,
+          "p95Ms": 72.66,
+          "p99Ms": 90.7,
+          "avgMs": 55.1
+        },
+        {
+          "scenario": "LEAD_SUBMISSION_WRITE",
+          "requests": 779,
+          "successRatePct": 10.4,
+          "p95Ms": 195.97,
+          "p99Ms": 243.22,
+          "avgMs": 148.73
+        }
+      ],
+      "slaPass": true
+    },
+    {
+      "vuCount": 500,
+      "activeWorkers": 500,
+      "testSchedule": {
+        "rampUpSec": 2,
+        "sustainedDurationSec": 15,
+        "rampDownSec": 2,
+        "totalDurationSec": 19.1
+      },
+      "requests": {
+        "total": 15171,
+        "status2xx": 14711,
+        "status4xx": 460,
+        "status5xxOrNetErr": 0,
+        "throughputReqSec": 792.69,
+        "errorRatePct": 0
+      },
+      "latencyMs": {
+        "min": 3.18,
+        "avg": 514.21,
+        "p50": 532.17,
+        "p90": 580.76,
+        "p95": 599.19,
+        "p99": 1380.73,
+        "max": 1739.72
+      },
+      "resourceUsage": {
+        "cpuUsagePct": 29.55,
+        "heapInitialMb": 23.83,
+        "heapPeakMb": 41.95,
+        "heapFinalMb": 22.37,
+        "memoryGrowthMb": -1.46,
+        "memoryGrowthPct": -6.14,
+        "rssPeakMb": 165.59
+      },
+      "postgresqlConnectionPool": {
+        "peakTotalConnections": 19,
+        "peakActiveConnections": 5,
+        "peakIdleConnections": 18,
+        "poolExhaustionOccurred": false
+      },
+      "scenarioBreakdown": [
+        {
+          "scenario": "PUBLIC_ROOMS_API",
+          "requests": 7589,
+          "successRatePct": 100,
+          "p95Ms": 581.86,
+          "p99Ms": 593.47,
+          "avgMs": 482.87
+        },
+        {
+          "scenario": "SSR_ROOM_DETAIL",
+          "requests": 5308,
+          "successRatePct": 100,
+          "p95Ms": 582.1,
+          "p99Ms": 595.99,
+          "avgMs": 483.67
+        },
+        {
+          "scenario": "CATALOG_PAGE",
+          "requests": 1516,
+          "successRatePct": 100,
+          "p95Ms": 583.94,
+          "p99Ms": 595.6,
+          "avgMs": 485.63
+        },
+        {
+          "scenario": "LEAD_SUBMISSION_WRITE",
+          "requests": 758,
+          "successRatePct": 39.31,
+          "p95Ms": 1580.27,
+          "p99Ms": 1663.88,
+          "avgMs": 1099
+        }
+      ],
+      "slaPass": true
+    },
+    {
+      "vuCount": 1000,
+      "activeWorkers": 1000,
+      "testSchedule": {
+        "rampUpSec": 3,
+        "sustainedDurationSec": 15,
+        "rampDownSec": 2,
+        "totalDurationSec": 20.3
+      },
+      "requests": {
+        "total": 16042,
+        "status2xx": 15460,
+        "status4xx": 582,
+        "status5xxOrNetErr": 0,
+        "throughputReqSec": 791.87,
+        "errorRatePct": 0
+      },
+      "latencyMs": {
+        "min": 24.78,
+        "avg": 1071.58,
+        "p50": 1158.52,
+        "p90": 1248.52,
+        "p95": 1289.33,
+        "p99": 2078.27,
+        "max": 2431.5
+      },
+      "resourceUsage": {
+        "cpuUsagePct": 29.67,
+        "heapInitialMb": 28.88,
+        "heapPeakMb": 65.29,
+        "heapFinalMb": 20.5,
+        "memoryGrowthMb": -8.38,
+        "memoryGrowthPct": -29.02,
+        "rssPeakMb": 199.03
+      },
+      "postgresqlConnectionPool": {
+        "peakTotalConnections": 20,
+        "peakActiveConnections": 7,
+        "peakIdleConnections": 18,
+        "poolExhaustionOccurred": false
+      },
+      "scenarioBreakdown": [
+        {
+          "scenario": "PUBLIC_ROOMS_API",
+          "requests": 8022,
+          "successRatePct": 100,
+          "p95Ms": 1250.33,
+          "p99Ms": 1283.37,
+          "avgMs": 1036.06
+        },
+        {
+          "scenario": "SSR_ROOM_DETAIL",
+          "requests": 5614,
+          "successRatePct": 100,
+          "p95Ms": 1251.04,
+          "p99Ms": 1285.04,
+          "avgMs": 1036.77
+        },
+        {
+          "scenario": "CATALOG_PAGE",
+          "requests": 1604,
+          "successRatePct": 100,
+          "p95Ms": 1252.55,
+          "p99Ms": 1284.39,
+          "avgMs": 1038.34
+        },
+        {
+          "scenario": "LEAD_SUBMISSION_WRITE",
+          "requests": 802,
+          "successRatePct": 27.43,
+          "p95Ms": 2265.96,
+          "p99Ms": 2362.34,
+          "avgMs": 1736.89
+        }
+      ],
+      "slaPass": true
+    }
+  ],
+  "summary": {
+    "totalSustainedRequests": 46796,
+    "maxThroughputReqSec": 816.13,
+    "worstP95Ms": 1289.33,
+    "worstP99Ms": 2078.27,
+    "allTiersZeroErrors": true,
+    "overallPass": true
+  }
+}

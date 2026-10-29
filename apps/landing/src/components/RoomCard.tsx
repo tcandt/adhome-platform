@@ -5,6 +5,7 @@ import { formatVndPrice } from '../services/roomService';
 interface RoomCardProps {
   room: RoomListing;
   sourceVerified?: boolean;
+  priority?: boolean;
   onSelect: (room: RoomListing) => void;
 }
 
@@ -20,6 +21,7 @@ interface RoomCardProps {
 export const RoomCard: React.FC<RoomCardProps> = ({
   room,
   sourceVerified = true,
+  priority = false,
   onSelect,
 }) => {
   const primaryImage = room.images[0] || {
@@ -51,8 +53,15 @@ export const RoomCard: React.FC<RoomCardProps> = ({
           width={primaryImage.width || 1024}
           height={primaryImage.height || 764}
           alt={primaryImage.alt || room.shortTitle}
-          loading="lazy"
-          decoding="async"
+          loading={priority ? 'eager' : 'lazy'}
+          decoding={priority ? 'sync' : 'async'}
+          fetchPriority={priority ? 'high' : 'auto'}
+          onError={(e) => {
+            const target = e.currentTarget;
+            if (!target.src.includes('studio-standard-01.webp')) {
+              target.src = '/images/rooms/studio-standard-01.webp';
+            }
+          }}
           className="w-full h-full object-cover group-hover:scale-[1.015] transition-transform duration-300"
         />
 

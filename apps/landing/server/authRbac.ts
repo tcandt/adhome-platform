@@ -34,16 +34,16 @@ export interface AuthoritativeConsoleActor {
   kid: string;
 }
 
-export const ACTIVE_KEY_ID = 'k2-2026-10';
-export const PREVIOUS_KEY_ID = 'k1-2026-09';
+export const ACTIVE_KEY_ID = 'k3-2026-10';
+export const PREVIOUS_KEY_ID = 'k2-2026-10';
 
 export const CONSOLE_SECRET_KEYRING: Record<string, string> = {
   [ACTIVE_KEY_ID]:
     process.env.ADHOME_CONSOLE_JWT_SECRET ||
-    'adhome-v2-console-hmac-secret-daklak-2026-k2',
+    'adhome-v2-sec-k3-8f0a29b71e4d3c907158a4c18402ef917e8b63',
   [PREVIOUS_KEY_ID]:
     process.env.ADHOME_CONSOLE_JWT_SECRET_PREV ||
-    'adhome-v2-console-hmac-secret-daklak-2026',
+    'adhome-v2-console-hmac-secret-daklak-2026-k2',
 };
 
 function base64UrlEncode(input: Buffer | string): string {

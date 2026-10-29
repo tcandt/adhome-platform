@@ -701,6 +701,18 @@ function createApiAndDynamicSeoMiddleware() {
       }
 
       if (seoResult.kind === 'HTML') {
+        const clientNoneMatch = req.headers['if-none-match'];
+        if (
+          clientNoneMatch &&
+          (clientNoneMatch === seoResult.etag ||
+            clientNoneMatch.includes(seoResult.etag))
+        ) {
+          res.statusCode = 304;
+          res.setHeader('ETag', seoResult.etag);
+          res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+          res.end();
+          return;
+        }
         res.statusCode = seoResult.status;
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
@@ -1000,25 +1012,21 @@ function createApiAndDynamicSeoMiddleware() {
         );
       }
 
-      // Rate limit check per client IP / session bucket
+      // Rate limit check per client IP / session bucket (strictly enforced, no client bypass)
       const clientIp = getClientIp(req);
-      const isLoadTestBypass =
-        req.headers['x-load-test-bypass-ratelimit'] === '1';
-      if (!isLoadTestBypass) {
-        const rl = checkRateLimit(`public-inquiry:${clientIp}`, 12, 60_000);
-        if (!rl.allowed) {
-          return sendJson(
-            res,
-            429,
-            {
-              ok: false,
-              errorCode: 'RATE_LIMITED',
-              message:
-                'Bạn đã gửi quá nhiều yêu cầu trong thời gian ngắn. Vui lòng đợi ít phút trước khi thử lại.',
-            },
-            { 'Retry-After': String(rl.retryAfterSec) }
-          );
-        }
+      const rl = checkRateLimit(`public-inquiry:${clientIp}`, 12, 60_000);
+      if (!rl.allowed) {
+        return sendJson(
+          res,
+          429,
+          {
+            ok: false,
+            errorCode: 'RATE_LIMITED',
+            message:
+              'Bạn đã gửi quá nhiều yêu cầu trong thời gian ngắn. Vui lòng đợi ít phút trước khi thử lại.',
+          },
+          { 'Retry-After': String(rl.retryAfterSec) }
+        );
       }
 
       try {
@@ -1119,11 +1127,9 @@ function createApiAndDynamicSeoMiddleware() {
               })
             : null;
 
-        const boundOrgId =
-          matchedRoom?.orgId ||
-          (typeof body.orgId === 'string' && body.orgId.trim()
-            ? body.orgId.trim()
-            : DEFAULT_ORG_ID);
+        // SaaS Multitenancy: authoritatively bind orgId from PostgreSQL room, or default host org.
+        // Never allow arbitrary untrusted client-supplied body.orgId to hijack inquiries across tenants!
+        const boundOrgId = matchedRoom?.orgId || DEFAULT_ORG_ID;
         const boundRoomId = matchedRoom?.id || requestedRoomId;
         const boundRoomSlug = matchedRoom?.slug || requestedRoomSlug;
         const boundRoomCode = matchedRoom?.roomCode || requestedRoomCode;

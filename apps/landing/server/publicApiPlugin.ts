@@ -6,6 +6,7 @@ import { ROOMS_PUBLIC_SEED } from '../src/data/roomsSeed';
 import type { RoomListing } from '../src/types/room';
 import { loadAdhomeEnv } from './envLoader.js';
 import {
+  assertSecurityConfiguration,
   authorizeRoomPublishAccess,
   checkRateLimit,
   extractBearerToken,
@@ -180,7 +181,25 @@ export async function ensurePostgreSqlSeeded(): Promise<void> {
 
     // 2. Seed Authoritative Console Actors in PostgreSQL (Only in non-production development environments)
     const isProduction = process.env.NODE_ENV === 'production';
-    if (!isProduction && process.env.ALLOW_SAMPLE_ACTORS !== 'false') {
+    if (isProduction) {
+      // Production Safeguard: Deactivate any sample development actors if present in DB
+      await prisma.consoleActor.updateMany({
+        where: {
+          id: {
+            in: [
+              'usr-admin-01',
+              'usr-mgr-lk01',
+              'usr-viewer-01',
+              'usr-other-org-01',
+            ],
+          },
+          isActive: true,
+        },
+        data: {
+          isActive: false,
+        },
+      });
+    } else if (process.env.ALLOW_SAMPLE_ACTORS !== 'false') {
       const actorsToSeed = [
         {
           id: 'usr-admin-01',
@@ -591,31 +610,50 @@ function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
   });
 }
 
-const TRUST_PROXY =
-  process.env.TRUST_PROXY === 'true' ||
-  process.env.NODE_ENV === 'production';
+export function isTrustProxyEnabled(): boolean {
+  loadAdhomeEnv();
+  // Strictly require explicit opt-in via TRUST_PROXY=true; NEVER auto-enable via NODE_ENV
+  return process.env.TRUST_PROXY === 'true';
+}
 
-function getClientIp(req: IncomingMessage): string {
-  const remoteAddr = req.socket?.remoteAddress || '127.0.0.1';
+export function getTrustedProxies(): Set<string> {
+  loadAdhomeEnv();
+  const configured = process.env.TRUSTED_PROXIES;
+  if (configured && configured.trim()) {
+    return new Set(
+      configured
+        .split(',')
+        .map((ip) => ip.trim().toLowerCase().replace(/^::ffff:/, ''))
+        .filter(Boolean)
+    );
+  }
+  // Default trusted upstream proxies: strictly loopback interfaces
+  return new Set(['127.0.0.1', '::1', 'localhost']);
+}
 
-  // Only trust upstream proxy headers if TRUST_PROXY is enabled AND the immediate TCP connection
-  // originates from a trusted local reverse proxy or loopback address.
-  // Directly connected external clients cannot spoof X-Forwarded-For or CF-Connecting-IP.
-  const isLoopbackOrLocal =
-    remoteAddr === '127.0.0.1' ||
-    remoteAddr === '::1' ||
-    remoteAddr === '::ffff:127.0.0.1' ||
-    remoteAddr.startsWith('10.') ||
-    remoteAddr.startsWith('172.16.') ||
-    remoteAddr.startsWith('192.168.');
+export function getClientIp(req: IncomingMessage): string {
+  const rawRemote = req.socket?.remoteAddress || '127.0.0.1';
+  const normalizedRemote = rawRemote.replace(/^::ffff:/, '').toLowerCase();
 
-  if (TRUST_PROXY && isLoopbackOrLocal) {
-    // Cloudflare CF-Connecting-IP takes precedence when behind Cloudflare
+  // If TRUST_PROXY is not explicitly enabled with 'true', unconditionally ignore all forwarding headers
+  if (!isTrustProxyEnabled()) {
+    return rawRemote;
+  }
+
+  const trustedProxies = getTrustedProxies();
+  const isDirectSocketTrusted =
+    trustedProxies.has(normalizedRemote) ||
+    normalizedRemote === '127.0.0.1' ||
+    normalizedRemote === '::1';
+
+  // Only trust forwarding headers if the immediate TCP socket connects from an explicitly trusted proxy
+  if (isDirectSocketTrusted) {
+    // Cloudflare CF-Connecting-IP takes precedence when behind Cloudflare proxy
     const cfIp = req.headers['cf-connecting-ip'];
     if (typeof cfIp === 'string' && cfIp.trim()) {
       return cfIp.trim();
     }
-    // X-Forwarded-For: client, proxy1, proxy2
+    // Standard X-Forwarded-For: client, proxy1, proxy2
     const xff = req.headers['x-forwarded-for'];
     if (typeof xff === 'string' && xff.trim()) {
       const firstIp = xff.split(',')[0].trim();
@@ -624,7 +662,7 @@ function getClientIp(req: IncomingMessage): string {
   }
 
   // Fallback strictly to direct TCP remote socket address
-  return remoteAddr;
+  return rawRemote;
 }
 
 function percentile(sorted: number[], p: number): number {
@@ -637,6 +675,7 @@ function percentile(sorted: number[], p: number): number {
 }
 
 function createApiAndDynamicSeoMiddleware() {
+  assertSecurityConfiguration();
   return async (
     req: IncomingMessage,
     res: ServerResponse,
@@ -1019,6 +1058,18 @@ function createApiAndDynamicSeoMiddleware() {
         storageEngine: 'postgresql-prisma',
         updatedAt: room.updatedAt,
         room,
+      });
+    }
+
+    // =========================================================================
+    // A2. SECURITY & CLIENT CONTEXT INSPECTION (/api/v1/public/security/context)
+    // =========================================================================
+    if (pathname === '/api/v1/public/security/context' && req.method === 'GET') {
+      return sendJson(res, 200, {
+        ok: true,
+        clientIp: getClientIp(req),
+        trustProxyEnabled: isTrustProxyEnabled(),
+        trustedProxiesConfigured: Array.from(getTrustedProxies()),
       });
     }
 
@@ -1719,12 +1770,16 @@ export function adhomePublicApiPlugin(): Plugin {
   return {
     name: 'adhome-public-api-plugin',
     async buildStart() {
+      // Mandatory boot-time security assertion: fails fast if secret is missing or insecure
+      assertSecurityConfiguration();
       await ensurePostgreSqlSeeded();
     },
     configureServer(server) {
+      assertSecurityConfiguration();
       server.middlewares.use(createApiAndDynamicSeoMiddleware());
     },
     configurePreviewServer(server) {
+      assertSecurityConfiguration();
       server.middlewares.use(createApiAndDynamicSeoMiddleware());
     },
   };

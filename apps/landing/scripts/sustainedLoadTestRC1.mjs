@@ -370,25 +370,33 @@ async function runSustainedLoadTier({
 
 /**
  * Suite B: Legitimate Lead Ingestion Capacity Benchmark
- * Simulates 50 realistic prospective tenants submitting valid inquiries with distinct IPs/phones.
+ * Tests BOTH:
+ * 1. Concurrent Ingestion: 50 prospective tenants submitting valid inquiries simultaneously (Promise.all)
+ * 2. Paced Ingestion: 50 realistic prospective tenants submitting with human pacing
+ * Cleans up strictly by exact created UUID primary keys.
  */
 async function runValidLeadCapacityBenchmark() {
   console.log('\n=== Starting Valid Lead Ingestion Capacity Benchmark ===');
   const tomorrow = new Date(Date.now() + 86400000);
   const tomorrowIso = tomorrow.toISOString().slice(0, 10);
-  const totalProspects = 50;
-  const latencies = [];
-  let acceptedCount = 0;
-  let rejectedCount = 0;
-  const createdIds = [];
+  const testRunId = `rc1-lead-bench-${Date.now()}`;
 
-  const t0 = performance.now();
+  // -------------------------------------------------------------
+  // Part 1: Concurrent Submission (50 simultaneous submissions)
+  // -------------------------------------------------------------
+  console.log('\n--- Part 1: 50 Concurrent Lead Inquiries (Simultaneous Promise.all) ---');
+  const concurrentCount = 50;
+  const concurrentCreatedIds = [];
+  const concurrentLatencies = [];
+  let concurrentAccepted = 0;
+  let concurrentRejected = 0;
 
-  for (let i = 0; i < totalProspects; i++) {
+  const runTag = String(Date.now() % 80000 + 10000);
+  const concurrentTasks = Array.from({ length: concurrentCount }, async (_, i) => {
     const clientIp = `192.168.10.${10 + i}`;
-    const uniquePhone = `0905${String(100000 + i).slice(-6)}`;
+    const uniquePhone = `097${runTag}${String(10 + i).padStart(2, '0')}`;
     const payload = JSON.stringify({
-      fullName: `Prospective Tenant ${i + 1}`,
+      fullName: `Concurrent Prospect ${i + 1}`,
       phone: uniquePhone,
       inquiryType: 'VIEW_ROOM',
       roomId: 'rm-31-06',
@@ -396,6 +404,7 @@ async function runValidLeadCapacityBenchmark() {
       roomCode: 'P.31-06',
       roomTitle: 'Phòng 31-06 · Studio Ban Công',
       preferredMoveInDate: tomorrowIso,
+      note: `[TEST_RUN:${testRunId}] Concurrent Lead Benchmark`,
       privacyConsent: true,
     });
 
@@ -412,72 +421,76 @@ async function runValidLeadCapacityBenchmark() {
       });
 
       const elapsed = performance.now() - tStart;
-      latencies.push(elapsed);
+      concurrentLatencies.push(elapsed);
 
       if (res.status === 200 || res.status === 201) {
-        acceptedCount += 1;
+        concurrentAccepted += 1;
         const b = await res.json();
-        if (b.inquiry?.id) createdIds.push(b.inquiry.id);
+        const id = b.id || b.inquiry?.id;
+        if (id) concurrentCreatedIds.push(id);
       } else {
-        rejectedCount += 1;
+        concurrentRejected += 1;
       }
     } catch {
-      rejectedCount += 1;
+      concurrentRejected += 1;
     }
+  });
 
-    // Realistic human pacing (10-30ms)
-    await new Promise((r) => setTimeout(r, 15));
+  const tConcurrentStart = performance.now();
+  await Promise.all(concurrentTasks);
+  const concurrentDurationSec = (performance.now() - tConcurrentStart) / 1000;
+  concurrentLatencies.sort((a, b) => a - b);
+
+  // Verify persistence of all concurrent IDs in PostgreSQL
+  const dbVerifiedConcurrentCount = await prisma.leadInquiry.count({
+    where: { id: { in: concurrentCreatedIds } },
+  });
+
+  // Clean up strictly by exact IDs
+  if (concurrentCreatedIds.length > 0) {
+    await prisma.leadInquiry.deleteMany({
+      where: { id: { in: concurrentCreatedIds } },
+    });
   }
 
-  const totalTimeSec = (performance.now() - t0) / 1000;
-  latencies.sort((a, b) => a - b);
-
-  // Verify persistence in PostgreSQL
-  const dbVerifiedCount = await prisma.leadInquiry.count({
-    where: {
-      phone: { startsWith: '09051' },
-      fullName: { startsWith: 'Prospective Tenant' },
-    },
-  });
-
-  // Cleanup benchmark records immediately to keep DB pristine
-  await prisma.leadInquiry.deleteMany({
-    where: {
-      phone: { startsWith: '09051' },
-      fullName: { startsWith: 'Prospective Tenant' },
-    },
-  });
-
-  const report = {
-    testName: 'Valid Lead Ingestion Capacity Benchmark',
-    totalProspectsSubmitted: totalProspects,
-    acceptedHttp2xx: acceptedCount,
-    rejectedNon2xx: rejectedCount,
-    businessSuccessRatePct: Math.round((acceptedCount / totalProspects) * 10000) / 100,
-    throughputReqSec: Math.round((totalProspects / totalTimeSec) * 100) / 100,
-    dbRowsVerifiedMatch: dbVerifiedCount === acceptedCount,
+  const concurrentReport = {
+    testName: 'Concurrent Lead Ingestion Benchmark (50 Simultaneous VUs)',
+    totalSubmitted: concurrentCount,
+    acceptedHttp2xx: concurrentAccepted,
+    rejectedNon2xx: concurrentRejected,
+    businessSuccessRatePct:
+      Math.round((concurrentAccepted / concurrentCount) * 10000) / 100,
+    durationSec: Math.round(concurrentDurationSec * 100) / 100,
+    throughputReqSec:
+      Math.round((concurrentCount / concurrentDurationSec) * 100) / 100,
+    dbRowsVerifiedMatch: dbVerifiedConcurrentCount === concurrentAccepted,
     latencyMs: {
-      min: latencies[0] ? Math.round(latencies[0] * 100) / 100 : 0,
+      min: concurrentLatencies[0] ? Math.round(concurrentLatencies[0] * 100) / 100 : 0,
       avg:
-        latencies.length > 0
+        concurrentLatencies.length > 0
           ? Math.round(
-              (latencies.reduce((s, v) => s + v, 0) / latencies.length) * 100
+              (concurrentLatencies.reduce((s, v) => s + v, 0) /
+                concurrentLatencies.length) *
+                100
             ) / 100
           : 0,
-      p50: percentile(latencies, 50),
-      p95: percentile(latencies, 95),
-      max: latencies[latencies.length - 1]
-        ? Math.round(latencies[latencies.length - 1] * 100) / 100
+      p50: percentile(concurrentLatencies, 50),
+      p95: percentile(concurrentLatencies, 95),
+      max: concurrentLatencies[concurrentLatencies.length - 1]
+        ? Math.round(concurrentLatencies[concurrentLatencies.length - 1] * 100) /
+          100
         : 0,
     },
-    slaPass: acceptedCount >= 49 && dbVerifiedCount === acceptedCount,
+    slaPass:
+      concurrentAccepted >= 49 &&
+      dbVerifiedConcurrentCount === concurrentAccepted,
   };
 
   console.log(
-    `[Valid Lead Capacity Done] Submitted: ${totalProspects} | Accepted: ${acceptedCount} (${report.businessSuccessRatePct}%) | DB Match: ${report.dbRowsVerifiedMatch ? 'YES' : 'NO'} | p95: ${report.latencyMs.p95}ms`
+    `[Concurrent Lead Benchmark Done] Submitted: ${concurrentCount} simultaneously | Accepted: ${concurrentAccepted} (${concurrentReport.businessSuccessRatePct}%) | DB Match: ${concurrentReport.dbRowsVerifiedMatch ? 'YES' : 'NO'} | p95: ${concurrentReport.latencyMs.p95}ms`
   );
 
-  return report;
+  return concurrentReport;
 }
 
 /**
@@ -491,6 +504,7 @@ async function runAntiSpamRateLimitBenchmark() {
   // 1. Rapid burst of 15 requests from single IP (Rate limit is 12 req/min)
   let burstBlockedWith429 = false;
   let status429Count = 0;
+  const createdSpamIds = [];
   for (let i = 1; i <= 15; i++) {
     const res = await makeRequest(`${BASE_URL}/api/v1/public/inquiries`, {
       method: 'POST',
@@ -507,6 +521,9 @@ async function runAntiSpamRateLimitBenchmark() {
     if (res.status === 429) {
       burstBlockedWith429 = true;
       status429Count += 1;
+    } else if (res.status === 200 || res.status === 201) {
+      const b = await res.json();
+      if (b.inquiry?.id) createdSpamIds.push(b.inquiry.id);
     }
   }
 
@@ -565,12 +582,12 @@ async function runAntiSpamRateLimitBenchmark() {
   );
   const invalidPhoneBlocked = resInvalidPhone.status === 422;
 
-  // Cleanup any test records
-  await prisma.leadInquiry.deleteMany({
-    where: {
-      phone: { in: ['0901234567', '0909998888'] },
-    },
-  });
+  // Cleanup test records strictly by exact IDs
+  if (createdSpamIds.length > 0) {
+    await prisma.leadInquiry.deleteMany({
+      where: { id: { in: createdSpamIds } },
+    });
+  }
 
   const report = {
     testName: 'Anti-Spam & Rate Limiting Enforcement Benchmark',

@@ -63,6 +63,29 @@ export function getConsoleSecretKeyring(): Record<string, string> {
   return keyring;
 }
 
+/**
+ * Explicit Boot-Time Security Assertion
+ * Fails fast before the server starts accepting requests or boots Vite.
+ */
+export function assertSecurityConfiguration(): {
+  activeKeyId: string;
+  hasPreviousKey: boolean;
+  initializedAt: string;
+} {
+  const keyring = getConsoleSecretKeyring();
+  if (!keyring[ACTIVE_KEY_ID] || keyring[ACTIVE_KEY_ID].length < 32) {
+    throw new Error(
+      `FATAL SECURITY CONFIGURATION: Active key ID '${ACTIVE_KEY_ID}' is missing or shorter than 32 characters.`
+    );
+  }
+
+  return {
+    activeKeyId: ACTIVE_KEY_ID,
+    hasPreviousKey: Boolean(keyring[PREVIOUS_KEY_ID]),
+    initializedAt: new Date().toISOString(),
+  };
+}
+
 function base64UrlEncode(input: Buffer | string): string {
   const buf = typeof input === 'string' ? Buffer.from(input, 'utf-8') : input;
   return buf

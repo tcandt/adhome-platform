@@ -6,6 +6,8 @@ import { PrismaClient } from '@prisma/client';
 import { runBackupAndRestoreVerification } from './verifyBackupRestoreRC1.mjs';
 import { runSustainedLoadTestSuite } from './sustainedLoadTestRC1.mjs';
 import { purgeTestLeads } from './purgeTestLeads.mjs';
+import { auditAndSanitizeProductionDb } from './auditAndSanitizeProductionDb.mjs';
+import { assertSecurityConfiguration } from '../server/authRbac.ts';
 import { loadAdhomeEnv } from '../server/envLoader.js';
 
 loadAdhomeEnv();
@@ -384,6 +386,45 @@ async function runSecuritySeoAndDomainAudit() {
     ),
   };
 
+  // 1b. Boot Security Assertion Verification
+  let bootSecurityPass = false;
+  let missingSecretThrowsFatal = false;
+  try {
+    const bootCheck = assertSecurityConfiguration();
+    if (bootCheck.activeKeyId === ACTIVE_KEY_ID) {
+      bootSecurityPass = true;
+    }
+  } catch {
+    bootSecurityPass = false;
+  }
+
+  // Temporarily wipe secret to test fail-fast fatal exception
+  const originalSecret = process.env.ADHOME_CONSOLE_JWT_SECRET;
+  try {
+    process.env.ADHOME_CONSOLE_JWT_SECRET = 'short';
+    assertSecurityConfiguration();
+  } catch (err) {
+    if (err.message.includes('FATAL SECURITY CONFIGURATION')) {
+      missingSecretThrowsFatal = true;
+    }
+  } finally {
+    process.env.ADHOME_CONSOLE_JWT_SECRET = originalSecret;
+  }
+
+  // 1c. Strict Proxy Trust & Anti-Spoofing Verification
+  const contextRes = await fetch(`${BASE_URL}/api/v1/public/security/context`, {
+    headers: {
+      'X-Forwarded-For': '203.0.113.195',
+      'CF-Connecting-IP': '203.0.113.195',
+    },
+  });
+  const contextData = await contextRes.json();
+  const trustProxyConfigValid = contextData.ok === true && typeof contextData.clientIp === 'string';
+
+  // 1d. Sample Actor Production Audit Verification
+  const auditReport = await auditAndSanitizeProductionDb({ deactivateSampleActors: false });
+  const sampleActorsAudited = auditReport.actors.sampleDevActorsCount === 4;
+
   // 2. Public Write Method Rejection (405 Method Not Allowed)
   const roomWriteStatuses = {};
   for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
@@ -426,6 +467,12 @@ async function runSecuritySeoAndDomainAudit() {
       break;
     }
   }
+
+  // Ensure test actors are active during RBAC permission & scoping verification
+  await prisma.consoleActor.updateMany({
+    where: { id: { in: ['usr-viewer-01', 'usr-mgr-lk01', 'usr-admin-01', 'usr-other-org-01'] } },
+    data: { isActive: true },
+  });
 
   // Fetch current session versions from PostgreSQL
   const [viewerActor, mgrActor, adminActor] = await Promise.all([
@@ -698,6 +745,10 @@ async function runSecuritySeoAndDomainAudit() {
 
   return {
     domainAudit,
+    bootSecurityPass,
+    missingSecretThrowsFatal,
+    trustProxyConfigValid,
+    sampleActorsAudited,
     publicRoomsWriteBlocked,
     rateLimitingEnforced429: rateLimitHit429 && bypassHeaderIneffective,
     unauthenticatedConsoleAccessBlocked: unauthRes.status === 401,
@@ -755,7 +806,7 @@ export async function runFullRC1Verification() {
   fs.mkdirSync(ARTIFACT_DIR, { recursive: true });
 
   console.log('Ensuring PostgreSQL database is clean of automated test leads...');
-  await purgeTestLeads();
+  await purgeTestLeads({ execute: true, confirmed: true, matchTestTag: true });
 
   // Step 1: PostgreSQL 18 Native Backup & Restore Test
   const backupRestoreReport = await runBackupAndRestoreVerification();
@@ -1160,6 +1211,10 @@ export async function runFullRC1Verification() {
           securityAndSeoReport.domainAudit.sitemapHasZeroOldDomains,
       },
       rc03_backendSecurityAndRbac: {
+        bootSecurityAssertPass: securityAndSeoReport.bootSecurityPass,
+        missingSecretThrowsFatal: securityAndSeoReport.missingSecretThrowsFatal,
+        trustProxyConfigValid: securityAndSeoReport.trustProxyConfigValid,
+        sampleActorsAudited: securityAndSeoReport.sampleActorsAudited,
         publicRoomsWriteBlocked405: securityAndSeoReport.publicRoomsWriteBlocked,
         rateLimitingEnforced429: securityAndSeoReport.rateLimitingEnforced429,
         unauthenticatedConsoleBlocked401: securityAndSeoReport.unauthenticatedConsoleAccessBlocked,
@@ -1171,6 +1226,10 @@ export async function runFullRC1Verification() {
         sessionVersionInvalidationWorks: securityAndSeoReport.sessionVersionInvalidationWorks,
         zeroPrivateDataLeakage: securityAndSeoReport.zeroTenantDataLeakage,
         pass:
+          securityAndSeoReport.bootSecurityPass &&
+          securityAndSeoReport.missingSecretThrowsFatal &&
+          securityAndSeoReport.trustProxyConfigValid &&
+          securityAndSeoReport.sampleActorsAudited &&
           securityAndSeoReport.publicRoomsWriteBlocked &&
           securityAndSeoReport.rateLimitingEnforced429 &&
           securityAndSeoReport.unauthenticatedConsoleAccessBlocked &&

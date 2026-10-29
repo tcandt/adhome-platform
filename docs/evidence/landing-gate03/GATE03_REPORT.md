@@ -6,8 +6,8 @@
 | :- | :--- | :--- | :--- |
 | 1 | **Home Page 6 Unique Featured Room Card Covers & Zero Hero Image Duplication** | PASS | `Displayed=6, UniqueCovers=6, HeroDuplicated=false` |
 | 2 | **Image Optimization (WebP + 100% Alt Attributes)** | PASS | `Total=17, WebP/SVG=17, MissingAlt=0` |
-| 3 | **Dedicated Catalog Route (/phong-trong) & Canonical Metadata** | PASS | `Canonical=https://adhome.ductinh.one/phong-trong, Page1Cards=6` |
-| 4 | **Shareable Room Detail Route (/phong/:slug) SEO, Album & Schema.org Apartment JSON-LD** | PASS | `Title="Phòng 31-06 · Studio Ban Công (32m² · 5.000.000đ/tháng) — KĐT Ân Phú | AdHome", Canonical=https://adhome.ductinh.one/phong/studio-ban-cong-31-06-lk01-31-an-phu, AlbumThumbnails=3` |
+| 3 | **Dedicated Catalog Route (/phong-trong) & Canonical Metadata** | PASS | `Canonical=https://adhome.vn/phong-trong, Page1Cards=6` |
+| 4 | **Shareable Room Detail Route (/phong/:slug) SEO, Album & Schema.org Apartment JSON-LD** | PASS | `Title="Phòng 31-06 · Studio Ban Công (32m² · 5.000.000đ/tháng) — KĐT Ân Phú | AdHome", Canonical=https://adhome.vn/phong/studio-ban-cong-31-06-lk01-31-an-phu, AlbumThumbnails=3` |
 | 5 | **Room Share URL Copy Action** | PASS | `ButtonText="Đã sao chép liên kết phòng"` |
 | 6 | **Lead Form Auto-Detects Room ID (P.31-06 / rm-31-06) & Formats Date as DD/MM/YYYY** | PASS | `RoomContext="Phòng 31-06 · Studio Ban CôngMã P.31-06 · 32m² · Tòa LK01-315.000.000đ/tháng", DateDisplay="28/10/2026"` |
 | 7 | **Lead Form Rejects Invalid Vietnamese Phone & Past Move-In Date** | PASS | `Both phone and past-date validation errors displayed accurately` |

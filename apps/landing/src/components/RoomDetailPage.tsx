@@ -14,7 +14,7 @@ import {
 import { AnimatePresence, motion } from 'motion/react';
 import { DataMode, RoomListing } from '../types/room';
 import {
-  formatIsoDateDdMmYyyy,
+  formatRoomAvailabilityLabel,
   formatVndPrice,
 } from '../services/roomService';
 import { RoomCard } from './RoomCard';
@@ -170,21 +170,22 @@ export const RoomDetailPage: React.FC<RoomDetailPageProps> = ({
 
   const activeImage = images[selectedImgIdx] || images[0];
   const isAvailable = room.status === 'AVAILABLE';
-  const isVerified = sourceVerified && room.sourceVerified !== false && dataMode === 'LIVE';
-  const formattedAvailableDate = formatIsoDateDdMmYyyy(room.availableFrom);
+  const isVerified =
+    sourceVerified && room.sourceVerified !== false && dataMode === 'LIVE';
+  const availabilityDisplay = formatRoomAvailabilityLabel(room);
 
   const relatedRooms = allRooms
     .filter((r) => r.id !== room.id && r.status === 'AVAILABLE')
     .slice(0, 3);
 
   return (
-    <article className="py-8 sm:py-14 bg-canvas min-h-[80vh]">
+    <article className="pt-4 pb-28 sm:py-14 bg-canvas min-h-[80vh]">
       <div className="max-w-[1220px] mx-auto px-4 sm:px-6 lg:px-8">
         {/* Demo Mode Unverified Notice */}
         {dataMode === 'DEMO' && (
           <div
             role="status"
-            className="mb-6 p-3.5 rounded-card bg-amber-50 border border-amber-200 text-amber-900 text-xs sm:text-sm flex items-start gap-2.5"
+            className="mb-4 sm:mb-6 p-3.5 rounded-card bg-amber-50 border border-amber-200 text-amber-900 text-xs sm:text-sm flex items-start gap-2.5"
           >
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-700" />
             <span>
@@ -195,63 +196,64 @@ export const RoomDetailPage: React.FC<RoomDetailPageProps> = ({
           </div>
         )}
 
-        {/* Top Bar: Breadcrumb + Share Link Button */}
-        <div className="pb-5 border-b border-line flex flex-wrap items-center justify-between gap-3">
+        {/* Top Bar: Single-Row Compact Breadcrumb + Share Action */}
+        <div className="pb-3.5 sm:pb-5 border-b border-line flex items-center justify-between gap-2">
           <nav
             aria-label="Breadcrumb"
-            className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-ink-secondary"
+            className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-ink-secondary min-w-0 overflow-hidden"
           >
             <button
               type="button"
               onClick={onBackHome}
-              className="hover:text-ink transition-colors"
+              className="hover:text-ink transition-colors shrink-0"
             >
               Trang chủ
             </button>
-            <span>/</span>
+            <span aria-hidden="true">/</span>
             <button
               type="button"
               onClick={onBackCatalog}
-              className="hover:text-ink transition-colors inline-flex items-center gap-1"
+              className="hover:text-ink transition-colors inline-flex items-center gap-1 shrink-0"
             >
-              <ArrowLeft className="w-3.5 h-3.5" />
+              <ArrowLeft className="w-3.5 h-3.5 hidden sm:inline" />
               <span>Danh sách phòng</span>
             </button>
-            <span>/</span>
-            <span className="font-semibold text-ink">{room.roomCode}</span>
+            <span aria-hidden="true">/</span>
+            <span className="font-semibold text-ink truncate">
+              {room.roomCode}
+            </span>
           </nav>
 
           <button
             type="button"
             onClick={handleCopyShareUrl}
             aria-label="Sao chép liên kết chia sẻ phòng"
-            className="px-3.5 py-2 rounded-lg text-xs font-semibold text-ink bg-canvas-pure hover:bg-canvas-warm border border-line inline-flex items-center gap-1.5 transition-colors"
+            className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-lg text-xs font-semibold text-ink bg-canvas-pure hover:bg-canvas-warm border border-line inline-flex items-center gap-1.5 transition-colors shrink-0"
           >
             {copiedUrl ? (
               <>
                 <Check className="w-3.5 h-3.5 text-status-availableText" />
-                <span className="text-status-availableText">
-                  Đã sao chép liên kết phòng
-                </span>
+                <span className="text-status-availableText">Đã chép link</span>
               </>
             ) : (
               <>
                 <Share2 className="w-3.5 h-3.5 text-brand-600" />
-                <span>Chia sẻ liên kết phòng</span>
+                <span className="sm:hidden">Chia sẻ</span>
+                <span className="hidden sm:inline">Chia sẻ liên kết phòng</span>
               </>
             )}
           </button>
         </div>
 
         {/* Main 12-Column Detail Layout */}
-        <div className="mt-6 grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-start">
-          {/* Left 7 Columns: Photo Album + Detailed Info */}
-          <div className="lg:col-span-7 space-y-8">
-            {/* Album Viewer */}
-            <div className="space-y-3">
+        <div className="mt-4 sm:mt-6 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-10 items-start">
+          {/* Left 7 Columns: Photo Album + Mobile Immediate Summary/CTA + Detailed Info */}
+          <div className="lg:col-span-7 space-y-5 sm:space-y-8">
+            {/* 1. Album Viewer */}
+            <div className="space-y-2.5 sm:space-y-3">
               <div
                 onClick={() => setLightboxOpen(true)}
-                className="group relative aspect-[16/10] rounded-section overflow-hidden bg-canvas-warm border border-line cursor-pointer shadow-card"
+                className="group relative aspect-[16/10] rounded-card sm:rounded-section overflow-hidden bg-canvas-warm border border-line cursor-pointer shadow-card"
               >
                 <img
                   src={activeImage.url}
@@ -293,7 +295,7 @@ export const RoomDetailPage: React.FC<RoomDetailPageProps> = ({
                 </div>
 
                 {activeImage.caption && (
-                  <div className="absolute bottom-0 inset-x-0 px-4 py-2 bg-canvas-pure/95 border-t border-line text-xs text-ink-secondary flex items-center justify-between gap-2">
+                  <div className="absolute bottom-0 inset-x-0 px-3.5 py-1.5 sm:px-4 sm:py-2 bg-canvas-pure/95 border-t border-line text-[11px] sm:text-xs text-ink-secondary flex items-center justify-between gap-2">
                     <span className="truncate">{activeImage.caption}</span>
                     <span className="tabular-nums font-medium shrink-0">
                       Ảnh {selectedImgIdx + 1}/{images.length}
@@ -305,7 +307,7 @@ export const RoomDetailPage: React.FC<RoomDetailPageProps> = ({
               {/* Album Thumbnails */}
               {images.length > 1 && (
                 <div
-                  className="flex items-center gap-2.5 overflow-x-auto pb-1"
+                  className="flex items-center gap-2 overflow-x-auto pb-1"
                   role="region"
                   aria-label="Album ảnh phòng"
                 >
@@ -315,7 +317,7 @@ export const RoomDetailPage: React.FC<RoomDetailPageProps> = ({
                       type="button"
                       onClick={() => setSelectedImgIdx(i)}
                       aria-label={`Xem ảnh ${i + 1}: ${img.alt}`}
-                      className={`relative w-24 h-16 rounded-lg overflow-hidden border-2 shrink-0 transition-opacity ${
+                      className={`relative w-20 h-14 sm:w-24 sm:h-16 rounded-lg overflow-hidden border-2 shrink-0 transition-opacity ${
                         i === selectedImgIdx
                           ? 'border-brand-600 opacity-100'
                           : 'border-line opacity-70 hover:opacity-100'
@@ -333,10 +335,71 @@ export const RoomDetailPage: React.FC<RoomDetailPageProps> = ({
               )}
             </div>
 
-            {/* Room Description */}
-            <div className="bg-canvas-pure rounded-section border border-line p-5 sm:p-6 space-y-5">
+            {/* 2. MOBILE-FIRST TOP SUMMARY & PRIMARY CTA (Immediately below Album on < lg screens!) */}
+            <div
+              data-testid="mobile-room-top-summary"
+              className="lg:hidden bg-canvas-pure rounded-card border border-line p-4 shadow-card space-y-3.5"
+            >
               <div>
-                <h2 className="text-lg font-bold text-ink">
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  <span className="font-semibold uppercase tracking-wider text-brand-700">
+                    Mã phòng {room.roomCode}
+                  </span>
+                  <span className="text-ink-secondary tabular-nums">
+                    {room.area}m² · {room.roomType}
+                  </span>
+                </div>
+                <h2 className="mt-1 text-lg font-bold text-ink leading-snug">
+                  {room.title}
+                </h2>
+                <p className="mt-1 text-xs text-ink-secondary flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-brand-600 shrink-0" />
+                  <span>
+                    {room.buildingName} ({room.floorName}) · KĐT Ân Phú, Tân An
+                  </span>
+                </p>
+              </div>
+
+              <div className="p-3 rounded-lg bg-canvas border border-line flex items-center justify-between gap-3">
+                <div>
+                  <span className="text-[11px] text-ink-secondary block">
+                    Giá thuê niêm yết
+                  </span>
+                  <span className="text-xl font-bold text-ink tabular-nums">
+                    {formatVndPrice(room.price)}
+                  </span>
+                  <span className="text-xs text-ink-secondary"> / tháng</span>
+                </div>
+
+                <div className="text-right text-xs">
+                  <span className="text-ink-secondary block">
+                    Cọc {room.depositMonths} tháng
+                  </span>
+                  <strong
+                    data-testid="mobile-room-availability"
+                    className="text-ink font-semibold block mt-0.5"
+                  >
+                    {availabilityDisplay}
+                  </strong>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                data-testid="mobile-top-inquire-cta"
+                onClick={() => onInquireRoom(room)}
+                className="w-full py-3 px-4 rounded-lg text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 transition-colors min-h-[44px]"
+              >
+                {isAvailable
+                  ? `Đăng ký hẹn xem phòng ${room.roomCode}`
+                  : `Nhận thông báo khi có phòng ${room.roomCode}`}
+              </button>
+            </div>
+
+            {/* 3. Room Description, Specifications, Furnishings & Service Fees */}
+            <div className="bg-canvas-pure rounded-card sm:rounded-section border border-line p-4 sm:p-6 space-y-5">
+              <div>
+                <h2 className="text-base sm:text-lg font-bold text-ink">
                   Mô tả chi tiết căn hộ {room.roomCode}
                 </h2>
                 <p className="mt-2 text-sm sm:text-[15px] text-ink-secondary leading-relaxed">
@@ -345,7 +408,7 @@ export const RoomDetailPage: React.FC<RoomDetailPageProps> = ({
               </div>
 
               {/* Key Specifications Grid */}
-              <div className="pt-4 border-t border-line grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs sm:text-sm">
+              <div className="pt-4 border-t border-line grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 text-xs sm:text-sm">
                 <div>
                   <span className="text-ink-muted block">Diện tích</span>
                   <strong className="text-ink font-semibold tabular-nums mt-0.5 block">
@@ -374,10 +437,10 @@ export const RoomDetailPage: React.FC<RoomDetailPageProps> = ({
 
               {/* Furnishings Checklist */}
               <div className="pt-4 border-t border-line">
-                <h3 className="text-base font-bold text-ink">
+                <h3 className="text-sm sm:text-base font-bold text-ink">
                   Danh mục nội thất &amp; trang bị trong phòng
                 </h3>
-                <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {room.amenities.map((am) => (
                     <div
                       key={am}
@@ -392,10 +455,10 @@ export const RoomDetailPage: React.FC<RoomDetailPageProps> = ({
 
               {/* Service Fees */}
               <div className="pt-4 border-t border-line">
-                <h3 className="text-base font-bold text-ink">
+                <h3 className="text-sm sm:text-base font-bold text-ink">
                   Biểu phí điện, nước &amp; dịch vụ
                 </h3>
-                <dl className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs sm:text-sm">
+                <dl className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3 text-xs sm:text-sm">
                   <div className="p-3 rounded-lg bg-canvas border border-line">
                     <dt className="font-semibold text-ink">Điện sinh hoạt</dt>
                     <dd className="text-ink-secondary mt-0.5">
@@ -425,9 +488,9 @@ export const RoomDetailPage: React.FC<RoomDetailPageProps> = ({
             </div>
           </div>
 
-          {/* Right 5 Columns: Sticky Summary & Lead CTA Card */}
-          <div className="lg:col-span-5 lg:sticky lg:top-24">
-            <div className="bg-canvas-pure rounded-section border border-line p-5 sm:p-6 shadow-card space-y-5">
+          {/* Right 5 Columns: Desktop Sticky Summary & Lead CTA Card */}
+          <div className="hidden lg:block lg:col-span-5 lg:sticky lg:top-24">
+            <div className="bg-canvas-pure rounded-section border border-line p-6 shadow-card space-y-5">
               <div>
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-semibold uppercase tracking-wider text-brand-700">
@@ -438,11 +501,11 @@ export const RoomDetailPage: React.FC<RoomDetailPageProps> = ({
                   </span>
                 </div>
 
-                <h1 className="mt-1.5 text-xl sm:text-2xl font-bold text-ink leading-snug">
+                <h1 className="mt-1.5 text-2xl font-bold text-ink leading-snug">
                   {room.title}
                 </h1>
 
-                <p className="mt-2 text-xs sm:text-sm text-ink-secondary flex items-start gap-1.5">
+                <p className="mt-2 text-sm text-ink-secondary flex items-start gap-1.5">
                   <MapPin className="w-4 h-4 text-brand-600 shrink-0 mt-0.5" />
                   <span>
                     {room.buildingName} ({room.floorName}),{' '}
@@ -454,7 +517,7 @@ export const RoomDetailPage: React.FC<RoomDetailPageProps> = ({
               {/* Price & Availability Summary Box */}
               <div className="p-4 rounded-card bg-canvas border border-line space-y-3">
                 <div className="flex items-baseline justify-between gap-2">
-                  <span className="text-xs sm:text-sm text-ink-secondary">
+                  <span className="text-sm text-ink-secondary">
                     Giá thuê niêm yết
                   </span>
                   <div>
@@ -465,22 +528,23 @@ export const RoomDetailPage: React.FC<RoomDetailPageProps> = ({
                   </div>
                 </div>
 
-                <div className="pt-2.5 border-t border-line flex items-center justify-between gap-2 text-xs sm:text-sm">
+                <div className="pt-2.5 border-t border-line flex items-center justify-between gap-2 text-sm">
                   <span className="text-ink-secondary">Tiền đặt cọc</span>
                   <strong className="text-ink font-semibold">
                     {room.depositMonths} tháng tiền phòng
                   </strong>
                 </div>
 
-                <div className="pt-2.5 border-t border-line flex items-center justify-between gap-2 text-xs sm:text-sm">
+                <div className="pt-2.5 border-t border-line flex items-center justify-between gap-2 text-sm">
                   <span className="text-ink-secondary flex items-center gap-1.5">
                     <Calendar className="w-3.5 h-3.5 text-brand-600" />
                     <span>Thời điểm khả dụng</span>
                   </span>
-                  <strong className="text-ink font-semibold tabular-nums">
-                    {isAvailable
-                      ? `Sẵn sàng vào ở (${formattedAvailableDate})`
-                      : `Dự kiến sau ${formattedAvailableDate}`}
+                  <strong
+                    data-testid="desktop-room-availability"
+                    className="text-ink font-semibold tabular-nums"
+                  >
+                    {availabilityDisplay}
                   </strong>
                 </div>
               </div>
@@ -490,7 +554,7 @@ export const RoomDetailPage: React.FC<RoomDetailPageProps> = ({
                 <button
                   type="button"
                   onClick={() => onInquireRoom(room)}
-                  className="w-full py-3.5 px-5 rounded-lg text-sm sm:text-base font-semibold text-white bg-brand-600 hover:bg-brand-700 transition-colors"
+                  className="w-full py-3.5 px-5 rounded-lg text-base font-semibold text-white bg-brand-600 hover:bg-brand-700 transition-colors"
                 >
                   {isAvailable
                     ? `Đăng ký hẹn xem phòng ${room.roomCode}`
@@ -500,7 +564,7 @@ export const RoomDetailPage: React.FC<RoomDetailPageProps> = ({
                 <button
                   type="button"
                   onClick={handleCopyShareUrl}
-                  className="w-full py-2.5 px-4 rounded-lg text-xs sm:text-sm font-medium text-ink bg-canvas hover:bg-canvas-warm border border-line transition-colors inline-flex items-center justify-center gap-2"
+                  className="w-full py-2.5 px-4 rounded-lg text-sm font-medium text-ink bg-canvas hover:bg-canvas-warm border border-line transition-colors inline-flex items-center justify-center gap-2"
                 >
                   <Share2 className="w-4 h-4 text-brand-600" />
                   <span>
@@ -522,9 +586,9 @@ export const RoomDetailPage: React.FC<RoomDetailPageProps> = ({
 
         {/* Related Available Rooms */}
         {relatedRooms.length > 0 && (
-          <div className="mt-14 pt-10 border-t border-line">
+          <div className="mt-12 sm:mt-14 pt-8 sm:pt-10 border-t border-line">
             <div className="flex items-center justify-between gap-4 mb-6">
-              <h2 className="text-xl sm:text-2xl font-bold text-ink">
+              <h2 className="text-lg sm:text-2xl font-bold text-ink">
                 Các căn hộ đang trống khác tại Khu đô thị Ân Phú
               </h2>
               <button
@@ -548,6 +612,34 @@ export const RoomDetailPage: React.FC<RoomDetailPageProps> = ({
             </div>
           </div>
         )}
+      </div>
+
+      {/* Sticky Bottom CTA Bar on Mobile Detail Page (Safe-area aware, never obscures content) */}
+      <div
+        data-testid="mobile-sticky-cta-bar"
+        className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-canvas-pure/95 border-t border-line px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] flex items-center justify-between gap-3 shadow-modal"
+      >
+        <div className="min-w-0">
+          <div className="flex items-baseline gap-1">
+            <span className="text-base font-bold text-ink tabular-nums">
+              {formatVndPrice(room.price)}
+            </span>
+            <span className="text-[11px] text-ink-secondary">/tháng</span>
+          </div>
+          <span className="text-[11px] text-ink-secondary block truncate">
+            {room.roomCode} · {availabilityDisplay}
+          </span>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => onInquireRoom(room)}
+          className="px-4 py-2.5 rounded-lg text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 transition-colors shrink-0 min-h-[42px]"
+        >
+          {isAvailable
+            ? `Đăng ký xem ${room.roomCode}`
+            : `Nhận báo ${room.roomCode}`}
+        </button>
       </div>
 
       {/* Fullscreen Album Lightbox */}

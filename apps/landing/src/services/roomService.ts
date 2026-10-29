@@ -51,6 +51,51 @@ export function formatIsoDateDdMmYyyy(isoDate?: string): string {
   return `${match[3]}/${match[2]}/${match[1]}`;
 }
 
+export function parseDdMmYyyyToIso(ddMmYyyy: string): string | null {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(ddMmYyyy.trim());
+  if (!match) return null;
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const year = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31 || year < 2024) {
+    return null;
+  }
+  const iso = `${String(year).padStart(4, '0')}-${String(month).padStart(
+    2,
+    '0'
+  )}-${String(day).padStart(2, '0')}`;
+  const dt = new Date(`${iso}T00:00:00Z`);
+  if (
+    Number.isNaN(dt.getTime()) ||
+    dt.getUTCFullYear() !== year ||
+    dt.getUTCMonth() + 1 !== month ||
+    dt.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return iso;
+}
+
+/**
+ * Gate 04 Rule: If a room is AVAILABLE and its `availableFrom` date is today or in the past,
+ * display "Có thể vào ở ngay" instead of showing a past date like "Sẵn sàng vào ở (28/10/2026)".
+ */
+export function formatRoomAvailabilityLabel(
+  room: Pick<RoomListing, 'status' | 'availableFrom' | 'availableFromLabel'>
+): string {
+  const todayIso = getTodayIsoVn();
+  if (room.status === 'AVAILABLE') {
+    if (!room.availableFrom || room.availableFrom <= todayIso) {
+      return 'Có thể vào ở ngay';
+    }
+    return `Sẵn sàng từ ${formatIsoDateDdMmYyyy(room.availableFrom)}`;
+  }
+  if (room.availableFrom) {
+    return `Dự kiến sau ${formatIsoDateDdMmYyyy(room.availableFrom)}`;
+  }
+  return room.availableFromLabel || 'Sắp trống';
+}
+
 export function normalizeVnPhone(raw: string): string {
   const cleaned = raw.replace(/[\s.\-()]/g, '');
   if (cleaned.startsWith('+84')) {

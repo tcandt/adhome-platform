@@ -62,22 +62,22 @@ export const AvailableRoomsSection: React.FC<AvailableRoomsSectionProps> = ({
   return (
     <section
       id="phong-dang-trong"
-      className="py-14 sm:py-20 bg-canvas border-b border-line scroll-mt-20"
+      className="py-8 sm:py-20 bg-canvas border-b border-line scroll-mt-20"
     >
       <div className="max-w-[1220px] mx-auto px-4 sm:px-6 lg:px-8">
         {/* Clean Section Header + Quick Category Filter */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 pb-8 border-b border-line">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-3.5 sm:gap-4 pb-5 sm:pb-8 border-b border-line">
           <div>
-            <h2 className="text-2xl sm:text-[32px] font-bold text-ink tracking-[-0.015em] leading-[1.26]">
+            <h2 className="text-xl sm:text-[32px] font-bold text-ink tracking-[-0.015em] leading-[1.26]">
               Phòng đang trống tại Khu đô thị Ân Phú
             </h2>
-            <p className="mt-2 text-[15px] sm:text-base text-ink-secondary">
+            <p className="mt-1 sm:mt-2 text-xs sm:text-base text-ink-secondary">
               Các căn hộ sẵn sàng đón khách thuê tại Phường Tân An, Đắk Lắk.
             </p>
           </div>
 
           <div
-            className="flex flex-wrap items-center gap-1.5"
+            className="flex items-center gap-1.5 overflow-x-auto no-scrollbar"
             role="tablist"
             aria-label="Phân loại phòng"
           >
@@ -90,7 +90,7 @@ export const AvailableRoomsSection: React.FC<AvailableRoomsSectionProps> = ({
                   role="tab"
                   aria-selected={active}
                   onClick={() => setActiveCategory(tab.id)}
-                  className={`px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium border transition-colors min-h-[40px] ${
+                  className={`px-3 sm:px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium border transition-colors min-h-[38px] sm:min-h-[40px] whitespace-nowrap shrink-0 ${
                     active
                       ? 'bg-ink text-white border-ink'
                       : 'bg-canvas-pure text-ink-secondary border-line hover:bg-canvas-warm hover:text-ink'

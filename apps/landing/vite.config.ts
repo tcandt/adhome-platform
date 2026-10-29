@@ -4,6 +4,16 @@ import { adhomePublicApiPlugin } from './server/publicApiPlugin';
 
 export default defineConfig({
   plugins: [react(), adhomePublicApiPlugin()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom'],
+          'ui-vendor': ['motion', 'lucide-react'],
+        },
+      },
+    },
+  },
   server: {
     host: '127.0.0.1',
     port: 5173,

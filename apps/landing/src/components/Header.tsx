@@ -96,19 +96,12 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate }) => {
           </a>
         </div>
 
-        {/* Mobile Header Right: Quick Room Link + Drawer Toggle */}
-        <div className="flex md:hidden items-center gap-2">
-          <a
-            href="/phong-trong"
-            onClick={(e) => handleNavClick(e, '/phong-trong')}
-            className="px-3 py-2 rounded-lg text-xs font-semibold text-white bg-brand-600 min-h-[38px] inline-flex items-center"
-          >
-            Xem phòng
-          </a>
+        {/* Mobile Header Right: Single Clean Drawer Toggle (No duplicate CTA above Hero) */}
+        <div className="flex md:hidden items-center">
           <button
             type="button"
             onClick={() => setMobileMenuOpen((v) => !v)}
-            className="p-2 rounded-lg border border-line text-ink hover:bg-canvas-warm transition-colors min-h-[38px] min-w-[38px] inline-flex items-center justify-center"
+            className="p-2 rounded-lg border border-line text-ink hover:bg-canvas-warm transition-colors min-h-[40px] min-w-[40px] inline-flex items-center justify-center"
             aria-expanded={mobileMenuOpen}
             aria-label="Menu điều hướng"
           >

@@ -1,5 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { X, CheckCircle2, AlertTriangle, Copy, Check } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  X,
+  CheckCircle2,
+  AlertTriangle,
+  Copy,
+  Check,
+  Calendar,
+} from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { LeadInquiryResult, RoomListing } from '../types/room';
 import {
@@ -7,6 +14,7 @@ import {
   formatVndPrice,
   getTodayIsoVn,
   isDateInPast,
+  parseDdMmYyyyToIso,
   submitRentalInquiry,
   validateVnPhone,
 } from '../services/roomService';
@@ -15,6 +23,12 @@ interface LeadInquiryModalProps {
   isOpen: boolean;
   selectedRoom?: RoomListing | null;
   onClose: () => void;
+}
+
+function addDaysToIsoDate(baseIso: string, days: number): string {
+  const [y, m, d] = baseIso.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + days));
+  return dt.toISOString().slice(0, 10);
 }
 
 export const LeadInquiryModal: React.FC<LeadInquiryModalProps> = ({
@@ -27,6 +41,9 @@ export const LeadInquiryModal: React.FC<LeadInquiryModalProps> = ({
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [preferredMoveInDate, setPreferredMoveInDate] = useState(todayIso);
+  const [dateInputText, setDateInputText] = useState(() =>
+    formatIsoDateDdMmYyyy(todayIso)
+  );
   const [note, setNote] = useState('');
   const [privacyConsent, setPrivacyConsent] = useState(true);
   const [honeypot, setHoneypot] = useState('');
@@ -44,6 +61,10 @@ export const LeadInquiryModal: React.FC<LeadInquiryModalProps> = ({
   );
   const [copiedFallback, setCopiedFallback] = useState(false);
 
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const nameInputRef = useRef<HTMLInputElement | null>(null);
+  const nativeDatePickerRef = useRef<HTMLInputElement | null>(null);
+
   // Reset form state when modal opens or selectedRoom changes
   useEffect(() => {
     if (isOpen) {
@@ -55,28 +76,108 @@ export const LeadInquiryModal: React.FC<LeadInquiryModalProps> = ({
           ? selectedRoom.availableFrom
           : todayIso;
       setPreferredMoveInDate(defaultDate);
+      setDateInputText(formatIsoDateDdMmYyyy(defaultDate));
     }
   }, [isOpen, selectedRoom, todayIso]);
 
-  // Body scroll lock & Escape key handler
+  // Body scroll lock, initial focus & keyboard focus trap (Tab / Shift+Tab / Escape)
   useEffect(() => {
     if (!isOpen) return;
     const prevOverflow = document.body.style.overflow;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
     document.body.style.overflow = 'hidden';
+
+    const focusTimer = window.setTimeout(() => {
+      nameInputRef.current?.focus();
+    }, 40);
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        e.preventDefault();
         onClose();
+        return;
+      }
+
+      if (e.key === 'Tab' && dialogRef.current) {
+        const focusable = Array.from(
+          dialogRef.current.querySelectorAll<HTMLElement>(
+            'a[href], button:not([disabled]), input:not([disabled]):not([tabindex="-1"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+          )
+        ).filter((el) => el.offsetParent !== null);
+
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+
+        if (e.shiftKey) {
+          if (
+            document.activeElement === first ||
+            !dialogRef.current.contains(document.activeElement)
+          ) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else {
+          if (
+            document.activeElement === last ||
+            !dialogRef.current.contains(document.activeElement)
+          ) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
       }
     };
+
     window.addEventListener('keydown', handleKeyDown);
     return () => {
+      window.clearTimeout(focusTimer);
       document.body.style.overflow = prevOverflow;
       window.removeEventListener('keydown', handleKeyDown);
+      previouslyFocused?.focus?.();
     };
   }, [isOpen, onClose]);
 
   const isComingSoon = selectedRoom?.status === 'COMING_SOON';
+
+  const applyIsoDateSelection = (isoDate: string) => {
+    setPreferredMoveInDate(isoDate);
+    setDateInputText(formatIsoDateDdMmYyyy(isoDate));
+    if (fieldErrors.date) {
+      setFieldErrors((prev) => ({ ...prev, date: undefined }));
+    }
+  };
+
+  const handleDateTextChange = (rawVal: string) => {
+    // Allow user to type DD/MM/YYYY or YYYY-MM-DD
+    setDateInputText(rawVal);
+    if (fieldErrors.date) {
+      setFieldErrors((prev) => ({ ...prev, date: undefined }));
+    }
+
+    const trimmed = rawVal.trim();
+    if (!trimmed) {
+      setPreferredMoveInDate('');
+      return;
+    }
+
+    // Check DD/MM/YYYY
+    const parsedFromVn = parseDdMmYyyyToIso(trimmed);
+    if (parsedFromVn) {
+      setPreferredMoveInDate(parsedFromVn);
+      return;
+    }
+
+    // Also support ISO YYYY-MM-DD if pasted or typed programmatically
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      setPreferredMoveInDate(trimmed);
+      setDateInputText(formatIsoDateDdMmYyyy(trimmed));
+      return;
+    }
+
+    // Mark as invalid ISO so validation catches malformed dates
+    setPreferredMoveInDate('INVALID_DATE');
+  };
 
   const validateFields = (): boolean => {
     const nextErrors: {
@@ -93,7 +194,12 @@ export const LeadInquiryModal: React.FC<LeadInquiryModalProps> = ({
       nextErrors.phone =
         'Số điện thoại chưa hợp lệ. Vui lòng nhập số di động 10 số tại Việt Nam (ví dụ: 0905 889 123).';
     }
-    if (preferredMoveInDate && isDateInPast(preferredMoveInDate)) {
+    if (preferredMoveInDate === 'INVALID_DATE') {
+      nextErrors.date =
+        'Ngày chưa đúng định dạng DD/MM/YYYY (ví dụ: ' +
+        formatIsoDateDdMmYyyy(todayIso) +
+        ').';
+    } else if (preferredMoveInDate && isDateInPast(preferredMoveInDate)) {
       nextErrors.date =
         'Ngày dự kiến xem phòng / chuyển vào không được chọn trong quá khứ.';
     }
@@ -149,7 +255,7 @@ export const LeadInquiryModal: React.FC<LeadInquiryModalProps> = ({
       selectedRoom
         ? `Phòng quan tâm: ${selectedRoom.shortTitle} (Mã ID: ${selectedRoom.id} / ${selectedRoom.roomCode})`
         : `Nhu cầu: Tư vấn chọn phòng`,
-      preferredMoveInDate
+      preferredMoveInDate && preferredMoveInDate !== 'INVALID_DATE'
         ? `Ngày dự kiến: ${formatIsoDateDdMmYyyy(preferredMoveInDate)}`
         : '',
       note.trim() ? `Ghi chú: ${note.trim()}` : '',
@@ -178,7 +284,13 @@ export const LeadInquiryModal: React.FC<LeadInquiryModalProps> = ({
     }, 120);
   };
 
-  const formattedSelectedDate = formatIsoDateDdMmYyyy(preferredMoveInDate);
+  const formattedSelectedDate =
+    preferredMoveInDate && preferredMoveInDate !== 'INVALID_DATE'
+      ? formatIsoDateDdMmYyyy(preferredMoveInDate)
+      : '';
+
+  const tomorrowIso = addDaysToIsoDate(todayIso, 1);
+  const plus3DaysIso = addDaysToIsoDate(todayIso, 3);
 
   return (
     <AnimatePresence>
@@ -190,11 +302,12 @@ export const LeadInquiryModal: React.FC<LeadInquiryModalProps> = ({
           transition={{ duration: 0.18 }}
           role="dialog"
           aria-modal="true"
-          aria-label="Đăng ký tư vấn hoặc hẹn xem phòng"
+          aria-labelledby="lead-inquiry-modal-title"
           className="fixed inset-0 z-50 bg-ink/70 flex items-end sm:items-center justify-center sm:p-4"
           onClick={onClose}
         >
           <motion.div
+            ref={dialogRef}
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 20, opacity: 0 }}
@@ -205,7 +318,10 @@ export const LeadInquiryModal: React.FC<LeadInquiryModalProps> = ({
             {/* Sticky Header */}
             <div className="px-5 py-4 border-b border-line flex items-center justify-between gap-3 bg-canvas shrink-0">
               <div>
-                <h3 className="text-base font-bold text-ink">
+                <h3
+                  id="lead-inquiry-modal-title"
+                  className="text-base font-bold text-ink"
+                >
                   {isComingSoon
                     ? `Nhận thông báo khi có ${selectedRoom?.roomCode}`
                     : selectedRoom
@@ -373,6 +489,7 @@ export const LeadInquiryModal: React.FC<LeadInquiryModalProps> = ({
                       Họ và tên <span className="text-red-700">*</span>
                     </label>
                     <input
+                      ref={nameInputRef}
                       id="lead-name"
                       type="text"
                       required
@@ -389,10 +506,17 @@ export const LeadInquiryModal: React.FC<LeadInquiryModalProps> = ({
                       }}
                       placeholder="Nguyễn Văn A"
                       aria-invalid={Boolean(fieldErrors.fullName)}
+                      aria-describedby={
+                        fieldErrors.fullName ? 'lead-name-error' : undefined
+                      }
                       className="w-full px-3 py-2.5 rounded-lg text-sm bg-canvas border border-line text-ink focus:outline-none focus:border-brand-600"
                     />
                     {fieldErrors.fullName && (
-                      <p className="mt-1 text-xs font-medium text-red-700">
+                      <p
+                        id="lead-name-error"
+                        role="alert"
+                        className="mt-1 text-xs font-medium text-red-700"
+                      >
                         {fieldErrors.fullName}
                       </p>
                     )}
@@ -424,16 +548,23 @@ export const LeadInquiryModal: React.FC<LeadInquiryModalProps> = ({
                       }}
                       placeholder="0905 889 123"
                       aria-invalid={Boolean(fieldErrors.phone)}
+                      aria-describedby={
+                        fieldErrors.phone ? 'lead-phone-error' : undefined
+                      }
                       className="w-full px-3 py-2.5 rounded-lg text-sm bg-canvas border border-line text-ink focus:outline-none focus:border-brand-600 tabular-nums"
                     />
                     {fieldErrors.phone && (
-                      <p className="mt-1 text-xs font-medium text-red-700">
+                      <p
+                        id="lead-phone-error"
+                        role="alert"
+                        className="mt-1 text-xs font-medium text-red-700"
+                      >
                         {fieldErrors.phone}
                       </p>
                     )}
                   </div>
 
-                  {/* Preferred Date (Standardized DD/MM/YYYY display + Past Date prevention) */}
+                  {/* Preferred Date — Unified Vietnamese DD/MM/YYYY Input (Eliminates US MM/DD/YYYY locale mismatch) */}
                   <div>
                     <div className="flex items-center justify-between gap-2 mb-1">
                       <label
@@ -451,30 +582,115 @@ export const LeadInquiryModal: React.FC<LeadInquiryModalProps> = ({
                         </span>
                       )}
                     </div>
-                    <input
-                      id="lead-date"
-                      type="date"
-                      min={todayIso}
-                      value={preferredMoveInDate}
-                      onFocus={handleInputFocus}
-                      onChange={(e) => {
-                        setPreferredMoveInDate(e.target.value);
-                        if (fieldErrors.date) {
-                          setFieldErrors((prev) => ({
-                            ...prev,
-                            date: undefined,
-                          }));
+
+                    <div className="relative flex items-center">
+                      <input
+                        id="lead-date"
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="DD/MM/YYYY"
+                        value={dateInputText}
+                        onFocus={handleInputFocus}
+                        onChange={(e) => handleDateTextChange(e.target.value)}
+                        aria-invalid={Boolean(fieldErrors.date)}
+                        aria-describedby={
+                          fieldErrors.date
+                            ? 'lead-date-error'
+                            : 'lead-date-hint'
                         }
-                      }}
-                      aria-invalid={Boolean(fieldErrors.date)}
-                      className="w-full px-3 py-2.5 rounded-lg text-sm bg-canvas border border-line text-ink focus:outline-none focus:border-brand-600 tabular-nums"
-                    />
-                    <p className="mt-1 text-[11px] text-ink-secondary">
-                      Định dạng ngày chuẩn: DD/MM/YYYY (từ ngày{' '}
+                        className="w-full pl-3 pr-10 py-2.5 rounded-lg text-sm bg-canvas border border-line text-ink focus:outline-none focus:border-brand-600 tabular-nums font-medium"
+                      />
+
+                      {/* Calendar Picker Trigger with Native Picker Sync */}
+                      <div className="absolute right-2 inset-y-0 flex items-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const picker = nativeDatePickerRef.current as
+                              | (HTMLInputElement & { showPicker?: () => void })
+                              | null;
+                            if (picker && typeof picker.showPicker === 'function') {
+                              try {
+                                picker.showPicker();
+                              } catch {
+                                picker.focus();
+                              }
+                            }
+                          }}
+                          aria-label="Mở lịch chọn ngày"
+                          className="p-1.5 rounded text-ink-secondary hover:text-brand-600 hover:bg-canvas-warm"
+                        >
+                          <Calendar className="w-4 h-4" />
+                        </button>
+                        <input
+                          ref={nativeDatePickerRef}
+                          type="date"
+                          tabIndex={-1}
+                          aria-hidden="true"
+                          min={todayIso}
+                          value={
+                            preferredMoveInDate &&
+                            preferredMoveInDate !== 'INVALID_DATE'
+                              ? preferredMoveInDate
+                              : todayIso
+                          }
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              applyIsoDateSelection(e.target.value);
+                            }
+                          }}
+                          className="sr-only"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Quick Vietnamese Date Presets */}
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                      {[
+                        {
+                          label: `Hôm nay (${formatIsoDateDdMmYyyy(todayIso).slice(0, 5)})`,
+                          iso: todayIso,
+                        },
+                        {
+                          label: `Ngày mai (${formatIsoDateDdMmYyyy(tomorrowIso).slice(0, 5)})`,
+                          iso: tomorrowIso,
+                        },
+                        {
+                          label: `+3 ngày (${formatIsoDateDdMmYyyy(plus3DaysIso).slice(0, 5)})`,
+                          iso: plus3DaysIso,
+                        },
+                      ].map((preset) => {
+                        const isSelected = preferredMoveInDate === preset.iso;
+                        return (
+                          <button
+                            key={preset.iso}
+                            type="button"
+                            onClick={() => applyIsoDateSelection(preset.iso)}
+                            className={`px-2 py-1 rounded text-[11px] font-medium border transition-colors tabular-nums ${
+                              isSelected
+                                ? 'bg-brand-50 text-brand-700 border-brand-200 font-semibold'
+                                : 'bg-canvas text-ink-secondary border-line hover:bg-canvas-warm'
+                            }`}
+                          >
+                            {preset.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <p
+                      id="lead-date-hint"
+                      className="mt-1 text-[11px] text-ink-secondary"
+                    >
+                      Định dạng ngày Việt Nam: DD/MM/YYYY (từ{' '}
                       {formatIsoDateDdMmYyyy(todayIso)} trở đi).
                     </p>
                     {fieldErrors.date && (
-                      <p className="mt-1 text-xs font-medium text-red-700">
+                      <p
+                        id="lead-date-error"
+                        role="alert"
+                        className="mt-1 text-xs font-medium text-red-700"
+                      >
                         {fieldErrors.date}
                       </p>
                     )}
@@ -515,6 +731,10 @@ export const LeadInquiryModal: React.FC<LeadInquiryModalProps> = ({
                             }));
                           }
                         }}
+                        aria-invalid={Boolean(fieldErrors.privacy)}
+                        aria-describedby={
+                          fieldErrors.privacy ? 'lead-privacy-error' : undefined
+                        }
                         className="mt-0.5 w-4 h-4 rounded border-line text-brand-600 focus:ring-brand-600 shrink-0"
                       />
                       <span>
@@ -525,7 +745,11 @@ export const LeadInquiryModal: React.FC<LeadInquiryModalProps> = ({
                       </span>
                     </label>
                     {fieldErrors.privacy && (
-                      <p className="mt-1 text-xs font-medium text-red-700">
+                      <p
+                        id="lead-privacy-error"
+                        role="alert"
+                        className="mt-1 text-xs font-medium text-red-700"
+                      >
                         {fieldErrors.privacy}
                       </p>
                     )}

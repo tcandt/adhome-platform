@@ -1,0 +1,97 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model PublicRoomListing {
+  id                  String   @id
+  orgId               String   @default("org-adhome-anphu") @map("org_id")
+  slug                String   @unique
+  roomCode            String   @map("room_code")
+  shortTitle          String   @map("short_title")
+  title               String
+  roomType            String   @map("room_type")
+  buildingId          String   @map("building_id")
+  buildingCode        String   @map("building_code")
+  buildingName        String   @map("building_name")
+  buildingAddress     String   @map("building_address")
+  floorNumber         Int      @map("floor_number")
+  floorName           String   @map("floor_name")
+  area                Float
+  price               Int
+  currency            String   @default("VND")
+  depositMonths       Int      @default(1) @map("deposit_months")
+  maxOccupants        String   @map("max_occupants")
+  status              String
+  availableFrom       String   @map("available_from")
+  availableFromLabel  String   @map("available_from_label")
+  shortDescription    String   @map("short_description")
+  detailedDescription String   @map("detailed_description")
+  amenities           Json
+  furnishedLevel      String   @map("furnished_level")
+  furnishedLabel      String   @map("furnished_label")
+  images              Json
+  serviceFees         Json     @map("service_fees")
+  featured            Boolean  @default(false)
+  displayOrder        Int      @default(1) @map("display_order")
+  isPublic            Boolean  @default(true) @map("is_public")
+  sourceVerified      Boolean  @default(true) @map("source_verified")
+  currentTenantName   String?  @map("current_tenant_name")
+  currentTenantPhone  String?  @map("current_tenant_phone")
+  internalNotes       String?  @map("internal_notes")
+  version             Int      @default(1)
+  updatedAt           DateTime @updatedAt @map("updated_at")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  @@index([orgId, buildingId])
+  @@index([isPublic, status, displayOrder])
+  @@map("public_room_listings")
+}
+
+model LeadInquiry {
+  id                         String   @id @default(uuid())
+  referenceCode              String   @unique @map("reference_code")
+  orgId                      String   @default("org-adhome-anphu") @map("org_id")
+  roomId                     String?  @map("room_id")
+  roomSlug                   String?  @map("room_slug")
+  roomCode                   String?  @map("room_code")
+  roomTitle                  String?  @map("room_title")
+  fullName                   String   @map("full_name")
+  phone                      String
+  normalizedPhone            String   @map("normalized_phone")
+  inquiryType                String   @map("inquiry_type")
+  preferredMoveInDate        String?  @map("preferred_move_in_date")
+  preferredMoveInDateDisplay String?  @map("preferred_move_in_date_display")
+  note                       String?
+  privacyConsent             Boolean  @map("privacy_consent")
+  status                     String   @default("NEW")
+  dedupeWindowKey            String   @unique @map("dedupe_window_key")
+  createdAt                  DateTime @default(now()) @map("created_at")
+  updatedAt                  DateTime @updatedAt @map("updated_at")
+
+  @@index([normalizedPhone, createdAt])
+  @@index([roomId, createdAt])
+  @@map("lead_inquiries")
+}
+
+model RoomAuditLog {
+  id             String   @id @default(uuid())
+  orgId          String   @map("org_id")
+  buildingId     String   @map("building_id")
+  roomId         String   @map("room_id")
+  roomSlug       String   @map("room_slug")
+  actorUserId    String   @map("actor_user_id")
+  actorRole      String   @map("actor_role")
+  action         String
+  changedFields  Json     @map("changed_fields")
+  previousValues Json     @map("previous_values")
+  newValues      Json     @map("new_values")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([orgId, roomId, createdAt])
+  @@map("room_audit_logs")
+}

@@ -15,8 +15,8 @@
 
 | ID | Quyết định | Mức độ |
 |---|---|---|
-| D-01 | Console tại **`https://console-adhome.ductinh.one`** | MUST |
-| D-02 | Landing Page tại **`https://adhome.ductinh.one`** | MUST |
+| D-01 | Console tại **`https://console-adhome.vn`** | MUST |
+| D-02 | Landing Page tại **`https://adhome.vn`** | MUST |
 | D-03 | Console được xây dựng, kiểm thử và nghiệm thu **trước** Landing Page | MUST |
 | D-04 | Console Vite + React + TypeScript; API NestJS; PostgreSQL + Prisma; Redis/BullMQ cho worker | TARGET |
 | D-05 | Không dùng Docker, Docker Compose, container image hay chạy DB/Redis trong container | MUST |
@@ -24,7 +24,7 @@
 | D-07 | Một workspace hiển thị tất cả tòa nhà/phòng trong cùng tổ chức; không bắt chuyển console | MUST |
 | D-08 | Cùng một trang login, role/permission được backend xác định từ user/session | MUST |
 | D-09 | Admin có toàn quyền trong tổ chức; Manager chỉ có quyền mặc định giới hạn, cấu hình được | MUST |
-| D-10 | API công khai tại **`https://console-adhome.ductinh.one/api/v1`** bằng reverse proxy same-origin | TARGET |
+| D-10 | API công khai tại **`https://console-adhome.vn/api/v1`** bằng reverse proxy same-origin | TARGET |
 | D-11 | Cron, đồng bộ Hunonic, hóa đơn, thông báo và đối soát chạy tách khỏi HTTP API process | MUST |
 | D-12 | Mọi nghiệp vụ tài chính idempotent, transaction-safe, immutable audit trail | MUST |
 | D-13 | Mục tiêu phục vụ 1.000 phiên đồng thời là **điều kiện kiểm thử**, không phải tính năng được mặc nhiên đảm bảo | MUST |
@@ -89,10 +89,10 @@ Người dùng có thể đăng nhập, tự nhận đúng vai trò, xem tòa nh
 
 | Public hostname | Cổng origin đề xuất | Chức năng | Quy tắc |
 |---|---|---|---|
-| `adhome.ductinh.one` | `127.0.0.1:8081` (Nginx) | Landing Page | Public, SEO, assets cache dài hạn |
-| `console-adhome.ductinh.one` | `127.0.0.1:8080` (Nginx) | Console + API same-origin | Protected pages no-store, assets immutable |
+| `adhome.vn` | `127.0.0.1:8081` (Nginx) | Landing Page | Public, SEO, assets cache dài hạn |
+| `console-adhome.vn` | `127.0.0.1:8080` (Nginx) | Console + API same-origin | Protected pages no-store, assets immutable |
 
-**Không tạo public `api-adhome.ductinh.one` chỉ vì có API.** Backend nghe nội bộ `127.0.0.1:3001`, frontend gọi relative URL `/api/v1`. Nếu một bên thứ ba yêu cầu webhook riêng, sử dụng `https://console-adhome.ductinh.one/api/v1/webhooks/{provider}` với xác thực webhook riêng và WAF phù hợp. Việc tách domain API về sau cần ADR.
+**Không tạo public `api-adhome.vn` chỉ vì có API.** Backend nghe nội bộ `127.0.0.1:3001`, frontend gọi relative URL `/api/v1`. Nếu một bên thứ ba yêu cầu webhook riêng, sử dụng `https://console-adhome.vn/api/v1/webhooks/{provider}` với xác thực webhook riêng và WAF phù hợp. Việc tách domain API về sau cần ADR.
 
 ## 2.2. Login / auth flows
 
@@ -138,10 +138,10 @@ Người dùng có thể đăng nhập, tự nhận đúng vai trò, xem tòa nh
 
 ## 2.5. Routing Nginx / Cloudflare nguyên tắc
 
-- `console-adhome.ductinh.one/api/v1/*` → Nginx reverse proxy → NestJS 127.0.0.1:3001.
-- `console-adhome.ductinh.one/assets/*` → Vite static build có hash, cache dài hạn.
-- `console-adhome.ductinh.one/*` → `index.html` fallback SPA **sau** các quy tắc API/static.
-- `adhome.ductinh.one/*` → Landing static/prerender build, xử lý route SEO theo manifest.
+- `console-adhome.vn/api/v1/*` → Nginx reverse proxy → NestJS 127.0.0.1:3001.
+- `console-adhome.vn/assets/*` → Vite static build có hash, cache dài hạn.
+- `console-adhome.vn/*` → `index.html` fallback SPA **sau** các quy tắc API/static.
+- `adhome.vn/*` → Landing static/prerender build, xử lý route SEO theo manifest.
 - Cloudflare Tunnel chỉ route hai hostnames về 127.0.0.1:8080/8081, fallback 404.
 - API/session/HTML người dùng: cache-control `private, no-store`; không lưu private data tại CDN.
 - Không suy ra tunnel/DNS đã hoạt động: chạy DNS lookup, kiểm tra hostname và health check trước khi đánh dấu PASS.
@@ -181,7 +181,7 @@ Bắt đầu sau khi Console đạt baseline dùng được và quy trình core 
 - `console-beta`: contract/deposit, billing, Hunonic, payment sandbox/test.
 - `console-rc`: reconciliation, report, settings, hardening, e2e.
 - `console-ga`: production gate + restore/recovery evidence + load test.
-- `landing-ga`: xuất bản `adhome.ductinh.one` sau khi Console phù hợp để giới thiệu.
+- `landing-ga`: xuất bản `adhome.vn` sau khi Console phù hợp để giới thiệu.
 
 Tất cả trạng thái trên là **milestone dự kiến**, chưa thực hiện.
 
@@ -1346,8 +1346,8 @@ VITE_API_BASE_PATH=/api/v1
 
 # Server-only
 APP_ENV=development
-APP_PUBLIC_URL=https://console-adhome.ductinh.one
-LANDING_PUBLIC_URL=https://adhome.ductinh.one
+APP_PUBLIC_URL=https://console-adhome.vn
+LANDING_PUBLIC_URL=https://adhome.vn
 API_HOST=127.0.0.1
 API_PORT=3001
 DATABASE_URL=<secret_postgresql_connection_url>
@@ -1420,7 +1420,7 @@ Deploy theo release folder + atomic symlink khi cần, giữ release trước đ
 ```nginx
 server {
     listen 127.0.0.1:8080;
-    server_name console-adhome.ductinh.one;
+    server_name console-adhome.vn;
     root /var/www/adhome/console/current;
     index index.html;
 
@@ -1463,7 +1463,7 @@ server {
 ```nginx
 server {
     listen 127.0.0.1:8081;
-    server_name adhome.ductinh.one;
+    server_name adhome.vn;
     root /var/www/adhome/landing/current;
     index index.html;
 
@@ -1533,16 +1533,16 @@ tunnel: <EXISTING_TUNNEL_UUID>
 credentials-file: /path/to/authorized/tunnel-credentials.json
 ingress:
   # ... các hostnames đang sử dụng, phải giữ lại ...
-  - hostname: console-adhome.ductinh.one
+  - hostname: console-adhome.vn
     service: http://127.0.0.1:8080
-  - hostname: adhome.ductinh.one
+  - hostname: adhome.vn
     service: http://127.0.0.1:8081
   - service: http_status:404
 ```
 
 **Nếu tunnel remotely-managed**, cấu hình Published Application hostnames trong Cloudflare Zero Trust Dashboard thay vì sửa `config.yml` không được service dùng. Không tự tạo tunnel khác khi chưa audit existing.
 
-**DNS:** Thêm hai public hostnames route vào Tunnel bằng dashboard hoặc `cloudflared tunnel route dns` theo credential/permission phù hợp. Chưa xác minh domain `ductinh.one` đã có zone/tunnel routing cho hai hostnames mới.
+**DNS:** Thêm hai public hostnames route vào Tunnel bằng dashboard hoặc `cloudflared tunnel route dns` theo credential/permission phù hợp. Chưa xác minh domain `adhome.vn` đã có zone/tunnel routing cho hai hostnames mới.
 
 ### Verify checklist
 
@@ -1550,11 +1550,11 @@ ingress:
 # Chỉ là lệnh kiểm tra; không tự ghi DNS.
 cloudflared tunnel list
 sudo systemctl status cloudflared
-curl -I -H 'Host: console-adhome.ductinh.one' http://127.0.0.1:8080/
-curl -I -H 'Host: adhome.ductinh.one' http://127.0.0.1:8081/
+curl -I -H 'Host: console-adhome.vn' http://127.0.0.1:8080/
+curl -I -H 'Host: adhome.vn' http://127.0.0.1:8081/
 # Sau khi DNS/tunnel được cấu hình hợp lệ:
-curl -I https://console-adhome.ductinh.one/login
-curl -I https://adhome.ductinh.one/
+curl -I https://console-adhome.vn/login
+curl -I https://adhome.vn/
 ```
 
 Console cần test login/logout, redirect, deep link, API reverse proxy, session cookie và access permissions thực tế qua public hostname **trước khi release**.
@@ -1573,7 +1573,7 @@ Console cần test login/logout, redirect, deep link, API reverse proxy, session
 
 ## 18.1. Domain + pages
 
-Public: `https://adhome.ductinh.one`.
+Public: `https://adhome.vn`.
 
 | Route | Nội dung |
 |---|---|
@@ -1585,7 +1585,7 @@ Public: `https://adhome.ductinh.one`.
 | `/dieu-khoan` | Terms |
 | `/bao-mat` | Privacy |
 
-CTA Đăng nhập → `https://console-adhome.ductinh.one/login`. Không tạo Landing session nếu không có mục tiêu nghiệp vụ chính đáng.
+CTA Đăng nhập → `https://console-adhome.vn/login`. Không tạo Landing session nếu không có mục tiêu nghiệp vụ chính đáng.
 
 ## 18.2. Vite SSR/prerender strategy
 
@@ -1802,7 +1802,7 @@ Một feature chỉ PASS khi: (a) giao diện đúng Desktop + Mobile nếu là 
 
 - [ ] Build production Vite assets; smoke locally.
 - [ ] Nginx/systemd configs verified, log paths/permissions.
-- [ ] Cloudflare hostname `console-adhome.ductinh.one` + DNS reviewed.
+- [ ] Cloudflare hostname `console-adhome.vn` + DNS reviewed.
 - [ ] Session cookies/security/headers deep-link/API route verified.
 - [ ] Dedicated production admin onboarding; default bootstrap disabled.
 - [ ] Operator approval before go-live, release/rollback documentation.
@@ -1822,7 +1822,7 @@ Một feature chỉ PASS khi: (a) giao diện đúng Desktop + Mobile nếu là 
 ## L03 — Landing Release (P1)
 
 - [ ] Mobile/desktop visual QA, SEO metadata, accessibility, Web Vitals.
-- [ ] Nginx/Tunnel `adhome.ductinh.one` verified after approval.
+- [ ] Nginx/Tunnel `adhome.vn` verified after approval.
 
 **L01–L03:** Theo đúng yêu cầu Console first; không thay đổi thứ tự vì Landing dễ làm hơn.
 
@@ -1927,8 +1927,8 @@ ROLE: Principal Architect + Senior Fullstack + UI/UX + QA + DevOps for AdHome V2
 Read BLUEPRINT.md in full; treat Decision D-01..D-16 and all MUST rules as non-negotiable.
 
 IMPORTANT OVERRIDES:
-1) FIRST BUILD CONSOLE (https://console-adhome.ductinh.one), NOT LANDING.
-2) LANDING URL is https://adhome.ductinh.one, implemented after console baseline.
+1) FIRST BUILD CONSOLE (https://console-adhome.vn), NOT LANDING.
+2) LANDING URL is https://adhome.vn, implemented after console baseline.
 3) NO DOCKER, DOCKER COMPOSE OR CONTAINER-BASED DEV/DEPLOYMENT.
 4) Use Vite React TypeScript for Console, desktop and mobile presentations as separate implementations.
 5) ONE LOGIN; Admin/Manager permissions derived from backend session, never from email or client route.
@@ -1952,7 +1952,7 @@ Do not generate a mock-only application and claim it is feature complete. Apply 
 
 | Version | Date | Changes |
 |---|---|---|
-| 1.0 | 28/10/2026 | Console-first; domains `console-adhome.ductinh.one` và `adhome.ductinh.one`; native non-Docker architecture; Admin bootstrap; RBAC; separate Desktop/Mobile; 14 Console milestones + 3 Landing milestones; financial, billing, payment and Hunonic invariants; deployment and tests. |
+| 1.0 | 28/10/2026 | Console-first; domains `console-adhome.vn` và `adhome.vn`; native non-Docker architecture; Admin bootstrap; RBAC; separate Desktop/Mobile; 14 Console milestones + 3 Landing milestones; financial, billing, payment and Hunonic invariants; deployment and tests. |
 
 ---
 

@@ -1,0 +1,128 @@
+{
+  "executedAt": "2026-10-29T08:52:41.563Z",
+  "total": 20,
+  "passed": 20,
+  "failed": 0,
+  "results": [
+    {
+      "id": "SEC-01",
+      "name": "Reject unauthenticated PATCH /api/v1/public/rooms/:slug",
+      "status": "PASS",
+      "details": "HTTP 405 (PUBLIC_WRITE_FORBIDDEN)"
+    },
+    {
+      "id": "SEC-02",
+      "name": "Reject POST & DELETE on /api/v1/public/rooms*",
+      "status": "PASS",
+      "details": "POST=405, DELETE=405"
+    },
+    {
+      "id": "SEC-03",
+      "name": "Reject unauthenticated GET /api/v1/public/inquiries (Protect Lead PII)",
+      "status": "PASS",
+      "details": "HTTP 405"
+    },
+    {
+      "id": "SEC-04",
+      "name": "Reject unauthenticated PATCH /api/v1/console/rooms/:slug with 401",
+      "status": "PASS",
+      "details": "HTTP 401 (UNAUTHORIZED)"
+    },
+    {
+      "id": "SEC-05",
+      "name": "Reject forged Bearer token with invalid HMAC signature (401)",
+      "status": "PASS",
+      "details": "HTTP 401 (INVALID_SIGNATURE)"
+    },
+    {
+      "id": "SEC-06",
+      "name": "Reject under-privileged VIEWER role without rooms.publish.write (403)",
+      "status": "PASS",
+      "details": "HTTP 403 (INSUFFICIENT_PERMISSION)"
+    },
+    {
+      "id": "SEC-07",
+      "name": "Reject Cross-Tenant ADMIN attempting to modify AdHome room (403)",
+      "status": "PASS",
+      "details": "HTTP 403 (CROSS_TENANT_FORBIDDEN)"
+    },
+    {
+      "id": "SEC-08",
+      "name": "Reject Manager scoped to LK01-31 attempting to modify LK08-25 room (403)",
+      "status": "PASS",
+      "details": "HTTP 403 (BUILDING_SCOPE_FORBIDDEN)"
+    },
+    {
+      "id": "SEC-09",
+      "name": "Public API strictly projects public fields and leaks 0 tenant PII fields",
+      "status": "PASS",
+      "details": "DB private rows=5, leaked fields in API=0"
+    },
+    {
+      "id": "SEC-10",
+      "name": "Rate limiter blocks burst requests with HTTP 429 + Retry-After header",
+      "status": "PASS",
+      "details": "got429=true, Retry-After=60s"
+    },
+    {
+      "id": "DB-01a",
+      "name": "Authorized Manager updates LK01-31 room in PostgreSQL + writes AuditLog + syncs SEO HTML",
+      "status": "PASS",
+      "details": "status=200, price=5150000, auditLogId=bc390354-75cf-4cb2-b759-2a62efb120df, seoSynced=true, detail="
+    },
+    {
+      "id": "DB-01b",
+      "name": "Restore room price to 5.000.000đ and verify prerendered HTML updates immediately",
+      "status": "PASS",
+      "details": "Restored 5.000.000đ in PostgreSQL and dist/phong/:slug/index.html"
+    },
+    {
+      "id": "DB-02",
+      "name": "10 concurrent identical POST /api/v1/public/inquiries commit exactly 1 row in PostgreSQL",
+      "status": "PASS",
+      "details": "201 Created=1, 409 Conflict=9, PostgreSQL rows=1, ref=ADH-0103-7EBB"
+    },
+    {
+      "id": "UX-01",
+      "name": "Room with past availableFrom date displays \"Có thể vào ở ngay\" instead of past date",
+      "status": "PASS",
+      "details": "Displayed: \"Có thể vào ở ngay\""
+    },
+    {
+      "id": "UX-02",
+      "name": "Mobile 390x844 Hero is compact so \"Phòng đang trống\" appears above the first fold (< 844px) and Header has no duplicate CTA",
+      "status": "PASS",
+      "details": "heroHeight=477px, availableSectionTop=542px (viewport=844px), headerControls=2"
+    },
+    {
+      "id": "UX-03",
+      "name": "Quick View Modal is a concise summary (4 specs, \"Có thể vào ở ngay\", no long fee tables)",
+      "status": "PASS",
+      "details": "{\"specCount\":4,\"availLabel\":\"Có thể vào ở ngay\",\"hasLongServiceFeeTable\":false}"
+    },
+    {
+      "id": "UX-04",
+      "name": "Mobile Room Detail places Price, \"Có thể vào ở ngay\" & Primary CTA immediately below photo album within first screen (< 844px) + Sticky Bottom Bar",
+      "status": "PASS",
+      "details": "topCtaBottomY=705px, stickyBar=true, avail=\"Có thể vào ở ngay\""
+    },
+    {
+      "id": "UX-05",
+      "name": "LeadInquiryModal date input displays DD/MM/YYYY natively inside input box even under US headless browser locale",
+      "status": "PASS",
+      "details": "input.value=\"29/10/2026\", badge=\"29/10/2026\""
+    },
+    {
+      "id": "A11Y-01",
+      "name": "Keyboard Tab focus stays strictly trapped inside open modal",
+      "status": "PASS",
+      "details": "focusInsideModal=true"
+    },
+    {
+      "id": "CWV-01",
+      "name": "Throttled Core Web Vitals (4G + 4x CPU Slowdown) meet production targets (LCP < 2500ms, INP < 200ms, CLS < 0.1)",
+      "status": "PASS",
+      "details": "LCP=320ms, INP=0ms, CLS=0.0000"
+    }
+  ]
+}

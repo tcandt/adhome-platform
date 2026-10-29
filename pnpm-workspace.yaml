@@ -2,10 +2,16 @@ packages:
   - 'apps/*'
   - 'packages/*'
 allowBuilds:
-  esbuild: set this to true or false
+  esbuild: true
+  prisma: true
+  '@prisma/client': true
+  '@prisma/engines': true
 minimumReleaseAgeExclude:
   - framer-motion@14.7.1
   - lucide-react@1.63.0
   - motion-dom@14.7.1
   - motion-utils@14.7.0
   - motion@14.7.1
+  - '@prisma/client'
+  - prisma
+  - '@prisma/engines'

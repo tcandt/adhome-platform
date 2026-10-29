@@ -1,7 +1,7 @@
 import { RoomListing } from '../types/room';
 import { formatVndPrice } from './roomService';
 
-const SITE_ORIGIN = 'https://adhome.ductinh.one';
+const SITE_ORIGIN = 'https://adhome.vn';
 
 interface SeoMetaConfig {
   title: string;
@@ -23,11 +23,10 @@ export function applyPageSeo(config: SeoMetaConfig): void {
   if (typeof document === 'undefined') return;
 
   document.title = config.title;
-  const canonicalUrl = `${SITE_ORIGIN}${
-    config.canonicalPath.startsWith('/')
+  const canonicalUrl = `${SITE_ORIGIN}${config.canonicalPath.startsWith('/')
       ? config.canonicalPath
       : '/' + config.canonicalPath
-  }`;
+    }`;
   const ogImageUrl = config.ogImage?.startsWith('http')
     ? config.ogImage
     : `${SITE_ORIGIN}${config.ogImage || '/images/rooms/hero-studio-balcony.webp'}`;
@@ -107,8 +106,8 @@ export function getRoomDetailSeoConfig(room: RoomListing): SeoMetaConfig {
       numberOfRooms: room.roomType.includes('2PN')
         ? 2
         : room.roomType.includes('1')
-        ? 1
-        : 1,
+          ? 1
+          : 1,
       address: {
         '@type': 'PostalAddress',
         streetAddress: `${room.buildingName}, Khu đô thị Ân Phú`,
@@ -128,3 +127,4 @@ export function getRoomDetailSeoConfig(room: RoomListing): SeoMetaConfig {
     },
   };
 }
+

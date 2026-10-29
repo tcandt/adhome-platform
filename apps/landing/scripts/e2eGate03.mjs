@@ -66,9 +66,8 @@ class CdpClient {
     });
     if (res.exceptionDetails) {
       throw new Error(
-        `Eval error: ${
-          res.exceptionDetails.exception?.description ||
-          res.exceptionDetails.text
+        `Eval error: ${res.exceptionDetails.exception?.description ||
+        res.exceptionDetails.text
         }`
       );
     }
@@ -241,15 +240,15 @@ async function runSuite() {
     recordAssertion(
       'Home Page 6 Unique Featured Room Card Covers & Zero Hero Image Duplication',
       perfAndA11y.roomCardsDisplayed === 6 &&
-        perfAndA11y.uniqueCardImgs === 6 &&
-        perfAndA11y.heroInCards === false,
+      perfAndA11y.uniqueCardImgs === 6 &&
+      perfAndA11y.heroInCards === false,
       `Displayed=${perfAndA11y.roomCardsDisplayed}, UniqueCovers=${perfAndA11y.uniqueCardImgs}, HeroDuplicated=${perfAndA11y.heroInCards}`
     );
 
     recordAssertion(
       'Image Optimization (WebP + 100% Alt Attributes)',
       perfAndA11y.missingAlt === 0 &&
-        perfAndA11y.webpOrSvgCount === perfAndA11y.totalImages,
+      perfAndA11y.webpOrSvgCount === perfAndA11y.totalImages,
       `Total=${perfAndA11y.totalImages}, WebP/SVG=${perfAndA11y.webpOrSvgCount}, MissingAlt=${perfAndA11y.missingAlt}`
     );
 
@@ -279,8 +278,8 @@ async function runSuite() {
 
     recordAssertion(
       'Dedicated Catalog Route (/phong-trong) & Canonical Metadata',
-      catalogMeta.canonical === 'https://adhome.ductinh.one/phong-trong' &&
-        catalogMeta.cardCount === 6,
+      catalogMeta.canonical === 'https://adhome.vn/phong-trong' &&
+      catalogMeta.cardCount === 6,
       `Canonical=${catalogMeta.canonical}, Page1Cards=${catalogMeta.cardCount}`
     );
     await client.screenshot('gate03_1440_phong_trong.png', false);
@@ -306,9 +305,9 @@ async function runSuite() {
     recordAssertion(
       'Shareable Room Detail Route (/phong/:slug) SEO, Album & Schema.org Apartment JSON-LD',
       roomDetailCheck.canonical ===
-        `https://adhome.ductinh.one/phong/${targetSlug}` &&
-        roomDetailCheck.albumCount === 3 &&
-        roomDetailCheck.hasJsonLdApartment === true,
+      `https://adhome.vn/phong/${targetSlug}` &&
+      roomDetailCheck.albumCount === 3 &&
+      roomDetailCheck.hasJsonLdApartment === true,
       `Title="${roomDetailCheck.title}", Canonical=${roomDetailCheck.canonical}, AlbumThumbnails=${roomDetailCheck.albumCount}`
     );
     await client.screenshot('gate03_1440_room_detail.png', false);
@@ -348,7 +347,7 @@ async function runSuite() {
     recordAssertion(
       'Lead Form Auto-Detects Room ID (P.31-06 / rm-31-06) & Formats Date as DD/MM/YYYY',
       modalInitialCheck.roomCtx.includes('P.31-06') &&
-        /^\d{2}\/\d{2}\/\d{4}$/.test(modalInitialCheck.dateBadge.trim()),
+      /^\d{2}\/\d{2}\/\d{4}$/.test(modalInitialCheck.dateBadge.trim()),
       `RoomContext="${modalInitialCheck.roomCtx}", DateDisplay="${modalInitialCheck.dateBadge}"`
     );
 
@@ -373,7 +372,7 @@ async function runSuite() {
     recordAssertion(
       'Lead Form Rejects Invalid Vietnamese Phone & Past Move-In Date',
       validationErrorsText.includes('Số điện thoại chưa hợp lệ') &&
-        validationErrorsText.includes('không được chọn trong quá khứ'),
+      validationErrorsText.includes('không được chọn trong quá khứ'),
       'Both phone and past-date validation errors displayed accurately'
     );
     await client.screenshot('gate03_lead_validation_error.png', false);
@@ -390,7 +389,7 @@ async function runSuite() {
     recordAssertion(
       'LIVE MODE API Failure Does Not Fallback to Seed Data',
       apiErrorPageText.includes('Không thể kết nối tới hệ thống dữ liệu phòng công khai') &&
-        !apiErrorPageText.includes('Studio Ban Công Đón Sáng Tự Nhiên'),
+      !apiErrorPageText.includes('Studio Ban Công Đón Sáng Tự Nhiên'),
       'Explicit error displayed, zero seed rooms leaked'
     );
 
@@ -424,7 +423,7 @@ async function runSuite() {
     recordAssertion(
       'Demo Mode Lead Submission Never Fakes Success (Warns Unsaved)',
       demoUnsavedBanner.includes('Chưa lưu được yêu cầu trực tuyến') &&
-        demoUnsavedBanner.includes('CHƯA được lưu vào hệ thống'),
+      demoUnsavedBanner.includes('CHƯA được lưu vào hệ thống'),
       `Banner="${demoUnsavedBanner.slice(0, 110)}..."`
     );
     await client.screenshot('gate03_lead_unsaved_error.png', false);
@@ -464,10 +463,10 @@ async function runSuite() {
     recordAssertion(
       'Live Mode Lead Submission Persists to Backend Store & Displays Reference Code',
       liveSuccessText.includes('Đã lưu yêu cầu của Lê Hoàng Nam vào hệ thống') &&
-        liveSuccessText.includes('ADH-0101') &&
-        persistedInquiries.length === 1 &&
-        persistedInquiries[0].roomId === 'rm-31-06' &&
-        persistedInquiries[0].roomCode === 'P.31-06',
+      liveSuccessText.includes('ADH-0101') &&
+      persistedInquiries.length === 1 &&
+      persistedInquiries[0].roomId === 'rm-31-06' &&
+      persistedInquiries[0].roomCode === 'P.31-06',
       `SavedCount=${persistedInquiries.length}, Ref=${persistedInquiries[0]?.referenceCode}, RoomId=${persistedInquiries[0]?.roomId}`
     );
     await client.screenshot('gate03_lead_success.png', false);
@@ -544,8 +543,8 @@ async function runSuite() {
     recordAssertion(
       'Mobile 390x844 Full-Screen Quick View Sheet & Body Scroll Lock',
       sheetCheck390.bodyOverflow === 'hidden' &&
-        sheetCheck390.sheetWidth === 390 &&
-        sheetCheck390.sheetHeight === 844,
+      sheetCheck390.sheetWidth === 390 &&
+      sheetCheck390.sheetHeight === 844,
       `Overflow=${sheetCheck390.bodyOverflow}, Sheet=${sheetCheck390.sheetWidth}x${sheetCheck390.sheetHeight}`
     );
     await client.screenshot('gate03_390x844_quickview_sheet.png', false);
@@ -573,11 +572,11 @@ async function runSuite() {
 | # | Kiểm thử nghiệm thu (Gate 03) | Trạng thái | Chi tiết xác minh |
 | :- | :--- | :--- | :--- |
 ${results
-  .map(
-    (r, idx) =>
-      `| ${idx + 1} | **${r.name}** | PASS | \`${r.detail}\` |`
-  )
-  .join('\n')}
+        .map(
+          (r, idx) =>
+            `| ${idx + 1} | **${r.name}** | PASS | \`${r.detail}\` |`
+        )
+        .join('\n')}
 
 ## 2. Core Web Vitals & Performance Metrics (Production Build \`${BASE_URL}\`)
 

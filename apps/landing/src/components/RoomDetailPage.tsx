@@ -649,7 +649,7 @@ export const RoomDetailPage: React.FC<RoomDetailPageProps> = ({
         data-testid="mobile-sticky-cta-bar"
         data-sticky-visible={showStickyCta ? 'true' : 'false'}
         aria-hidden={!showStickyCta}
-        className={`lg:hidden fixed bottom-0 inset-x-0 z-30 bg-canvas-pure/95 border-t border-line px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] items-center justify-between gap-3 shadow-modal transition-transform duration-200 ${
+        className={`lg:hidden fixed bottom-0 inset-x-0 z-30 bg-canvas-pure border-t border-line px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] items-center justify-between gap-3 shadow-modal transition-transform duration-200 ${
           showStickyCta
             ? 'flex translate-y-0'
             : 'hidden translate-y-full pointer-events-none'

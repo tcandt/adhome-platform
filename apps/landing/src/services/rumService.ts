@@ -121,15 +121,50 @@ export function initRealUserMonitoring(): void {
     // Unsupported observer type
   }
 
-  // 2. Observe CLS
+  // 2. Observe CLS with official Google Web Vitals Session Windowing
   try {
+    let sessionValue = 0;
+    let sessionEntries: Array<
+      PerformanceEntry & { hadRecentInput?: boolean; value?: number; startTime: number }
+    > = [];
+
     const clsObs = new PerformanceObserver((list) => {
       for (const entry of list.getEntries() as Array<
-        PerformanceEntry & { hadRecentInput?: boolean; value?: number }
+        PerformanceEntry & { hadRecentInput?: boolean; value?: number; startTime: number }
       >) {
+        // Only count layout shifts without recent user input (Google spec: hadRecentInput must be false)
         if (!entry.hadRecentInput && typeof entry.value === 'number') {
-          state.clsScore =
-            Math.round((state.clsScore + entry.value) * 10000) / 10000;
+          const firstSessionEntry = sessionEntries[0];
+          const lastSessionEntry = sessionEntries[sessionEntries.length - 1];
+
+          // If entry is < 1s after last entry and < 5s after first entry in session, group in session window
+          if (
+            sessionValue &&
+            entry.startTime - lastSessionEntry.startTime < 1000 &&
+            entry.startTime - firstSessionEntry.startTime < 5000
+          ) {
+            sessionValue += entry.value;
+            sessionEntries.push(entry);
+          } else {
+            sessionValue = entry.value;
+            sessionEntries = [entry];
+          }
+
+          // CLS score is the maximum session window value (not cumulative sum across unbounded lifetime)
+          if (sessionValue > state.clsScore) {
+            state.clsScore = Math.round(sessionValue * 10000) / 10000;
+            sendRumBeacon({
+              metricName: 'CLS',
+              value: state.clsScore,
+              rating:
+                state.clsScore <= 0.1
+                  ? 'good'
+                  : state.clsScore <= 0.25
+                  ? 'needs-improvement'
+                  : 'poor',
+              route: window.location.pathname,
+            });
+          }
         }
       }
     });

@@ -450,6 +450,41 @@ async function runSecuritySeoAndDomainAudit() {
     typeof contextData.clientIp === 'string' &&
     Array.isArray(contextData.trustedProxiesConfigured);
 
+  // 1d-1. Inactive sample actor login blocked (401 ACCOUNT_DEACTIVATED)
+  const sampleLoginRes = await fetch(`${BASE_URL}/api/v1/console/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: 'admin@adhome.vn', password: 'AdHome@Secure2026!' }),
+  });
+  const sampleLoginBody = await sampleLoginRes.json();
+  const inactiveSampleActorLoginBlocked401 =
+    sampleLoginRes.status === 401 && sampleLoginBody.errorCode === 'ACCOUNT_DEACTIVATED';
+
+  // 1d-2. Authentic Production Admin Login E2E with Credentials
+  const prodLoginRes = await fetch(`${BASE_URL}/api/v1/console/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email: 'admin@adhome.ductinh.one',
+      password: process.env.ADHOME_ADMIN_PASSWORD || 'AdHome@Secure2026!',
+    }),
+  });
+  const prodLoginBody = await prodLoginRes.json();
+  const productionAdminLoginE2E =
+    prodLoginRes.status === 200 &&
+    prodLoginBody.ok === true &&
+    typeof prodLoginBody.token === 'string' &&
+    prodLoginBody.actor?.id === 'usr-admin-prod' &&
+    prodLoginBody.actor?.role === 'ADMIN' &&
+    prodLoginBody.redirectTo === 'https://console-adhome.ductinh.one/dashboard';
+
+  // 1d-3. Verify the issued token from real login is authorized on protected endpoints
+  const loginTokenContextRes = await fetch(`${BASE_URL}/api/v1/console/security/context`, {
+    headers: { Authorization: `Bearer ${prodLoginBody.token}` },
+  });
+  const productionAdminTokenAuthorized =
+    loginTokenContextRes.status === 200 && contextRes.status === 200;
+
   // Verify that dev sample actors are deactivated and strictly rejected (401)
   const { token: inactiveSampleToken } = signToken({
     sub: 'usr-admin-01',
@@ -463,7 +498,7 @@ async function runSecuritySeoAndDomainAudit() {
   });
   const inactiveSampleActorBlocked401 = inactiveSampleRes.status === 401;
 
-  // 1d. Sample Actor Production Audit Verification
+  // 1d-4. Sample Actor Production Audit Verification
   const auditReport = await auditAndSanitizeProductionDb({ deactivateSampleActors: true });
   const sampleActorsAudited =
     auditReport.actors.sampleDevActorsCount === 4 &&
@@ -808,7 +843,9 @@ async function runSecuritySeoAndDomainAudit() {
     trustProxyConfigValid,
     sampleActorsAudited,
     inactiveSampleActorBlocked401,
-    authenticProdAdminLoginWorks: contextRes.status === 200,
+    inactiveSampleActorLoginBlocked401,
+    productionAdminTokenAuthorized,
+    productionAdminLoginE2E,
     publicSecurityContextBlocked,
     publicRoomsWriteBlocked,
     rateLimitingEnforced429: rateLimitHit429 && bypassHeaderIneffective,
@@ -1268,18 +1305,23 @@ export async function runFullRC1Verification() {
           roomDetailHeadAudit.canonical ===
           `${CANONICAL_ORIGIN}/phong/studio-ban-cong-31-06-lk01-31-an-phu`,
         ogUrlCanonical: homeHeadAudit.ogUrl === `${CANONICAL_ORIGIN}/`,
-        ogImageCanonical: homeHeadAudit.ogImage?.startsWith(CANONICAL_ORIGIN),
+        ogImageCanonical: Boolean(homeHeadAudit.ogImage?.startsWith(CANONICAL_ORIGIN)),
         footerConsoleLink: homeHeadAudit.footerConsoleLink === CONSOLE_ORIGIN,
         introConsoleLink: homeHeadAudit.introConsoleLink === CONSOLE_ORIGIN,
-        robotsTxtCanonicalSitemap: securityAndSeoReport.domainAudit.robotsSitemapLine,
-        sitemapCanonicalUrls: securityAndSeoReport.domainAudit.sitemapHasCanonicalOrigin,
-        sitemapZeroOldDomainOccurrences: securityAndSeoReport.domainAudit.sitemapHasZeroOldDomains,
+        robotsTxtCanonicalSitemap: Boolean(securityAndSeoReport.domainAudit.robotsSitemapLine),
+        sitemapCanonicalUrls: Boolean(securityAndSeoReport.domainAudit.sitemapHasCanonicalOrigin),
+        sitemapZeroOldDomainOccurrences: Boolean(securityAndSeoReport.domainAudit.sitemapHasZeroOldDomains),
         pass:
           homeHeadAudit.canonical === `${CANONICAL_ORIGIN}/` &&
           roomDetailHeadAudit.canonical ===
             `${CANONICAL_ORIGIN}/phong/studio-ban-cong-31-06-lk01-31-an-phu` &&
+          homeHeadAudit.ogUrl === `${CANONICAL_ORIGIN}/` &&
+          Boolean(homeHeadAudit.ogImage?.startsWith(CANONICAL_ORIGIN)) &&
           homeHeadAudit.footerConsoleLink === CONSOLE_ORIGIN &&
-          securityAndSeoReport.domainAudit.sitemapHasZeroOldDomains,
+          homeHeadAudit.introConsoleLink === CONSOLE_ORIGIN &&
+          Boolean(securityAndSeoReport.domainAudit.robotsSitemapLine) &&
+          Boolean(securityAndSeoReport.domainAudit.sitemapHasCanonicalOrigin) &&
+          Boolean(securityAndSeoReport.domainAudit.sitemapHasZeroOldDomains),
       },
       rc03_backendSecurityAndRbac: {
         bootSecurityAssertPass: securityAndSeoReport.bootSecurityPass,
@@ -1288,7 +1330,9 @@ export async function runFullRC1Verification() {
         publicSecurityContextBlocked: securityAndSeoReport.publicSecurityContextBlocked,
         sampleActorsAudited: securityAndSeoReport.sampleActorsAudited,
         inactiveSampleActorBlocked401: securityAndSeoReport.inactiveSampleActorBlocked401,
-        authenticProdAdminLoginWorks: securityAndSeoReport.authenticProdAdminLoginWorks,
+        inactiveSampleActorLoginBlocked401: securityAndSeoReport.inactiveSampleActorLoginBlocked401,
+        productionAdminTokenAuthorized: securityAndSeoReport.productionAdminTokenAuthorized,
+        productionAdminLoginE2E: securityAndSeoReport.productionAdminLoginE2E,
         publicRoomsWriteBlocked405: securityAndSeoReport.publicRoomsWriteBlocked,
         rateLimitingEnforced429: securityAndSeoReport.rateLimitingEnforced429,
         unauthenticatedConsoleBlocked401: securityAndSeoReport.unauthenticatedConsoleAccessBlocked,
@@ -1306,7 +1350,9 @@ export async function runFullRC1Verification() {
           securityAndSeoReport.publicSecurityContextBlocked &&
           securityAndSeoReport.sampleActorsAudited &&
           securityAndSeoReport.inactiveSampleActorBlocked401 &&
-          securityAndSeoReport.authenticProdAdminLoginWorks &&
+          securityAndSeoReport.inactiveSampleActorLoginBlocked401 &&
+          securityAndSeoReport.productionAdminTokenAuthorized &&
+          securityAndSeoReport.productionAdminLoginE2E &&
           securityAndSeoReport.publicRoomsWriteBlocked &&
           securityAndSeoReport.rateLimitingEnforced429 &&
           securityAndSeoReport.unauthenticatedConsoleAccessBlocked &&
@@ -1350,12 +1396,22 @@ export async function runFullRC1Verification() {
           securityAndSeoReport.unpublishedRoom404AndNoindex,
       },
       rc06_coreWebVitals: {
+        lcpMs: roomDetailRum.lcpMs,
+        clsScore: roomDetailRum.clsScore,
+        maxInpMs: roomDetailRum.maxInpMs,
+        p98InpMs: roomDetailRum.p98InpMs,
+        lcpGoodUnder2500ms: roomDetailRum.lcpMs <= 2500,
+        clsGoodUnder01: roomDetailRum.clsScore <= 0.1,
+        inpGoodUnder200ms: roomDetailRum.maxInpMs <= 200,
         roomDetailRum,
         serverRumSummary,
         realInteractions,
         allInteractionsUnder200ms: realInteractions.every((i) => i.passUnder200ms),
         recordedEventsGreaterThanZero: realInteractions.every((i) => i.recordedEvents > 0),
         pass:
+          roomDetailRum.lcpMs <= 2500 &&
+          roomDetailRum.clsScore <= 0.1 &&
+          roomDetailRum.maxInpMs <= 200 &&
           realInteractions.every((i) => i.passUnder200ms && i.recordedEvents > 0) &&
           roomDetailRum.totalInpEvents > 0 &&
           roomDetailRum.maxInpMs > 0,

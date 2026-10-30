@@ -17,35 +17,47 @@ export const DEV_SAMPLE_ACTOR_IDS = [
   'usr-other-org-01',
 ];
 
-export async function provisionProductionAdmin() {
+export async function provisionProductionAdmin({ forceActivate = false } = {}) {
   console.log('\n=============================================================');
   console.log('   PROVISION AUTHENTIC PRODUCTION ADMINISTRATOR & SANITIZE   ');
   console.log('=============================================================');
 
-  // 1. Provision authentic production administrator
-  const prodAdmin = await prisma.consoleActor.upsert({
+  // 1. Check existing production admin
+  const existingProdAdmin = await prisma.consoleActor.findUnique({
     where: { id: 'usr-admin-prod' },
-    update: {
-      email: 'admin@adhome.ductinh.one',
-      orgId: 'org-adhome-anphu',
-      role: 'ADMIN',
-      permissions: ['rooms.publish.write', 'rooms.read', 'leads.read', 'system.admin'],
-      buildingScopes: ['*'],
-      isActive: true,
-    },
-    create: {
-      id: 'usr-admin-prod',
-      email: 'admin@adhome.ductinh.one',
-      orgId: 'org-adhome-anphu',
-      role: 'ADMIN',
-      permissions: ['rooms.publish.write', 'rooms.read', 'leads.read', 'system.admin'],
-      buildingScopes: ['*'],
-      sessionVersion: 1,
-      isActive: true,
-    },
   });
 
-  console.log(`[Provisioned] Production Admin: ${prodAdmin.id} (${prodAdmin.email}) | Active: ${prodAdmin.isActive}`);
+  let prodAdmin;
+  if (!existingProdAdmin) {
+    prodAdmin = await prisma.consoleActor.create({
+      data: {
+        id: 'usr-admin-prod',
+        email: 'admin@adhome.ductinh.one',
+        orgId: 'org-adhome-anphu',
+        role: 'ADMIN',
+        permissions: ['rooms.publish.write', 'rooms.read', 'leads.read', 'system.admin'],
+        buildingScopes: ['*'],
+        sessionVersion: 1,
+        isActive: true,
+      },
+    });
+    console.log(`[Created] Production Admin: ${prodAdmin.id} (${prodAdmin.email}) | Active: ${prodAdmin.isActive}`);
+  } else {
+    // Controlled activation: preserve existing isActive state unless explicitly requested via forceActivate
+    const nextActiveState = forceActivate ? true : existingProdAdmin.isActive;
+    prodAdmin = await prisma.consoleActor.update({
+      where: { id: 'usr-admin-prod' },
+      data: {
+        email: 'admin@adhome.ductinh.one',
+        orgId: 'org-adhome-anphu',
+        role: 'ADMIN',
+        permissions: ['rooms.publish.write', 'rooms.read', 'leads.read', 'system.admin'],
+        buildingScopes: ['*'],
+        isActive: nextActiveState,
+      },
+    });
+    console.log(`[Updated] Production Admin: ${prodAdmin.id} (${prodAdmin.email}) | Preserved Active: ${prodAdmin.isActive}`);
+  }
 
   // 2. Deactivate development sample actors
   const deactivationResult = await prisma.consoleActor.updateMany({
@@ -60,26 +72,10 @@ export async function provisionProductionAdmin() {
 
   console.log(`[Deactivated] Sample Development Actors: ${deactivationResult.count} actors set to isActive: false`);
 
-  // 3. Remove known leftover test leads (0908889999 and 0901234567) while strictly preserving authentic leads
-  const lingeringTestLeads = await prisma.leadInquiry.findMany({
-    where: {
-      OR: [
-        { phone: '0908889999' },
-        { phone: '0901234567' },
-      ],
-    },
-    select: { id: true, referenceCode: true, phone: true },
-  });
+  // Zero Heuristic Purge: Lead deletion has been completely removed from provisioning.
+  // Test lead cleanup is strictly managed in verifyRC1.mjs by in-memory UUID primary keys.
 
-  if (lingeringTestLeads.length > 0) {
-    const testIds = lingeringTestLeads.map((l) => l.id);
-    await prisma.leadInquiry.deleteMany({
-      where: { id: { in: testIds } },
-    });
-    console.log(`[Cleaned] Purged ${testIds.length} leftover test leads strictly by ID (${lingeringTestLeads.map((l) => l.referenceCode).join(', ')})`);
-  }
-
-  // 4. Verification audit
+  // 3. Read-only verification audit
   const [allActors, remainingLeads] = await Promise.all([
     prisma.consoleActor.findMany({ orderBy: { id: 'asc' } }),
     prisma.leadInquiry.findMany({ orderBy: { createdAt: 'asc' } }),
@@ -92,7 +88,7 @@ export async function provisionProductionAdmin() {
     console.log(`  ${tag} ${a.id} | ${a.email} | Role: ${a.role} | Active: ${a.isActive}`);
   });
 
-  console.log('\n--- Preserved Lead Records ---');
+  console.log('\n--- Preserved Authentic Lead Records ---');
   remainingLeads.forEach((l, idx) => {
     console.log(`  ${idx + 1}. Code: ${l.referenceCode} | Name: ${l.fullName} | Phone: ${l.phone} | Created: ${l.createdAt.toISOString()}`);
   });
@@ -108,7 +104,8 @@ export async function provisionProductionAdmin() {
 }
 
 if (process.argv[1] && process.argv[1].endsWith('provisionProductionAdmin.mjs')) {
-  provisionProductionAdmin()
+  const forceActivate = process.argv.includes('--force-activate');
+  provisionProductionAdmin({ forceActivate })
     .then((res) => {
       console.log('\nProvisioning & Sanitization completed:', res.sampleActorsDeactivated ? 'SAFE' : 'RISK');
       return prisma.$disconnect();

@@ -86,7 +86,7 @@ function injectRouteMeta(
   if (ssrSummaryHtml) {
     html = html.replace(
       '<div id="root"></div>',
-      `<div id="root">${ssrSummaryHtml}</div>`
+      `<div id="root"></div>\n  <noscript><div id="ssr-seo-content">${ssrSummaryHtml}</div></noscript>`
     );
   }
 

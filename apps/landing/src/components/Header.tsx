@@ -47,7 +47,7 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate }) => {
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-canvas-pure/95 border-b border-line">
+    <header className="sticky top-0 z-40 bg-canvas-pure border-b border-line shadow-sm">
       <div className="max-w-[1220px] mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between gap-6">
         {/* Brand Logo — generous spacing, never squeezed */}
         <a

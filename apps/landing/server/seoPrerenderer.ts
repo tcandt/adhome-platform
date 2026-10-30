@@ -27,13 +27,16 @@ interface RouteMetaPayload {
 }
 
 function getBaseHtmlTemplate(rootDir: string = process.cwd()): string {
-  const distIndex = path.join(rootDir, 'dist', 'index.html');
-  if (fs.existsSync(distIndex)) {
-    return fs.readFileSync(distIndex, 'utf-8');
-  }
-  const srcIndex = path.join(rootDir, 'index.html');
-  if (fs.existsSync(srcIndex)) {
-    return fs.readFileSync(srcIndex, 'utf-8');
+  const candidates = [
+    path.join(rootDir, 'dist', 'index.html'),
+    path.join(rootDir, 'apps', 'landing', 'dist', 'index.html'),
+    path.join(rootDir, 'index.html'),
+    path.join(rootDir, 'apps', 'landing', 'index.html'),
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) {
+      return fs.readFileSync(c, 'utf-8');
+    }
   }
   return `<!doctype html><html lang="vi"><head><meta charset="UTF-8" /><title>AdHome</title><meta name="description" content="" /><link rel="canonical" href="https://adhome.ductinh.one/" /><meta property="og:url" content="https://adhome.ductinh.one/" /><meta property="og:title" content="" /><meta property="og:description" content="" /><meta property="og:image" content="" /></head><body><div id="root"></div></body></html>`;
 }
@@ -105,7 +108,7 @@ function injectRouteMeta(baseHtml: string, meta: RouteMetaPayload): string {
   if (meta.ssrSummaryHtml) {
     html = html.replace(
       /<div id="root">[\s\S]*?<\/div>/,
-      `<div id="root">${meta.ssrSummaryHtml}</div>`
+      `<div id="root"></div>\n  <noscript><div id="ssr-seo-content">${meta.ssrSummaryHtml}</div></noscript>`
     );
   }
 

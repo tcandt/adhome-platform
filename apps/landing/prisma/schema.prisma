@@ -29,6 +29,7 @@ model Organization {
   rooms                PublicRoomListing[]
   consoleRooms         ConsoleRoom[]
   tenants              Tenant[]
+  occupants            RoomOccupant[]
   reservations         RoomReservation[]
   deposits             Deposit[]
   contracts            Contract[]
@@ -165,6 +166,9 @@ model ConsoleRoom {
   listPriceVnd         BigInt   @map("list_price_vnd")
   depositMonths        Int      @default(1) @map("deposit_months")
   maxOccupants         Int      @default(2) @map("max_occupants")
+  /// ENTIRE_ROOM | SHARED_ROOM
+  rentalModel          String   @default("ENTIRE_ROOM") @map("rental_model")
+  totalBeds            Int      @default(1) @map("total_beds")
   /// AVAILABLE | RESERVED | OCCUPIED | MAINTENANCE | ARCHIVED
   occupancyStatus      String   @default("AVAILABLE") @map("occupancy_status")
   furnishedLevel       String   @default("FULL") @map("furnished_level")
@@ -190,6 +194,7 @@ model ConsoleRoom {
   reservations  RoomReservation[]
   contracts     Contract[]
   invoices      Invoice[]
+  occupants     RoomOccupant[]
 
   @@unique([buildingId, code])
   @@index([orgId, buildingId, occupancyStatus])
@@ -219,6 +224,7 @@ model Tenant {
   reservations RoomReservation[]
   contracts    Contract[]
   invoices     Invoice[]
+  occupants    RoomOccupant[]
 
   @@index([orgId, primaryBuildingId])
   @@index([orgId, normalizedPhone])
@@ -256,17 +262,24 @@ model RoomReservation {
 }
 
 model Deposit {
-  id            String   @id @default(uuid())
-  orgId         String   @map("org_id")
-  reservationId String?  @map("reservation_id")
-  contractId    String?  @map("contract_id")
-  amountVnd     BigInt   @map("amount_vnd")
-  refundedVnd   BigInt   @default(0) @map("refunded_vnd")
+  id                     String    @id @default(uuid())
+  orgId                  String    @map("org_id")
+  reservationId          String?   @map("reservation_id")
+  contractId             String?   @map("contract_id")
+  /// BOOKING | CONTRACT
+  depositType            String    @default("BOOKING") @map("deposit_type")
+  amountVnd              BigInt    @map("amount_vnd")
+  refundedVnd            BigInt    @default(0) @map("refunded_vnd")
+  /// PENDING | PARTIALLY_PAID | PAID | TRANSFERRED | REFUNDED | FORFEITED
+  paymentStatus          String    @default("PENDING") @map("payment_status")
+  transferredToDepositId String?   @map("transferred_to_deposit_id")
+  paymentMethod          String?   @map("payment_method")
+  receivedAt             DateTime? @map("received_at")
   /// HELD | APPLIED_TO_CONTRACT | PARTIALLY_REFUNDED | REFUNDED | FORFEITED
-  status        String   @default("HELD")
-  notes         String?
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  status                 String    @default("HELD")
+  notes                  String?
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
 
   organization Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
   reservation  RoomReservation? @relation(fields: [reservationId], references: [id], onDelete: SetNull)
@@ -278,27 +291,33 @@ model Deposit {
 }
 
 model Contract {
-  id                 String   @id @default(uuid())
-  orgId              String   @map("org_id")
-  buildingId         String   @map("building_id")
-  roomId             String   @map("room_id")
-  tenantId           String   @map("tenant_id")
-  reservationId      String?  @map("reservation_id")
-  contractCode       String   @map("contract_code")
-  startDate          String   @map("start_date")
-  endDate            String   @map("end_date")
-  monthlyRentVnd     BigInt   @map("monthly_rent_vnd")
-  depositVnd         BigInt   @map("deposit_vnd")
-  occupantsCount     Int      @default(1) @map("occupants_count")
-  electricRateVnd    Int      @default(3800) @map("electric_rate_vnd")
+  id                 String    @id @default(uuid())
+  orgId              String    @map("org_id")
+  buildingId         String    @map("building_id")
+  roomId             String    @map("room_id")
+  tenantId           String    @map("tenant_id")
+  reservationId      String?   @map("reservation_id")
+  contractCode       String    @map("contract_code")
+  /// ENTIRE_ROOM | SHARED_ROOM
+  rentalModel        String    @default("ENTIRE_ROOM") @map("rental_model")
+  startDate          String    @map("start_date")
+  endDate            String    @map("end_date")
+  signedAt           DateTime? @map("signed_at")
+  moveInDate         String?   @map("move_in_date")
+  monthlyRentVnd     BigInt    @map("monthly_rent_vnd")
+  depositVnd         BigInt    @map("deposit_vnd")
+  occupantsCount     Int       @default(1) @map("occupants_count")
+  electricRateVnd    Int       @default(3800) @map("electric_rate_vnd")
   /// PER_M3 | PER_PERSON | FIXED_PER_ROOM
-  waterBillingMethod String   @default("PER_M3") @map("water_billing_method")
-  waterRateVnd       Int      @default(15000) @map("water_rate_vnd")
+  waterBillingMethod String    @default("PER_M3") @map("water_billing_method")
+  waterRateVnd       Int       @default(15000) @map("water_rate_vnd")
+  handoverMeterKwh   Float?    @map("handover_meter_kwh")
+  handoverWaterM3    Float?    @map("handover_water_m3")
   /// DRAFT | ACTIVE | EXPIRING | EXTENDED | TERMINATED | EXPIRED
-  status             String   @default("ACTIVE")
+  status             String    @default("ACTIVE")
   notes              String?
-  createdAt          DateTime @default(now()) @map("created_at")
-  updatedAt          DateTime @updatedAt @map("updated_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
 
   organization Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
   building     Building         @relation(fields: [buildingId], references: [id], onDelete: Cascade)
@@ -307,11 +326,45 @@ model Contract {
   reservation  RoomReservation? @relation(fields: [reservationId], references: [id], onDelete: SetNull)
   invoices     Invoice[]
   deposits     Deposit[]
+  occupants    RoomOccupant[]
 
   @@unique([orgId, contractCode])
   @@index([orgId, buildingId, status])
   @@index([roomId, status])
   @@map("contracts")
+}
+
+model RoomOccupant {
+  id                 String    @id @default(uuid())
+  orgId              String    @map("org_id")
+  roomId             String    @map("room_id")
+  contractId         String?   @map("contract_id")
+  tenantId           String?   @map("tenant_id")
+  fullName           String    @map("full_name")
+  phone              String?
+  idNumber           String?   @map("id_number")
+  dateOfBirth        String?   @map("date_of_birth")
+  gender             String?
+  /// PENDING | REGISTERED | EXPIRED
+  residenceRegStatus String    @default("PENDING") @map("residence_reg_status")
+  /// PRIMARY | FAMILY | ROOMMATE | OTHER
+  relationToPrimary  String    @default("PRIMARY") @map("relation_to_primary")
+  moveInDate         String    @map("move_in_date")
+  moveOutDate        String?   @map("move_out_date")
+  notes              String?
+  isActive           Boolean   @default(true) @map("is_active")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  room         ConsoleRoom  @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  contract     Contract?    @relation(fields: [contractId], references: [id], onDelete: SetNull)
+  tenant       Tenant?      @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([orgId, roomId, isActive])
+  @@index([contractId])
+  @@index([tenantId])
+  @@map("room_occupants")
 }
 
 model ElectricMeter {

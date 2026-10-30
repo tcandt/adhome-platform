@@ -1,5 +1,5 @@
 {
-  "evaluatedAt": "2026-10-30T14:04:03.424Z",
+  "evaluatedAt": "2026-10-30T15:08:29.849Z",
   "verdict": "LOCAL_GATE_PASSED",
   "reportingTier": "LOCAL_GATE_PASSED",
   "checks": {
@@ -23,16 +23,21 @@
     },
     "concurrencyRowLevelLock": {
       "pass": true,
-      "statusA": 201,
-      "statusB": 409,
+      "statusA": 409,
+      "statusB": 201,
       "errorCode409": "ROOM_ALREADY_HAS_CONTRACT",
       "activeContractsInDb": 1
     },
     "c3aLifecycleStateMachines": {
       "pass": true,
-      "resvCreated": true,
-      "resvCancelled": true,
-      "contractConverted": true,
+      "tenantDecoupled": true,
+      "roomOccupants": true,
+      "unpaidHoldZeroLedger": true,
+      "confirmPaymentLedger": true,
+      "cancellationInvariant": true,
+      "conversionShortageMath": true,
+      "conversionSurplusMath": true,
+      "contractHandoverMeters": true,
       "depositRefundAndDeduction": true,
       "contractExtended": true,
       "contractTransferred": true,
@@ -57,28 +62,28 @@
       "hashes": [
         {
           "filename": "console_v2_1440_contracts_workspace.png",
-          "sizeBytes": 242428,
-          "sha256": "71e58b0943ab0425c5a087d95820221e4c45c9f930a7a112b467bd0f26fad116"
+          "sizeBytes": 281946,
+          "sha256": "bbc6f634ce0b88c24a6256d4cd98ada8e0c938d1235fee4585c56acc4dcc97a9"
         },
         {
           "filename": "console_v2_1440_deposits_workspace.png",
-          "sizeBytes": 270352,
-          "sha256": "566fce1d620b5de4e32f41701b0a36a3c789ce51db48e294f4e56c274815464c"
+          "sizeBytes": 327496,
+          "sha256": "75b0b56aea23b5e0e35b103c5102c6f1821f5ec6f625ff301925cf7c1c25e70f"
         },
         {
           "filename": "console_v2_1440_settlements_hunonic.png",
-          "sizeBytes": 425150,
-          "sha256": "3deb26c5551f749588903d29df711686d33d117b8d7b4a182683b11c36a66eaa"
+          "sizeBytes": 427096,
+          "sha256": "cc74ffd6e0e2b64862ce4bc2e14e6dd7b182d3681165568350d2b0930cb5839d"
         },
         {
           "filename": "console_v2_1440_contract_modal_dynamic_dates.png",
-          "sizeBytes": 389527,
-          "sha256": "4a49b6c98270a515b48617f5375e0d21091473537783fde162d8d7a0d2efc39b"
+          "sizeBytes": 427207,
+          "sha256": "370b3fe43f4db501be026b876a2daa59ccb38b6ac2292e91f0f47944dc29157a"
         },
         {
           "filename": "console_v2_390x844_contracts_mobile.png",
-          "sizeBytes": 145922,
-          "sha256": "a4f201a2af1d4e73c81f4abeaf1aa5de54b7062f8ebefd50e4bebfad7eb6409e"
+          "sizeBytes": 155872,
+          "sha256": "cfb26a30ce56529355405c7dde51db3b54a343ea2031158956c07edcade2cc55"
         }
       ]
     }
@@ -90,5 +95,5 @@
     "console_v2_1440_contract_modal_dynamic_dates.png",
     "console_v2_390x844_contracts_mobile.png"
   ],
-  "finishedAt": "2026-10-30T14:04:14.971Z"
+  "finishedAt": "2026-10-30T15:08:41.685Z"
 }

@@ -123,6 +123,29 @@ export interface ConsoleRoomDto {
   } | null;
   unpaidInvoicesCount: number;
   unpaidAmountVnd: number;
+  rentalModel?: 'ENTIRE_ROOM' | 'SHARED_ROOM' | string;
+  totalBeds?: number;
+  occupants?: Array<{
+    id: string;
+    fullName: string;
+    phone?: string | null;
+    idNumber?: string | null;
+    relationToPrimary: string;
+    residenceRegStatus: string;
+    moveInDate: string;
+    moveOutDate?: string | null;
+    isActive: boolean;
+  }>;
+  activeReservation?: {
+    id: string;
+    reservationCode: string;
+    customerName: string;
+    customerPhone: string;
+    holdAmountVnd: number;
+    status: string;
+    holdUntil: string | null;
+    expectedMoveIn: string | null;
+  } | null;
   updatedAt: string;
 }
 
@@ -312,4 +335,88 @@ export interface ApiActionResult<T = unknown> {
   message?: string;
   errorCode?: string;
   data?: T;
+}
+
+export interface RoomOccupantDto {
+  id: string;
+  roomId: string;
+  contractId?: string | null;
+  tenantId?: string | null;
+  fullName: string;
+  phone?: string | null;
+  idNumber?: string | null;
+  dateOfBirth?: string | null;
+  gender?: string | null;
+  residenceRegStatus: 'PENDING' | 'REGISTERED' | 'EXPIRED' | string;
+  relationToPrimary: 'PRIMARY' | 'FAMILY' | 'ROOMMATE' | 'OTHER' | string;
+  moveInDate: string;
+  moveOutDate?: string | null;
+  notes?: string | null;
+  isActive: boolean;
+  createdAt?: string;
+}
+
+export interface ContractDto {
+  id: string;
+  contractCode: string;
+  buildingId: string;
+  buildingCode: string;
+  roomId: string;
+  roomCode: string;
+  tenantId: string;
+  tenantName: string;
+  tenantPhone: string;
+  rentalModel?: string;
+  startDate: string;
+  endDate: string;
+  signedAt?: string | null;
+  moveInDate?: string | null;
+  handoverMeterKwh?: number | null;
+  handoverWaterM3?: number | null;
+  monthlyRentVnd: number;
+  depositVnd: number;
+  occupantsCount: number;
+  occupants?: Array<{
+    id: string;
+    fullName: string;
+    phone?: string | null;
+    relationToPrimary?: string;
+    residenceRegStatus?: string;
+  }>;
+  electricRateVnd: number;
+  waterBillingMethod: string;
+  waterRateVnd: number;
+  status: string;
+  createdAt: string;
+}
+
+export interface DepositDto {
+  id: string;
+  reservationId?: string | null;
+  contractId?: string | null;
+  depositType: 'BOOKING' | 'CONTRACT' | string;
+  amountVnd: number;
+  refundedVnd: number;
+  paymentStatus: 'PENDING' | 'PAID' | 'TRANSFERRED' | 'REFUNDED' | 'FORFEITED' | string;
+  paymentMethod?: string | null;
+  receivedAt?: string | null;
+  transferredToDepositId?: string | null;
+  status: 'HELD' | 'APPLIED_TO_CONTRACT' | 'PARTIALLY_REFUNDED' | 'REFUNDED' | 'FORFEITED' | string;
+  notes?: string | null;
+  createdAt: string;
+}
+
+export interface ReservationDto {
+  id: string;
+  reservationCode: string;
+  buildingCode: string;
+  roomCode: string;
+  customerName: string;
+  customerPhone: string;
+  holdAmountVnd: number;
+  status: 'PENDING' | 'CONFIRMED' | 'CONVERTED' | 'CANCELLED' | 'EXPIRED' | string;
+  holdUntil?: string | null;
+  expectedMoveIn: string | null;
+  notes?: string | null;
+  createdAt: string;
 }

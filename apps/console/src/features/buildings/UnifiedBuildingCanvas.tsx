@@ -33,6 +33,8 @@ import { CreateRoomModal } from './modals/CreateRoomModal';
 import { EditBuildingModal } from './modals/EditBuildingModal';
 import { EditRoomModal } from './modals/EditRoomModal';
 import { SafeDeleteModal } from './modals/SafeDeleteModal';
+import { RoomProfileModal } from './modals/RoomProfileModal';
+import { ContractCreationWizardModal } from '../modules/modals/ContractCreationWizardModal';
 
 function renderOccupancyBadge(status: OccupancyStatus) {
   switch (status) {
@@ -118,6 +120,10 @@ export const UnifiedBuildingCanvas: React.FC = () => {
     id: string;
     code: string;
     name?: string;
+  } | null>(null);
+  const [wizardTarget, setWizardTarget] = useState<{
+    roomId: string;
+    reservationId?: string;
   } | null>(null);
 
   const selectedRoom = useMemo(
@@ -771,242 +777,32 @@ export const UnifiedBuildingCanvas: React.FC = () => {
         </div>
       )}
 
-      {/* ROOM DETAIL SLIDE-OVER DRAWER */}
-      {selectedRoom && (
-        <div
-          data-testid="room-detail-drawer"
-          className="fixed inset-0 z-40 flex justify-end bg-slate-950/45 backdrop-blur-[1px]"
-          onClick={() => setSelectedRoomId(null)}
-        >
-          <aside
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md h-full bg-white dark:bg-[#111827] border-l border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col"
-          >
-            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-base font-bold text-slate-900 dark:text-white">
-                    Phòng {selectedRoom.code}
-                  </span>
-                  {renderOccupancyBadge(selectedRoom.occupancyStatus)}
-                </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  {selectedRoom.buildingCode} · {selectedRoom.floorName} ·{' '}
-                  {selectedRoom.roomType} ({selectedRoom.area}m²)
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedRoomId(null)}
-                className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+      {/* 5-TAB ROOM PROFILE MODAL */}
+      <RoomProfileModal
+        isOpen={Boolean(selectedRoom)}
+        room={selectedRoom}
+        onClose={() => setSelectedRoomId(null)}
+        onOpenContractWizard={(roomId, reservationId) => {
+          setSelectedRoomId(null);
+          setWizardTarget({ roomId, reservationId });
+        }}
+        onOpenReservationModal={(roomId) => {
+          setSelectedRoomId(null);
+          setWizardTarget({ roomId });
+        }}
+      />
 
-            <div className="p-4 space-y-4 overflow-y-auto flex-1 text-xs">
-              {/* Price & Deposit */}
-              <div className="grid grid-cols-2 gap-3 p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700/70">
-                <div>
-                  <span className="text-[11px] text-slate-400 block">
-                    Giá thuê niêm yết
-                  </span>
-                  <span className="text-sm font-bold text-slate-900 dark:text-white tabular-nums">
-                    {selectedRoom.listPriceVnd.toLocaleString('vi-VN')} đ/tháng
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[11px] text-slate-400 block">
-                    Chính sách cọc &amp; ở tối đa
-                  </span>
-                  <span className="text-sm font-bold text-slate-800 dark:text-slate-100">
-                    Cọc {selectedRoom.depositMonths} tháng ·{' '}
-                    {selectedRoom.maxOccupants} người
-                  </span>
-                </div>
-              </div>
-
-              {/* Landing Publication Separation Card */}
-              <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
-                    {selectedRoom.isPublishedToLanding ? (
-                      <Globe className="w-4 h-4 text-brand-primary" />
-                    ) : (
-                      <EyeOff className="w-4 h-4 text-slate-400" />
-                    )}
-                    Trạng thái xuất bản Landing Page
-                  </span>
-                  <span
-                    className={`px-2 py-0.5 rounded-full text-[10.5px] font-bold ${
-                      selectedRoom.isPublishedToLanding
-                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
-                        : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
-                    }`}
-                  >
-                    {selectedRoom.isPublishedToLanding
-                      ? 'Đang hiển thị trên Web'
-                      : 'Chỉ lưu hành nội bộ'}
-                  </span>
-                </div>
-                {canPublishRooms && (
-                  <button
-                    type="button"
-                    data-testid="drawer-toggle-room-publish"
-                    onClick={() => void handleToggleRoomPublish(selectedRoom)}
-                    className="w-full py-2 rounded-lg font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 transition-colors"
-                  >
-                    {selectedRoom.isPublishedToLanding
-                      ? 'Gỡ khỏi Landing Page (giữ nguyên dữ liệu nội bộ)'
-                      : 'Xuất bản phòng này lên Landing Page'}
-                  </button>
-                )}
-              </div>
-
-              {/* Current Tenant & Active Contract */}
-              <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2.5">
-                <div className="font-bold text-slate-800 dark:text-slate-100 flex items-center justify-between">
-                  <span>Khách thuê &amp; Hợp đồng hiện tại</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const tId = selectedRoom.currentTenant?.id || null;
-                      setSelectedRoomId(null);
-                      openTenantsWorkspace(tId);
-                    }}
-                    className="text-[11px] font-semibold text-brand-primary hover:underline"
-                  >
-                    Mở danh mục Khách thuê →
-                  </button>
-                </div>
-
-                {selectedRoom.currentTenant ? (
-                  <div className="p-2.5 rounded-lg bg-blue-50/60 dark:bg-blue-950/30 space-y-1">
-                    <div className="font-bold text-slate-900 dark:text-white">
-                      {selectedRoom.currentTenant.fullName}
-                    </div>
-                    <div className="font-mono text-[11px] text-slate-600 dark:text-slate-300">
-                      SĐT: {selectedRoom.currentTenant.phone} · Tạm trú:{' '}
-                      {selectedRoom.currentTenant.residenceRegStatus}
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-slate-500">
-                    Chưa có khách thuê đang lưu trú tại phòng này.
-                  </p>
-                )}
-
-                {selectedRoom.activeContract ? (
-                  <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 flex items-center justify-between">
-                    <div>
-                      <div className="font-mono font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1">
-                        <FileSignature className="w-3.5 h-3.5 text-brand-primary" />
-                        {selectedRoom.activeContract.contractCode}
-                      </div>
-                      <div className="text-[11px] text-slate-500">
-                        {selectedRoom.activeContract.startDate} →{' '}
-                        {selectedRoom.activeContract.endDate}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedRoomId(null);
-                        setActiveModule('contracts');
-                      }}
-                      className="text-[11px] font-semibold text-brand-primary hover:underline"
-                    >
-                      Chi tiết
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-
-              {/* Effective Tariffs & Honest Meter Status */}
-              <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
-                <div className="font-bold text-slate-800 dark:text-slate-100">
-                  Biểu giá áp dụng &amp; Công tơ điện
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-[11px]">
-                  <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-800/60">
-                    <span className="text-slate-400 block">Đơn giá điện</span>
-                    <b className="text-slate-800 dark:text-slate-100">
-                      {selectedRoom.effectiveElectricRateVnd.toLocaleString(
-                        'vi-VN'
-                      )}{' '}
-                      đ/kWh
-                    </b>
-                  </div>
-                  <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-800/60">
-                    <span className="text-slate-400 block">
-                      Nước (
-                      {formatWaterMethodLabel(selectedRoom.effectiveWaterMethod)}
-                      )
-                    </span>
-                    <b className="text-slate-800 dark:text-slate-100">
-                      {selectedRoom.effectiveWaterRateVnd.toLocaleString(
-                        'vi-VN'
-                      )}{' '}
-                      đ
-                    </b>
-                  </div>
-                </div>
-                <div className="text-[11px] text-slate-500 flex items-center gap-1.5 pt-1">
-                  <Droplets className="w-3.5 h-3.5 text-cyan-500" />
-                  <span>
-                    Trạng thái công tơ Hunonic:{' '}
-                    <b>
-                      {selectedRoom.meterStatus === 'ONLINE'
-                        ? 'Đang trực tuyến'
-                        : 'Chưa cấu hình (nhập chỉ số thực tế)'}
-                    </b>
-                  </span>
-                </div>
-              </div>
-
-              {selectedRoom.internalNotes && (
-                <div className="p-3.5 rounded-xl bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200/70 dark:border-amber-900/50">
-                  <div className="font-bold text-amber-800 dark:text-amber-300 mb-1">
-                    Ghi chú nội bộ
-                  </div>
-                  <p className="text-slate-700 dark:text-slate-300">
-                    {selectedRoom.internalNotes}
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {canManageRooms && (
-              <div className="p-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
-                <button
-                  type="button"
-                  data-testid="drawer-delete-room"
-                  onClick={() => {
-                    const rm = selectedRoom;
-                    setSelectedRoomId(null);
-                    setDeleteTarget({
-                      type: 'room',
-                      id: rm.id,
-                      code: rm.code,
-                      name: rm.title,
-                    });
-                  }}
-                  className="px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl inline-flex items-center gap-1.5"
-                >
-                  <Trash2 className="w-3.5 h-3.5" /> Xóa phòng
-                </button>
-                <button
-                  type="button"
-                  data-testid="drawer-edit-room"
-                  onClick={() => setEditingRoom(selectedRoom)}
-                  className="px-4 py-2 text-xs font-bold bg-brand-primary hover:bg-brand-hover text-white rounded-xl inline-flex items-center gap-1.5 shadow-sm"
-                >
-                  <Home className="w-3.5 h-3.5" /> Chỉnh sửa cấu hình phòng
-                </button>
-              </div>
-            )}
-          </aside>
-        </div>
+      {/* 6-STEP BOOKING & CONTRACT CREATION WIZARD */}
+      {wizardTarget && (
+        <ContractCreationWizardModal
+          isOpen={Boolean(wizardTarget)}
+          preselectedRoomId={wizardTarget.roomId}
+          preselectedReservationId={wizardTarget.reservationId}
+          onClose={() => setWizardTarget(null)}
+          onSuccess={async () => {
+            setWizardTarget(null);
+          }}
+        />
       )}
 
       {/* MODALS */}

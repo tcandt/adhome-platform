@@ -118,6 +118,10 @@ function getCurrentVnDateIso(): string {
   }).format(new Date());
 }
 
+function getTodayIsoVn(): string {
+  return getCurrentVnDateIso();
+}
+
 function formatIsoToDdMmYyyy(isoDate?: string | null): string {
   if (!isoDate || !/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return 'Đang cập nhật';
   const [y, m, d] = isoDate.split('-');
@@ -622,6 +626,7 @@ export async function handleConsoleV2Api(
           floor: true,
           building: true,
           electricMeter: true,
+          occupants: { where: { isActive: true } },
         },
         orderBy: [{ displayOrder: 'asc' }, { code: 'asc' }],
       }),
@@ -805,6 +810,10 @@ export async function handleConsoleV2Api(
         r.occupancyStatus !== 'ARCHIVED'
     );
 
+    const activeReservationByRoomId = new Map(
+      activeReservations.map((res) => [res.roomId, res])
+    );
+
     const roomsDto = filteredRooms.map((r) => {
       const contract = contractByRoomId.get(r.id);
       const tenant = contract?.tenant || tenantByRoomId.get(r.id) || null;
@@ -825,6 +834,8 @@ export async function handleConsoleV2Api(
         org?.defaultElectricRateVnd ??
         3800;
 
+      const resv = activeReservationByRoomId.get(r.id);
+
       return {
         id: r.id,
         buildingId: r.buildingId,
@@ -836,6 +847,8 @@ export async function handleConsoleV2Api(
         code: r.code,
         title: r.title,
         roomType: r.roomType,
+        rentalModel: r.rentalModel || 'ENTIRE_ROOM',
+        totalBeds: r.totalBeds || 1,
         area: r.area,
         listPriceVnd: toSafeVndNumber(r.listPriceVnd),
         depositMonths: r.depositMonths,
@@ -855,6 +868,29 @@ export async function handleConsoleV2Api(
         internalNotes: r.internalNotes || '',
         meterStatus: r.electricMeter?.connectionStatus || 'UNCONFIGURED',
         meterLastSyncedAt: r.electricMeter?.lastSyncedAt?.toISOString() || null,
+        occupants: ((r as any).occupants || []).map((occ: any) => ({
+          id: occ.id,
+          fullName: occ.fullName,
+          phone: occ.phone,
+          idNumber: occ.idNumber,
+          relationToPrimary: occ.relationToPrimary,
+          residenceRegStatus: occ.residenceRegStatus,
+          moveInDate: occ.moveInDate,
+          moveOutDate: occ.moveOutDate,
+          isActive: occ.isActive,
+        })),
+        activeReservation: resv
+          ? {
+              id: resv.id,
+              reservationCode: resv.reservationCode,
+              customerName: resv.customerName,
+              customerPhone: resv.customerPhone,
+              holdAmountVnd: toSafeVndNumber(resv.holdAmountVnd),
+              status: resv.status,
+              holdUntil: resv.holdUntil?.toISOString() || null,
+              expectedMoveIn: resv.expectedMoveIn,
+            }
+          : null,
         currentTenant: tenant
           ? {
               id: tenant.id,
@@ -2629,8 +2665,280 @@ export async function handleConsoleV2Api(
   }
 
   // ===========================================================================
+  // 5B. ROOM OCCUPANTS (/api/v1/console/v2/rooms/:id/occupants, /api/v1/console/v2/occupants/:id)
+  // ===========================================================================
+  const roomOccupantsMatch = pathname.match(
+    /^\/api\/v1\/console\/v2\/rooms\/([^/]+)\/occupants$/
+  );
+  if (roomOccupantsMatch) {
+    const roomId = decodeURIComponent(roomOccupantsMatch[1]);
+    const rm = await prisma.consoleRoom.findUnique({
+      where: { id: roomId },
+      include: { building: true },
+    });
+    if (!rm || rm.orgId !== actor.orgId) {
+      return sendJson(res, 404, {
+        ok: false,
+        errorCode: 'ROOM_NOT_FOUND',
+        message: 'Phòng không tồn tại trong tổ chức.',
+      });
+    }
+    if (!isBuildingAllowedForActor(actor, rm.buildingId, rm.building.code)) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'FORBIDDEN_BUILDING_SCOPE',
+        message: 'Không có quyền truy cập phòng ngoài phạm vi phân công.',
+      });
+    }
+
+    if (method === 'GET') {
+      const occupants = await prisma.roomOccupant.findMany({
+        where: { roomId: rm.id, orgId: actor.orgId },
+        orderBy: [{ isActive: 'desc' }, { createdAt: 'desc' }],
+      });
+      return sendJson(res, 200, {
+        ok: true,
+        occupants: occupants.map((occ) => ({
+          id: occ.id,
+          roomId: occ.roomId,
+          contractId: occ.contractId,
+          tenantId: occ.tenantId,
+          fullName: occ.fullName,
+          phone: occ.phone,
+          idNumber: occ.idNumber,
+          dateOfBirth: occ.dateOfBirth,
+          gender: occ.gender,
+          residenceRegStatus: occ.residenceRegStatus,
+          relationToPrimary: occ.relationToPrimary,
+          moveInDate: occ.moveInDate,
+          moveOutDate: occ.moveOutDate,
+          notes: occ.notes,
+          isActive: occ.isActive,
+          createdAt: occ.createdAt.toISOString(),
+        })),
+      });
+    }
+
+    if (method === 'POST') {
+      if (!actorHasPermission(actor, 'tenants.manage') && !actorHasPermission(actor, 'contracts.manage')) {
+        return sendJson(res, 403, {
+          ok: false,
+          errorCode: 'INSUFFICIENT_PERMISSION',
+          message: 'Không có quyền thêm người lưu trú.',
+        });
+      }
+
+      const body = await readJsonBody(req);
+      const fullName = String(body.fullName || '').trim();
+      const phone = String(body.phone || '').trim() || null;
+      const idNumber = String(body.idNumber || '').trim() || null;
+      const dateOfBirth = String(body.dateOfBirth || '').trim() || null;
+      const gender = String(body.gender || '').trim() || null;
+      const relationToPrimary = ['PRIMARY', 'FAMILY', 'ROOMMATE', 'OTHER'].includes(
+        String(body.relationToPrimary || '')
+      )
+        ? String(body.relationToPrimary)
+        : 'ROOMMATE';
+      const residenceRegStatus = ['PENDING', 'REGISTERED', 'EXPIRED'].includes(
+        String(body.residenceRegStatus || '')
+      )
+        ? String(body.residenceRegStatus)
+        : 'PENDING';
+      const moveInDate =
+        typeof body.moveInDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.moveInDate)
+          ? body.moveInDate
+          : getTodayIsoVn();
+      const notes = String(body.notes || '').trim() || null;
+
+      if (!fullName) {
+        return sendJson(res, 422, {
+          ok: false,
+          errorCode: 'VALIDATION_ERROR',
+          message: 'Vui lòng nhập họ và tên người lưu trú.',
+        });
+      }
+
+      // Check active contract on room to link if any
+      const activeContract = await prisma.contract.findFirst({
+        where: { roomId: rm.id, status: { in: [...ACTIVE_CONTRACT_STATUSES] } },
+      });
+
+      const occ = await prisma.roomOccupant.create({
+        data: {
+          orgId: actor.orgId,
+          roomId: rm.id,
+          contractId: activeContract?.id || null,
+          tenantId: body.tenantId ? String(body.tenantId) : null,
+          fullName,
+          phone,
+          idNumber,
+          dateOfBirth,
+          gender,
+          residenceRegStatus,
+          relationToPrimary,
+          moveInDate,
+          notes,
+          isActive: true,
+        },
+      });
+
+      await prisma.consoleAuditLog.create({
+        data: {
+          orgId: actor.orgId,
+          buildingId: rm.buildingId,
+          actorId: actor.id,
+          actorEmail: actor.email,
+          actorRole: actor.role,
+          entityType: 'OCCUPANT',
+          entityId: occ.id,
+          action: 'ADD_OCCUPANT',
+          summary: `Thêm người lưu trú ${fullName} vào phòng ${rm.code} (${rm.building.code})`,
+          metadata: { clientIp, roomId: rm.id, relationToPrimary },
+        },
+      });
+
+      return sendJson(res, 201, { ok: true, occupant: occ });
+    }
+  }
+
+  const occupantItemMatch = pathname.match(
+    /^\/api\/v1\/console\/v2\/occupants\/([^/]+)$/
+  );
+  if (occupantItemMatch && (method === 'PATCH' || method === 'DELETE')) {
+    if (!actorHasPermission(actor, 'tenants.manage') && !actorHasPermission(actor, 'contracts.manage')) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'INSUFFICIENT_PERMISSION',
+        message: 'Không có quyền cập nhật người lưu trú.',
+      });
+    }
+
+    const occId = decodeURIComponent(occupantItemMatch[1]);
+    const existing = await prisma.roomOccupant.findUnique({
+      where: { id: occId },
+      include: { room: { include: { building: true } } },
+    });
+    if (!existing || existing.orgId !== actor.orgId) {
+      return sendJson(res, 404, {
+        ok: false,
+        errorCode: 'OCCUPANT_NOT_FOUND',
+        message: 'Không tìm thấy thông tin người lưu trú.',
+      });
+    }
+
+    if (!isBuildingAllowedForActor(actor, existing.room.buildingId, existing.room.building.code)) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'FORBIDDEN_BUILDING_SCOPE',
+        message: 'Không có quyền chỉnh sửa người lưu trú ngoài tòa nhà phụ trách.',
+      });
+    }
+
+    if (method === 'DELETE') {
+      await prisma.roomOccupant.delete({ where: { id: existing.id } });
+      return sendJson(res, 200, { ok: true, deletedId: existing.id });
+    }
+
+    if (method === 'PATCH') {
+      const body = await readJsonBody(req);
+      const dataToUpdate: any = {};
+      if (typeof body.fullName === 'string' && body.fullName.trim()) dataToUpdate.fullName = body.fullName.trim();
+      if (typeof body.phone === 'string') dataToUpdate.phone = body.phone.trim() || null;
+      if (typeof body.idNumber === 'string') dataToUpdate.idNumber = body.idNumber.trim() || null;
+      if (typeof body.dateOfBirth === 'string') dataToUpdate.dateOfBirth = body.dateOfBirth.trim() || null;
+      if (typeof body.gender === 'string') dataToUpdate.gender = body.gender.trim() || null;
+      if (typeof body.residenceRegStatus === 'string' && ['PENDING', 'REGISTERED', 'EXPIRED'].includes(body.residenceRegStatus)) {
+        dataToUpdate.residenceRegStatus = body.residenceRegStatus;
+      }
+      if (typeof body.relationToPrimary === 'string' && ['PRIMARY', 'FAMILY', 'ROOMMATE', 'OTHER'].includes(body.relationToPrimary)) {
+        dataToUpdate.relationToPrimary = body.relationToPrimary;
+      }
+      if (typeof body.moveOutDate === 'string') {
+        dataToUpdate.moveOutDate = body.moveOutDate.trim() || null;
+      }
+      if (typeof body.isActive === 'boolean') {
+        dataToUpdate.isActive = body.isActive;
+      }
+      if (typeof body.notes === 'string') {
+        dataToUpdate.notes = body.notes.trim() || null;
+      }
+
+      const updated = await prisma.roomOccupant.update({
+        where: { id: existing.id },
+        data: dataToUpdate,
+      });
+
+      return sendJson(res, 200, { ok: true, occupant: updated });
+    }
+  }
+
+  // ===========================================================================
   // 6. TENANTS CRUD (/api/v1/console/v2/tenants*) — Inside "Tòa nhà & phòng"
   // ===========================================================================
+  if (method === 'GET' && pathname === '/api/v1/console/v2/tenants') {
+    if (!actorHasPermission(actor, 'tenants.manage') && !actorHasPermission(actor, 'contracts.manage')) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'INSUFFICIENT_PERMISSION',
+        message: 'Tài khoản không có quyền tìm kiếm hồ sơ khách thuê.',
+      });
+    }
+
+    const { authorizedBuildings } = await resolveScopedBuildings(prisma, actor, null, true);
+    const authorizedBuildingIds = authorizedBuildings.map((b) => b.id);
+    const q = String(urlObj.searchParams.get('q') || '').trim().toLowerCase();
+
+    let whereClause: any = {
+      orgId: actor.orgId,
+      isActive: true,
+      OR: [
+        { primaryBuildingId: null },
+        { primaryBuildingId: { in: authorizedBuildingIds } },
+      ],
+    };
+
+    if (q) {
+      const normQ = normalizeVnPhone(q);
+      whereClause = {
+        ...whereClause,
+        AND: [
+          {
+            OR: [
+              { fullName: { contains: q, mode: 'insensitive' } },
+              { phone: { contains: q } },
+              { normalizedPhone: { contains: normQ || q } },
+              { idNumber: { contains: q, mode: 'insensitive' } },
+            ],
+          },
+        ],
+      };
+    }
+
+    const tenants = await prisma.tenant.findMany({
+      where: whereClause,
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+
+    return sendJson(res, 200, {
+      ok: true,
+      tenants: tenants.map((t) => ({
+        id: t.id,
+        fullName: t.fullName,
+        phone: t.phone,
+        normalizedPhone: t.normalizedPhone,
+        email: t.email,
+        idNumber: t.idNumber,
+        residenceRegStatus: t.residenceRegStatus,
+        emergencyContact: t.emergencyContact,
+        primaryBuildingId: t.primaryBuildingId,
+        currentRoomId: t.currentRoomId,
+        notes: t.notes,
+        createdAt: t.createdAt.toISOString(),
+      })),
+    });
+  }
+
   if (method === 'POST' && pathname === '/api/v1/console/v2/tenants') {
     if (!actorHasPermission(actor, 'tenants.manage')) {
       return sendJson(res, 403, {
@@ -2750,22 +3058,7 @@ export async function handleConsoleV2Api(
         },
       });
 
-      if (targetRoom) {
-        await tx.consoleRoom.update({
-          where: { id: targetRoom.id },
-          data: { occupancyStatus: 'OCCUPIED' },
-        });
-        if (targetRoom.publicListingId) {
-          await tx.publicRoomListing.update({
-            where: { id: targetRoom.publicListingId },
-            data: {
-              status: 'OCCUPIED',
-              currentTenantName: null,
-              currentTenantPhone: null,
-            },
-          });
-        }
-      }
+      // Note: Tenant creation is purely Customer Profile CRM registration and NEVER alters room occupancy status.
 
       await tx.consoleAuditLog.create({
         data: {
@@ -2882,51 +3175,7 @@ export async function handleConsoleV2Api(
       }
 
       const updated = await prisma.$transaction(async (tx) => {
-        if (existing.currentRoomId && existing.currentRoomId !== nextRoomId) {
-          const otherActiveOnOldRoom = await tx.tenant.count({
-            where: {
-              currentRoomId: existing.currentRoomId,
-              id: { not: existing.id },
-              isActive: true,
-            },
-          });
-          const activeCtOnOldRoom = await tx.contract.count({
-            where: {
-              roomId: existing.currentRoomId,
-              status: { in: [...ACTIVE_CONTRACT_STATUSES] },
-            },
-          });
-          if (otherActiveOnOldRoom === 0 && activeCtOnOldRoom === 0) {
-            const oldRm = await tx.consoleRoom.update({
-              where: { id: existing.currentRoomId },
-              data: { occupancyStatus: 'AVAILABLE' },
-            });
-            if (oldRm.publicListingId) {
-              await tx.publicRoomListing.update({
-                where: { id: oldRm.publicListingId },
-                data: { status: 'AVAILABLE' },
-              });
-            }
-          }
-        }
-
-        if (nextRoomId && nextRoomId !== existing.currentRoomId) {
-          const newRm = await tx.consoleRoom.update({
-            where: { id: nextRoomId },
-            data: { occupancyStatus: 'OCCUPIED' },
-          });
-          if (newRm.publicListingId) {
-            await tx.publicRoomListing.update({
-              where: { id: newRm.publicListingId },
-              data: {
-                status: 'OCCUPIED',
-                currentTenantName: null,
-                currentTenantPhone: null,
-              },
-            });
-          }
-        }
-
+        // Customer profile updates do not directly mutate room operational occupancy status
         const t = await tx.tenant.update({
           where: { id: existing.id },
           data: {
@@ -3113,9 +3362,17 @@ export async function handleConsoleV2Api(
           .filter((d) => !d.reservationId || allowedResIds.has(d.reservationId))
           .map((d) => ({
             id: d.id,
+            reservationId: d.reservationId,
+            contractId: d.contractId,
+            depositType: d.depositType,
             amountVnd: toSafeVndNumber(d.amountVnd),
             refundedVnd: toSafeVndNumber(d.refundedVnd),
+            paymentStatus: d.paymentStatus,
+            paymentMethod: d.paymentMethod,
+            receivedAt: d.receivedAt?.toISOString() || null,
+            transferredToDepositId: d.transferredToDepositId,
             status: d.status,
+            notes: d.notes,
             createdAt: d.createdAt.toISOString(),
           })),
       });
@@ -3124,7 +3381,7 @@ export async function handleConsoleV2Api(
     if (moduleKey === 'contracts') {
       const contracts = await prisma.contract.findMany({
         where: { orgId: actor.orgId, buildingId: { in: bldIds } },
-        include: { room: true, building: true, tenant: true },
+        include: { room: true, building: true, tenant: true, occupants: true },
         orderBy: { createdAt: 'desc' },
       });
       return sendJson(res, 200, {
@@ -3141,11 +3398,23 @@ export async function handleConsoleV2Api(
           tenantId: c.tenantId,
           tenantName: c.tenant.fullName,
           tenantPhone: c.tenant.phone,
+          rentalModel: c.rentalModel,
           startDate: c.startDate,
           endDate: c.endDate,
+          signedAt: c.signedAt?.toISOString() || null,
+          moveInDate: c.moveInDate,
+          handoverMeterKwh: c.handoverMeterKwh,
+          handoverWaterM3: c.handoverWaterM3,
           monthlyRentVnd: toSafeVndNumber(c.monthlyRentVnd),
           depositVnd: toSafeVndNumber(c.depositVnd),
           occupantsCount: c.occupantsCount,
+          occupants: c.occupants.map((occ) => ({
+            id: occ.id,
+            fullName: occ.fullName,
+            phone: occ.phone,
+            relationToPrimary: occ.relationToPrimary,
+            residenceRegStatus: occ.residenceRegStatus,
+          })),
           electricRateVnd: c.electricRateVnd,
           waterBillingMethod: c.waterBillingMethod,
           waterRateVnd: c.waterRateVnd,
@@ -3459,6 +3728,15 @@ export async function handleConsoleV2Api(
       1,
       Math.min(12, Math.trunc(Number(body.occupantsCount ?? 1)))
     );
+    const rentalModel = ['ENTIRE_ROOM', 'SHARED_ROOM'].includes(String(body.rentalModel || ''))
+      ? String(body.rentalModel)
+      : 'ENTIRE_ROOM';
+    const coOccupants: Array<{
+      fullName: string;
+      phone?: string;
+      idNumber?: string;
+      relationToPrimary?: string;
+    }> = Array.isArray(body.coOccupants) ? body.coOccupants : [];
 
     if (
       !roomId ||
@@ -3557,8 +3835,11 @@ export async function handleConsoleV2Api(
             tenantId: tenant.id,
             reservationId: body.reservationId ? String(body.reservationId) : null,
             contractCode,
+            rentalModel,
             startDate,
             endDate,
+            signedAt: new Date(),
+            moveInDate: startDate,
             monthlyRentVnd: BigInt(monthlyRentVnd),
             depositVnd: BigInt(Math.max(0, depositVnd)),
             occupantsCount,
@@ -3569,31 +3850,90 @@ export async function handleConsoleV2Api(
           },
         });
 
-        if (body.reservationId) {
-          const resv = await tx.roomReservation.findUnique({
-            where: { id: String(body.reservationId) },
-          });
-          if (resv && resv.orgId === actor.orgId) {
-            await tx.roomReservation.update({
-              where: { id: resv.id },
-              data: { status: 'CONVERTED' },
-            });
-            await tx.deposit.updateMany({
-              where: { reservationId: resv.id },
-              data: { contractId: ct.id, status: 'APPLIED_TO_CONTRACT' },
+        // Create primary occupant
+        await tx.roomOccupant.create({
+          data: {
+            orgId: actor.orgId,
+            roomId: rm.id,
+            contractId: ct.id,
+            tenantId: tenant.id,
+            fullName: tenant.fullName,
+            phone: tenant.phone,
+            idNumber: tenant.idNumber,
+            relationToPrimary: 'PRIMARY',
+            residenceRegStatus: tenant.residenceRegStatus || 'PENDING',
+            moveInDate: startDate,
+            isActive: true,
+          },
+        });
+
+        // Create co-occupants if provided
+        for (const occ of coOccupants) {
+          if (occ && occ.fullName && occ.fullName.trim()) {
+            await tx.roomOccupant.create({
+              data: {
+                orgId: actor.orgId,
+                roomId: rm.id,
+                contractId: ct.id,
+                fullName: occ.fullName.trim(),
+                phone: occ.phone?.trim() || null,
+                idNumber: occ.idNumber?.trim() || null,
+                relationToPrimary: occ.relationToPrimary || 'ROOMMATE',
+                residenceRegStatus: 'PENDING',
+                moveInDate: startDate,
+                isActive: true,
+              },
             });
           }
-        } else if (depositVnd > 0) {
-          await tx.deposit.create({
+        }
+
+        let dep = null;
+        if (depositVnd > 0) {
+          dep = await tx.deposit.create({
             data: {
               orgId: actor.orgId,
               contractId: ct.id,
+              depositType: 'CONTRACT',
               amountVnd: BigInt(depositVnd),
+              paymentStatus: 'PAID',
+              receivedAt: new Date(),
+              paymentMethod: 'CASH',
               status: 'HELD',
               notes: `Tiền cọc hợp đồng ${contractCode}`,
             },
           });
         }
+
+        // Generate First Combined Invoice
+        const initialInvoiceCode = `HD-INV-${rm.building.code}-${rm.code}-${crypto
+          .randomBytes(2)
+          .toString('hex')
+          .toUpperCase()}`;
+        const totalFirstDue = monthlyRentVnd + depositVnd;
+
+        await tx.invoice.create({
+          data: {
+            orgId: actor.orgId,
+            buildingId: rm.buildingId,
+            roomId: rm.id,
+            contractId: ct.id,
+            tenantId: tenant.id,
+            invoiceCode: initialInvoiceCode,
+            periodKey: getCurrentVnPeriodKey(),
+            dueDate: startDate,
+            roomRentVnd: BigInt(monthlyRentVnd),
+            adjustmentVnd: BigInt(depositVnd),
+            totalAmountVnd: BigInt(totalFirstDue),
+            status: 'ISSUED',
+            policySnapshot: {
+              type: 'FIRST_COMBINED_INVOICE',
+              breakdown: [
+                { label: 'Tiền thuê chu kỳ đầu', amountVnd: monthlyRentVnd },
+                { label: 'Tiền cọc hợp đồng', amountVnd: depositVnd },
+              ],
+            },
+          },
+        });
 
         await tx.consoleRoom.update({
           where: { id: rm.id },
@@ -3628,7 +3968,7 @@ export async function handleConsoleV2Api(
             entityId: ct.id,
             action: 'CREATE_CONTRACT',
             summary: `Ký hợp đồng ${ct.contractCode} cho ${tenant.fullName} · Phòng ${rm.code}`,
-            metadata: { clientIp, monthlyRentVnd, depositVnd },
+            metadata: { clientIp, monthlyRentVnd, depositVnd, rentalModel },
           },
         });
 
@@ -3653,6 +3993,98 @@ export async function handleConsoleV2Api(
       }
       throw err;
     }
+  }
+
+  // POST /api/v1/console/v2/contracts/:id/handover
+  const contractHandoverMatch = pathname.match(
+    /^\/api\/v1\/console\/v2\/contracts\/([^/]+)\/handover$/
+  );
+  if (method === 'POST' && contractHandoverMatch) {
+    if (!actorHasPermission(actor, 'contracts.manage')) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'INSUFFICIENT_PERMISSION',
+        message: 'Không có quyền thực hiện bàn giao phòng.',
+      });
+    }
+
+    const contractId = decodeURIComponent(contractHandoverMatch[1]);
+    const body = await readJsonBody(req);
+    const ct = await prisma.contract.findUnique({
+      where: { id: contractId },
+      include: { room: { include: { building: true, electricMeter: true } }, tenant: true },
+    });
+    if (!ct || ct.orgId !== actor.orgId) {
+      return sendJson(res, 404, {
+        ok: false,
+        errorCode: 'CONTRACT_NOT_FOUND',
+        message: 'Hợp đồng không tồn tại.',
+      });
+    }
+
+    const handoverMeterKwh = body.handoverMeterKwh !== undefined ? Number(body.handoverMeterKwh) : null;
+    const handoverWaterM3 = body.handoverWaterM3 !== undefined ? Number(body.handoverWaterM3) : null;
+    const moveInDate =
+      typeof body.moveInDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.moveInDate)
+        ? body.moveInDate
+        : getTodayIsoVn();
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const c = await tx.contract.update({
+        where: { id: ct.id },
+        data: {
+          handoverMeterKwh,
+          handoverWaterM3,
+          moveInDate,
+          status: 'ACTIVE',
+        },
+      });
+
+      // If meter reading provided and meter exists, record baseline reading
+      if (handoverMeterKwh !== null && ct.room.electricMeter) {
+        await tx.meterReading.create({
+          data: {
+            meterId: ct.room.electricMeter.id,
+            periodKey: getCurrentVnPeriodKey(),
+            readingKwh: handoverMeterKwh,
+            source: 'MANUAL_OVERRIDE',
+            recordedByActor: actor.email,
+            overrideReason: `Bàn giao phòng hợp đồng ${ct.contractCode}`,
+          },
+        });
+      }
+
+      await tx.consoleRoom.update({
+        where: { id: ct.roomId },
+        data: { occupancyStatus: 'OCCUPIED' },
+      });
+
+      await tx.consoleAuditLog.create({
+        data: {
+          orgId: actor.orgId,
+          buildingId: ct.buildingId,
+          actorId: actor.id,
+          actorEmail: actor.email,
+          actorRole: actor.role,
+          entityType: 'CONTRACT',
+          entityId: ct.id,
+          action: 'HANDOVER_ROOM',
+          summary: `Bàn giao phòng ${ct.room.code} cho hợp đồng ${ct.contractCode} (Điện: ${handoverMeterKwh ?? 'N/A'} kWh, Nước: ${handoverWaterM3 ?? 'N/A'} m³)`,
+          metadata: { clientIp, handoverMeterKwh, handoverWaterM3, moveInDate },
+        },
+      });
+
+      return c;
+    });
+
+    return sendJson(res, 200, {
+      ok: true,
+      contract: {
+        ...updated,
+        monthlyRentVnd: toSafeVndNumber(updated.monthlyRentVnd),
+        depositVnd: toSafeVndNumber(updated.depositVnd),
+      },
+    });
   }
 
   // ===========================================================================
@@ -3680,6 +4112,8 @@ export async function handleConsoleV2Api(
         : null;
     const holdDays = Math.max(1, Math.min(30, Math.trunc(Number(body.holdDays) || 7)));
     const notes = typeof body.notes === 'string' ? body.notes.trim() : null;
+    const paymentConfirmed = Boolean(body.paymentConfirmed);
+    const paymentMethod = String(body.paymentMethod || 'BANK_TRANSFER').trim();
 
     if (!roomId || !customerName || !customerPhone) {
       return sendJson(res, 422, {
@@ -3747,7 +4181,7 @@ export async function handleConsoleV2Api(
             customerName,
             customerPhone,
             holdAmountVnd: BigInt(holdAmountVnd),
-            status: holdAmountVnd > 0 ? 'CONFIRMED' : 'PENDING',
+            status: paymentConfirmed && holdAmountVnd > 0 ? 'CONFIRMED' : 'PENDING',
             holdUntil,
             expectedMoveIn,
             notes,
@@ -3760,28 +4194,35 @@ export async function handleConsoleV2Api(
             data: {
               orgId: actor.orgId,
               reservationId: resv.id,
+              depositType: 'BOOKING',
               amountVnd: BigInt(holdAmountVnd),
+              paymentStatus: paymentConfirmed ? 'PAID' : 'PENDING',
+              paymentMethod: paymentConfirmed ? paymentMethod : null,
+              receivedAt: paymentConfirmed ? new Date() : null,
               status: 'HELD',
               notes: `Tiền cọc giữ chỗ ${resv.reservationCode}`,
             },
           });
 
-          await tx.ledgerEntry.create({
-            data: {
-              orgId: actor.orgId,
-              buildingId: rm.buildingId,
-              periodKey: getCurrentVnPeriodKey(),
-              entryCode: `PT-${getCurrentVnPeriodKey().replace('-', '')}-${crypto
-                .randomBytes(2)
-                .toString('hex')
-                .toUpperCase()}`,
-              entryType: 'INCOME',
-              category: 'Cọc giữ chỗ',
-              amountVnd: BigInt(holdAmountVnd),
-              description: `Thu tiền cọc giữ chỗ ${resv.reservationCode} - ${customerName}`,
-              recordedBy: actor.email,
-            },
-          });
+          // Only create INCOME ledger entry if payment is actually confirmed as received!
+          if (paymentConfirmed) {
+            await tx.ledgerEntry.create({
+              data: {
+                orgId: actor.orgId,
+                buildingId: rm.buildingId,
+                periodKey: getCurrentVnPeriodKey(),
+                entryCode: `PT-${getCurrentVnPeriodKey().replace('-', '')}-${crypto
+                  .randomBytes(2)
+                  .toString('hex')
+                  .toUpperCase()}`,
+                entryType: 'INCOME',
+                category: 'Cọc giữ chỗ',
+                amountVnd: BigInt(holdAmountVnd),
+                description: `Thu tiền cọc giữ chỗ ${resv.reservationCode} - ${customerName}`,
+                recordedBy: actor.email,
+              },
+            });
+          }
         }
 
         await tx.consoleRoom.update({
@@ -3805,8 +4246,8 @@ export async function handleConsoleV2Api(
             entityType: 'RESERVATION',
             entityId: resv.id,
             action: 'CREATE_RESERVATION',
-            summary: `Tạo phiếu giữ chỗ ${resv.reservationCode} cho khách ${customerName} · Phòng ${rm.code}`,
-            metadata: { clientIp, holdAmountVnd },
+            summary: `Tạo phiếu giữ chỗ ${resv.reservationCode} cho khách ${customerName} · Phòng ${rm.code} (${paymentConfirmed ? 'Đã thu cọc' : 'Chờ nộp cọc'})`,
+            metadata: { clientIp, holdAmountVnd, paymentConfirmed },
           },
         });
 
@@ -3839,6 +4280,134 @@ export async function handleConsoleV2Api(
     }
   }
 
+  // POST /api/v1/console/v2/reservations/:id/confirm-payment
+  const resvConfirmPayMatch = pathname.match(
+    /^\/api\/v1\/console\/v2\/reservations\/([^/]+)\/confirm-payment$/
+  );
+  if (method === 'POST' && resvConfirmPayMatch) {
+    if (!actorHasPermission(actor, 'contracts.manage') && !actorHasPermission(actor, 'finance.write')) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'INSUFFICIENT_PERMISSION',
+        message: 'Không có quyền xác nhận thu tiền cọc giữ chỗ.',
+      });
+    }
+
+    const resvId = decodeURIComponent(resvConfirmPayMatch[1]);
+    const body = await readJsonBody(req);
+    const paymentMethod = String(body.paymentMethod || 'BANK_TRANSFER').trim();
+
+    const resv = await prisma.roomReservation.findUnique({
+      where: { id: resvId },
+      include: { room: { include: { building: true } }, deposits: true },
+    });
+    if (!resv || resv.orgId !== actor.orgId) {
+      return sendJson(res, 404, {
+        ok: false,
+        errorCode: 'ENTITY_NOT_FOUND',
+        message: 'Phiếu giữ chỗ không tồn tại trong tổ chức.',
+      });
+    }
+    if (!isBuildingAllowedForActor(actor, resv.buildingId, resv.room.building.code)) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'FORBIDDEN_BUILDING_SCOPE',
+        message: 'Không có quyền xử lý giữ chỗ ngoài tòa nhà phụ trách.',
+      });
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      let pendingDep = resv.deposits.find((d) => d.paymentStatus === 'PENDING');
+      const amountToConfirm = pendingDep ? Number(pendingDep.amountVnd) : Number(resv.holdAmountVnd);
+
+      if (!pendingDep && amountToConfirm > 0) {
+        pendingDep = await tx.deposit.create({
+          data: {
+            orgId: actor.orgId,
+            reservationId: resv.id,
+            depositType: 'BOOKING',
+            amountVnd: BigInt(amountToConfirm),
+            paymentStatus: 'PAID',
+            paymentMethod,
+            receivedAt: new Date(),
+            status: 'HELD',
+            notes: `Tiền cọc giữ chỗ ${resv.reservationCode}`,
+          },
+        });
+      } else if (pendingDep) {
+        pendingDep = await tx.deposit.update({
+          where: { id: pendingDep.id },
+          data: {
+            paymentStatus: 'PAID',
+            paymentMethod,
+            receivedAt: new Date(),
+          },
+        });
+      }
+
+      if (amountToConfirm > 0) {
+        await tx.ledgerEntry.create({
+          data: {
+            orgId: actor.orgId,
+            buildingId: resv.buildingId,
+            periodKey: getCurrentVnPeriodKey(),
+            entryCode: `PT-${getCurrentVnPeriodKey().replace('-', '')}-${crypto
+              .randomBytes(2)
+              .toString('hex')
+              .toUpperCase()}`,
+            entryType: 'INCOME',
+            category: 'Cọc giữ chỗ',
+            amountVnd: BigInt(amountToConfirm),
+            description: `Xác nhận thu tiền cọc giữ chỗ ${resv.reservationCode} - ${resv.customerName}`,
+            recordedBy: actor.email,
+          },
+        });
+      }
+
+      const updatedResv = await tx.roomReservation.update({
+        where: { id: resv.id },
+        data: { status: 'CONFIRMED' },
+      });
+
+      await tx.consoleRoom.update({
+        where: { id: resv.roomId },
+        data: { occupancyStatus: 'RESERVED' },
+      });
+
+      await tx.consoleAuditLog.create({
+        data: {
+          orgId: actor.orgId,
+          buildingId: resv.buildingId,
+          actorId: actor.id,
+          actorEmail: actor.email,
+          actorRole: actor.role,
+          entityType: 'RESERVATION',
+          entityId: resv.id,
+          action: 'CONFIRM_RESERVATION_PAYMENT',
+          summary: `Xác nhận đã nhận ${amountToConfirm.toLocaleString('vi-VN')}đ cọc giữ chỗ ${resv.reservationCode}`,
+          metadata: { clientIp, paymentMethod, amountToConfirm },
+        },
+      });
+
+      return { updatedResv, pendingDep };
+    });
+
+    return sendJson(res, 200, {
+      ok: true,
+      reservation: {
+        ...updated.updatedResv,
+        holdAmountVnd: toSafeVndNumber(updated.updatedResv.holdAmountVnd),
+      },
+      deposit: updated.pendingDep
+        ? {
+            ...updated.pendingDep,
+            amountVnd: toSafeVndNumber(updated.pendingDep.amountVnd),
+            refundedVnd: toSafeVndNumber(updated.pendingDep.refundedVnd),
+          }
+        : null,
+    });
+  }
+
   // POST /api/v1/console/v2/reservations/:id/cancel
   const resvCancelMatch = pathname.match(
     /^\/api\/v1\/console\/v2\/reservations\/([^/]+)\/cancel$/
@@ -3856,6 +4425,8 @@ export async function handleConsoleV2Api(
     const body = await readJsonBody(req);
     const reason = String(body.reason || 'Khách hủy giữ chỗ').trim();
     const refundAmountVnd = Math.max(0, Math.trunc(Number(body.refundAmountVnd) || 0));
+    const deductionAmountVnd = Math.max(0, Math.trunc(Number(body.deductionAmountVnd) || 0));
+    const forfeitAmountVnd = Math.max(0, Math.trunc(Number(body.forfeitAmountVnd) || 0));
     const forfeit = Boolean(body.forfeit);
 
     const resv = await prisma.roomReservation.findUnique({
@@ -3911,38 +4482,49 @@ export async function handleConsoleV2Api(
 
       for (const d of resv.deposits) {
         if (d.status === 'HELD') {
-          if (refundAmountVnd > 0) {
-            const isFull = refundAmountVnd >= Number(d.amountVnd);
+          if (d.paymentStatus === 'PAID') {
+            const availDep = Number(d.amountVnd) - Number(d.refundedVnd);
+            const actualRefund = Math.min(refundAmountVnd, availDep);
+            const isFull = actualRefund + deductionAmountVnd + forfeitAmountVnd >= availDep;
+
             await tx.deposit.update({
               where: { id: d.id },
               data: {
-                status: isFull ? 'REFUNDED' : 'PARTIALLY_REFUNDED',
-                refundedVnd: BigInt(refundAmountVnd),
-                notes: d.notes ? `${d.notes} | Hoàn cọc: ${refundAmountVnd}đ` : `Hoàn cọc: ${refundAmountVnd}đ`,
+                status: isFull ? 'REFUNDED' : actualRefund > 0 ? 'PARTIALLY_REFUNDED' : 'FORFEITED',
+                paymentStatus: isFull ? 'REFUNDED' : actualRefund > 0 ? 'REFUNDED' : 'FORFEITED',
+                refundedVnd: BigInt(Number(d.refundedVnd) + actualRefund),
+                notes: d.notes
+                  ? `${d.notes} | Hoàn: ${actualRefund}đ | Khấu trừ/tịch thu: ${availDep - actualRefund}đ`
+                  : `Hoàn: ${actualRefund}đ`,
               },
             });
-            await tx.ledgerEntry.create({
-              data: {
-                orgId: actor.orgId,
-                buildingId: resv.buildingId,
-                periodKey: getCurrentVnPeriodKey(),
-                entryCode: `PC-${getCurrentVnPeriodKey().replace('-', '')}-${crypto
-                  .randomBytes(2)
-                  .toString('hex')
-                  .toUpperCase()}`,
-                entryType: 'EXPENSE',
-                category: 'Hoàn tiền cọc',
-                amountVnd: BigInt(refundAmountVnd),
-                description: `Hoàn cọc giữ chỗ ${resv.reservationCode} cho khách ${resv.customerName}`,
-                recordedBy: actor.email,
-              },
-            });
-          } else if (forfeit) {
+
+            if (actualRefund > 0) {
+              await tx.ledgerEntry.create({
+                data: {
+                  orgId: actor.orgId,
+                  buildingId: resv.buildingId,
+                  periodKey: getCurrentVnPeriodKey(),
+                  entryCode: `PC-${getCurrentVnPeriodKey().replace('-', '')}-${crypto
+                    .randomBytes(2)
+                    .toString('hex')
+                    .toUpperCase()}`,
+                  entryType: 'EXPENSE',
+                  category: 'Hoàn tiền cọc',
+                  amountVnd: BigInt(actualRefund),
+                  description: `Hoàn cọc giữ chỗ ${resv.reservationCode} cho khách ${resv.customerName}`,
+                  recordedBy: actor.email,
+                },
+              });
+            }
+          } else {
+            // Unpaid pending deposit cancelled - no ledger expense
             await tx.deposit.update({
               where: { id: d.id },
               data: {
                 status: 'FORFEITED',
-                notes: d.notes ? `${d.notes} | Tịch thu cọc do hủy` : 'Tịch thu cọc do hủy',
+                paymentStatus: 'FORFEITED',
+                notes: d.notes ? `${d.notes} | Hủy cọc chưa nộp` : 'Hủy cọc chưa nộp',
               },
             });
           }
@@ -3960,7 +4542,7 @@ export async function handleConsoleV2Api(
           entityId: resv.id,
           action: 'CANCEL_RESERVATION',
           summary: `Hủy phiếu giữ chỗ ${resv.reservationCode} (Lý do: ${reason})`,
-          metadata: { clientIp, refundAmountVnd, forfeit },
+          metadata: { clientIp, refundAmountVnd, deductionAmountVnd, forfeit },
         },
       });
 
@@ -4011,13 +4593,17 @@ export async function handleConsoleV2Api(
     }
 
     let tenantId = String(body.tenantId || resv.tenantId || '').trim();
-    if (!tenantId) {
+    let tenantRecord: any = null;
+    if (tenantId) {
+      tenantRecord = await prisma.tenant.findUnique({ where: { id: tenantId } });
+    }
+    if (!tenantRecord) {
       const normPhone = normalizeVnPhone(resv.customerPhone);
-      let t = await prisma.tenant.findFirst({
+      tenantRecord = await prisma.tenant.findFirst({
         where: { orgId: actor.orgId, normalizedPhone: normPhone },
       });
-      if (!t) {
-        t = await prisma.tenant.create({
+      if (!tenantRecord) {
+        tenantRecord = await prisma.tenant.create({
           data: {
             orgId: actor.orgId,
             fullName: resv.customerName,
@@ -4027,16 +4613,26 @@ export async function handleConsoleV2Api(
           },
         });
       }
-      tenantId = t.id;
+      tenantId = tenantRecord.id;
     }
 
-    const startDate = String(body.startDate || resv.expectedMoveIn || '').trim();
+    const startDate = String(body.startDate || resv.expectedMoveIn || getTodayIsoVn()).trim();
     const endDate = String(body.endDate || '').trim();
     const monthlyRentVnd = Math.trunc(
       Number(body.monthlyRentVnd || resv.room.listPriceVnd || 4500000)
     );
-    const depositVnd = Math.trunc(Number(body.depositVnd ?? monthlyRentVnd));
+    const requiredDepositVnd = Math.trunc(Number(body.depositVnd ?? monthlyRentVnd));
     const occupantsCount = Math.max(1, Math.min(12, Math.trunc(Number(body.occupantsCount || 1))));
+    const rentalModel = ['ENTIRE_ROOM', 'SHARED_ROOM'].includes(String(body.rentalModel || ''))
+      ? String(body.rentalModel)
+      : 'ENTIRE_ROOM';
+    const surplusAction = String(body.surplusAction || 'RENT_CREDIT'); // RENT_CREDIT | REFUND
+    const coOccupants: Array<{
+      fullName: string;
+      phone?: string;
+      idNumber?: string;
+      relationToPrimary?: string;
+    }> = Array.isArray(body.coOccupants) ? body.coOccupants : [];
 
     if (!startDate || !endDate || endDate <= startDate) {
       return sendJson(res, 422, {
@@ -4052,7 +4648,7 @@ export async function handleConsoleV2Api(
       .toUpperCase()}`;
 
     try {
-      const created = await prisma.$transaction(async (tx) => {
+      const result = await prisma.$transaction(async (tx) => {
         await tx.$executeRaw`SELECT id FROM "console_rooms" WHERE id = ${resv.roomId} FOR UPDATE`;
 
         const activeContracts = await tx.contract.count({
@@ -4064,6 +4660,39 @@ export async function handleConsoleV2Api(
           throw err;
         }
 
+        // Calculate available received booking deposit B
+        const paidBookingDeposits = resv.deposits.filter(
+          (d) => d.paymentStatus === 'PAID' && (d.status === 'HELD' || d.status === 'PARTIALLY_REFUNDED')
+        );
+        const B = paidBookingDeposits.reduce(
+          (sum, d) => sum + (Number(d.amountVnd) - Number(d.refundedVnd)),
+          0
+        );
+        const C = requiredDepositVnd;
+        const R = monthlyRentVnd;
+
+        // Apply transfer math
+        let transferredDepositVnd = 0;
+        let surplusDepositVnd = 0;
+        let additionalDepositDue = 0;
+        let firstCycleRentDue = R;
+
+        if (B <= C) {
+          transferredDepositVnd = B;
+          additionalDepositDue = C - B;
+          surplusDepositVnd = 0;
+        } else {
+          transferredDepositVnd = C;
+          surplusDepositVnd = B - C;
+          additionalDepositDue = 0;
+          if (surplusAction === 'RENT_CREDIT') {
+            firstCycleRentDue = Math.max(0, R - surplusDepositVnd);
+          }
+        }
+
+        const totalInitialInvoiceDue = firstCycleRentDue + additionalDepositDue;
+
+        // Create Contract
         const ct = await tx.contract.create({
           data: {
             orgId: actor.orgId,
@@ -4072,10 +4701,13 @@ export async function handleConsoleV2Api(
             tenantId,
             reservationId: resv.id,
             contractCode,
+            rentalModel,
             startDate,
             endDate,
+            signedAt: new Date(),
+            moveInDate: startDate,
             monthlyRentVnd: BigInt(monthlyRentVnd),
-            depositVnd: BigInt(Math.max(0, depositVnd)),
+            depositVnd: BigInt(Math.max(0, C)),
             occupantsCount,
             electricRateVnd: resv.room.electricRateVnd || 3800,
             waterBillingMethod: resv.room.waterBillingMethod || 'PER_M3',
@@ -4084,29 +4716,130 @@ export async function handleConsoleV2Api(
           },
         });
 
-        const linkedDeposit = resv.deposits.find((d) => d.status === 'HELD');
-        if (linkedDeposit) {
-          await tx.deposit.update({
-            where: { id: linkedDeposit.id },
-            data: {
-              contractId: ct.id,
-              status: 'APPLIED_TO_CONTRACT',
-              amountVnd: BigInt(depositVnd),
-              notes: `Chuyển từ giữ chỗ ${resv.reservationCode} sang hợp đồng ${ct.contractCode}`,
-            },
-          });
-        } else if (depositVnd > 0) {
-          await tx.deposit.create({
+        // Create primary occupant
+        await tx.roomOccupant.create({
+          data: {
+            orgId: actor.orgId,
+            roomId: resv.roomId,
+            contractId: ct.id,
+            tenantId,
+            fullName: tenantRecord.fullName,
+            phone: tenantRecord.phone,
+            idNumber: tenantRecord.idNumber,
+            relationToPrimary: 'PRIMARY',
+            residenceRegStatus: tenantRecord.residenceRegStatus || 'PENDING',
+            moveInDate: startDate,
+            isActive: true,
+          },
+        });
+
+        // Create co-occupants if provided
+        for (const occ of coOccupants) {
+          if (occ && occ.fullName && occ.fullName.trim()) {
+            await tx.roomOccupant.create({
+              data: {
+                orgId: actor.orgId,
+                roomId: resv.roomId,
+                contractId: ct.id,
+                fullName: occ.fullName.trim(),
+                phone: occ.phone?.trim() || null,
+                idNumber: occ.idNumber?.trim() || null,
+                relationToPrimary: occ.relationToPrimary || 'ROOMMATE',
+                residenceRegStatus: 'PENDING',
+                moveInDate: startDate,
+                isActive: true,
+              },
+            });
+          }
+        }
+
+        // Create new Contract Deposit row (transferred from booking)
+        let newContractDeposit = null;
+        if (transferredDepositVnd > 0) {
+          newContractDeposit = await tx.deposit.create({
             data: {
               orgId: actor.orgId,
               contractId: ct.id,
-              reservationId: resv.id,
-              amountVnd: BigInt(depositVnd),
+              depositType: 'CONTRACT',
+              amountVnd: BigInt(transferredDepositVnd),
+              paymentStatus: 'PAID',
+              receivedAt: new Date(),
+              paymentMethod: 'TRANSFER_FROM_BOOKING',
               status: 'HELD',
-              notes: `Tiền cọc hợp đồng ${ct.contractCode}`,
+              notes: `Chuyển ${transferredDepositVnd.toLocaleString('vi-VN')}đ từ giữ chỗ ${resv.reservationCode}`,
             },
           });
         }
+
+        // Update original booking deposits without altering amountVnd!
+        for (const bd of paidBookingDeposits) {
+          await tx.deposit.update({
+            where: { id: bd.id },
+            data: {
+              status: 'APPLIED_TO_CONTRACT',
+              paymentStatus: 'TRANSFERRED',
+              transferredToDepositId: newContractDeposit?.id || null,
+              notes: bd.notes
+                ? `${bd.notes} | Đã chuyển sang hợp đồng ${ct.contractCode}`
+                : `Đã chuyển sang hợp đồng ${ct.contractCode}`,
+            },
+          });
+        }
+
+        // If surplus refund requested
+        if (surplusDepositVnd > 0 && surplusAction === 'REFUND') {
+          await tx.ledgerEntry.create({
+            data: {
+              orgId: actor.orgId,
+              buildingId: resv.buildingId,
+              periodKey: getCurrentVnPeriodKey(),
+              entryCode: `PC-${getCurrentVnPeriodKey().replace('-', '')}-${crypto
+                .randomBytes(2)
+                .toString('hex')
+                .toUpperCase()}`,
+              entryType: 'EXPENSE',
+              category: 'Hoàn tiền cọc dôi dư',
+              amountVnd: BigInt(surplusDepositVnd),
+              description: `Hoàn tiền cọc giữ chỗ dôi dư ${surplusDepositVnd.toLocaleString('vi-VN')}đ khi lập hợp đồng ${ct.contractCode}`,
+              recordedBy: actor.email,
+            },
+          });
+        }
+
+        // Generate First Combined Invoice
+        const initialInvoiceCode = `HD-INV-${resv.room.building.code}-${resv.room.code}-${crypto
+          .randomBytes(2)
+          .toString('hex')
+          .toUpperCase()}`;
+
+        const invoice = await tx.invoice.create({
+          data: {
+            orgId: actor.orgId,
+            buildingId: resv.buildingId,
+            roomId: resv.roomId,
+            contractId: ct.id,
+            tenantId,
+            invoiceCode: initialInvoiceCode,
+            periodKey: getCurrentVnPeriodKey(),
+            dueDate: startDate,
+            roomRentVnd: BigInt(monthlyRentVnd),
+            adjustmentVnd: BigInt(additionalDepositDue - (surplusAction === 'RENT_CREDIT' ? surplusDepositVnd : 0)),
+            totalAmountVnd: BigInt(totalInitialInvoiceDue),
+            status: totalInitialInvoiceDue === 0 ? 'PAID' : 'ISSUED',
+            paidAmountVnd: totalInitialInvoiceDue === 0 ? BigInt(totalInitialInvoiceDue) : BigInt(0),
+            policySnapshot: {
+              type: 'FIRST_COMBINED_INVOICE',
+              breakdown: [
+                { label: 'Tiền thuê chu kỳ đầu (R)', amountVnd: monthlyRentVnd },
+                { label: 'Cọc hợp đồng yêu cầu (C)', amountVnd: C },
+                { label: 'Cọc giữ chỗ đã chuyển (B)', amountVnd: -transferredDepositVnd },
+                ...(surplusDepositVnd > 0 && surplusAction === 'RENT_CREDIT'
+                  ? [{ label: 'Khấu trừ tiền cọc giữ chỗ dôi dư', amountVnd: -surplusDepositVnd }]
+                  : []),
+              ],
+            },
+          },
+        });
 
         await tx.roomReservation.update({
           where: { id: resv.id },
@@ -4138,21 +4871,40 @@ export async function handleConsoleV2Api(
             entityType: 'CONTRACT',
             entityId: ct.id,
             action: 'CONVERT_RESERVATION_TO_CONTRACT',
-            summary: `Chuyển đổi giữ chỗ ${resv.reservationCode} thành hợp đồng ${ct.contractCode}`,
-            metadata: { clientIp, reservationCode: resv.reservationCode },
+            summary: `Chuyển đổi giữ chỗ ${resv.reservationCode} thành hợp đồng ${ct.contractCode} (Chuyển cọc: ${transferredDepositVnd}đ, Còn thu: ${totalInitialInvoiceDue}đ)`,
+            metadata: {
+              clientIp,
+              reservationCode: resv.reservationCode,
+              transferredDepositVnd,
+              additionalDepositDue,
+              totalInitialInvoiceDue,
+            },
           },
         });
 
-        return ct;
+        return {
+          contract: ct,
+          invoice,
+          transferredDepositVnd,
+          additionalDueVnd: totalInitialInvoiceDue,
+        };
       });
 
       return sendJson(res, 201, {
         ok: true,
         contract: {
-          ...created,
-          monthlyRentVnd: toSafeVndNumber(created.monthlyRentVnd),
-          depositVnd: toSafeVndNumber(created.depositVnd),
+          ...result.contract,
+          monthlyRentVnd: toSafeVndNumber(result.contract.monthlyRentVnd),
+          depositVnd: toSafeVndNumber(result.contract.depositVnd),
         },
+        invoice: {
+          id: result.invoice.id,
+          invoiceCode: result.invoice.invoiceCode,
+          totalAmountVnd: toSafeVndNumber(result.invoice.totalAmountVnd),
+          status: result.invoice.status,
+        },
+        transferredDepositVnd: result.transferredDepositVnd,
+        additionalDueVnd: result.additionalDueVnd,
       });
     } catch (err: any) {
       if (err?.statusCode === 409) {

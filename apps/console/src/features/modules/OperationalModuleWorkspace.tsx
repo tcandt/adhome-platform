@@ -34,6 +34,7 @@ import {
 import { CONSOLE_CSRF_HEADER, useAuth } from '@/app/providers/AuthContext';
 import { useNavigation } from '@/app/providers/NavigationContext';
 import { usePortfolio } from '@/app/providers/PortfolioContext';
+import { ContractCreationWizardModal } from './modals/ContractCreationWizardModal';
 
 function shiftPeriodKey(periodKey: string, deltaMonths: number): string {
   const match = periodKey.match(/^(\d{4})-(\d{2})$/);
@@ -111,18 +112,7 @@ export const OperationalModuleWorkspace: React.FC<
   // Contract Creation Modal state
   const [isContractModalOpen, setIsContractModalOpen] = useState(false);
   const [ctRoomId, setCtRoomId] = useState('');
-  const [ctTenantId, setCtTenantId] = useState('');
-  const [ctDurationMonths, setCtDurationMonths] = useState<number>(12);
-  const [ctStartDate, setCtStartDate] = useState(() => getTodayIsoVn());
-  const [ctEndDate, setCtEndDate] = useState(() =>
-    computeEndDateIsoVn(getTodayIsoVn(), 12)
-  );
-  const [ctRentVnd, setCtRentVnd] = useState(4500000);
-  const [ctDepositVnd, setCtDepositVnd] = useState(4500000);
-  const [ctOccupants, setCtOccupants] = useState(2);
   const [ctReservationId, setCtReservationId] = useState<string | null>(null);
-  const [ctError, setCtError] = useState<string | null>(null);
-  const [isSavingCt, setIsSavingCt] = useState(false);
 
   // Reservation Modal state
   const [isReservationModalOpen, setIsReservationModalOpen] = useState(false);
@@ -241,16 +231,8 @@ export const OperationalModuleWorkspace: React.FC<
   const openContractModal = () => {
     const candidateRoom =
       rooms.find((r) => !r.activeContract) || rooms[0] || null;
-    const today = getTodayIsoVn();
     setCtRoomId(candidateRoom?.id || '');
-    setCtRentVnd(candidateRoom?.listPriceVnd || 4500000);
-    setCtDepositVnd(candidateRoom?.listPriceVnd || 4500000);
-    setCtTenantId(tenants[0]?.id || '');
-    setCtDurationMonths(12);
-    setCtStartDate(today);
-    setCtEndDate(computeEndDateIsoVn(today, 12));
     setCtReservationId(null);
-    setCtError(null);
     setIsContractModalOpen(true);
   };
 
@@ -266,43 +248,6 @@ export const OperationalModuleWorkspace: React.FC<
     setResvNotes('');
     setResvError(null);
     setIsReservationModalOpen(true);
-  };
-
-  const handleCreateContract = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSavingCt(true);
-    setCtError(null);
-    try {
-      const res = await fetch('/api/v1/console/v2/contracts', {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Requested-With': CONSOLE_CSRF_HEADER,
-        },
-        body: JSON.stringify({
-          roomId: ctRoomId,
-          tenantId: ctTenantId,
-          startDate: ctStartDate,
-          endDate: ctEndDate,
-          monthlyRentVnd: Math.trunc(Number(ctRentVnd) || 0),
-          depositVnd: Math.trunc(Number(ctDepositVnd) || 0),
-          occupantsCount: Math.trunc(Number(ctOccupants) || 1),
-          reservationId: ctReservationId || undefined,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok) {
-        setCtError(data.message || 'Không thể lập hợp đồng.');
-        return;
-      }
-      setIsContractModalOpen(false);
-      await Promise.all([loadModuleData(), refreshPortfolio()]);
-    } catch {
-      setCtError('Lỗi kết nối máy chủ.');
-    } finally {
-      setIsSavingCt(false);
-    }
   };
 
   const handleCreateReservation = async (e: React.FormEvent) => {
@@ -379,15 +324,7 @@ export const OperationalModuleWorkspace: React.FC<
     expectedMoveIn: string | null;
   }) => {
     setCtRoomId(r.roomId);
-    const existingTenant = tenants.find((t) => t.phone === r.customerPhone);
-    setCtTenantId(existingTenant?.id || tenants[0]?.id || '');
-    const today = r.expectedMoveIn || getTodayIsoVn();
-    setCtStartDate(today);
-    setCtEndDate(computeEndDateIsoVn(today, 12));
-    setCtDurationMonths(12);
-    setCtDepositVnd(r.holdAmountVnd || 4500000);
     setCtReservationId(r.id);
-    setCtError(null);
     setIsContractModalOpen(true);
   };
 
@@ -1193,11 +1130,107 @@ export const OperationalModuleWorkspace: React.FC<
                   </p>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table
-                    data-testid="contracts-table"
-                    className="w-full text-left text-xs"
-                  >
+                <>
+                  {/* Mobile Contracts Cards */}
+                  <div className="block md:hidden space-y-3">
+                    {contracts.map((c) => (
+                      <div
+                        key={c.id}
+                        data-testid={`contract-mobile-card-${c.contractCode}`}
+                        className="p-3.5 rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900/60 space-y-2.5 text-xs shadow-sm"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                            <FileSignature className="w-3.5 h-3.5 text-brand-primary" />
+                            {c.contractCode}
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              c.status === 'ACTIVE' || c.status === 'EXTENDED'
+                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                                : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                            }`}
+                          >
+                            {c.status}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600 dark:text-slate-300">
+                          <div>
+                            Tòa &amp; Phòng: <b className="text-slate-900 dark:text-white">{c.buildingCode} · {c.roomCode}</b>
+                          </div>
+                          <div>
+                            Khách thuê: <b className="text-slate-900 dark:text-white">{c.tenantName}</b>
+                          </div>
+                          <div>
+                            Thời hạn: <span className="font-mono">{c.startDate} → {c.endDate}</span>
+                          </div>
+                          <div>
+                            Giá thuê: <b className="tabular-nums text-slate-900 dark:text-white">{c.monthlyRentVnd.toLocaleString('vi-VN')} đ/th</b>
+                          </div>
+                        </div>
+
+                        <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px]">
+                          <span className="text-slate-500">
+                            Cọc: {c.depositVnd.toLocaleString('vi-VN')} đ
+                          </span>
+                          {c.status === 'ACTIVE' || c.status === 'EXTENDED' || c.status === 'EXPIRING' ? (
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedContract(c);
+                                  setExtNewEndDate(computeEndDateIsoVn(c.endDate, 6));
+                                  setExtNewRentVnd(c.monthlyRentVnd);
+                                  setExtNotes('');
+                                  setLifecycleError(null);
+                                  setIsExtendModalOpen(true);
+                                }}
+                                className="px-2 py-1 text-[10.5px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded"
+                              >
+                                Gia hạn
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedContract(c);
+                                  setTransferTargetRoomId('');
+                                  setTransferNewRentVnd(c.monthlyRentVnd);
+                                  setLifecycleError(null);
+                                  setIsTransferModalOpen(true);
+                                }}
+                                className="px-2 py-1 text-[10.5px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded"
+                              >
+                                Đổi phòng
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedContract(c);
+                                  setTermReason('Hết hạn hợp đồng');
+                                  setTermRoomNextStatus('AVAILABLE');
+                                  setLifecycleError(null);
+                                  setIsTerminateModalOpen(true);
+                                }}
+                                className="px-2 py-1 text-[10.5px] font-semibold bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 text-rose-600 dark:text-rose-300 rounded"
+                              >
+                                Thanh lý
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400">Đã kết thúc</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Desktop Contracts Table */}
+                  <div className="hidden md:block overflow-x-auto">
+                    <table
+                      data-testid="contracts-table"
+                      className="w-full text-left text-xs"
+                    >
                     <thead>
                       <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 font-semibold">
                         <th className="pb-3">Mã hợp đồng</th>
@@ -1311,6 +1344,7 @@ export const OperationalModuleWorkspace: React.FC<
                     </tbody>
                   </table>
                 </div>
+              </>
               )}
             </div>
           )}
@@ -1825,235 +1859,18 @@ export const OperationalModuleWorkspace: React.FC<
         </>
       )}
 
-      {/* MODAL 1: CREATE CONTRACT */}
+      {/* MODAL 1: 6-STEP CONTRACT CREATION WIZARD */}
       {isContractModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
-            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <FileSignature className="w-4 h-4 text-brand-primary" />
-                Lập hợp đồng thuê mới
-              </h3>
-              <button
-                type="button"
-                onClick={() => setIsContractModalOpen(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <form onSubmit={handleCreateContract} className="p-5 space-y-4">
-              {ctError && (
-                <div className="p-3 text-xs bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 rounded-xl">
-                  {ctError}
-                </div>
-              )}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold mb-1">
-                    Phòng cho thuê *
-                  </label>
-                  <select
-                    value={ctRoomId}
-                    onChange={(e) => {
-                      setCtRoomId(e.target.value);
-                      const selected = rooms.find(
-                        (r) => r.id === e.target.value
-                      );
-                      if (selected) {
-                        setCtRentVnd(selected.listPriceVnd);
-                        setCtDepositVnd(selected.listPriceVnd);
-                      }
-                    }}
-                    className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-semibold"
-                    required
-                  >
-                    <option value="">— Chọn phòng —</option>
-                    {rooms.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.buildingCode} · {r.code} (
-                        {r.listPriceVnd.toLocaleString('vi-VN')}đ)
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1">
-                    Khách đứng tên *
-                  </label>
-                  <select
-                    value={ctTenantId}
-                    onChange={(e) => setCtTenantId(e.target.value)}
-                    className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-semibold"
-                    required
-                  >
-                    <option value="">— Chọn khách thuê —</option>
-                    {tenants.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.fullName} ({t.phone})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Dynamic Vietnam Duration Selector */}
-              <div>
-                <label className="block text-xs font-semibold mb-1">
-                  Thời hạn hợp đồng (chu kỳ tiêu chuẩn)
-                </label>
-                <div className="flex items-center gap-2 mb-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCtDurationMonths(6);
-                      setCtEndDate(computeEndDateIsoVn(ctStartDate, 6));
-                    }}
-                    className={`px-3 py-1 text-xs rounded-lg font-semibold transition-colors ${
-                      ctDurationMonths === 6
-                        ? 'bg-brand-primary text-white'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
-                    }`}
-                  >
-                    6 tháng
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCtDurationMonths(12);
-                      setCtEndDate(computeEndDateIsoVn(ctStartDate, 12));
-                    }}
-                    className={`px-3 py-1 text-xs rounded-lg font-semibold transition-colors ${
-                      ctDurationMonths === 12
-                        ? 'bg-brand-primary text-white'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
-                    }`}
-                  >
-                    12 tháng (Chuẩn)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCtDurationMonths(0)}
-                    className={`px-3 py-1 text-xs rounded-lg font-semibold transition-colors ${
-                      ctDurationMonths === 0
-                        ? 'bg-brand-primary text-white'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
-                    }`}
-                  >
-                    Tùy chỉnh
-                  </button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold mb-1">
-                    Ngày bắt đầu *
-                  </label>
-                  <input
-                    type="date"
-                    value={ctStartDate}
-                    onChange={(e) => {
-                      const newStart = e.target.value;
-                      setCtStartDate(newStart);
-                      if (ctDurationMonths > 0) {
-                        setCtEndDate(
-                          computeEndDateIsoVn(newStart, ctDurationMonths)
-                        );
-                      }
-                    }}
-                    className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1">
-                    Ngày kết thúc *
-                  </label>
-                  <input
-                    type="date"
-                    value={ctEndDate}
-                    onChange={(e) => {
-                      setCtEndDate(e.target.value);
-                      setCtDurationMonths(0);
-                    }}
-                    className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl"
-                    required
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold mb-1">
-                    Giá thuê (VND/th) *
-                  </label>
-                  <input
-                    type="number"
-                    min={500000}
-                    step={100000}
-                    value={ctRentVnd}
-                    onChange={(e) =>
-                      setCtRentVnd(parseInt(e.target.value, 10) || 0)
-                    }
-                    className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1">
-                    Tiền cọc (VND) *
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    step={100000}
-                    value={ctDepositVnd}
-                    onChange={(e) =>
-                      setCtDepositVnd(parseInt(e.target.value, 10) || 0)
-                    }
-                    className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1">
-                    Số người ở
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={12}
-                    value={ctOccupants}
-                    onChange={(e) =>
-                      setCtOccupants(parseInt(e.target.value, 10) || 1)
-                    }
-                    className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl"
-                  />
-                </div>
-              </div>
-              <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsContractModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 rounded-xl"
-                >
-                  Hủy
-                </button>
-                <button
-                  data-testid="submit-create-contract"
-                  type="submit"
-                  disabled={isSavingCt || !ctRoomId || !ctTenantId}
-                  className="px-4 py-2 text-xs font-bold bg-brand-primary text-white rounded-xl flex items-center gap-1.5 disabled:opacity-50"
-                >
-                  {isSavingCt && (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  )}
-                  <span>Xác nhận ký hợp đồng</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <ContractCreationWizardModal
+          isOpen={isContractModalOpen}
+          preselectedRoomId={ctRoomId || undefined}
+          preselectedReservationId={ctReservationId || undefined}
+          onClose={() => setIsContractModalOpen(false)}
+          onSuccess={async () => {
+            setIsContractModalOpen(false);
+            await Promise.all([loadModuleData(), refreshPortfolio()]);
+          }}
+        />
       )}
 
       {/* MODAL 2: CREATE RESERVATION */}

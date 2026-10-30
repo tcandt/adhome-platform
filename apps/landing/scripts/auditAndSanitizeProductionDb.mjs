@@ -21,6 +21,9 @@ export async function auditAndSanitizeProductionDb(options = {}) {
   const shouldDeactivate =
     options.deactivateSampleActors ??
     process.argv.includes('--deactivate-sample-actors');
+  const shouldInvalidateSessions =
+    options.invalidateAllSessions ??
+    process.argv.includes('--invalidate-all-sessions');
 
   console.log('\n======================================================');
   console.log('   ADHOME DATABASE AUDIT & PRODUCTION SANITIZATION');
@@ -42,14 +45,14 @@ export async function auditAndSanitizeProductionDb(options = {}) {
   console.log(`- Sample Development Actors: ${sampleActors.length}`);
   sampleActors.forEach((a) => {
     console.log(
-      `  • [DEV SAMPLE] ID: ${a.id} | Email: ${a.email} | Role: ${a.role} | Active: ${a.isActive ? 'YES (RISK)' : 'NO (SAFE)'}`
+      `  • [DEV SAMPLE] ID: ${a.id} | Email: ${a.email} | Role: ${a.role} | Active: ${a.isActive ? 'YES (RISK)' : 'NO (SAFE)'} | Password: ${a.passwordHash ? 'SET' : 'NONE'} | SessionVer: ${a.sessionVersion}`
     );
   });
 
   console.log(`- Genuine / Provisioned Actors: ${genuineActors.length}`);
   genuineActors.forEach((a) => {
     console.log(
-      `  • [PRODUCTION] ID: ${a.id} | Email: ${a.email} | Role: ${a.role} | Active: ${a.isActive}`
+      `  • [PRODUCTION] ID: ${a.id} | Email: ${a.email} | Role: ${a.role} | Active: ${a.isActive} | Password: ${a.passwordHash ? 'SET' : 'NONE'} | SessionVer: ${a.sessionVersion}`
     );
   });
 
@@ -70,6 +73,32 @@ export async function auditAndSanitizeProductionDb(options = {}) {
       `Successfully deactivated ${deactivatedCount} sample development actors.`
     );
   }
+
+  // 1b. Invalidate all active sessions across all actors if requested
+  let sessionsInvalidatedCount = 0;
+  if (shouldInvalidateSessions) {
+    console.log('\n[Action] Invalidating all active sessions across all actors (incrementing sessionVersion)...');
+    const updateRes = await prisma.consoleActor.updateMany({
+      data: {
+        sessionVersion: { increment: 1 },
+      },
+    });
+    sessionsInvalidatedCount = updateRes.count;
+    console.log(`Successfully incremented sessionVersion for ${sessionsInvalidatedCount} actors. All existing JWTs are invalidated.`);
+  }
+
+  // 1c. Audit Login Audit Log
+  const [totalAudits, recentAudits] = await Promise.all([
+    prisma.consoleLoginAudit.count().catch(() => 0),
+    prisma.consoleLoginAudit.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+    }).catch(() => []),
+  ]);
+  console.log(`\n[Login Audit Logs] Total logged attempts: ${totalAudits}`);
+  recentAudits.forEach((r, idx) => {
+    console.log(`  ${idx + 1}. Outcome: ${r.outcome} | Email: ${r.emailAttempted} | IP: ${r.clientIp} | Time: ${r.createdAt.toISOString()}`);
+  });
 
   // 2. Audit Lead Inquiries
   const allLeads = await prisma.leadInquiry.findMany({
@@ -95,9 +124,21 @@ export async function auditAndSanitizeProductionDb(options = {}) {
       activeSampleActorsCount: sampleActors.filter((a) => a.isActive).length,
       genuineActorsCount: genuineActors.length,
       deactivatedSampleActors: deactivatedCount,
+      sessionsInvalidatedCount,
       allSampleActorsDeactivated: sampleActors.every(
         (a) => !a.isActive || (shouldDeactivate && deactivatedCount > 0)
       ),
+      allSampleActorsHaveNoPassword: sampleActors.every((a) => !a.passwordHash),
+      genuineAdminHasPassword: genuineActors.some((a) => a.id === 'usr-admin-prod' && Boolean(a.passwordHash)),
+    },
+    loginAudits: {
+      totalLogged: totalAudits,
+      recent: recentAudits.map((a) => ({
+        outcome: a.outcome,
+        email: a.emailAttempted,
+        ip: a.clientIp,
+        time: a.createdAt.toISOString(),
+      })),
     },
     leads: {
       total: allLeads.length,
@@ -128,4 +169,3 @@ if (
       prisma.$disconnect().then(() => process.exit(1));
     });
 }
-

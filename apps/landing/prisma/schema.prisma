@@ -170,11 +170,29 @@ model ConsoleActor {
   buildingScopes Json     @map("building_scopes")
   sessionVersion Int      @default(1) @map("session_version")
   isActive       Boolean  @default(true) @map("is_active")
+  /// Per-account scrypt hash (format: scrypt$N$r$p$salt$hash). NULL = login impossible.
+  passwordHash      String?   @map("password_hash")
+  passwordUpdatedAt DateTime? @map("password_updated_at")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
   @@index([orgId, isActive])
   @@map("console_actors")
+}
+
+/// Append-only audit trail of every Console login attempt (success and failure).
+model ConsoleLoginAudit {
+  id             String   @id @default(uuid())
+  actorId        String?  @map("actor_id")
+  emailAttempted String   @map("email_attempted")
+  outcome        String
+  clientIp       String   @map("client_ip")
+  jti            String?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([actorId, createdAt])
+  @@index([createdAt])
+  @@map("console_login_audit")
 }
 
 model RevokedToken {

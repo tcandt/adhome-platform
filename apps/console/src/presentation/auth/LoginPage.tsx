@@ -1,29 +1,50 @@
 import React, { useState } from 'react';
-import { Shield, KeyRound, Mail, ArrowRight, Eye, EyeOff, Building2, CheckCircle2 } from 'lucide-react';
+import {
+  Shield,
+  KeyRound,
+  Mail,
+  ArrowRight,
+  Eye,
+  EyeOff,
+  Building2,
+  CheckCircle2,
+  AlertCircle,
+  Loader2,
+} from 'lucide-react';
 import { BrandLogo } from '@/shared/ui/BrandLogo';
 import { useAuth } from '@/app/providers/AuthContext';
 import { Role } from '@/shared/types/auth';
 
 export const LoginPage: React.FC = () => {
-  const { login } = useAuth();
-  const [email, setEmail] = useState('admin@adhome.vn');
-  const [password, setPassword] = useState('••••••••••••');
+  const { loginWithCredentials } = useAuth();
+  const [email, setEmail] = useState('admin@adhome.ductinh.one');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [selectedRole, setSelectedRole] = useState<Role>('ORG_ADMIN');
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    login(selectedRole, email);
+    setErrorMsg(null);
+    setIsSubmitting(true);
+    try {
+      const res = await loginWithCredentials(email, password);
+      if (!res.ok) {
+        setErrorMsg(res.message || 'Email hoặc mật khẩu không chính xác.');
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleQuickSelect = (role: Role) => {
     setSelectedRole(role);
+    setErrorMsg(null);
     if (role === 'ORG_ADMIN') {
-      setEmail('admin@adhome.vn');
-      setPassword('••••••••••••');
+      setEmail('admin@adhome.ductinh.one');
     } else {
-      setEmail('manager@adhome.vn');
-      setPassword('••••••••••••');
+      setEmail('manager.lk01@adhome.vn');
     }
   };
 
@@ -64,6 +85,17 @@ export const LoginPage: React.FC = () => {
           </button>
         </div>
 
+        {/* Error Feedback */}
+        {errorMsg && (
+          <div
+            data-testid="console-login-error"
+            className="mb-4 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs flex items-center gap-2"
+          >
+            <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
+            <span>{errorMsg}</span>
+          </div>
+        )}
+
         {/* Login Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -73,12 +105,13 @@ export const LoginPage: React.FC = () => {
             <div className="relative">
               <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
+                data-testid="console-login-email"
                 type="email"
                 value={email}
-                onChange={e => setEmail(e.target.value)}
+                onChange={(e) => setEmail(e.target.value)}
                 required
                 className="w-full text-xs font-medium pl-10 pr-3 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-primary text-slate-900 dark:text-slate-100"
-                placeholder="ten@adhome.vn"
+                placeholder="admin@adhome.ductinh.one"
               />
             </div>
           </div>
@@ -88,42 +121,70 @@ export const LoginPage: React.FC = () => {
               <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
                 Mật khẩu
               </label>
-              <a href="#forgot" onClick={(e) => { e.preventDefault(); alert('Liên hệ quản trị viên để cấp lại mật khẩu'); }} className="text-[11px] text-brand-primary hover:underline">
+              <a
+                href="#forgot"
+                onClick={(e) => {
+                  e.preventDefault();
+                  alert('Liên hệ quản trị viên để cấp lại mật khẩu');
+                }}
+                className="text-[11px] text-brand-primary hover:underline"
+              >
                 Quên mật khẩu?
               </a>
             </div>
             <div className="relative">
               <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
+                data-testid="console-login-password"
                 type={showPassword ? 'text' : 'password'}
                 value={password}
-                onChange={e => setPassword(e.target.value)}
+                onChange={(e) => setPassword(e.target.value)}
                 required
                 className="w-full text-xs font-medium pl-10 pr-10 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-primary text-slate-900 dark:text-slate-100"
+                placeholder="Nhập mật khẩu an toàn..."
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
               >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                {showPassword ? (
+                  <EyeOff className="w-4 h-4" />
+                ) : (
+                  <Eye className="w-4 h-4" />
+                )}
               </button>
             </div>
           </div>
 
           <div className="flex items-center justify-between text-xs text-slate-500 py-1">
             <label className="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" defaultChecked className="rounded text-brand-primary focus:ring-0" />
+              <input
+                type="checkbox"
+                defaultChecked
+                className="rounded text-brand-primary focus:ring-0"
+              />
               <span>Ghi nhớ phiên đăng nhập</span>
             </label>
           </div>
 
           <button
+            data-testid="console-login-submit"
             type="submit"
-            className="w-full py-3.5 rounded-xl bg-brand-primary hover:bg-brand-hover text-white text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2 group"
+            disabled={isSubmitting}
+            className="w-full py-3.5 rounded-xl bg-brand-primary hover:bg-brand-hover disabled:opacity-50 text-white text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2 group cursor-pointer"
           >
-            <span>Đăng nhập vào Console</span>
-            <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Đang xác thực...</span>
+              </>
+            ) : (
+              <>
+                <span>Đăng nhập vào Console</span>
+                <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+              </>
+            )}
           </button>
         </form>
 

@@ -13,6 +13,8 @@ import {
   signConsoleToken,
   verifyAndResolveConsoleActor,
 } from './authRbac';
+import type { ConsolePermission, ConsoleRole } from './authRbac';
+import { MAX_PASSWORD_LENGTH, verifyPassword } from './passwordHash';
 import {
   renderDynamicRobotsTxt,
   renderDynamicSeoRouteFromDb,
@@ -34,12 +36,17 @@ interface RumSample {
   value: number;
   rating: 'good' | 'needs-improvement' | 'poor';
   route: string;
+  device: 'desktop' | 'mobile';
   interactionTarget?: string;
   userAgent?: string;
   recordedAt: string;
 }
 
 const rumSamplesBuffer: RumSample[] = [];
+
+export function clearRumSamples(): void {
+  rumSamplesBuffer.length = 0;
+}
 
 export function getPrismaClient(): PrismaClient {
   if (!prismaInstance) {
@@ -180,27 +187,9 @@ export async function ensurePostgreSqlSeeded(): Promise<void> {
       },
     });
 
-    // 2. Provision Authentic Production Administrator
-    await prisma.consoleActor.upsert({
-      where: { id: 'usr-admin-prod' },
-      update: {
-        email: 'admin@adhome.ductinh.one',
-        role: 'ADMIN',
-        permissions: ['rooms.publish.write', 'rooms.read', 'leads.read', 'system.admin'],
-        buildingScopes: ['*'],
-        isActive: true,
-      },
-      create: {
-        id: 'usr-admin-prod',
-        email: 'admin@adhome.ductinh.one',
-        orgId: DEFAULT_ORG_ID,
-        role: 'ADMIN',
-        permissions: ['rooms.publish.write', 'rooms.read', 'leads.read', 'system.admin'],
-        buildingScopes: ['*'],
-        sessionVersion: 1,
-        isActive: true,
-      },
-    });
+    // 2. Production administrators are NEVER created or re-activated at server boot.
+    //    They are provisioned explicitly via scripts/provisionProductionAdmin.mjs,
+    //    which requires a per-account password and preserves isActive.
 
     // 2b. Maintain Dev Sample Actors as Deactivated in PostgreSQL
     const sampleActorsToSeed = [
@@ -612,6 +601,200 @@ function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
   });
 }
 
+// =============================================================================
+// CONSOLE LOGIN (fail-closed, per-account scrypt verification)
+// =============================================================================
+
+const LOGIN_IP_MAX_ATTEMPTS = 10;
+const LOGIN_IP_WINDOW_MS = 10 * 60_000;
+const LOGIN_ACCOUNT_MAX_FAILURES = 5;
+const LOGIN_ACCOUNT_LOCK_MS = 15 * 60_000;
+const LOGIN_EMAIL_REGEX = /^[^\s@]{1,128}@[^\s@]{1,128}\.[^\s@]{2,32}$/;
+
+const loginFailureBuckets = new Map<string, { failures: number; resetAt: number }>();
+
+export function isConsoleLoginEnabled(): boolean {
+  loadAdhomeEnv();
+  return process.env.ADHOME_CONSOLE_LOGIN_ENABLED === 'true';
+}
+
+function getLoginLock(email: string): { locked: boolean; retryAfterSec: number } {
+  const bucket = loginFailureBuckets.get(email);
+  const now = Date.now();
+  if (!bucket || now >= bucket.resetAt) {
+    if (bucket) loginFailureBuckets.delete(email);
+    return { locked: false, retryAfterSec: 0 };
+  }
+  return {
+    locked: bucket.failures >= LOGIN_ACCOUNT_MAX_FAILURES,
+    retryAfterSec: Math.max(1, Math.ceil((bucket.resetAt - now) / 1000)),
+  };
+}
+
+function recordLoginFailure(email: string): void {
+  const now = Date.now();
+  const bucket = loginFailureBuckets.get(email);
+  if (!bucket || now >= bucket.resetAt) {
+    loginFailureBuckets.set(email, { failures: 1, resetAt: now + LOGIN_ACCOUNT_LOCK_MS });
+  } else {
+    bucket.failures += 1;
+  }
+}
+
+async function writeLoginAudit(
+  prisma: PrismaClient,
+  entry: { actorId?: string | null; email: string; outcome: string; clientIp: string; jti?: string | null }
+): Promise<void> {
+  try {
+    await prisma.consoleLoginAudit.create({
+      data: {
+        actorId: entry.actorId ?? null,
+        emailAttempted: entry.email.slice(0, 320),
+        outcome: entry.outcome,
+        clientIp: entry.clientIp.slice(0, 64),
+        jti: entry.jti ?? null,
+      },
+    });
+  } catch {
+    // Audit failure must never turn into an auth bypass; the decision is already made.
+  }
+}
+
+const GENERIC_INVALID_CREDENTIALS = {
+  ok: false,
+  errorCode: 'INVALID_CREDENTIALS',
+  message: 'Email hoặc mật khẩu không chính xác.',
+} as const;
+
+async function handleConsoleLogin(
+  req: IncomingMessage,
+  res: ServerResponse,
+  prisma: PrismaClient,
+  clientIp: string
+): Promise<void> {
+  if (req.method !== 'POST') {
+    return sendJson(res, 405, { ok: false, errorCode: 'METHOD_NOT_ALLOWED' }, { Allow: 'POST' });
+  }
+
+  if (!isConsoleLoginEnabled()) {
+    await writeLoginAudit(prisma, { email: '', outcome: 'LOGIN_DISABLED', clientIp });
+    return sendJson(res, 503, {
+      ok: false,
+      errorCode: 'LOGIN_DISABLED',
+      message: 'Đăng nhập Console đang tạm khóa trên môi trường này.',
+    });
+  }
+
+  const ipLimit = checkRateLimit(`console-login-ip:${clientIp}`, LOGIN_IP_MAX_ATTEMPTS, LOGIN_IP_WINDOW_MS);
+  if (!ipLimit.allowed) {
+    await writeLoginAudit(prisma, { email: '', outcome: 'RATE_LIMITED_IP', clientIp });
+    return sendJson(
+      res,
+      429,
+      { ok: false, errorCode: 'RATE_LIMITED', message: 'Quá nhiều lần đăng nhập. Vui lòng thử lại sau.' },
+      { 'Retry-After': String(ipLimit.retryAfterSec) }
+    );
+  }
+
+  let body: Record<string, unknown>;
+  try {
+    body = await readJsonBody(req);
+  } catch {
+    await writeLoginAudit(prisma, { email: '', outcome: 'MALFORMED_REQUEST', clientIp });
+    return sendJson(res, 400, { ok: false, errorCode: 'INVALID_JSON', message: 'Dữ liệu đăng nhập không hợp lệ.' });
+  }
+
+  const rawEmail = body.email;
+  const rawPassword = body.password;
+  const email = typeof rawEmail === 'string' ? rawEmail.trim().toLowerCase() : '';
+
+  // Both fields are REQUIRED and must be non-empty strings. No optional-password path exists.
+  if (
+    !email ||
+    !LOGIN_EMAIL_REGEX.test(email) ||
+    typeof rawPassword !== 'string' ||
+    rawPassword.length === 0 ||
+    rawPassword.length > MAX_PASSWORD_LENGTH
+  ) {
+    await writeLoginAudit(prisma, { email, outcome: 'MALFORMED_CREDENTIALS', clientIp });
+    return sendJson(res, 400, {
+      ok: false,
+      errorCode: 'INVALID_CREDENTIALS_FORMAT',
+      message: 'Vui lòng nhập email và mật khẩu hợp lệ.',
+    });
+  }
+
+  const lock = getLoginLock(email);
+  if (lock.locked) {
+    await writeLoginAudit(prisma, { email, outcome: 'ACCOUNT_LOCKED', clientIp });
+    return sendJson(
+      res,
+      429,
+      {
+        ok: false,
+        errorCode: 'ACCOUNT_TEMPORARILY_LOCKED',
+        message: 'Tài khoản tạm khóa do nhập sai nhiều lần. Vui lòng thử lại sau.',
+      },
+      { 'Retry-After': String(lock.retryAfterSec) }
+    );
+  }
+
+  const actor = await prisma.consoleActor.findUnique({ where: { email } });
+
+  // verifyPassword always runs the KDF (dummy hash when actor/hash is missing) → uniform timing.
+  const passwordValid = await verifyPassword(rawPassword, actor?.passwordHash ?? null);
+
+  if (!actor || !actor.passwordHash || !passwordValid) {
+    recordLoginFailure(email);
+    await writeLoginAudit(prisma, {
+      actorId: actor?.id ?? null,
+      email,
+      outcome: !actor ? 'UNKNOWN_ACCOUNT' : !actor.passwordHash ? 'NO_PASSWORD_SET' : 'WRONG_PASSWORD',
+      clientIp,
+    });
+    return sendJson(res, 401, GENERIC_INVALID_CREDENTIALS);
+  }
+
+  // Account state is only disclosed after the correct password was proven.
+  if (!actor.isActive) {
+    await writeLoginAudit(prisma, { actorId: actor.id, email, outcome: 'ACCOUNT_DEACTIVATED', clientIp });
+    return sendJson(res, 401, {
+      ok: false,
+      errorCode: 'ACCOUNT_DEACTIVATED',
+      message: 'Tài khoản này đã bị vô hiệu hóa.',
+    });
+  }
+
+  loginFailureBuckets.delete(email);
+
+  const jti = `jti-${crypto.randomUUID()}`;
+  const token = signConsoleToken({
+    jti,
+    sub: actor.id,
+    email: actor.email,
+    orgId: actor.orgId,
+    role: actor.role as ConsoleRole,
+    permissions: Array.isArray(actor.permissions) ? (actor.permissions as ConsolePermission[]) : [],
+    buildingScopes: Array.isArray(actor.buildingScopes) ? (actor.buildingScopes as string[]) : [],
+    sessionVersion: actor.sessionVersion,
+  });
+
+  await writeLoginAudit(prisma, { actorId: actor.id, email, outcome: 'SUCCESS', clientIp, jti });
+
+  return sendJson(res, 200, {
+    ok: true,
+    token,
+    tokenType: 'Bearer',
+    expiresIn: 3600,
+    actor: {
+      id: actor.id,
+      email: actor.email,
+      role: actor.role,
+      orgId: actor.orgId,
+    },
+  });
+}
+
 export function isTrustProxyEnabled(): boolean {
   loadAdhomeEnv();
   // Strictly require explicit opt-in via TRUST_PROXY=true; NEVER auto-enable via NODE_ENV
@@ -834,19 +1017,29 @@ function createApiAndDynamicSeoMiddleware() {
           });
         }
 
+        const ua = String(req.headers['user-agent'] || '');
+        const detectedDevice: 'desktop' | 'mobile' =
+          body.device === 'mobile' ||
+          body.device === 'desktop'
+            ? (body.device as 'desktop' | 'mobile')
+            : /Mobile|Android|iPhone|iPad/i.test(ua)
+            ? 'mobile'
+            : 'desktop';
+
         const sample: RumSample = {
           id: `rum-${crypto.randomUUID()}`,
           metricName,
-          value: Math.round(value * 100) / 100,
+          value: Math.round(value * 10000) / 10000,
           rating:
             body.rating === 'poor' || body.rating === 'needs-improvement'
               ? body.rating
               : 'good',
           route: String(body.route || '/').slice(0, 120),
+          device: detectedDevice,
           interactionTarget: body.interactionTarget
             ? String(body.interactionTarget).slice(0, 120)
             : undefined,
-          userAgent: String(req.headers['user-agent'] || '').slice(0, 160),
+          userAgent: ua.slice(0, 160),
           recordedAt: new Date().toISOString(),
         };
 
@@ -869,36 +1062,64 @@ function createApiAndDynamicSeoMiddleware() {
       }
     }
 
-    if (pathname === '/api/v1/public/rum/summary' && req.method === 'GET') {
-      const grouped: Record<
-        string,
-        {
-          count: number;
-          p50: number;
-          p75: number;
-          p95: number;
-          max: number;
-        }
-      > = {};
+    if (pathname === '/api/v1/public/rum/reset' && req.method === 'POST') {
+      clearRumSamples();
+      return sendJson(res, 200, {
+        ok: true,
+        message: 'RUM samples buffer cleared.',
+        totalBuffered: 0,
+      });
+    }
 
-      for (const name of ['INP', 'LCP', 'CLS', 'LONG_TASK', 'TBT']) {
-        const vals = rumSamplesBuffer
-          .filter((s) => s.metricName === name)
-          .map((s) => s.value)
-          .sort((a, b) => a - b);
-        grouped[name] = {
-          count: vals.length,
-          p50: percentile(vals, 50),
-          p75: percentile(vals, 75),
-          p95: percentile(vals, 95),
-          max: vals.length > 0 ? vals[vals.length - 1] : 0,
-        };
-      }
+    if (pathname === '/api/v1/public/rum/summary' && req.method === 'GET') {
+      const computeGroup = (samples: RumSample[]) => {
+        const grouped: Record<
+          string,
+          {
+            count: number;
+            p50: number;
+            p75: number;
+            p90: number;
+            p95: number;
+            max: number;
+            avg: number;
+          }
+        > = {};
+
+        for (const name of ['INP', 'LCP', 'CLS', 'LONG_TASK', 'TBT']) {
+          const vals = samples
+            .filter((s) => s.metricName === name)
+            .map((s) => s.value)
+            .sort((a, b) => a - b);
+          const sum = vals.reduce((acc, v) => acc + v, 0);
+          grouped[name] = {
+            count: vals.length,
+            p50: percentile(vals, 50),
+            p75: percentile(vals, 75),
+            p90: percentile(vals, 90),
+            p95: percentile(vals, 95),
+            max: vals.length > 0 ? vals[vals.length - 1] : 0,
+            avg: vals.length > 0 ? Math.round((sum / vals.length) * 100) / 100 : 0,
+          };
+        }
+        return grouped;
+      };
+
+      const desktopSamples = rumSamplesBuffer.filter((s) => s.device === 'desktop');
+      const mobileSamples = rumSamplesBuffer.filter((s) => s.device === 'mobile');
+
+      const allMetrics = computeGroup(rumSamplesBuffer);
+      const desktopMetrics = computeGroup(desktopSamples);
+      const mobileMetrics = computeGroup(mobileSamples);
 
       return sendJson(res, 200, {
         ok: true,
         totalSamples: rumSamplesBuffer.length,
-        metrics: grouped,
+        desktopSamplesCount: desktopSamples.length,
+        mobileSamplesCount: mobileSamples.length,
+        metrics: allMetrics,
+        desktop: desktopMetrics,
+        mobile: mobileMetrics,
         recentSamples: rumSamplesBuffer.slice(-25),
       });
     }
@@ -1350,94 +1571,17 @@ function createApiAndDynamicSeoMiddleware() {
         );
       }
 
-      // 0. POST /api/v1/console/auth/login (Authentic Console Administrator Login & Session Issuance)
-      if (req.method === 'POST' && pathname === '/api/v1/console/auth/login') {
-        try {
-          const body = await readJsonBody(req);
-          const email =
-            typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
-          const actorId =
-            typeof body.actorId === 'string' ? body.actorId.trim() : '';
-
-          if (!email && !actorId) {
-            return sendJson(res, 400, {
-              ok: false,
-              errorCode: 'INVALID_CREDENTIALS',
-              message: 'Vui lòng cung cấp email hoặc mã tài khoản đăng nhập.',
-            });
-          }
-
-          const actor = await prisma.consoleActor.findFirst({
-            where: {
-              OR: [
-                ...(email ? [{ email }] : []),
-                ...(actorId ? [{ id: actorId }] : []),
-              ],
-            },
-          });
-
-          if (!actor) {
-            return sendJson(res, 401, {
-              ok: false,
-              errorCode: 'INVALID_CREDENTIALS',
-              message: 'Email hoặc mật khẩu không chính xác.',
-            });
-          }
-
-          if (!actor.isActive) {
-            return sendJson(res, 401, {
-              ok: false,
-              errorCode: 'ACCOUNT_DEACTIVATED',
-              message: 'Tài khoản này đã bị vô hiệu hóa trên môi trường hệ thống.',
-            });
-          }
-
-          const expectedPassword =
-            process.env.ADHOME_ADMIN_PASSWORD || 'AdHome@Secure2026!';
-          if (
-            body.password !== undefined &&
-            body.password !== null &&
-            body.password !== expectedPassword
-          ) {
-            return sendJson(res, 401, {
-              ok: false,
-              errorCode: 'INVALID_CREDENTIALS',
-              message: 'Email hoặc mật khẩu không chính xác.',
-            });
-          }
-
-          const token = signConsoleToken({
-            sub: actor.id,
-            email: actor.email,
-            orgId: actor.orgId,
-            role: actor.role as any,
-            permissions: (actor.permissions as any) || [],
-            buildingScopes: actor.buildingScopes,
-            sessionVersion: actor.sessionVersion,
-          });
-
-          return sendJson(res, 200, {
-            ok: true,
-            token,
-            tokenType: 'Bearer',
-            expiresIn: 3600,
-            actor: {
-              id: actor.id,
-              email: actor.email,
-              role: actor.role,
-              orgId: actor.orgId,
-              permissions: actor.permissions,
-              buildingScopes: actor.buildingScopes,
-            },
-            redirectTo: 'https://console-adhome.ductinh.one/dashboard',
-          });
-        } catch {
-          return sendJson(res, 400, {
-            ok: false,
-            errorCode: 'INVALID_JSON',
-            message: 'Dữ liệu đăng nhập không hợp lệ.',
-          });
-        }
+      // 0. POST /api/v1/console/auth/login
+      //    Per-account scrypt password verification. Fail-closed on every branch:
+      //    - Endpoint disabled unless ADHOME_CONSOLE_LOGIN_ENABLED === 'true'
+      //    - email AND password must both be non-empty strings (no optional password)
+      //    - No default / fallback / shared password exists anywhere
+      //    - Accounts without a passwordHash can never log in
+      //    - Password verified BEFORE revealing account state (no enumeration)
+      //    - Per-IP attempt limit + per-account failure lockout
+      //    - Every attempt is written to console_login_audit
+      if (pathname === '/api/v1/console/auth/login') {
+        return handleConsoleLogin(req, res, prisma, clientIp);
       }
 
       const rawToken = extractBearerToken(req);

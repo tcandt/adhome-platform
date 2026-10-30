@@ -242,6 +242,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({ collapsed }) => 
 
           {!collapsed && (
             <button
+              data-testid="console-logout-button"
               onClick={logout}
               className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950 transition-colors"
               title="Đăng xuất"

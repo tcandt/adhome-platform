@@ -40,9 +40,15 @@ function sendRumBeacon(payload: {
   rating: 'good' | 'needs-improvement' | 'poor';
   route: string;
   interactionTarget?: string;
+  device?: 'mobile' | 'desktop';
 }): void {
   try {
-    const body = JSON.stringify(payload);
+    const device =
+      payload.device ||
+      (typeof window !== 'undefined' && window.innerWidth < 768
+        ? 'mobile'
+        : 'desktop');
+    const body = JSON.stringify({ ...payload, device });
     if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
       const blob = new Blob([body], { type: 'application/json' });
       navigator.sendBeacon('/api/v1/public/rum', blob);
@@ -169,6 +175,37 @@ export function initRealUserMonitoring(): void {
       }
     });
     clsObs.observe({ type: 'layout-shift', buffered: true });
+
+    // Ensure clean zero-shift visits are represented in RUM sample distribution:
+    // Report baseline/final CLS once page has settled or when navigating away
+    let sessionClsReported = false;
+    const reportSessionCls = () => {
+      if (sessionClsReported) return;
+      sessionClsReported = true;
+      sendRumBeacon({
+        metricName: 'CLS',
+        value: state.clsScore,
+        rating:
+          state.clsScore <= 0.1
+            ? 'good'
+            : state.clsScore <= 0.25
+            ? 'needs-improvement'
+            : 'poor',
+        route: window.location.pathname,
+      });
+    };
+
+    setTimeout(reportSessionCls, 1200);
+    window.addEventListener('pagehide', reportSessionCls, { once: true });
+    document.addEventListener(
+      'visibilitychange',
+      () => {
+        if (document.visibilityState === 'hidden') {
+          reportSessionCls();
+        }
+      },
+      { once: true }
+    );
   } catch {
     // Unsupported observer type
   }

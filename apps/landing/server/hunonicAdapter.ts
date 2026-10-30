@@ -176,12 +176,18 @@ export class HunonicCloudClient {
       throw new Error('Số điện thoại tài khoản Hunonic không được để trống.');
     }
 
-    // In test/sandbox or if mock credentials
-    if (
-      cleanPhone.startsWith('0999') ||
-      cleanPhone === '0901234567' ||
+    const allowMock =
+      process.env.HUNONIC_ALLOW_MOCK === 'true' ||
       process.env.HUNONIC_MOCK_MODE === 'true' ||
-      !password
+      process.env.NODE_ENV === 'test';
+
+    // In test/sandbox ONLY when mock mode is explicitly permitted
+    if (
+      allowMock &&
+      (cleanPhone.startsWith('0999') ||
+        cleanPhone === '0901234567' ||
+        process.env.HUNONIC_MOCK_MODE === 'true' ||
+        !password)
     ) {
       const mockToken = `mock_hunonic_token_${crypto.createHash('md5').update(cleanPhone).digest('hex')}`;
       this.tokenCache.set(cleanPhone, {
@@ -192,6 +198,12 @@ export class HunonicCloudClient {
         token: mockToken,
         user: { phone: cleanPhone, name: 'AdHome Test Operator' },
       };
+    }
+
+    if (!password) {
+      throw new Error(
+        'Mật khẩu tài khoản Hunonic Cloud không được để trống khi vận hành thực tế.'
+      );
     }
 
     try {
@@ -234,8 +246,18 @@ export class HunonicCloudClient {
   ): Promise<HunonicTelemetry> {
     const cleanId = String(deviceId || '').trim();
 
-    // Check if test/sandbox device ID or mock token
-    if (token.startsWith('mock_hunonic_token_') || cleanId.startsWith('MOCK-') || cleanId.startsWith('DEV-')) {
+    const allowMock =
+      process.env.HUNONIC_ALLOW_MOCK === 'true' ||
+      process.env.HUNONIC_MOCK_MODE === 'true' ||
+      process.env.NODE_ENV === 'test';
+
+    // In test/sandbox only when mock is explicitly allowed
+    if (
+      allowMock &&
+      (token.startsWith('mock_hunonic_token_') ||
+        cleanId.startsWith('MOCK-') ||
+        cleanId.startsWith('DEV-'))
+    ) {
       // Deterministic mock based on device ID
       const hash = crypto.createHash('sha256').update(cleanId).digest('hex');
       const offsetKwh = (parseInt(hash.slice(0, 4), 16) % 350) + fallbackBaselineKwh;
@@ -315,3 +337,4 @@ export class HunonicCloudClient {
     }
   }
 }
+

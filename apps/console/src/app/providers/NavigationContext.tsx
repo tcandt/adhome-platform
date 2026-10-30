@@ -65,6 +65,10 @@ export function NavigationProvider({
 
   const [activeModule, setActiveModuleState] = useState<NavModuleId>(() => {
     if (typeof window !== 'undefined') {
+      const urlModule = new URLSearchParams(window.location.search).get('module');
+      if (urlModule && NAV_ITEMS_CONFIG.some((item) => item.id === urlModule)) {
+        return urlModule as NavModuleId;
+      }
       const stored = sessionStorage.getItem('adhome_v2_active_module');
       if (stored && NAV_ITEMS_CONFIG.some((item) => item.id === stored)) {
         return stored as NavModuleId;
@@ -145,6 +149,31 @@ export function NavigationProvider({
     });
   };
 
+  useEffect(() => {
+    const onLocationChange = () => {
+      const urlModule = new URLSearchParams(window.location.search).get('module');
+      if (urlModule && NAV_ITEMS_CONFIG.some((item) => item.id === urlModule)) {
+        setActiveModuleState(urlModule as NavModuleId);
+      }
+    };
+    window.addEventListener('popstate', onLocationChange);
+    return () => window.removeEventListener('popstate', onLocationChange);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).__adhome_setActiveModule = (mod: NavModuleId) => {
+        setActiveModuleState(mod);
+        sessionStorage.setItem('adhome_v2_active_module', mod);
+      };
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        delete (window as any).__adhome_setActiveModule;
+      }
+    };
+  });
+
   const setActiveModule = (module: NavModuleId) => {
     const targetConfig = NAV_ITEMS_CONFIG.find((item) => item.id === module);
     if (
@@ -159,6 +188,13 @@ export function NavigationProvider({
     }
     if (typeof window !== 'undefined') {
       sessionStorage.setItem('adhome_v2_active_module', module);
+      const url = new URL(window.location.href);
+      if (module === 'overview') {
+        url.searchParams.delete('module');
+      } else {
+        url.searchParams.set('module', module);
+      }
+      window.history.replaceState({}, '', url.toString());
     }
     void refreshSession();
   };

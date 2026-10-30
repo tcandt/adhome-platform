@@ -39,6 +39,99 @@ const prisma = new PrismaClient({
   },
 });
 
+async function cleanTestFixtures(prismaClient) {
+  // Find test rooms (C3A-*, RACE-*)
+  const testRooms = await prismaClient.consoleRoom.findMany({
+    where: {
+      OR: [
+        { code: { startsWith: 'C3A-' } },
+        { code: { startsWith: 'RACE-' } },
+      ],
+    },
+    select: { id: true },
+  });
+  const testRoomIds = testRooms.map((r) => r.id);
+
+  if (testRoomIds.length > 0) {
+    await prismaClient.meterReading.deleteMany({
+      where: { meter: { roomId: { in: testRoomIds } } },
+    });
+    await prismaClient.electricMeter.deleteMany({
+      where: { roomId: { in: testRoomIds } },
+    });
+    await prismaClient.deposit.deleteMany({
+      where: {
+        OR: [
+          { contract: { roomId: { in: testRoomIds } } },
+          { reservation: { roomId: { in: testRoomIds } } },
+        ],
+      },
+    });
+    await prismaClient.contract.deleteMany({
+      where: { roomId: { in: testRoomIds } },
+    });
+    await prismaClient.roomReservation.deleteMany({
+      where: { roomId: { in: testRoomIds } },
+    });
+    await prismaClient.consoleRoom.deleteMany({
+      where: { id: { in: testRoomIds } },
+    });
+  }
+
+  // Find test tenants
+  const testTenants = await prismaClient.tenant.findMany({
+    where: {
+      phone: { in: ['0988776655', '0919988776', '0977112233'] },
+    },
+    include: {
+      contracts: true,
+      reservations: true,
+      invoices: true,
+    },
+  });
+
+  for (const t of testTenants) {
+    const contractIds = t.contracts.map((c) => c.id);
+    if (contractIds.length > 0) {
+      await prismaClient.deposit.deleteMany({
+        where: { contractId: { in: contractIds } },
+      });
+      await prismaClient.contract.deleteMany({
+        where: { id: { in: contractIds } },
+      });
+    }
+    const resvIds = t.reservations.map((r) => r.id);
+    if (resvIds.length > 0) {
+      await prismaClient.deposit.deleteMany({
+        where: { reservationId: { in: resvIds } },
+      });
+      await prismaClient.roomReservation.deleteMany({
+        where: { id: { in: resvIds } },
+      });
+    }
+    const invoiceIds = t.invoices.map((inv) => inv.id);
+    if (invoiceIds.length > 0) {
+      await prismaClient.invoiceItem.deleteMany({
+        where: { invoiceId: { in: invoiceIds } },
+      });
+      await prismaClient.invoice.deleteMany({
+        where: { id: { in: invoiceIds } },
+      });
+    }
+    await prismaClient.tenant.delete({
+      where: { id: t.id },
+    });
+  }
+
+  // Clean up test actors & test organizations
+  await prismaClient.consoleActor.deleteMany({
+    where: { email: 'manager.c3@adhome.vn' },
+  });
+  await prismaClient.organization.deleteMany({
+    where: { slug: 'test-isolation-org-99' },
+  });
+}
+
 function getRepoRoot() {
   let curr = process.cwd();
   for (let i = 0; i < 4; i++) {
@@ -183,6 +276,10 @@ async function main() {
   let browserProc = null;
 
   try {
+    // 0. PRE-CLEANUP TEST FIXTURES
+    console.log('[Step 0] Pre-cleaning residual test fixtures from PostgreSQL...');
+    await cleanTestFixtures(prisma);
+
     // 1. START PREVIEW SERVERS
     console.log('[Step 1] Starting Landing (8081) & Console (5174) Preview Servers...');
     const repoRoot = getRepoRoot();
@@ -197,6 +294,7 @@ async function main() {
         env: {
           ...process.env,
           ADHOME_CONSOLE_LOGIN_ENABLED: 'true',
+          HUNONIC_ALLOW_MOCK: 'true',
         },
       }
     );
@@ -483,43 +581,28 @@ async function main() {
 
     // 7. CHECK 4: CONCURRENCY ROW-LEVEL LOCK RACE CONDITION (P0)
     console.log('[Step 7] Testing Concurrency Row-Level Lock on Contract Creation...');
-    let raceRoom = await prisma.consoleRoom.findFirst({
-      where: {
+    const raceRoom = await prisma.consoleRoom.create({
+      data: {
         orgId,
         buildingId: bldLk.id,
+        floorId: bldLkFloor.id,
+        code: `RACE-${crypto.randomBytes(2).toString('hex').toUpperCase()}`,
+        title: 'Phòng Race Condition Test',
+        area: 28,
+        listPriceVnd: 5000000n,
         occupancyStatus: 'AVAILABLE',
-        contracts: { none: { status: { in: ['ACTIVE', 'EXPIRING'] } } },
       },
     });
-    if (!raceRoom) {
-      raceRoom = await prisma.consoleRoom.create({
-        data: {
-          orgId,
-          buildingId: bldLk.id,
-          floorId: bldLkFloor.id,
-          code: `RACE-${crypto.randomBytes(2).toString('hex').toUpperCase()}`,
-          title: 'Phòng Race Condition Test',
-          area: 28,
-          listPriceVnd: 5000000n,
-          occupancyStatus: 'AVAILABLE',
-        },
-      });
-    }
 
-    let testTenant = await prisma.tenant.findFirst({
-      where: { orgId, normalizedPhone: '0988776655' },
+    const testTenant = await prisma.tenant.create({
+      data: {
+        orgId,
+        fullName: 'Khách Hàng Race Concurrency',
+        phone: '0988776655',
+        normalizedPhone: '0988776655',
+        primaryBuildingId: bldLk.id,
+      },
     });
-    if (!testTenant) {
-      testTenant = await prisma.tenant.create({
-        data: {
-          orgId,
-          fullName: 'Khách Hàng Race Concurrency',
-          phone: '0988776655',
-          normalizedPhone: '0988776655',
-          primaryBuildingId: bldLk.id,
-        },
-      });
-    }
 
     const postContractPayload = {
       roomId: raceRoom.id,
@@ -558,7 +641,10 @@ async function main() {
       conflictResp?.errorCode === 'ROOM_ALREADY_HAS_CONTRACT';
 
     const activeContractsInDb = await prisma.contract.count({
-      where: { roomId: raceRoom.id, status: { in: ['ACTIVE', 'EXPIRING'] } },
+      where: {
+        roomId: raceRoom.id,
+        status: { in: ['ACTIVE', 'EXPIRING', 'EXTENDED'] },
+      },
     });
 
     testResults.checks.concurrencyRowLevelLock = {
@@ -849,6 +935,27 @@ async function main() {
     // 9. CHECK 6: C3B HUNONIC CLOUD METERING & WATER BILLING
     console.log('[Step 9] Testing C3B Hunonic Cloud Adapter & Water Billing...');
 
+    // Unit test: Fail-closed production isolation
+    let failClosedPass = false;
+    try {
+      const prodClient = new HunonicCloudClient();
+      const origAllowMock = process.env.HUNONIC_ALLOW_MOCK;
+      const origMockMode = process.env.HUNONIC_MOCK_MODE;
+      const origNodeEnv = process.env.NODE_ENV;
+      process.env.HUNONIC_ALLOW_MOCK = 'false';
+      process.env.HUNONIC_MOCK_MODE = 'false';
+      process.env.NODE_ENV = 'production';
+      try {
+        await prodClient.login('0987654321', '');
+      } finally {
+        process.env.HUNONIC_ALLOW_MOCK = origAllowMock;
+        process.env.HUNONIC_MOCK_MODE = origMockMode;
+        process.env.NODE_ENV = origNodeEnv;
+      }
+    } catch (err) {
+      failClosedPass = err.message.includes('Mật khẩu tài khoản Hunonic Cloud không được để trống khi vận hành thực tế');
+    }
+
     // Hunonic Meter Sync API
     const hunonicSyncResp = await fetchHttp(
       `${LANDING_URL}/api/v1/console/v2/hunonic/sync`,
@@ -865,6 +972,17 @@ async function main() {
       hunonicSyncResp.status === 200 &&
       hunonicSyncResp.json?.ok === true &&
       typeof hunonicSyncResp.json?.syncedCount === 'number';
+
+    // Verify source is 'MOCK' or 'HUNONIC_VERIFIED' in DB
+    const latestSyncReading = await prisma.meterReading.findFirst({
+      where: {
+        recordedByActor: { in: ['HUNONIC_MOCK_ADAPTER', 'HUNONIC_CLOUD_AGENT'] },
+      },
+      orderBy: { recordedAt: 'desc' },
+    });
+    const mockReadingSourcePass =
+      latestSyncReading !== null &&
+      ['MOCK', 'HUNONIC_VERIFIED'].includes(latestSyncReading.source);
 
     // Manual meter reading override
     const manualReadingResp = await fetchHttp(
@@ -884,9 +1002,16 @@ async function main() {
         }),
       }
     );
+    const manualReadingDb = await prisma.meterReading.findFirst({
+      where: {
+        overrideReason: 'Chốt chỉ số bàn giao mặt bằng',
+      },
+      orderBy: { recordedAt: 'desc' },
+    });
     const manualPass =
       manualReadingResp.status === 200 &&
-      manualReadingResp.json?.meter?.cumulativeKwh === 245.5;
+      manualReadingResp.json?.meter?.cumulativeKwh === 245.5 &&
+      manualReadingDb?.source === 'MANUAL_APPROVED';
 
     // Meter replacement endpoint
     const replaceMeterResp = await fetchHttp(
@@ -908,9 +1033,16 @@ async function main() {
         }),
       }
     );
+    const replaceMeterDb = await prisma.meterReading.findFirst({
+      where: {
+        overrideReason: { contains: 'HUNONIC-GEN2-9988' },
+      },
+      orderBy: { recordedAt: 'desc' },
+    });
     const replacePass =
       replaceMeterResp.status === 200 &&
-      replaceMeterResp.json?.meter?.meterSerial === 'HUNONIC-GEN2-9988';
+      replaceMeterResp.json?.meter?.meterSerial === 'HUNONIC-GEN2-9988' &&
+      replaceMeterDb?.source === 'MANUAL_APPROVED';
 
     // Strict kWh validation checks
     const valNormal = validateKwhReading(100, 150);
@@ -949,12 +1081,16 @@ async function main() {
 
     testResults.checks.c3bHunonicAndWater = {
       pass:
+        failClosedPass &&
         hunonicSyncPass &&
+        mockReadingSourcePass &&
         manualPass &&
         replacePass &&
         kwhValidationPass &&
         waterCalcPass,
+      failClosedIsolation: failClosedPass,
       hunonicSync: hunonicSyncPass,
+      mockReadingSource: mockReadingSourcePass,
       manualReading: manualPass,
       meterReplacement: replacePass,
       kwhValidation: kwhValidationPass,
@@ -963,7 +1099,7 @@ async function main() {
     console.log(
       `-> C3B Hunonic & Water: ${
         testResults.checks.c3bHunonicAndWater.pass ? 'PASS' : 'FAIL'
-      }`
+      } (Fail-closed: ${failClosedPass ? 'PASS' : 'FAIL'}, MockSource: ${mockReadingSourcePass ? 'PASS' : 'FAIL'}, ManualApproved: ${manualPass ? 'PASS' : 'FAIL'}, Water: ${waterCalcPass ? 'PASS' : 'FAIL'})`
     );
 
     // 10. CHECK 8: BROWSER CDP SCREENSHOTS & UI VERIFICATION
@@ -1013,103 +1149,214 @@ async function main() {
     await cdp.send('Runtime.enable');
     await cdp.send('Network.enable');
 
-    async function captureScreen(
-      url,
-      width,
-      height,
+    async function setControlledInput(selector, value) {
+      await cdp.eval(`(() => {
+        const el = document.querySelector(${JSON.stringify(selector)});
+        if (!el) throw new Error('Input not found: ' + ${JSON.stringify(selector)});
+        el.focus();
+        const proto = el.tagName === 'TEXTAREA'
+          ? window.HTMLTextAreaElement.prototype
+          : window.HTMLInputElement.prototype;
+        const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+        if (setter) setter.call(el, ${JSON.stringify(String(value))});
+        else el.value = ${JSON.stringify(String(value))};
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`);
+    }
+
+    async function waitForSelector(selector, maxTries = 40, intervalMs = 250) {
+      for (let i = 0; i < maxTries; i++) {
+        const found = await cdp
+          .eval(`document.querySelector(${JSON.stringify(selector)}) !== null`)
+          .catch(() => false);
+        if (found) return true;
+        await new Promise((r) => setTimeout(r, intervalMs));
+      }
+      return false;
+    }
+
+    // 10.0 Log into Console UI as Admin
+    console.log('  Logging into Console UI via Login Page...');
+    await cdp.send('Emulation.setDeviceMetricsOverride', {
+      width: 1440,
+      height: 900,
+      deviceScaleFactor: 2,
+      mobile: false,
+    });
+    await cdp.send('Page.navigate', { url: `${CONSOLE_URL}/login` });
+    const loginEmailFound = await waitForSelector('[data-testid="console-login-email"]', 40, 250);
+    if (!loginEmailFound) throw new Error('Timeout waiting for console login email input');
+    await setControlledInput('[data-testid="console-login-email"]', 'admin@adhome.vn');
+    await setControlledInput('[data-testid="console-login-password"]', ephemeralAdminPassword);
+    await cdp.eval(`document.querySelector('[data-testid="console-login-submit"]')?.click()`);
+    const headerFound = await waitForSelector('[data-testid="console-desktop-header"]', 50, 250);
+    if (!headerFound) throw new Error('Timeout waiting for console desktop header after login');
+    console.log('  Console UI authenticated successfully as Admin.');
+
+    async function switchModuleAndCapture(
+      moduleId,
       filename,
       readySelector,
-      postNavigateAction
+      postNavigateAction,
+      waitForSelectorAfterAction
     ) {
-      await cdp.send('Emulation.setDeviceMetricsOverride', {
-        width,
-        height,
-        deviceScaleFactor: 2,
-        mobile: width < 768,
-      });
+      if (moduleId) {
+        await cdp.eval(`(() => {
+          const btn = document.querySelector('[data-testid="console-nav-' + ${JSON.stringify(moduleId)} + '"]');
+          if (btn) btn.click();
+          if (window.__adhome_setActiveModule) {
+            window.__adhome_setActiveModule(${JSON.stringify(moduleId)});
+          }
+        })()`);
+      }
 
-      const rawCookieVal = adminCookie.includes('=')
-        ? adminCookie.slice(adminCookie.indexOf('=') + 1)
-        : adminCookie;
-      await cdp.send('Network.setCookie', {
-        name: 'adhome_console_session',
-        value: rawCookieVal,
-        domain: '127.0.0.1',
-        path: '/',
-        httpOnly: true,
-      });
-
-      await cdp.send('Page.navigate', { url });
-
-      for (let i = 0; i < 40; i++) {
+      let readyFound = false;
+      for (let i = 0; i < 60; i++) {
         await new Promise((r) => setTimeout(r, 250));
         const ok = await cdp
-          .eval(
-            `document.querySelector('${readySelector}') !== null || document.body.innerText.includes('AdHome')`
-          )
+          .eval(`document.querySelector('${readySelector}') !== null`)
           .catch(() => false);
-        if (ok) break;
+        if (ok) {
+          readyFound = true;
+          break;
+        }
+      }
+      if (!readyFound) {
+        throw new Error(`Timeout waiting for selector: ${readySelector}`);
       }
 
       if (postNavigateAction) {
         await cdp.eval(postNavigateAction);
-        await new Promise((r) => setTimeout(r, 600));
+        if (waitForSelectorAfterAction) {
+          let afterActionFound = false;
+          for (let i = 0; i < 60; i++) {
+            await new Promise((r) => setTimeout(r, 250));
+            const ok = await cdp
+              .eval(`document.querySelector('${waitForSelectorAfterAction}') !== null`)
+              .catch(() => false);
+            if (ok) {
+              afterActionFound = true;
+              break;
+            }
+          }
+          if (!afterActionFound) {
+            throw new Error(`Timeout waiting for afterAction selector: ${waitForSelectorAfterAction}`);
+          }
+        } else {
+          await new Promise((r) => setTimeout(r, 600));
+        }
       }
+
+      // Allow typography, CSS transitions, and SVG charts to settle
+      await new Promise((r) => setTimeout(r, 800));
 
       const outAppPath = path.join(ARTIFACT_DIR, filename);
       const outEvidencePath = path.join(EVIDENCE_DIR, filename);
       await cdp.screenshot([outAppPath, outEvidencePath]);
       testResults.evidenceFiles.push(filename);
-      console.log(`  Captured: ${filename} (${width}x${height})`);
+      console.log(`  Captured: ${filename}`);
     }
 
     // Capture 1: Contracts Workspace (1440x900)
-    await captureScreen(
-      `${CONSOLE_URL}/?module=contracts`,
-      1440,
-      900,
+    await switchModuleAndCapture(
+      'contracts',
       'console_v2_1440_contracts_workspace.png',
-      '[data-testid="contracts-table"]'
+      '[data-testid="console-module-workspace-contracts"]'
     );
 
     // Capture 2: Deposits & Reservations Workspace (1440x900)
-    await captureScreen(
-      `${CONSOLE_URL}/?module=deposits`,
-      1440,
-      900,
+    await switchModuleAndCapture(
+      'deposits',
       'console_v2_1440_deposits_workspace.png',
       '[data-testid="console-module-workspace-deposits"]'
     );
 
     // Capture 3: Settlements & Hunonic Meters Workspace (1440x900)
-    await captureScreen(
-      `${CONSOLE_URL}/?module=settlements`,
-      1440,
-      900,
+    await switchModuleAndCapture(
+      'settlements',
       'console_v2_1440_settlements_hunonic.png',
       '[data-testid="console-module-workspace-settlements"]'
     );
 
     // Capture 4: Contract Creation Modal with Dynamic Vietnam Dates (1440x900)
-    await captureScreen(
-      `${CONSOLE_URL}/?module=contracts`,
-      1440,
-      900,
+    await switchModuleAndCapture(
+      'contracts',
       'console_v2_1440_contract_modal_dynamic_dates.png',
       '[data-testid="btn-open-create-contract"]',
-      `const btn = document.querySelector('[data-testid="btn-open-create-contract"]'); if (btn) btn.click();`
+      `const btn = document.querySelector('[data-testid="btn-open-create-contract"]'); if (btn) btn.click();`,
+      '[data-testid="submit-create-contract"]'
     );
+    // Close modal cleanly
+    await cdp.eval(`(() => {
+      const cancelBtn = document.querySelector('[data-testid="submit-create-contract"]')?.parentElement?.querySelector('button');
+      if (cancelBtn) cancelBtn.click();
+    })()`);
+    await new Promise((r) => setTimeout(r, 400));
 
     // Capture 5: Mobile Bottom Nav & Operations (390x844)
-    await captureScreen(
-      `${CONSOLE_URL}/?module=contracts`,
-      390,
-      844,
+    await cdp.send('Emulation.setDeviceMetricsOverride', {
+      width: 390,
+      height: 844,
+      deviceScaleFactor: 2,
+      mobile: true,
+    });
+    await cdp.eval(`window.dispatchEvent(new Event('resize'))`);
+    await new Promise((r) => setTimeout(r, 600));
+    await switchModuleAndCapture(
+      'contracts',
       'console_v2_390x844_contracts_mobile.png',
       '[data-testid="console-mobile-bottom-nav"]'
     );
 
     cdp.close();
+
+    // 10.1 UI EVIDENCE HASH & DISTINCTNESS VERIFICATION
+    console.log('\n[Step 10.1] Computing SHA-256 checksums and verifying distinctness...');
+    const screenshotFiles = [
+      'console_v2_1440_contracts_workspace.png',
+      'console_v2_1440_deposits_workspace.png',
+      'console_v2_1440_settlements_hunonic.png',
+      'console_v2_1440_contract_modal_dynamic_dates.png',
+      'console_v2_390x844_contracts_mobile.png',
+    ];
+
+    const imageHashes = [];
+    for (const f of screenshotFiles) {
+      const artPath = path.join(ARTIFACT_DIR, f);
+      const buf = fs.readFileSync(artPath);
+      const sha256 = crypto.createHash('sha256').update(buf).digest('hex');
+      imageHashes.push({
+        filename: f,
+        sizeBytes: buf.length,
+        sha256,
+      });
+      console.log(`  - ${f}: ${sha256} (${buf.length} bytes)`);
+    }
+
+    const uniqueShaSet = new Set(imageHashes.map((item) => item.sha256));
+    const allDistinct = uniqueShaSet.size === screenshotFiles.length;
+    const allSufficientSize = imageHashes.every((item) => item.sizeBytes > 20000);
+
+    testResults.checks.evidenceScreenshotsValid = {
+      pass: allDistinct && allSufficientSize,
+      totalScreenshots: screenshotFiles.length,
+      distinctScreenshots: uniqueShaSet.size,
+      allDistinct,
+      allSufficientSize,
+      hashes: imageHashes,
+    };
+    console.log(
+      `-> UI Evidence Distinctness: ${
+        testResults.checks.evidenceScreenshotsValid.pass ? 'PASS' : 'FAIL'
+      } (${uniqueShaSet.size} unique hashes out of ${screenshotFiles.length})`
+    );
+
+    if (!allDistinct) {
+      throw new Error(
+        `EVIDENCE REJECTION: Duplicate screenshot hashes detected! All UI evidence screenshots must represent distinct module views.`
+      );
+    }
 
     // 11. FINAL VERDICT COMPUTATION
     const allChecksPassed = Object.values(testResults.checks).every(
@@ -1138,7 +1385,14 @@ async function main() {
       process.exit(1);
     }
   } finally {
-    console.log('\n[Cleanup] Terminating preview servers & browser...');
+    console.log('\n[Cleanup] Cleaning up test fixtures in PostgreSQL...');
+    try {
+      await cleanTestFixtures(prisma);
+      console.log('  Test fixtures cleaned up successfully.');
+    } catch (cleanErr) {
+      console.error('  Failed to clean test fixtures:', cleanErr);
+    }
+    console.log('[Cleanup] Terminating preview servers & browser...');
     if (browserProc) {
       try {
         await killProcessTreeWindows(browserProc);

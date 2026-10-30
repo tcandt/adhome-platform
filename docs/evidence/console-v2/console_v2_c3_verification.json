@@ -1,11 +1,11 @@
 {
-  "evaluatedAt": "2026-10-30T13:03:51.176Z",
+  "evaluatedAt": "2026-10-30T14:04:03.424Z",
   "verdict": "LOCAL_GATE_PASSED",
   "reportingTier": "LOCAL_GATE_PASSED",
   "checks": {
     "multiTenantAuditIsolation": {
       "pass": true,
-      "totalLoginsVisible": 19,
+      "totalLoginsVisible": 25,
       "leakedOtherOrg": false
     },
     "credentialsCryptoVault": {
@@ -23,8 +23,8 @@
     },
     "concurrencyRowLevelLock": {
       "pass": true,
-      "statusA": 409,
-      "statusB": 201,
+      "statusA": 201,
+      "statusB": 409,
       "errorCode409": "ROOM_ALREADY_HAS_CONTRACT",
       "activeContractsInDb": 1
     },
@@ -40,11 +40,47 @@
     },
     "c3bHunonicAndWater": {
       "pass": true,
+      "failClosedIsolation": true,
       "hunonicSync": true,
+      "mockReadingSource": true,
       "manualReading": true,
       "meterReplacement": true,
       "kwhValidation": true,
       "water3Methods": true
+    },
+    "evidenceScreenshotsValid": {
+      "pass": true,
+      "totalScreenshots": 5,
+      "distinctScreenshots": 5,
+      "allDistinct": true,
+      "allSufficientSize": true,
+      "hashes": [
+        {
+          "filename": "console_v2_1440_contracts_workspace.png",
+          "sizeBytes": 242428,
+          "sha256": "71e58b0943ab0425c5a087d95820221e4c45c9f930a7a112b467bd0f26fad116"
+        },
+        {
+          "filename": "console_v2_1440_deposits_workspace.png",
+          "sizeBytes": 270352,
+          "sha256": "566fce1d620b5de4e32f41701b0a36a3c789ce51db48e294f4e56c274815464c"
+        },
+        {
+          "filename": "console_v2_1440_settlements_hunonic.png",
+          "sizeBytes": 425150,
+          "sha256": "3deb26c5551f749588903d29df711686d33d117b8d7b4a182683b11c36a66eaa"
+        },
+        {
+          "filename": "console_v2_1440_contract_modal_dynamic_dates.png",
+          "sizeBytes": 389527,
+          "sha256": "4a49b6c98270a515b48617f5375e0d21091473537783fde162d8d7a0d2efc39b"
+        },
+        {
+          "filename": "console_v2_390x844_contracts_mobile.png",
+          "sizeBytes": 145922,
+          "sha256": "a4f201a2af1d4e73c81f4abeaf1aa5de54b7062f8ebefd50e4bebfad7eb6409e"
+        }
+      ]
     }
   },
   "evidenceFiles": [
@@ -54,5 +90,5 @@
     "console_v2_1440_contract_modal_dynamic_dates.png",
     "console_v2_390x844_contracts_mobile.png"
   ],
-  "finishedAt": "2026-10-30T13:04:37.631Z"
+  "finishedAt": "2026-10-30T14:04:14.971Z"
 }

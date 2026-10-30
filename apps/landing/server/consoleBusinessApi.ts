@@ -46,6 +46,20 @@ const VALID_OCCUPANCY_STATUSES = new Set([
 
 const VALID_FURNISHED_LEVELS = new Set(['FULL', 'BASIC', 'UNFURNISHED']);
 
+export const ACTIVE_CONTRACT_STATUSES = [
+  'ACTIVE',
+  'EXPIRING',
+  'EXTENDED',
+] as const;
+export type ActiveContractStatus = (typeof ACTIVE_CONTRACT_STATUSES)[number];
+
+export function isActiveContract(status: string | null | undefined): boolean {
+  return (
+    typeof status === 'string' &&
+    (ACTIVE_CONTRACT_STATUSES as readonly string[]).includes(status)
+  );
+}
+
 function sendJson(
   res: ServerResponse,
   status: number,
@@ -619,7 +633,7 @@ export async function handleConsoleV2Api(
         where: {
           orgId: actor.orgId,
           buildingId: { in: authorizedBuildingIds },
-          status: { in: ['ACTIVE', 'EXPIRING'] },
+          status: { in: [...ACTIVE_CONTRACT_STATUSES] },
         },
         include: { tenant: true },
       }),
@@ -1315,7 +1329,7 @@ export async function handleConsoleV2Api(
       }),
       prisma.consoleRoom.count({ where: { buildingId: bld.id } }),
       prisma.contract.count({
-        where: { buildingId: bld.id, status: { in: ['ACTIVE', 'EXPIRING'] } },
+        where: { buildingId: bld.id, status: { in: [...ACTIVE_CONTRACT_STATUSES] } },
       }),
       prisma.roomReservation.count({
         where: { buildingId: bld.id, status: { in: ['PENDING', 'CONFIRMED'] } },
@@ -1531,7 +1545,7 @@ export async function handleConsoleV2Api(
         prisma.contract.count({
           where: {
             buildingId: existing.id,
-            status: { in: ['ACTIVE', 'EXPIRING'] },
+            status: { in: [...ACTIVE_CONTRACT_STATUSES] },
           },
         }),
         prisma.roomReservation.count({
@@ -2151,7 +2165,7 @@ export async function handleConsoleV2Api(
     const [activeContracts, activeReservations, unpaidInvoices] =
       await Promise.all([
         prisma.contract.count({
-          where: { roomId: rm.id, status: { in: ['ACTIVE', 'EXPIRING'] } },
+          where: { roomId: rm.id, status: { in: [...ACTIVE_CONTRACT_STATUSES] } },
         }),
         prisma.roomReservation.count({
           where: { roomId: rm.id, status: { in: ['PENDING', 'CONFIRMED'] } },
@@ -2534,7 +2548,7 @@ export async function handleConsoleV2Api(
     const [activeContracts, activeReservations, unpaidInvoices] =
       await Promise.all([
         prisma.contract.count({
-          where: { roomId: existing.id, status: { in: ['ACTIVE', 'EXPIRING'] } },
+          where: { roomId: existing.id, status: { in: [...ACTIVE_CONTRACT_STATUSES] } },
         }),
         prisma.roomReservation.count({
           where: {
@@ -2879,7 +2893,7 @@ export async function handleConsoleV2Api(
           const activeCtOnOldRoom = await tx.contract.count({
             where: {
               roomId: existing.currentRoomId,
-              status: { in: ['ACTIVE', 'EXPIRING'] },
+              status: { in: [...ACTIVE_CONTRACT_STATUSES] },
             },
           });
           if (otherActiveOnOldRoom === 0 && activeCtOnOldRoom === 0) {
@@ -2972,7 +2986,7 @@ export async function handleConsoleV2Api(
     const activeCt = await prisma.contract.count({
       where: {
         tenantId: existing.id,
-        status: { in: ['ACTIVE', 'EXPIRING'] },
+        status: { in: [...ACTIVE_CONTRACT_STATUSES] },
       },
     });
     if (activeCt > 0) {
@@ -3359,7 +3373,7 @@ export async function handleConsoleV2Api(
           where: {
             orgId: actor.orgId,
             buildingId: { in: bldIds },
-            status: { in: ['ACTIVE', 'EXPIRING'] },
+            status: { in: [...ACTIVE_CONTRACT_STATUSES] },
           },
         }),
         prisma.invoice.findMany({
@@ -3526,7 +3540,7 @@ export async function handleConsoleV2Api(
         await tx.$executeRaw`SELECT id FROM "console_rooms" WHERE id = ${rm.id} FOR UPDATE`;
 
         const existingActive = await tx.contract.count({
-          where: { roomId: rm.id, status: { in: ['ACTIVE', 'EXPIRING'] } },
+          where: { roomId: rm.id, status: { in: [...ACTIVE_CONTRACT_STATUSES] } },
         });
         if (existingActive > 0) {
           const err: any = new Error(`Phòng ${rm.code} đang có hợp đồng hiệu lực.`);
@@ -3705,7 +3719,7 @@ export async function handleConsoleV2Api(
         await tx.$executeRaw`SELECT id FROM "console_rooms" WHERE id = ${rm.id} FOR UPDATE`;
 
         const activeContracts = await tx.contract.count({
-          where: { roomId: rm.id, status: { in: ['ACTIVE', 'EXPIRING'] } },
+          where: { roomId: rm.id, status: { in: [...ACTIVE_CONTRACT_STATUSES] } },
         });
         if (activeContracts > 0) {
           const err: any = new Error(
@@ -3880,7 +3894,7 @@ export async function handleConsoleV2Api(
       });
 
       const activeContracts = await tx.contract.count({
-        where: { roomId: resv.roomId, status: { in: ['ACTIVE', 'EXPIRING'] } },
+        where: { roomId: resv.roomId, status: { in: [...ACTIVE_CONTRACT_STATUSES] } },
       });
       if (activeContracts === 0) {
         await tx.consoleRoom.update({
@@ -4042,7 +4056,7 @@ export async function handleConsoleV2Api(
         await tx.$executeRaw`SELECT id FROM "console_rooms" WHERE id = ${resv.roomId} FOR UPDATE`;
 
         const activeContracts = await tx.contract.count({
-          where: { roomId: resv.roomId, status: { in: ['ACTIVE', 'EXPIRING'] } },
+          where: { roomId: resv.roomId, status: { in: [...ACTIVE_CONTRACT_STATUSES] } },
         });
         if (activeContracts > 0) {
           const err: any = new Error(`Phòng ${resv.room.code} đang có hợp đồng hoạt động.`);
@@ -4464,7 +4478,7 @@ export async function handleConsoleV2Api(
         await tx.$executeRaw`SELECT id FROM "console_rooms" WHERE id IN (${roomIds[0]}, ${roomIds[1]}) ORDER BY id FOR UPDATE`;
 
         const activeInNewRoom = await tx.contract.count({
-          where: { roomId: newRoom.id, status: { in: ['ACTIVE', 'EXPIRING'] } },
+          where: { roomId: newRoom.id, status: { in: [...ACTIVE_CONTRACT_STATUSES] } },
         });
         if (activeInNewRoom > 0) {
           const err: any = new Error(`Phòng ${newRoom.code} đang có hợp đồng thuê hoạt động.`);
@@ -4666,6 +4680,11 @@ export async function handleConsoleV2Api(
     );
     const bldIds = hunonicScoped.selectedBuildingIds;
 
+    const allowMock =
+      process.env.HUNONIC_ALLOW_MOCK === 'true' ||
+      process.env.HUNONIC_MOCK_MODE === 'true' ||
+      process.env.NODE_ENV === 'test';
+
     const conn = await prisma.integrationConnection.findUnique({
       where: { orgId_providerId: { orgId: actor.orgId, providerId: 'HUNONIC' } },
     });
@@ -4676,20 +4695,49 @@ export async function handleConsoleV2Api(
       decryptedSecret = decryptSecret(enc) || '';
     }
 
+    if (!decryptedSecret || !conn?.isEnabled) {
+      if (!allowMock) {
+        return sendJson(res, 422, {
+          ok: false,
+          errorCode: 'HUNONIC_CREDENTIALS_REQUIRED',
+          message:
+            'Chưa cấu hình tài khoản kết nối Hunonic Cloud hoặc kết nối chưa được kích hoạt trong Cài đặt.',
+        });
+      }
+    }
+
     const phone = decryptedSecret.includes(':')
       ? decryptedSecret.split(':')[0]
-      : decryptedSecret || '0901234567';
+      : decryptedSecret || (allowMock ? '0901234567' : '');
     const password = decryptedSecret.includes(':')
       ? decryptedSecret.split(':')[1]
       : undefined;
 
+    if (!phone && !allowMock) {
+      return sendJson(res, 422, {
+        ok: false,
+        errorCode: 'HUNONIC_CREDENTIALS_INVALID',
+        message: 'Số điện thoại tài khoản Hunonic Cloud không hợp lệ.',
+      });
+    }
+
     const hunonicClient = new HunonicCloudClient();
-    let authToken = 'mock_hunonic_token_default';
+    let authToken = '';
+    let isMockSession = false;
     try {
       const loginRes = await hunonicClient.login(phone, password);
       authToken = loginRes.token;
-    } catch {
+      isMockSession = authToken.startsWith('mock_hunonic_token_');
+    } catch (err: any) {
+      if (!allowMock) {
+        return sendJson(res, 502, {
+          ok: false,
+          errorCode: 'HUNONIC_AUTH_FAILED',
+          message: `Đăng nhập Hunonic Cloud thất bại: ${err?.message || 'Không thể xác thực'}.`,
+        });
+      }
       authToken = 'mock_hunonic_token_sandbox';
+      isMockSession = true;
     }
 
     const meters = await prisma.electricMeter.findMany({
@@ -4705,29 +4753,72 @@ export async function handleConsoleV2Api(
     let offlineCount = 0;
     let staleCount = 0;
     let syncedCount = 0;
+    let unmappedCount = 0;
+    let anomalousCount = 0;
 
     for (const m of meters) {
-      const deviceId = m.hunonicDeviceId || `MOCK-${m.room.building.code}-${m.room.code}`;
-      const telemetry = await hunonicClient.fetchDeviceTelemetry(
-        authToken,
-        deviceId,
-        m.cumulativeKwh || 120.0
-      );
+      const hasMappedDevice = Boolean(m.hunonicDeviceId && m.hunonicDeviceId.trim());
+      if (!hasMappedDevice && !allowMock) {
+        unmappedCount++;
+        results.push({
+          meterId: m.id,
+          roomCode: m.room.code,
+          deviceId: null,
+          status: 'UNCONFIGURED',
+          message: 'Phòng chưa được ánh xạ mã công tơ Hunonic (hunonicDeviceId)',
+          validation: { isValid: false, warning: 'Chưa liên kết thiết bị công tơ' },
+        });
+        continue;
+      }
+
+      const deviceId =
+        m.hunonicDeviceId || (allowMock ? `MOCK-${m.room.building.code}-${m.room.code}` : '');
+      if (!deviceId) continue;
+
+      let telemetry;
+      try {
+        telemetry = await hunonicClient.fetchDeviceTelemetry(
+          authToken,
+          deviceId,
+          m.cumulativeKwh || 120.0
+        );
+      } catch (err: any) {
+        offlineCount++;
+        results.push({
+          meterId: m.id,
+          roomCode: m.room.code,
+          deviceId,
+          status: 'OFFLINE',
+          error: err?.message || 'Không thể đọc dữ liệu thiết bị',
+        });
+        continue;
+      }
 
       if (telemetry.status === 'OFFLINE') offlineCount++;
       if (telemetry.status === 'STALE') staleCount++;
       if (telemetry.status === 'ONLINE') syncedCount++;
 
       const validation = validateKwhReading(m.cumulativeKwh, telemetry.cumulativeKwh);
+      const isAnomalous = !validation.isValid;
+      if (isAnomalous) anomalousCount++;
+
+      // Distinguish reading sources: MOCK vs HUNONIC_VERIFIED vs FLAGGED_ANOMALOUS
+      const readingSource = isAnomalous
+        ? 'FLAGGED_ANOMALOUS'
+        : isMockSession
+        ? 'MOCK'
+        : 'HUNONIC_VERIFIED';
 
       await prisma.$transaction(async (tx) => {
+        // Only update meter cumulativeKwh if telemetry is valid!
+        // Anomalous readings are quarantined and never contaminate billable consumption.
         await tx.electricMeter.update({
           where: { id: m.id },
           data: {
-            hunonicDeviceId: deviceId,
-            connectionStatus: telemetry.status,
+            hunonicDeviceId: m.hunonicDeviceId || (allowMock ? deviceId : null),
+            connectionStatus: isAnomalous ? 'WARNING' : telemetry.status,
             instantPowerW: telemetry.instantPowerW,
-            cumulativeKwh: telemetry.cumulativeKwh,
+            ...(validation.isValid ? { cumulativeKwh: telemetry.cumulativeKwh } : {}),
             lastSyncedAt: new Date(),
           },
         });
@@ -4737,7 +4828,7 @@ export async function handleConsoleV2Api(
             meterId: m.id,
             periodKey: currentPeriod,
             readingKwh: telemetry.cumulativeKwh,
-            source: 'HUNONIC_AUTO',
+            source: readingSource,
             overrideReason: validation.warning || null,
           },
         });
@@ -4748,11 +4839,47 @@ export async function handleConsoleV2Api(
         roomCode: m.room.code,
         deviceId,
         status: telemetry.status,
+        source: readingSource,
         instantPowerW: telemetry.instantPowerW,
         cumulativeKwh: telemetry.cumulativeKwh,
+        isValid: validation.isValid,
         validation,
       });
     }
+
+    await prisma.consoleAuditLog.create({
+      data: {
+        orgId: actor.orgId,
+        actorId: actor.id,
+        actorEmail: actor.email,
+        actorRole: actor.role,
+        entityType: 'INTEGRATION',
+        entityId: conn?.id || actor.orgId,
+        action: 'HUNONIC_SYNC_METERS',
+        summary: `Đồng bộ Hunonic cho ${meters.length} công tơ: ${syncedCount} online, ${offlineCount} offline, ${staleCount} stale, ${anomalousCount} bất thường, ${unmappedCount} chưa map`,
+        metadata: {
+          clientIp,
+          isMockSession,
+          syncedCount,
+          offlineCount,
+          staleCount,
+          anomalousCount,
+          unmappedCount,
+        },
+      },
+    });
+
+    return sendJson(res, 200, {
+      ok: true,
+      isMockSession,
+      syncedCount,
+      offlineCount,
+      staleCount,
+      anomalousCount,
+      unmappedCount,
+      totalMeters: meters.length,
+      meters: results,
+    });
 
     await prisma.consoleAuditLog.create({
       data: {
@@ -4849,7 +4976,7 @@ export async function handleConsoleV2Api(
           meterId: meter!.id,
           periodKey,
           readingKwh,
-          source: 'MANUAL_OVERRIDE',
+          source: 'MANUAL_APPROVED',
           recordedByActor: actor.email,
           overrideReason,
         },
@@ -4969,7 +5096,7 @@ export async function handleConsoleV2Api(
           meterId: meter.id,
           periodKey: getCurrentVnPeriodKey(),
           readingKwh: initialKwh,
-          source: 'MANUAL_OVERRIDE',
+          source: 'MANUAL_APPROVED',
           recordedByActor: actor.email,
           overrideReason: `[THAY CÔNG TƠ] Cũ: ${previousSerial} (${previousKwh} kWh) -> Mới: ${newMeterSerial} (${initialKwh} kWh). Lý do: ${reason}`,
         },

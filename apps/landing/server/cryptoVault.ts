@@ -1,4 +1,7 @@
 import crypto from 'node:crypto';
+import { loadAdhomeEnv } from './envLoader.js';
+
+loadAdhomeEnv();
 
 const VAULT_SALT = 'adhome-v2-integration-credentials-vault-salt-2026';
 
@@ -7,17 +10,19 @@ let cachedVaultKey: Buffer | null = null;
 function getVaultKey(): Buffer {
   if (cachedVaultKey) return cachedVaultKey;
 
-  const rawSecret =
-    process.env.ADHOME_CREDENTIALS_ENCRYPTION_KEY ||
-    process.env.ADHOME_CONSOLE_JWT_SECRET ||
-    'adhome-dev-insecure-master-vault-encryption-key-32bytes!';
+  const rawSecret = process.env.ADHOME_CREDENTIALS_ENCRYPTION_KEY;
+  if (!rawSecret || rawSecret.trim().length < 32) {
+    throw new Error(
+      'FATAL SECURITY ERROR: ADHOME_CREDENTIALS_ENCRYPTION_KEY is required and must be at least 32 characters. Credentials encryption is strictly isolated from JWT secrets and hardcoded fallback keys are prohibited.'
+    );
+  }
 
   // Derive exact 32-byte key via HKDF (sha256)
   cachedVaultKey = crypto.hkdfSync(
     'sha256',
-    Buffer.from(rawSecret, 'utf-8'),
+    Buffer.from(rawSecret.trim(), 'utf-8'),
     Buffer.from(VAULT_SALT, 'utf-8'),
-    Buffer.from('adhome-credentials-vault', 'utf-8'),
+    Buffer.from('adhome-credentials-vault-v2', 'utf-8'),
     32
   ) as Buffer;
 
@@ -89,3 +94,4 @@ export function maskSecretHint(secret: string): string {
   if (trimmed.length <= 4) return '••••';
   return `••••••••${trimmed.slice(-4)}`;
 }
+

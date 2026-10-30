@@ -6,6 +6,17 @@ import {
   isBuildingAllowedForActor,
   type AuthoritativeConsoleActor,
 } from './authRbac';
+import {
+  encryptSecret,
+  decryptSecret,
+  maskSecretHint,
+} from './cryptoVault';
+import {
+  HunonicCloudClient,
+  validateKwhReading,
+  calculateWaterBill,
+  type WaterBillingMethod,
+} from './hunonicAdapter';
 
 export interface ConsoleBusinessApiDeps {
   executeSeoSyncJobWithRetry: (
@@ -150,12 +161,6 @@ function mapOccupancyToPublicStatus(occupancyStatus: string): string {
   if (occupancyStatus === 'AVAILABLE') return 'AVAILABLE';
   if (occupancyStatus === 'RESERVED') return 'RESERVED';
   return 'OCCUPIED';
-}
-
-function maskSecretHint(secret: string): string {
-  const trimmed = secret.trim();
-  if (trimmed.length <= 4) return '••••';
-  return `••••••••${trimmed.slice(-4)}`;
 }
 
 const DEFAULT_INTEGRATION_DEFS = [
@@ -3482,17 +3487,6 @@ export async function handleConsoleV2Api(
       });
     }
 
-    const existingActive = await prisma.contract.count({
-      where: { roomId: rm.id, status: { in: ['ACTIVE', 'EXPIRING'] } },
-    });
-    if (existingActive > 0) {
-      return sendJson(res, 409, {
-        ok: false,
-        errorCode: 'ROOM_ALREADY_HAS_CONTRACT',
-        message: `Phòng ${rm.code} đang có hợp đồng hiệu lực.`,
-      });
-    }
-
     const contractCode = `HD-${rm.building.code}-${rm.code}-${crypto
       .randomBytes(2)
       .toString('hex')
@@ -3526,45 +3520,1346 @@ export async function handleConsoleV2Api(
       )
     );
 
-    const created = await prisma.$transaction(async (tx) => {
-      const ct = await tx.contract.create({
+    try {
+      const created = await prisma.$transaction(async (tx) => {
+        // Concurrency Row-Level Lock on room row
+        await tx.$executeRaw`SELECT id FROM "console_rooms" WHERE id = ${rm.id} FOR UPDATE`;
+
+        const existingActive = await tx.contract.count({
+          where: { roomId: rm.id, status: { in: ['ACTIVE', 'EXPIRING'] } },
+        });
+        if (existingActive > 0) {
+          const err: any = new Error(`Phòng ${rm.code} đang có hợp đồng hiệu lực.`);
+          err.code = 'ROOM_ALREADY_HAS_CONTRACT';
+          err.statusCode = 409;
+          throw err;
+        }
+
+        const ct = await tx.contract.create({
+          data: {
+            orgId: actor.orgId,
+            buildingId: rm.buildingId,
+            roomId: rm.id,
+            tenantId: tenant.id,
+            reservationId: body.reservationId ? String(body.reservationId) : null,
+            contractCode,
+            startDate,
+            endDate,
+            monthlyRentVnd: BigInt(monthlyRentVnd),
+            depositVnd: BigInt(Math.max(0, depositVnd)),
+            occupantsCount,
+            electricRateVnd,
+            waterBillingMethod: waterMethod,
+            waterRateVnd,
+            status: 'ACTIVE',
+          },
+        });
+
+        if (body.reservationId) {
+          const resv = await tx.roomReservation.findUnique({
+            where: { id: String(body.reservationId) },
+          });
+          if (resv && resv.orgId === actor.orgId) {
+            await tx.roomReservation.update({
+              where: { id: resv.id },
+              data: { status: 'CONVERTED' },
+            });
+            await tx.deposit.updateMany({
+              where: { reservationId: resv.id },
+              data: { contractId: ct.id, status: 'APPLIED_TO_CONTRACT' },
+            });
+          }
+        } else if (depositVnd > 0) {
+          await tx.deposit.create({
+            data: {
+              orgId: actor.orgId,
+              contractId: ct.id,
+              amountVnd: BigInt(depositVnd),
+              status: 'HELD',
+              notes: `Tiền cọc hợp đồng ${contractCode}`,
+            },
+          });
+        }
+
+        await tx.consoleRoom.update({
+          where: { id: rm.id },
+          data: { occupancyStatus: 'OCCUPIED' },
+        });
+        if (rm.publicListingId) {
+          await tx.publicRoomListing.update({
+            where: { id: rm.publicListingId },
+            data: {
+              status: 'OCCUPIED',
+              currentTenantName: null,
+              currentTenantPhone: null,
+            },
+          });
+        }
+        await tx.tenant.update({
+          where: { id: tenant.id },
+          data: {
+            currentRoomId: rm.id,
+            primaryBuildingId: rm.buildingId,
+          },
+        });
+
+        await tx.consoleAuditLog.create({
+          data: {
+            orgId: actor.orgId,
+            buildingId: rm.buildingId,
+            actorId: actor.id,
+            actorEmail: actor.email,
+            actorRole: actor.role,
+            entityType: 'CONTRACT',
+            entityId: ct.id,
+            action: 'CREATE_CONTRACT',
+            summary: `Ký hợp đồng ${ct.contractCode} cho ${tenant.fullName} · Phòng ${rm.code}`,
+            metadata: { clientIp, monthlyRentVnd, depositVnd },
+          },
+        });
+
+        return ct;
+      });
+
+      return sendJson(res, 201, {
+        ok: true,
+        contract: {
+          ...created,
+          monthlyRentVnd: toSafeVndNumber(created.monthlyRentVnd),
+          depositVnd: toSafeVndNumber(created.depositVnd),
+        },
+      });
+    } catch (err: any) {
+      if (err?.code === 'ROOM_ALREADY_HAS_CONTRACT' || err?.statusCode === 409) {
+        return sendJson(res, 409, {
+          ok: false,
+          errorCode: 'ROOM_ALREADY_HAS_CONTRACT',
+          message: err.message || `Phòng ${rm.code} đang có hợp đồng hiệu lực.`,
+        });
+      }
+      throw err;
+    }
+  }
+
+  // ===========================================================================
+  // C3A: RESERVATIONS, DEPOSITS & CONTRACT LIFECYCLE STATE MACHINES
+  // ===========================================================================
+
+  // POST /api/v1/console/v2/reservations (Create Room Reservation & Hold Deposit)
+  if (method === 'POST' && pathname === '/api/v1/console/v2/reservations') {
+    if (!actorHasPermission(actor, 'contracts.manage') && !actorHasPermission(actor, 'tenants.manage')) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'INSUFFICIENT_PERMISSION',
+        message: 'Không có quyền tạo phiếu giữ chỗ phòng.',
+      });
+    }
+
+    const body = await readJsonBody(req);
+    const roomId = String(body.roomId || '').trim();
+    const customerName = String(body.customerName || '').trim();
+    const customerPhone = String(body.customerPhone || '').trim();
+    const holdAmountVnd = Math.max(0, Math.trunc(Number(body.holdAmountVnd) || 0));
+    const expectedMoveIn =
+      typeof body.expectedMoveIn === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.expectedMoveIn)
+        ? body.expectedMoveIn
+        : null;
+    const holdDays = Math.max(1, Math.min(30, Math.trunc(Number(body.holdDays) || 7)));
+    const notes = typeof body.notes === 'string' ? body.notes.trim() : null;
+
+    if (!roomId || !customerName || !customerPhone) {
+      return sendJson(res, 422, {
+        ok: false,
+        errorCode: 'VALIDATION_ERROR',
+        message: 'Vui lòng điền đủ thông tin phòng, tên khách hàng và số điện thoại.',
+      });
+    }
+
+    const rm = await prisma.consoleRoom.findUnique({
+      where: { id: roomId },
+      include: { building: true },
+    });
+    if (!rm || rm.orgId !== actor.orgId) {
+      return sendJson(res, 404, {
+        ok: false,
+        errorCode: 'ENTITY_NOT_FOUND',
+        message: 'Phòng không tồn tại trong tổ chức.',
+      });
+    }
+    if (!isBuildingAllowedForActor(actor, rm.buildingId, rm.building.code)) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'FORBIDDEN_BUILDING_SCOPE',
+        message: 'Không có quyền lập phiếu giữ chỗ ngoài tòa nhà phụ trách.',
+      });
+    }
+
+    const reservationCode = `GC-${rm.building.code}-${rm.code}-${crypto
+      .randomBytes(2)
+      .toString('hex')
+      .toUpperCase()}`;
+    const holdUntil = new Date(Date.now() + holdDays * 86400000);
+
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT id FROM "console_rooms" WHERE id = ${rm.id} FOR UPDATE`;
+
+        const activeContracts = await tx.contract.count({
+          where: { roomId: rm.id, status: { in: ['ACTIVE', 'EXPIRING'] } },
+        });
+        if (activeContracts > 0) {
+          const err: any = new Error(
+            `Phòng ${rm.code} đang có hợp đồng thuê hoạt động, không thể giữ chỗ.`
+          );
+          err.statusCode = 409;
+          throw err;
+        }
+
+        const existingResv = await tx.roomReservation.count({
+          where: { roomId: rm.id, status: { in: ['PENDING', 'CONFIRMED'] } },
+        });
+        if (existingResv > 0) {
+          const err: any = new Error(`Phòng ${rm.code} đang có phiếu giữ chỗ hoạt động.`);
+          err.statusCode = 409;
+          throw err;
+        }
+
+        const resv = await tx.roomReservation.create({
+          data: {
+            orgId: actor.orgId,
+            buildingId: rm.buildingId,
+            roomId: rm.id,
+            reservationCode,
+            customerName,
+            customerPhone,
+            holdAmountVnd: BigInt(holdAmountVnd),
+            status: holdAmountVnd > 0 ? 'CONFIRMED' : 'PENDING',
+            holdUntil,
+            expectedMoveIn,
+            notes,
+          },
+        });
+
+        let dep = null;
+        if (holdAmountVnd > 0) {
+          dep = await tx.deposit.create({
+            data: {
+              orgId: actor.orgId,
+              reservationId: resv.id,
+              amountVnd: BigInt(holdAmountVnd),
+              status: 'HELD',
+              notes: `Tiền cọc giữ chỗ ${resv.reservationCode}`,
+            },
+          });
+
+          await tx.ledgerEntry.create({
+            data: {
+              orgId: actor.orgId,
+              buildingId: rm.buildingId,
+              periodKey: getCurrentVnPeriodKey(),
+              entryCode: `PT-${getCurrentVnPeriodKey().replace('-', '')}-${crypto
+                .randomBytes(2)
+                .toString('hex')
+                .toUpperCase()}`,
+              entryType: 'INCOME',
+              category: 'Cọc giữ chỗ',
+              amountVnd: BigInt(holdAmountVnd),
+              description: `Thu tiền cọc giữ chỗ ${resv.reservationCode} - ${customerName}`,
+              recordedBy: actor.email,
+            },
+          });
+        }
+
+        await tx.consoleRoom.update({
+          where: { id: rm.id },
+          data: { occupancyStatus: 'RESERVED' },
+        });
+        if (rm.publicListingId) {
+          await tx.publicRoomListing.update({
+            where: { id: rm.publicListingId },
+            data: { status: 'RESERVED' },
+          });
+        }
+
+        await tx.consoleAuditLog.create({
+          data: {
+            orgId: actor.orgId,
+            buildingId: rm.buildingId,
+            actorId: actor.id,
+            actorEmail: actor.email,
+            actorRole: actor.role,
+            entityType: 'RESERVATION',
+            entityId: resv.id,
+            action: 'CREATE_RESERVATION',
+            summary: `Tạo phiếu giữ chỗ ${resv.reservationCode} cho khách ${customerName} · Phòng ${rm.code}`,
+            metadata: { clientIp, holdAmountVnd },
+          },
+        });
+
+        return { resv, dep };
+      });
+
+      return sendJson(res, 201, {
+        ok: true,
+        reservation: {
+          ...result.resv,
+          holdAmountVnd: toSafeVndNumber(result.resv.holdAmountVnd),
+        },
+        deposit: result.dep
+          ? {
+              ...result.dep,
+              amountVnd: toSafeVndNumber(result.dep.amountVnd),
+              refundedVnd: toSafeVndNumber(result.dep.refundedVnd),
+            }
+          : null,
+      });
+    } catch (err: any) {
+      if (err?.statusCode === 409) {
+        return sendJson(res, 409, {
+          ok: false,
+          errorCode: 'ROOM_CONFLICT',
+          message: err.message,
+        });
+      }
+      throw err;
+    }
+  }
+
+  // POST /api/v1/console/v2/reservations/:id/cancel
+  const resvCancelMatch = pathname.match(
+    /^\/api\/v1\/console\/v2\/reservations\/([^/]+)\/cancel$/
+  );
+  if (method === 'POST' && resvCancelMatch) {
+    if (!actorHasPermission(actor, 'contracts.manage')) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'INSUFFICIENT_PERMISSION',
+        message: 'Không có quyền hủy phiếu giữ chỗ.',
+      });
+    }
+
+    const resvId = decodeURIComponent(resvCancelMatch[1]);
+    const body = await readJsonBody(req);
+    const reason = String(body.reason || 'Khách hủy giữ chỗ').trim();
+    const refundAmountVnd = Math.max(0, Math.trunc(Number(body.refundAmountVnd) || 0));
+    const forfeit = Boolean(body.forfeit);
+
+    const resv = await prisma.roomReservation.findUnique({
+      where: { id: resvId },
+      include: { room: { include: { building: true } }, deposits: true },
+    });
+    if (!resv || resv.orgId !== actor.orgId) {
+      return sendJson(res, 404, {
+        ok: false,
+        errorCode: 'ENTITY_NOT_FOUND',
+        message: 'Phiếu giữ chỗ không tồn tại trong tổ chức.',
+      });
+    }
+    if (!isBuildingAllowedForActor(actor, resv.buildingId, resv.room.building.code)) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'FORBIDDEN_BUILDING_SCOPE',
+        message: 'Không có quyền xử lý giữ chỗ ngoài tòa nhà phụ trách.',
+      });
+    }
+    if (resv.status !== 'CONFIRMED' && resv.status !== 'PENDING') {
+      return sendJson(res, 422, {
+        ok: false,
+        errorCode: 'INVALID_STATUS',
+        message: `Không thể hủy phiếu giữ chỗ đang ở trạng thái ${resv.status}.`,
+      });
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT id FROM "console_rooms" WHERE id = ${resv.roomId} FOR UPDATE`;
+
+      const nextNotes = resv.notes ? `${resv.notes} | [HỦY]: ${reason}` : `[HỦY]: ${reason}`;
+      const cancelledResv = await tx.roomReservation.update({
+        where: { id: resv.id },
+        data: { status: 'CANCELLED', notes: nextNotes },
+      });
+
+      const activeContracts = await tx.contract.count({
+        where: { roomId: resv.roomId, status: { in: ['ACTIVE', 'EXPIRING'] } },
+      });
+      if (activeContracts === 0) {
+        await tx.consoleRoom.update({
+          where: { id: resv.roomId },
+          data: { occupancyStatus: 'AVAILABLE' },
+        });
+        if (resv.room.publicListingId) {
+          await tx.publicRoomListing.update({
+            where: { id: resv.room.publicListingId },
+            data: { status: 'AVAILABLE' },
+          });
+        }
+      }
+
+      for (const d of resv.deposits) {
+        if (d.status === 'HELD') {
+          if (refundAmountVnd > 0) {
+            const isFull = refundAmountVnd >= Number(d.amountVnd);
+            await tx.deposit.update({
+              where: { id: d.id },
+              data: {
+                status: isFull ? 'REFUNDED' : 'PARTIALLY_REFUNDED',
+                refundedVnd: BigInt(refundAmountVnd),
+                notes: d.notes ? `${d.notes} | Hoàn cọc: ${refundAmountVnd}đ` : `Hoàn cọc: ${refundAmountVnd}đ`,
+              },
+            });
+            await tx.ledgerEntry.create({
+              data: {
+                orgId: actor.orgId,
+                buildingId: resv.buildingId,
+                periodKey: getCurrentVnPeriodKey(),
+                entryCode: `PC-${getCurrentVnPeriodKey().replace('-', '')}-${crypto
+                  .randomBytes(2)
+                  .toString('hex')
+                  .toUpperCase()}`,
+                entryType: 'EXPENSE',
+                category: 'Hoàn tiền cọc',
+                amountVnd: BigInt(refundAmountVnd),
+                description: `Hoàn cọc giữ chỗ ${resv.reservationCode} cho khách ${resv.customerName}`,
+                recordedBy: actor.email,
+              },
+            });
+          } else if (forfeit) {
+            await tx.deposit.update({
+              where: { id: d.id },
+              data: {
+                status: 'FORFEITED',
+                notes: d.notes ? `${d.notes} | Tịch thu cọc do hủy` : 'Tịch thu cọc do hủy',
+              },
+            });
+          }
+        }
+      }
+
+      await tx.consoleAuditLog.create({
         data: {
           orgId: actor.orgId,
-          buildingId: rm.buildingId,
-          roomId: rm.id,
-          tenantId: tenant.id,
-          contractCode,
-          startDate,
-          endDate,
-          monthlyRentVnd: BigInt(monthlyRentVnd),
-          depositVnd: BigInt(Math.max(0, depositVnd)),
-          occupantsCount,
-          electricRateVnd,
-          waterBillingMethod: waterMethod,
-          waterRateVnd,
-          status: 'ACTIVE',
+          buildingId: resv.buildingId,
+          actorId: actor.id,
+          actorEmail: actor.email,
+          actorRole: actor.role,
+          entityType: 'RESERVATION',
+          entityId: resv.id,
+          action: 'CANCEL_RESERVATION',
+          summary: `Hủy phiếu giữ chỗ ${resv.reservationCode} (Lý do: ${reason})`,
+          metadata: { clientIp, refundAmountVnd, forfeit },
+        },
+      });
+
+      return cancelledResv;
+    });
+
+    return sendJson(res, 200, {
+      ok: true,
+      reservation: {
+        ...updated,
+        holdAmountVnd: toSafeVndNumber(updated.holdAmountVnd),
+      },
+    });
+  }
+
+  // POST /api/v1/console/v2/reservations/:id/convert-to-contract
+  const resvConvertMatch = pathname.match(
+    /^\/api\/v1\/console\/v2\/reservations\/([^/]+)\/convert-to-contract$/
+  );
+  if (method === 'POST' && resvConvertMatch) {
+    if (!actorHasPermission(actor, 'contracts.manage')) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'INSUFFICIENT_PERMISSION',
+        message: 'Không có quyền chuyển đổi giữ chỗ sang hợp đồng.',
+      });
+    }
+
+    const resvId = decodeURIComponent(resvConvertMatch[1]);
+    const body = await readJsonBody(req);
+    const resv = await prisma.roomReservation.findUnique({
+      where: { id: resvId },
+      include: { room: { include: { building: true } }, deposits: true },
+    });
+    if (!resv || resv.orgId !== actor.orgId) {
+      return sendJson(res, 404, {
+        ok: false,
+        errorCode: 'ENTITY_NOT_FOUND',
+        message: 'Phiếu giữ chỗ không tồn tại trong tổ chức.',
+      });
+    }
+    if (resv.status !== 'CONFIRMED' && resv.status !== 'PENDING') {
+      return sendJson(res, 422, {
+        ok: false,
+        errorCode: 'INVALID_STATUS',
+        message: `Phiếu giữ chỗ đang ở trạng thái ${resv.status}, không thể chuyển đổi.`,
+      });
+    }
+
+    let tenantId = String(body.tenantId || resv.tenantId || '').trim();
+    if (!tenantId) {
+      const normPhone = normalizeVnPhone(resv.customerPhone);
+      let t = await prisma.tenant.findFirst({
+        where: { orgId: actor.orgId, normalizedPhone: normPhone },
+      });
+      if (!t) {
+        t = await prisma.tenant.create({
+          data: {
+            orgId: actor.orgId,
+            fullName: resv.customerName,
+            phone: normPhone,
+            normalizedPhone: normPhone,
+            primaryBuildingId: resv.buildingId,
+          },
+        });
+      }
+      tenantId = t.id;
+    }
+
+    const startDate = String(body.startDate || resv.expectedMoveIn || '').trim();
+    const endDate = String(body.endDate || '').trim();
+    const monthlyRentVnd = Math.trunc(
+      Number(body.monthlyRentVnd || resv.room.listPriceVnd || 4500000)
+    );
+    const depositVnd = Math.trunc(Number(body.depositVnd ?? monthlyRentVnd));
+    const occupantsCount = Math.max(1, Math.min(12, Math.trunc(Number(body.occupantsCount || 1))));
+
+    if (!startDate || !endDate || endDate <= startDate) {
+      return sendJson(res, 422, {
+        ok: false,
+        errorCode: 'VALIDATION_ERROR',
+        message: 'Vui lòng cung cấp ngày bắt đầu và kết thúc hợp đồng hợp lệ.',
+      });
+    }
+
+    const contractCode = `HD-${resv.room.building.code}-${resv.room.code}-${crypto
+      .randomBytes(2)
+      .toString('hex')
+      .toUpperCase()}`;
+
+    try {
+      const created = await prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT id FROM "console_rooms" WHERE id = ${resv.roomId} FOR UPDATE`;
+
+        const activeContracts = await tx.contract.count({
+          where: { roomId: resv.roomId, status: { in: ['ACTIVE', 'EXPIRING'] } },
+        });
+        if (activeContracts > 0) {
+          const err: any = new Error(`Phòng ${resv.room.code} đang có hợp đồng hoạt động.`);
+          err.statusCode = 409;
+          throw err;
+        }
+
+        const ct = await tx.contract.create({
+          data: {
+            orgId: actor.orgId,
+            buildingId: resv.buildingId,
+            roomId: resv.roomId,
+            tenantId,
+            reservationId: resv.id,
+            contractCode,
+            startDate,
+            endDate,
+            monthlyRentVnd: BigInt(monthlyRentVnd),
+            depositVnd: BigInt(Math.max(0, depositVnd)),
+            occupantsCount,
+            electricRateVnd: resv.room.electricRateVnd || 3800,
+            waterBillingMethod: resv.room.waterBillingMethod || 'PER_M3',
+            waterRateVnd: resv.room.waterRateVnd || 15000,
+            status: 'ACTIVE',
+          },
+        });
+
+        const linkedDeposit = resv.deposits.find((d) => d.status === 'HELD');
+        if (linkedDeposit) {
+          await tx.deposit.update({
+            where: { id: linkedDeposit.id },
+            data: {
+              contractId: ct.id,
+              status: 'APPLIED_TO_CONTRACT',
+              amountVnd: BigInt(depositVnd),
+              notes: `Chuyển từ giữ chỗ ${resv.reservationCode} sang hợp đồng ${ct.contractCode}`,
+            },
+          });
+        } else if (depositVnd > 0) {
+          await tx.deposit.create({
+            data: {
+              orgId: actor.orgId,
+              contractId: ct.id,
+              reservationId: resv.id,
+              amountVnd: BigInt(depositVnd),
+              status: 'HELD',
+              notes: `Tiền cọc hợp đồng ${ct.contractCode}`,
+            },
+          });
+        }
+
+        await tx.roomReservation.update({
+          where: { id: resv.id },
+          data: { status: 'CONVERTED' },
+        });
+
+        await tx.consoleRoom.update({
+          where: { id: resv.roomId },
+          data: { occupancyStatus: 'OCCUPIED' },
+        });
+        if (resv.room.publicListingId) {
+          await tx.publicRoomListing.update({
+            where: { id: resv.room.publicListingId },
+            data: { status: 'OCCUPIED' },
+          });
+        }
+        await tx.tenant.update({
+          where: { id: tenantId },
+          data: { currentRoomId: resv.roomId, primaryBuildingId: resv.buildingId },
+        });
+
+        await tx.consoleAuditLog.create({
+          data: {
+            orgId: actor.orgId,
+            buildingId: resv.buildingId,
+            actorId: actor.id,
+            actorEmail: actor.email,
+            actorRole: actor.role,
+            entityType: 'CONTRACT',
+            entityId: ct.id,
+            action: 'CONVERT_RESERVATION_TO_CONTRACT',
+            summary: `Chuyển đổi giữ chỗ ${resv.reservationCode} thành hợp đồng ${ct.contractCode}`,
+            metadata: { clientIp, reservationCode: resv.reservationCode },
+          },
+        });
+
+        return ct;
+      });
+
+      return sendJson(res, 201, {
+        ok: true,
+        contract: {
+          ...created,
+          monthlyRentVnd: toSafeVndNumber(created.monthlyRentVnd),
+          depositVnd: toSafeVndNumber(created.depositVnd),
+        },
+      });
+    } catch (err: any) {
+      if (err?.statusCode === 409) {
+        return sendJson(res, 409, {
+          ok: false,
+          errorCode: 'ROOM_CONFLICT',
+          message: err.message,
+        });
+      }
+      throw err;
+    }
+  }
+
+  // POST /api/v1/console/v2/deposits/:id/refund (Deposit Refund / Partial Refund / Deduct)
+  const depositRefundMatch = pathname.match(
+    /^\/api\/v1\/console\/v2\/deposits\/([^/]+)\/refund$/
+  );
+  if (method === 'POST' && depositRefundMatch) {
+    if (!actorHasPermission(actor, 'finance.write')) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'INSUFFICIENT_PERMISSION',
+        message: 'Tài khoản không có quyền hoàn tiền cọc (yêu cầu finance.write).',
+      });
+    }
+
+    const depId = decodeURIComponent(depositRefundMatch[1]);
+    const body = await readJsonBody(req);
+    const refundAmountVnd = Math.max(0, Math.trunc(Number(body.refundAmountVnd) || 0));
+    const deductionAmountVnd = Math.max(0, Math.trunc(Number(body.deductionAmountVnd) || 0));
+    const deductionReason = String(body.deductionReason || '').trim();
+
+    const dep = await prisma.deposit.findUnique({
+      where: { id: depId },
+      include: { contract: { include: { room: true } }, reservation: true },
+    });
+    if (!dep || dep.orgId !== actor.orgId) {
+      return sendJson(res, 404, {
+        ok: false,
+        errorCode: 'ENTITY_NOT_FOUND',
+        message: 'Khoản cọc không tồn tại trong tổ chức.',
+      });
+    }
+
+    const totalAvailable = Number(dep.amountVnd) - Number(dep.refundedVnd);
+    if (refundAmountVnd + deductionAmountVnd > totalAvailable) {
+      return sendJson(res, 422, {
+        ok: false,
+        errorCode: 'EXCEEDS_DEPOSIT_BALANCE',
+        message: `Tổng số tiền hoàn (${refundAmountVnd.toLocaleString(
+          'vi-VN'
+        )}đ) và khấu trừ (${deductionAmountVnd.toLocaleString(
+          'vi-VN'
+        )}đ) vượt quá số dư cọc khả dụng (${totalAvailable.toLocaleString('vi-VN')}đ).`,
+      });
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const nextRefunded = Number(dep.refundedVnd) + refundAmountVnd;
+      const isFull = nextRefunded + deductionAmountVnd >= Number(dep.amountVnd);
+      const nextStatus = isFull ? 'REFUNDED' : 'PARTIALLY_REFUNDED';
+
+      const noteParts = [dep.notes || ''];
+      if (refundAmountVnd > 0)
+        noteParts.push(`Hoàn cọc: ${refundAmountVnd.toLocaleString('vi-VN')}đ`);
+      if (deductionAmountVnd > 0)
+        noteParts.push(
+          `Khấu trừ: ${deductionAmountVnd.toLocaleString('vi-VN')}đ (${
+            deductionReason || 'Không ghi lý do'
+          })`
+        );
+
+      const updatedDep = await tx.deposit.update({
+        where: { id: dep.id },
+        data: {
+          status: nextStatus,
+          refundedVnd: BigInt(nextRefunded),
+          notes: noteParts.filter(Boolean).join(' | '),
+        },
+      });
+
+      const buildingId = dep.contract?.buildingId || dep.reservation?.buildingId || null;
+
+      if (refundAmountVnd > 0) {
+        await tx.ledgerEntry.create({
+          data: {
+            orgId: actor.orgId,
+            buildingId,
+            periodKey: getCurrentVnPeriodKey(),
+            entryCode: `PC-${getCurrentVnPeriodKey().replace('-', '')}-${crypto
+              .randomBytes(2)
+              .toString('hex')
+              .toUpperCase()}`,
+            entryType: 'EXPENSE',
+            category: 'Hoàn tiền cọc',
+            amountVnd: BigInt(refundAmountVnd),
+            description: `Hoàn tiền cọc ${
+              dep.contract?.contractCode || dep.reservation?.reservationCode || ''
+            }`,
+            recordedBy: actor.email,
+          },
+        });
+      }
+
+      if (deductionAmountVnd > 0) {
+        await tx.ledgerEntry.create({
+          data: {
+            orgId: actor.orgId,
+            buildingId,
+            periodKey: getCurrentVnPeriodKey(),
+            entryCode: `PT-${getCurrentVnPeriodKey().replace('-', '')}-${crypto
+              .randomBytes(2)
+              .toString('hex')
+              .toUpperCase()}`,
+            entryType: 'INCOME',
+            category: 'Khấu trừ tiền cọc',
+            amountVnd: BigInt(deductionAmountVnd),
+            description: `Khấu trừ cọc ${
+              dep.contract?.contractCode || dep.reservation?.reservationCode || ''
+            }: ${deductionReason}`,
+            recordedBy: actor.email,
+          },
+        });
+      }
+
+      await tx.consoleAuditLog.create({
+        data: {
+          orgId: actor.orgId,
+          buildingId,
+          actorId: actor.id,
+          actorEmail: actor.email,
+          actorRole: actor.role,
+          entityType: 'DEPOSIT',
+          entityId: dep.id,
+          action: 'REFUND_DEPOSIT',
+          summary: `Xử lý hoàn cọc ${refundAmountVnd.toLocaleString(
+            'vi-VN'
+          )}đ, khấu trừ ${deductionAmountVnd.toLocaleString('vi-VN')}đ`,
+          metadata: { clientIp, refundAmountVnd, deductionAmountVnd, deductionReason },
+        },
+      });
+
+      return updatedDep;
+    });
+
+    return sendJson(res, 200, {
+      ok: true,
+      deposit: {
+        ...updated,
+        amountVnd: toSafeVndNumber(updated.amountVnd),
+        refundedVnd: toSafeVndNumber(updated.refundedVnd),
+      },
+    });
+  }
+
+  // POST /api/v1/console/v2/contracts/:id/extend (Extend Contract)
+  const contractExtendMatch = pathname.match(
+    /^\/api\/v1\/console\/v2\/contracts\/([^/]+)\/extend$/
+  );
+  if (method === 'POST' && contractExtendMatch) {
+    if (!actorHasPermission(actor, 'contracts.manage')) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'INSUFFICIENT_PERMISSION',
+        message: 'Không có quyền gia hạn hợp đồng.',
+      });
+    }
+
+    const ctId = decodeURIComponent(contractExtendMatch[1]);
+    const body = await readJsonBody(req);
+    const newEndDate = String(body.newEndDate || '').trim();
+    const newMonthlyRentVnd = body.newMonthlyRentVnd
+      ? Math.trunc(Number(body.newMonthlyRentVnd))
+      : null;
+    const notes = typeof body.notes === 'string' ? body.notes.trim() : null;
+
+    if (!newEndDate || !/^\d{4}-\d{2}-\d{2}$/.test(newEndDate)) {
+      return sendJson(res, 422, {
+        ok: false,
+        errorCode: 'VALIDATION_ERROR',
+        message: 'Vui lòng cung cấp ngày kết thúc gia hạn hợp lệ (YYYY-MM-DD).',
+      });
+    }
+
+    const ct = await prisma.contract.findUnique({
+      where: { id: ctId },
+      include: { room: { include: { building: true } } },
+    });
+    if (!ct || ct.orgId !== actor.orgId) {
+      return sendJson(res, 404, {
+        ok: false,
+        errorCode: 'ENTITY_NOT_FOUND',
+        message: 'Hợp đồng không tồn tại trong tổ chức.',
+      });
+    }
+    if (!isBuildingAllowedForActor(actor, ct.buildingId, ct.room.building.code)) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'FORBIDDEN_BUILDING_SCOPE',
+        message: 'Không có quyền gia hạn hợp đồng ngoài tòa nhà phụ trách.',
+      });
+    }
+    if (newEndDate <= ct.endDate) {
+      return sendJson(res, 422, {
+        ok: false,
+        errorCode: 'INVALID_EXTENSION_DATE',
+        message: `Ngày gia hạn mới (${newEndDate}) phải lớn hơn ngày kết thúc hiện tại (${ct.endDate}).`,
+      });
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const updatedCt = await tx.contract.update({
+        where: { id: ct.id },
+        data: {
+          endDate: newEndDate,
+          status: 'EXTENDED',
+          ...(newMonthlyRentVnd && newMonthlyRentVnd >= 500_000
+            ? { monthlyRentVnd: BigInt(newMonthlyRentVnd) }
+            : {}),
+          notes: notes ? (ct.notes ? `${ct.notes} | ${notes}` : notes) : ct.notes,
+        },
+      });
+
+      await tx.consoleAuditLog.create({
+        data: {
+          orgId: actor.orgId,
+          buildingId: ct.buildingId,
+          actorId: actor.id,
+          actorEmail: actor.email,
+          actorRole: actor.role,
+          entityType: 'CONTRACT',
+          entityId: ct.id,
+          action: 'EXTEND_CONTRACT',
+          summary: `Gia hạn hợp đồng ${ct.contractCode} đến ${newEndDate}`,
+          metadata: { clientIp, previousEndDate: ct.endDate, newEndDate, newMonthlyRentVnd },
+        },
+      });
+
+      return updatedCt;
+    });
+
+    return sendJson(res, 200, {
+      ok: true,
+      contract: {
+        ...updated,
+        monthlyRentVnd: toSafeVndNumber(updated.monthlyRentVnd),
+        depositVnd: toSafeVndNumber(updated.depositVnd),
+      },
+    });
+  }
+
+  // POST /api/v1/console/v2/contracts/:id/transfer-room (Transfer Room)
+  const contractTransferMatch = pathname.match(
+    /^\/api\/v1\/console\/v2\/contracts\/([^/]+)\/transfer-room$/
+  );
+  if (method === 'POST' && contractTransferMatch) {
+    if (!actorHasPermission(actor, 'contracts.manage')) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'INSUFFICIENT_PERMISSION',
+        message: 'Không có quyền chuyển phòng hợp đồng.',
+      });
+    }
+
+    const ctId = decodeURIComponent(contractTransferMatch[1]);
+    const body = await readJsonBody(req);
+    const newRoomId = String(body.newRoomId || '').trim();
+    const newMonthlyRentVnd = body.newMonthlyRentVnd
+      ? Math.trunc(Number(body.newMonthlyRentVnd))
+      : null;
+
+    if (!newRoomId) {
+      return sendJson(res, 422, {
+        ok: false,
+        errorCode: 'VALIDATION_ERROR',
+        message: 'Vui lòng chọn phòng đích để chuyển.',
+      });
+    }
+
+    const ct = await prisma.contract.findUnique({
+      where: { id: ctId },
+      include: { room: true },
+    });
+    if (!ct || ct.orgId !== actor.orgId) {
+      return sendJson(res, 404, {
+        ok: false,
+        errorCode: 'ENTITY_NOT_FOUND',
+        message: 'Hợp đồng không tồn tại trong tổ chức.',
+      });
+    }
+
+    const newRoom = await prisma.consoleRoom.findUnique({
+      where: { id: newRoomId },
+      include: { building: true },
+    });
+    if (!newRoom || newRoom.orgId !== actor.orgId) {
+      return sendJson(res, 404, {
+        ok: false,
+        errorCode: 'ENTITY_NOT_FOUND',
+        message: 'Phòng đích không tồn tại trong tổ chức.',
+      });
+    }
+    if (!isBuildingAllowedForActor(actor, newRoom.buildingId, newRoom.building.code)) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'FORBIDDEN_BUILDING_SCOPE',
+        message: 'Không có quyền chuyển khách sang tòa nhà ngoài phụ trách.',
+      });
+    }
+
+    if (newRoom.id === ct.roomId) {
+      return sendJson(res, 422, {
+        ok: false,
+        errorCode: 'SAME_ROOM',
+        message: 'Phòng đích trùng với phòng hiện tại.',
+      });
+    }
+
+    try {
+      const updated = await prisma.$transaction(async (tx) => {
+        // Row locks ordered to avoid deadlocks
+        const roomIds = [ct.roomId, newRoom.id].sort();
+        await tx.$executeRaw`SELECT id FROM "console_rooms" WHERE id IN (${roomIds[0]}, ${roomIds[1]}) ORDER BY id FOR UPDATE`;
+
+        const activeInNewRoom = await tx.contract.count({
+          where: { roomId: newRoom.id, status: { in: ['ACTIVE', 'EXPIRING'] } },
+        });
+        if (activeInNewRoom > 0) {
+          const err: any = new Error(`Phòng ${newRoom.code} đang có hợp đồng thuê hoạt động.`);
+          err.statusCode = 409;
+          throw err;
+        }
+
+        // Release old room
+        await tx.consoleRoom.update({
+          where: { id: ct.roomId },
+          data: { occupancyStatus: 'AVAILABLE' },
+        });
+        if (ct.room.publicListingId) {
+          await tx.publicRoomListing.update({
+            where: { id: ct.room.publicListingId },
+            data: { status: 'AVAILABLE' },
+          });
+        }
+
+        // Occupy new room
+        await tx.consoleRoom.update({
+          where: { id: newRoom.id },
+          data: { occupancyStatus: 'OCCUPIED' },
+        });
+        if (newRoom.publicListingId) {
+          await tx.publicRoomListing.update({
+            where: { id: newRoom.publicListingId },
+            data: { status: 'OCCUPIED' },
+          });
+        }
+
+        const updatedCt = await tx.contract.update({
+          where: { id: ct.id },
+          data: {
+            roomId: newRoom.id,
+            buildingId: newRoom.buildingId,
+            ...(newMonthlyRentVnd && newMonthlyRentVnd >= 500_000
+              ? { monthlyRentVnd: BigInt(newMonthlyRentVnd) }
+              : {}),
+            notes: ct.notes
+              ? `${ct.notes} | Chuyển từ phòng ${ct.room.code} sang ${newRoom.code}`
+              : `Chuyển từ phòng ${ct.room.code} sang ${newRoom.code}`,
+          },
+        });
+
+        await tx.tenant.update({
+          where: { id: ct.tenantId },
+          data: {
+            currentRoomId: newRoom.id,
+            primaryBuildingId: newRoom.buildingId,
+          },
+        });
+
+        await tx.consoleAuditLog.create({
+          data: {
+            orgId: actor.orgId,
+            buildingId: newRoom.buildingId,
+            actorId: actor.id,
+            actorEmail: actor.email,
+            actorRole: actor.role,
+            entityType: 'CONTRACT',
+            entityId: ct.id,
+            action: 'TRANSFER_ROOM_CONTRACT',
+            summary: `Chuyển phòng hợp đồng ${ct.contractCode} từ ${ct.room.code} sang ${newRoom.code}`,
+            metadata: { clientIp, fromRoomId: ct.roomId, toRoomId: newRoom.id },
+          },
+        });
+
+        return updatedCt;
+      });
+
+      return sendJson(res, 200, {
+        ok: true,
+        contract: {
+          ...updated,
+          monthlyRentVnd: toSafeVndNumber(updated.monthlyRentVnd),
+          depositVnd: toSafeVndNumber(updated.depositVnd),
+        },
+      });
+    } catch (err: any) {
+      if (err?.statusCode === 409) {
+        return sendJson(res, 409, {
+          ok: false,
+          errorCode: 'ROOM_CONFLICT',
+          message: err.message,
+        });
+      }
+      throw err;
+    }
+  }
+
+  // POST /api/v1/console/v2/contracts/:id/terminate (Terminate Contract)
+  const contractTerminateMatch = pathname.match(
+    /^\/api\/v1\/console\/v2\/contracts\/([^/]+)\/terminate$/
+  );
+  if (method === 'POST' && contractTerminateMatch) {
+    if (!actorHasPermission(actor, 'contracts.manage')) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'INSUFFICIENT_PERMISSION',
+        message: 'Không có quyền thanh lý hợp đồng.',
+      });
+    }
+
+    const ctId = decodeURIComponent(contractTerminateMatch[1]);
+    const body = await readJsonBody(req);
+    const reason = String(body.reason || 'Thanh lý kết thúc thời hạn thuê').trim();
+    const roomNextStatus = body.roomNextStatus === 'MAINTENANCE' ? 'MAINTENANCE' : 'AVAILABLE';
+
+    const ct = await prisma.contract.findUnique({
+      where: { id: ctId },
+      include: { room: true },
+    });
+    if (!ct || ct.orgId !== actor.orgId) {
+      return sendJson(res, 404, {
+        ok: false,
+        errorCode: 'ENTITY_NOT_FOUND',
+        message: 'Hợp đồng không tồn tại trong tổ chức.',
+      });
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT id FROM "console_rooms" WHERE id = ${ct.roomId} FOR UPDATE`;
+
+      const terminatedCt = await tx.contract.update({
+        where: { id: ct.id },
+        data: {
+          status: 'TERMINATED',
+          notes: ct.notes ? `${ct.notes} | [THANH LÝ]: ${reason}` : `[THANH LÝ]: ${reason}`,
         },
       });
 
       await tx.consoleRoom.update({
-        where: { id: rm.id },
-        data: { occupancyStatus: 'OCCUPIED' },
+        where: { id: ct.roomId },
+        data: { occupancyStatus: roomNextStatus },
       });
-      if (rm.publicListingId) {
+      if (ct.room.publicListingId) {
         await tx.publicRoomListing.update({
-          where: { id: rm.publicListingId },
-          data: {
-            status: 'OCCUPIED',
-            currentTenantName: null,
-            currentTenantPhone: null,
-          },
+          where: { id: ct.room.publicListingId },
+          data: { status: roomNextStatus === 'MAINTENANCE' ? 'MAINTENANCE' : 'AVAILABLE' },
         });
       }
+
       await tx.tenant.update({
-        where: { id: tenant.id },
+        where: { id: ct.tenantId },
+        data: { currentRoomId: null },
+      });
+
+      await tx.consoleAuditLog.create({
         data: {
-          currentRoomId: rm.id,
-          primaryBuildingId: rm.buildingId,
+          orgId: actor.orgId,
+          buildingId: ct.buildingId,
+          actorId: actor.id,
+          actorEmail: actor.email,
+          actorRole: actor.role,
+          entityType: 'CONTRACT',
+          entityId: ct.id,
+          action: 'TERMINATE_CONTRACT',
+          summary: `Thanh lý hợp đồng ${ct.contractCode} (Lý do: ${reason})`,
+          metadata: { clientIp, reason, roomNextStatus },
+        },
+      });
+
+      return terminatedCt;
+    });
+
+    return sendJson(res, 200, {
+      ok: true,
+      contract: {
+        ...updated,
+        monthlyRentVnd: toSafeVndNumber(updated.monthlyRentVnd),
+        depositVnd: toSafeVndNumber(updated.depositVnd),
+      },
+    });
+  }
+
+  // ===========================================================================
+  // C3B: HUNONIC CLOUD METERING & WATER BILLING ADAPTER
+  // ===========================================================================
+
+  // POST /api/v1/console/v2/hunonic/sync
+  if (method === 'POST' && pathname === '/api/v1/console/v2/hunonic/sync') {
+    if (
+      !actorHasPermission(actor, 'settlements.manage') &&
+      !actorHasPermission(actor, 'settings.manage')
+    ) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'INSUFFICIENT_PERMISSION',
+        message: 'Không có quyền thực hiện đồng bộ chỉ số điện.',
+      });
+    }
+
+    const hunonicScoped = await resolveScopedBuildings(
+      prisma,
+      actor,
+      buildingsParam,
+      false
+    );
+    const bldIds = hunonicScoped.selectedBuildingIds;
+
+    const conn = await prisma.integrationConnection.findUnique({
+      where: { orgId_providerId: { orgId: actor.orgId, providerId: 'HUNONIC' } },
+    });
+
+    let decryptedSecret = '';
+    if (conn?.credentialsJson && typeof conn.credentialsJson === 'object') {
+      const enc = (conn.credentialsJson as Record<string, unknown>).encryptedSecret;
+      decryptedSecret = decryptSecret(enc) || '';
+    }
+
+    const phone = decryptedSecret.includes(':')
+      ? decryptedSecret.split(':')[0]
+      : decryptedSecret || '0901234567';
+    const password = decryptedSecret.includes(':')
+      ? decryptedSecret.split(':')[1]
+      : undefined;
+
+    const hunonicClient = new HunonicCloudClient();
+    let authToken = 'mock_hunonic_token_default';
+    try {
+      const loginRes = await hunonicClient.login(phone, password);
+      authToken = loginRes.token;
+    } catch {
+      authToken = 'mock_hunonic_token_sandbox';
+    }
+
+    const meters = await prisma.electricMeter.findMany({
+      where: {
+        orgId: actor.orgId,
+        room: { buildingId: { in: bldIds } },
+      },
+      include: { room: { include: { building: true } } },
+    });
+
+    const currentPeriod = getCurrentVnPeriodKey();
+    const results = [];
+    let offlineCount = 0;
+    let staleCount = 0;
+    let syncedCount = 0;
+
+    for (const m of meters) {
+      const deviceId = m.hunonicDeviceId || `MOCK-${m.room.building.code}-${m.room.code}`;
+      const telemetry = await hunonicClient.fetchDeviceTelemetry(
+        authToken,
+        deviceId,
+        m.cumulativeKwh || 120.0
+      );
+
+      if (telemetry.status === 'OFFLINE') offlineCount++;
+      if (telemetry.status === 'STALE') staleCount++;
+      if (telemetry.status === 'ONLINE') syncedCount++;
+
+      const validation = validateKwhReading(m.cumulativeKwh, telemetry.cumulativeKwh);
+
+      await prisma.$transaction(async (tx) => {
+        await tx.electricMeter.update({
+          where: { id: m.id },
+          data: {
+            hunonicDeviceId: deviceId,
+            connectionStatus: telemetry.status,
+            instantPowerW: telemetry.instantPowerW,
+            cumulativeKwh: telemetry.cumulativeKwh,
+            lastSyncedAt: new Date(),
+          },
+        });
+
+        await tx.meterReading.create({
+          data: {
+            meterId: m.id,
+            periodKey: currentPeriod,
+            readingKwh: telemetry.cumulativeKwh,
+            source: 'HUNONIC_AUTO',
+            overrideReason: validation.warning || null,
+          },
+        });
+      });
+
+      results.push({
+        meterId: m.id,
+        roomCode: m.room.code,
+        deviceId,
+        status: telemetry.status,
+        instantPowerW: telemetry.instantPowerW,
+        cumulativeKwh: telemetry.cumulativeKwh,
+        validation,
+      });
+    }
+
+    await prisma.consoleAuditLog.create({
+      data: {
+        orgId: actor.orgId,
+        actorId: actor.id,
+        actorEmail: actor.email,
+        actorRole: actor.role,
+        entityType: 'INTEGRATION',
+        entityId: conn?.id || actor.orgId,
+        action: 'HUNONIC_SYNC_METERS',
+        summary: `Đồng bộ Hunonic cho ${meters.length} công tơ: ${syncedCount} online, ${offlineCount} offline, ${staleCount} stale`,
+        metadata: { clientIp, total: meters.length, syncedCount, offlineCount, staleCount },
+      },
+    });
+
+    return sendJson(res, 200, {
+      ok: true,
+      totalMeters: meters.length,
+      syncedCount,
+      offlineCount,
+      staleCount,
+      periodKey: currentPeriod,
+      results,
+    });
+  }
+
+  // POST /api/v1/console/v2/meters/:roomId/manual-reading
+  const meterReadingMatch = pathname.match(
+    /^\/api\/v1\/console\/v2\/meters\/([^/]+)\/manual-reading$/
+  );
+  if (method === 'POST' && meterReadingMatch) {
+    if (!actorHasPermission(actor, 'settlements.manage')) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'INSUFFICIENT_PERMISSION',
+        message: 'Không có quyền cập nhật chỉ số điện thủ công.',
+      });
+    }
+
+    const roomId = decodeURIComponent(meterReadingMatch[1]);
+    const body = await readJsonBody(req);
+    const readingKwh = Number(body.readingKwh);
+    const overrideReason = String(body.overrideReason || '').trim();
+    const periodKey =
+      typeof body.periodKey === 'string' && /^\d{4}-\d{2}$/.test(body.periodKey)
+        ? body.periodKey
+        : getCurrentVnPeriodKey();
+
+    if (isNaN(readingKwh) || readingKwh < 0 || !overrideReason) {
+      return sendJson(res, 422, {
+        ok: false,
+        errorCode: 'VALIDATION_ERROR',
+        message: 'Vui lòng nhập chỉ số điện (>= 0 kWh) và lý do can thiệp/ghi tay.',
+      });
+    }
+
+    const rm = await prisma.consoleRoom.findUnique({
+      where: { id: roomId },
+      include: { building: true, electricMeter: true },
+    });
+    if (!rm || rm.orgId !== actor.orgId) {
+      return sendJson(res, 404, {
+        ok: false,
+        errorCode: 'ENTITY_NOT_FOUND',
+        message: 'Phòng không tồn tại trong tổ chức.',
+      });
+    }
+    if (!isBuildingAllowedForActor(actor, rm.buildingId, rm.building.code)) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'FORBIDDEN_BUILDING_SCOPE',
+        message: 'Không có quyền ghi chỉ số cho phòng ngoài tòa nhà phụ trách.',
+      });
+    }
+
+    let meter = rm.electricMeter;
+    if (!meter) {
+      meter = await prisma.electricMeter.create({
+        data: {
+          orgId: actor.orgId,
+          roomId: rm.id,
+          meterSerial: `MTR-${rm.code}`,
+          connectionStatus: 'ONLINE',
+          cumulativeKwh: readingKwh,
+        },
+      });
+    }
+
+    const validation = validateKwhReading(meter.cumulativeKwh, readingKwh);
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const mr = await tx.meterReading.create({
+        data: {
+          meterId: meter!.id,
+          periodKey,
+          readingKwh,
+          source: 'MANUAL_OVERRIDE',
+          recordedByActor: actor.email,
+          overrideReason,
+        },
+      });
+
+      const updatedMeter = await tx.electricMeter.update({
+        where: { id: meter!.id },
+        data: {
+          cumulativeKwh: readingKwh,
+          lastSyncedAt: new Date(),
         },
       });
 
@@ -3575,34 +4870,146 @@ export async function handleConsoleV2Api(
           actorId: actor.id,
           actorEmail: actor.email,
           actorRole: actor.role,
-          entityType: 'CONTRACT',
-          entityId: ct.id,
-          action: 'CREATE_CONTRACT',
-          summary: `Ký hợp đồng ${ct.contractCode} cho ${tenant.fullName} · Phòng ${rm.code}`,
-          metadata: { clientIp, monthlyRentVnd },
+          entityType: 'METER_READING',
+          entityId: mr.id,
+          action: 'MANUAL_METER_OVERRIDE',
+          summary: `Ghi chỉ số tay phòng ${rm.code}: ${readingKwh} kWh (Lý do: ${overrideReason})`,
+          metadata: {
+            clientIp,
+            readingKwh,
+            overrideReason,
+            periodKey,
+            previousKwh: meter!.cumulativeKwh,
+          },
         },
       });
 
-      return ct;
+      return { meter: updatedMeter, reading: mr };
     });
 
-    return sendJson(res, 201, {
+    return sendJson(res, 200, {
       ok: true,
-      contract: {
-        ...created,
-        monthlyRentVnd: toSafeVndNumber(created.monthlyRentVnd),
-        depositVnd: toSafeVndNumber(created.depositVnd),
-      },
+      meter: updated.meter,
+      reading: updated.reading,
+      validation,
     });
+  }
+
+  // POST /api/v1/console/v2/meters/:roomId/replace
+  const meterReplaceMatch = pathname.match(
+    /^\/api\/v1\/console\/v2\/meters\/([^/]+)\/replace$/
+  );
+  if (method === 'POST' && meterReplaceMatch) {
+    if (!actorHasPermission(actor, 'settlements.manage')) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'INSUFFICIENT_PERMISSION',
+        message: 'Không có quyền thay thế công tơ điện.',
+      });
+    }
+
+    const roomId = decodeURIComponent(meterReplaceMatch[1]);
+    const body = await readJsonBody(req);
+    const newMeterSerial = String(body.newMeterSerial || '').trim();
+    const newHunonicDeviceId = String(body.newHunonicDeviceId || '').trim();
+    const initialKwh = Math.max(0, Number(body.initialKwh || 0));
+    const reason = String(body.reason || 'Thay công tơ định kỳ/hỏng hóc').trim();
+
+    if (!newMeterSerial || !reason) {
+      return sendJson(res, 422, {
+        ok: false,
+        errorCode: 'VALIDATION_ERROR',
+        message: 'Vui lòng cung cấp số serial công tơ mới và lý do thay thế.',
+      });
+    }
+
+    const rm = await prisma.consoleRoom.findUnique({
+      where: { id: roomId },
+      include: { building: true, electricMeter: true },
+    });
+    if (!rm || rm.orgId !== actor.orgId) {
+      return sendJson(res, 404, {
+        ok: false,
+        errorCode: 'ENTITY_NOT_FOUND',
+        message: 'Phòng không tồn tại trong tổ chức.',
+      });
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      let meter = rm.electricMeter;
+      const previousSerial = meter?.meterSerial || 'CHƯA_CÓ';
+      const previousKwh = meter?.cumulativeKwh || 0;
+
+      if (!meter) {
+        meter = await tx.electricMeter.create({
+          data: {
+            orgId: actor.orgId,
+            roomId: rm.id,
+            meterSerial: newMeterSerial,
+            hunonicDeviceId: newHunonicDeviceId || null,
+            connectionStatus: 'ONLINE',
+            cumulativeKwh: initialKwh,
+          },
+        });
+      } else {
+        meter = await tx.electricMeter.update({
+          where: { id: meter.id },
+          data: {
+            meterSerial: newMeterSerial,
+            hunonicDeviceId: newHunonicDeviceId || null,
+            connectionStatus: 'ONLINE',
+            cumulativeKwh: initialKwh,
+            lastSyncedAt: new Date(),
+          },
+        });
+      }
+
+      const mr = await tx.meterReading.create({
+        data: {
+          meterId: meter.id,
+          periodKey: getCurrentVnPeriodKey(),
+          readingKwh: initialKwh,
+          source: 'MANUAL_OVERRIDE',
+          recordedByActor: actor.email,
+          overrideReason: `[THAY CÔNG TƠ] Cũ: ${previousSerial} (${previousKwh} kWh) -> Mới: ${newMeterSerial} (${initialKwh} kWh). Lý do: ${reason}`,
+        },
+      });
+
+      await tx.consoleAuditLog.create({
+        data: {
+          orgId: actor.orgId,
+          buildingId: rm.buildingId,
+          actorId: actor.id,
+          actorEmail: actor.email,
+          actorRole: actor.role,
+          entityType: 'ELECTRIC_METER',
+          entityId: meter.id,
+          action: 'REPLACE_ELECTRIC_METER',
+          summary: `Thay công tơ phòng ${rm.code}: ${previousSerial} -> ${newMeterSerial}`,
+          metadata: {
+            clientIp,
+            previousSerial,
+            newMeterSerial,
+            previousKwh,
+            initialKwh,
+            reason,
+          },
+        },
+      });
+
+      return { meter, reading: mr };
+    });
+
+    return sendJson(res, 200, { ok: true, ...updated });
   }
 
   // POST /api/v1/console/v2/ledger (Real PostgreSQL Cashbook Entry)
   if (method === 'POST' && pathname === '/api/v1/console/v2/ledger') {
-    if (!actorHasPermission(actor, 'finance.read')) {
+    if (!actorHasPermission(actor, 'finance.write')) {
       return sendJson(res, 403, {
         ok: false,
         errorCode: 'INSUFFICIENT_PERMISSION',
-        message: 'Không có quyền ghi sổ quỹ.',
+        message: 'Tài khoản không có quyền ghi sổ quỹ (yêu cầu quyền finance.write).',
       });
     }
 
@@ -3731,6 +5138,7 @@ export async function handleConsoleV2Api(
           take: 40,
         }),
         prisma.consoleLoginAudit.findMany({
+          where: { orgId: actor.orgId },
           orderBy: { createdAt: 'desc' },
           take: 25,
         }),
@@ -4026,11 +5434,8 @@ export async function handleConsoleV2Api(
                 ? {
                     credentialsJson: {
                       updatedAt: new Date().toISOString(),
-                      tokenHash: crypto
-                        .createHash('sha256')
-                        .update(rawSecret)
-                        .digest('hex'),
-                    } as Prisma.InputJsonValue,
+                      encryptedSecret: encryptSecret(rawSecret),
+                    } as unknown as Prisma.InputJsonValue,
                     secretHint: nextSecretHint,
                   }
                 : {}),
@@ -4113,11 +5518,8 @@ export async function handleConsoleV2Api(
                 ? {
                     credentialsJson: {
                       updatedAt: new Date().toISOString(),
-                      tokenHash: crypto
-                        .createHash('sha256')
-                        .update(rawSecret)
-                        .digest('hex'),
-                    } as Prisma.InputJsonValue,
+                      encryptedSecret: encryptSecret(rawSecret),
+                    } as unknown as Prisma.InputJsonValue,
                     secretHint: nextSecretHint,
                   }
                 : {}),

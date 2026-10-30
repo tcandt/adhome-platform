@@ -682,11 +682,19 @@ function recordLoginFailure(email: string): void {
 
 async function writeLoginAudit(
   prisma: PrismaClient,
-  entry: { actorId?: string | null; email: string; outcome: string; clientIp: string; jti?: string | null }
+  entry: {
+    orgId?: string | null;
+    actorId?: string | null;
+    email: string;
+    outcome: string;
+    clientIp: string;
+    jti?: string | null;
+  }
 ): Promise<void> {
   try {
     await prisma.consoleLoginAudit.create({
       data: {
+        orgId: entry.orgId ?? null,
         actorId: entry.actorId ?? null,
         emailAttempted: entry.email.slice(0, 320),
         outcome: entry.outcome,
@@ -786,6 +794,7 @@ async function handleConsoleLogin(
   if (!actor || !actor.passwordHash || !passwordValid) {
     recordLoginFailure(email);
     await writeLoginAudit(prisma, {
+      orgId: actor?.orgId ?? null,
       actorId: actor?.id ?? null,
       email,
       outcome: !actor ? 'UNKNOWN_ACCOUNT' : !actor.passwordHash ? 'NO_PASSWORD_SET' : 'WRONG_PASSWORD',
@@ -796,7 +805,13 @@ async function handleConsoleLogin(
 
   // Account state is only disclosed after the correct password was proven.
   if (!actor.isActive) {
-    await writeLoginAudit(prisma, { actorId: actor.id, email, outcome: 'ACCOUNT_DEACTIVATED', clientIp });
+    await writeLoginAudit(prisma, {
+      orgId: actor.orgId,
+      actorId: actor.id,
+      email,
+      outcome: 'ACCOUNT_DEACTIVATED',
+      clientIp,
+    });
     return sendJson(res, 401, {
       ok: false,
       errorCode: 'ACCOUNT_DEACTIVATED',
@@ -833,7 +848,14 @@ async function handleConsoleLogin(
     exp: nowSec + expiresIn,
   });
 
-  await writeLoginAudit(prisma, { actorId: actor.id, email, outcome: 'SUCCESS', clientIp, jti });
+  await writeLoginAudit(prisma, {
+    orgId: actor.orgId,
+    actorId: actor.id,
+    email,
+    outcome: 'SUCCESS',
+    clientIp,
+    jti,
+  });
 
   const cookieHeader = buildConsoleSessionCookieHeader(
     token,

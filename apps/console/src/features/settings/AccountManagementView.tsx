@@ -54,6 +54,7 @@ const PERMISSION_LABELS: Record<string, { label: string; group: string }> = {
   'invoices.manage': { label: 'Phát hành hóa đơn & nhắc nợ', group: 'Hóa đơn & Tài chính' },
   'payments.manage': { label: 'Đối soát thanh toán QR / Chuyển khoản', group: 'Hóa đơn & Tài chính' },
   'finance.read': { label: 'Truy cập Sổ quỹ & Dòng tiền thu chi', group: 'Hóa đơn & Tài chính' },
+  'finance.write': { label: 'Ghi phiếu thu / chi sổ quỹ', group: 'Hóa đơn & Tài chính' },
   'reports.read': { label: 'Xem báo cáo doanh thu & công suất', group: 'Hệ thống & Quản trị' },
   'buildings.manage': { label: 'Thêm / sửa / xóa danh mục tòa nhà', group: 'Hệ thống & Quản trị' },
   'settings.manage': { label: 'Cấu hình cài đặt tổ chức', group: 'Hệ thống & Quản trị' },

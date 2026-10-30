@@ -249,6 +249,7 @@ model RoomReservation {
   room         ConsoleRoom  @relation(fields: [roomId], references: [id], onDelete: Restrict)
   tenant       Tenant?      @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   deposits     Deposit[]
+  contracts    Contract[]
 
   @@index([orgId, buildingId, status])
   @@map("room_reservations")
@@ -269,8 +270,10 @@ model Deposit {
 
   organization Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
   reservation  RoomReservation? @relation(fields: [reservationId], references: [id], onDelete: SetNull)
+  contract     Contract?        @relation(fields: [contractId], references: [id], onDelete: SetNull)
 
   @@index([orgId, status])
+  @@index([contractId])
   @@map("deposits")
 }
 
@@ -280,6 +283,7 @@ model Contract {
   buildingId         String   @map("building_id")
   roomId             String   @map("room_id")
   tenantId           String   @map("tenant_id")
+  reservationId      String?  @map("reservation_id")
   contractCode       String   @map("contract_code")
   startDate          String   @map("start_date")
   endDate            String   @map("end_date")
@@ -290,17 +294,19 @@ model Contract {
   /// PER_M3 | PER_PERSON | FIXED_PER_ROOM
   waterBillingMethod String   @default("PER_M3") @map("water_billing_method")
   waterRateVnd       Int      @default(15000) @map("water_rate_vnd")
-  /// DRAFT | ACTIVE | EXPIRING | TERMINATED | EXPIRED
+  /// DRAFT | ACTIVE | EXPIRING | EXTENDED | TERMINATED | EXPIRED
   status             String   @default("ACTIVE")
   notes              String?
   createdAt          DateTime @default(now()) @map("created_at")
   updatedAt          DateTime @updatedAt @map("updated_at")
 
-  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  building     Building     @relation(fields: [buildingId], references: [id], onDelete: Cascade)
-  room         ConsoleRoom  @relation(fields: [roomId], references: [id], onDelete: Restrict)
-  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  organization Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  building     Building         @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  room         ConsoleRoom      @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  reservation  RoomReservation? @relation(fields: [reservationId], references: [id], onDelete: SetNull)
   invoices     Invoice[]
+  deposits     Deposit[]
 
   @@unique([orgId, contractCode])
   @@index([orgId, buildingId, status])
@@ -638,6 +644,7 @@ model ConsoleActor {
 /// Append-only audit trail of every Console login attempt (success and failure).
 model ConsoleLoginAudit {
   id             String   @id @default(uuid())
+  orgId          String?  @map("org_id")
   actorId        String?  @map("actor_id")
   emailAttempted String   @map("email_attempted")
   outcome        String
@@ -645,6 +652,7 @@ model ConsoleLoginAudit {
   jti            String?
   createdAt      DateTime @default(now()) @map("created_at")
 
+  @@index([orgId, createdAt])
   @@index([actorId, createdAt])
   @@index([createdAt])
   @@map("console_login_audit")

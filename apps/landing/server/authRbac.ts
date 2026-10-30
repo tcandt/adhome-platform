@@ -21,6 +21,7 @@ export type ConsolePermission =
   | 'invoices.manage'
   | 'payments.manage'
   | 'finance.read'
+  | 'finance.write'
   | 'reports.read'
   | 'settings.manage'
   | 'accounts.manage'
@@ -41,6 +42,7 @@ export const ALL_CONSOLE_PERMISSIONS: readonly ConsolePermission[] = [
   'invoices.manage',
   'payments.manage',
   'finance.read',
+  'finance.write',
   'reports.read',
   'settings.manage',
   'accounts.manage',
@@ -168,7 +170,8 @@ export function resolveConsoleCapabilities(
     canManageSettlements: perms.has('settlements.manage'),
     canManageInvoices: perms.has('invoices.manage'),
     canManagePayments: perms.has('payments.manage'),
-    canAccessFinance: perms.has('finance.read'),
+    canAccessFinance: perms.has('finance.read') || perms.has('finance.write'),
+    canManageFinance: perms.has('finance.write'),
     canViewReports: perms.has('reports.read'),
     canManageSettings: perms.has('settings.manage'),
     canManageRoles: false, // Strictly ADMIN-only

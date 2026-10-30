@@ -46,3 +46,6 @@ backups/
 adhome_v2_*.dump
 rc1/adhome_v2_*.dump
 
+
+.tmp*
+

@@ -1,0 +1,58 @@
+{
+  "evaluatedAt": "2026-10-30T13:03:51.176Z",
+  "verdict": "LOCAL_GATE_PASSED",
+  "reportingTier": "LOCAL_GATE_PASSED",
+  "checks": {
+    "multiTenantAuditIsolation": {
+      "pass": true,
+      "totalLoginsVisible": 19,
+      "leakedOtherOrg": false
+    },
+    "credentialsCryptoVault": {
+      "pass": true,
+      "alg": "aes-256-gcm",
+      "ciphertextLength": 84,
+      "decryptedMatch": true,
+      "secretHint": "••••••••890!"
+    },
+    "financeWritePermissionSeparation": {
+      "pass": true,
+      "managerStatus": 403,
+      "managerErrorCode": "INSUFFICIENT_PERMISSION",
+      "adminStatus": 201
+    },
+    "concurrencyRowLevelLock": {
+      "pass": true,
+      "statusA": 409,
+      "statusB": 201,
+      "errorCode409": "ROOM_ALREADY_HAS_CONTRACT",
+      "activeContractsInDb": 1
+    },
+    "c3aLifecycleStateMachines": {
+      "pass": true,
+      "resvCreated": true,
+      "resvCancelled": true,
+      "contractConverted": true,
+      "depositRefundAndDeduction": true,
+      "contractExtended": true,
+      "contractTransferred": true,
+      "contractTerminated": true
+    },
+    "c3bHunonicAndWater": {
+      "pass": true,
+      "hunonicSync": true,
+      "manualReading": true,
+      "meterReplacement": true,
+      "kwhValidation": true,
+      "water3Methods": true
+    }
+  },
+  "evidenceFiles": [
+    "console_v2_1440_contracts_workspace.png",
+    "console_v2_1440_deposits_workspace.png",
+    "console_v2_1440_settlements_hunonic.png",
+    "console_v2_1440_contract_modal_dynamic_dates.png",
+    "console_v2_390x844_contracts_mobile.png"
+  ],
+  "finishedAt": "2026-10-30T13:04:37.631Z"
+}

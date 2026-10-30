@@ -68,6 +68,7 @@ const PROD_ADMIN_PROFILE = {
     'invoices.manage',
     'payments.manage',
     'finance.read',
+    'finance.write',
     'reports.read',
     'settings.manage',
     'accounts.manage',

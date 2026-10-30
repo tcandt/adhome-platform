@@ -41,6 +41,8 @@ function legacyDomainRedirectPlugin(): Plugin {
   };
 }
 
+const apiTarget = process.env.ADHOME_API_TARGET || 'http://127.0.0.1:8081';
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [legacyDomainRedirectPlugin(), react()],
@@ -54,7 +56,7 @@ export default defineConfig({
     port: 5174,
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8081',
+        target: apiTarget,
         changeOrigin: true,
       },
     },
@@ -64,7 +66,7 @@ export default defineConfig({
     port: 5174,
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8081',
+        target: apiTarget,
         changeOrigin: true,
       },
     },

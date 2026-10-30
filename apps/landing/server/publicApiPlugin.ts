@@ -34,6 +34,10 @@ import {
   renderDynamicSitemapXml,
   syncPrerenderedSeoFiles,
 } from './seoPrerenderer';
+import {
+  ensureConsoleV2Bootstrap,
+  handleConsoleV2Api,
+} from './consoleBusinessApi';
 
 loadAdhomeEnv();
 
@@ -279,7 +283,10 @@ export async function ensurePostgreSqlSeeded(): Promise<void> {
     }
 
     const roomCount = await prisma.publicRoomListing.count();
-    if (roomCount > 0) return;
+    if (roomCount > 0) {
+      await ensureConsoleV2Bootstrap(prisma);
+      return;
+    }
 
     // 3. Dynamically seed 0..N Buildings and 0..N Floors derived from seed data
     const seenBuildings = new Map<
@@ -357,7 +364,6 @@ export async function ensurePostgreSqlSeeded(): Promise<void> {
 
     // 4. Seed PublicRoomListings linked to Organization, Building, and Floor
     for (const r of ROOMS_PUBLIC_SEED) {
-      const hasTenant = r.status === 'COMING_SOON' || r.status === 'OCCUPIED';
       const floorId = `FLR-${r.buildingCode}-0${r.floorNumber}`;
       await prisma.publicRoomListing.upsert({
         where: { slug: r.slug },
@@ -397,16 +403,14 @@ export async function ensurePostgreSqlSeeded(): Promise<void> {
           displayOrder: r.displayOrder,
           isPublic: r.isPublic,
           sourceVerified: true,
-          currentTenantName: hasTenant
-            ? `Khách thuê nội bộ ${r.roomCode} (PII Private)`
-            : null,
-          currentTenantPhone: hasTenant ? '0912999888' : null,
-          internalNotes: hasTenant
-            ? `Hợp đồng nội bộ #HD-${r.roomCode} — Không hiển thị ra Public API`
-            : 'Phòng trống đã kiểm tra kỹ thuật',
+          currentTenantName: null,
+          currentTenantPhone: null,
+          internalNotes: null,
         },
       });
     }
+
+    await ensureConsoleV2Bootstrap(prisma);
   })();
 
   return seedPromise;
@@ -444,7 +448,6 @@ export async function fetchAllPublicRoomsFromDb(
       where: {
         orgId,
         isPublic: true,
-        status: { in: ['AVAILABLE', 'COMING_SOON'] },
       },
       select: PUBLIC_ROOM_SELECT,
       orderBy: { displayOrder: 'asc' },
@@ -1379,7 +1382,6 @@ function createApiAndDynamicSeoMiddleware() {
         where: {
           OR: [{ slug }, { id: slug }],
           isPublic: true,
-          status: { in: ['AVAILABLE', 'COMING_SOON'] },
         },
         select: PUBLIC_ROOM_SELECT,
       });
@@ -1389,7 +1391,6 @@ function createApiAndDynamicSeoMiddleware() {
         const renamedRow = await prisma.publicRoomListing.findFirst({
           where: {
             isPublic: true,
-            status: { in: ['AVAILABLE', 'COMING_SOON'] },
           },
           select: { slug: true, previousSlugs: true },
         });
@@ -1754,6 +1755,20 @@ function createApiAndDynamicSeoMiddleware() {
       }
 
       const { actor } = resolved;
+
+      // 0a-v2. CONSOLE V2 POSTGRESQL BUSINESS API (/api/v1/console/v2/*)
+      if (pathname.startsWith('/api/v1/console/v2/')) {
+        return handleConsoleV2Api(
+          req,
+          res,
+          pathname,
+          parsedUrl,
+          prisma,
+          actor,
+          clientIp,
+          { executeSeoSyncJobWithRetry }
+        );
+      }
 
       // 0b. GET /api/v1/console/auth/me (Live Session & Permission Re-verification from PostgreSQL)
       if (req.method === 'GET' && pathname === '/api/v1/console/auth/me') {
@@ -2582,6 +2597,16 @@ function createApiAndDynamicSeoMiddleware() {
               const orgRow = await tx.organization.update({
                 where: { id: targetRoom.orgId },
                 data: { catalogVersion: { increment: 1 } },
+              });
+
+              await tx.consoleRoom.updateMany({
+                where: { publicListingId: targetRoom.id },
+                data: {
+                  listPriceVnd: BigInt(nextPrice),
+                  availableFrom: nextAvailableFrom,
+                  isPublishedToLanding: nextIsPublic,
+                  publicSlug: nextSlug,
+                },
               });
 
               const audit = await tx.roomAuditLog.create({

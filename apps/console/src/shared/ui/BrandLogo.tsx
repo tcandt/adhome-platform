@@ -18,13 +18,19 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
   const isDark = theme === 'dark';
 
   if (variant === 'icon-only' || collapsed) {
-    const iconSize = size === 'sm' ? 'w-8 h-8' : size === 'lg' ? 'w-12 h-12' : 'w-10 h-10';
+    const iconSize =
+      size === 'sm' ? 'w-7 h-7' : size === 'lg' ? 'w-11 h-11' : 'w-9 h-9';
     return (
-      <div className={`relative flex items-center justify-center ${iconSize} ${className}`}>
+      <div
+        className={`relative flex shrink-0 items-center justify-center ${iconSize} ${className}`}
+        data-testid="brand-logo-icon"
+      >
         <img
           src="/brand/adhome-icon.svg"
-          alt="AdHome Icon"
-          className="w-full h-full object-contain filter drop-shadow-sm select-none transition-transform duration-150 hover:scale-105"
+          alt="AdHome"
+          data-testid="brand-logo-icon-img"
+          className="h-full w-full shrink-0 object-contain select-none"
+          draggable={false}
         />
       </div>
     );
@@ -32,25 +38,37 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
 
   if (variant === 'stacked') {
     return (
-      <div className={`flex flex-col items-center justify-center ${className}`}>
+      <div
+        className={`flex shrink-0 flex-col items-center justify-center ${className}`}
+        data-testid="brand-logo-stacked"
+      >
         <img
           src="/brand/adhome-logo-stacked.svg"
           alt="AdHome"
-          className="w-44 h-auto object-contain select-none filter drop-shadow-sm"
+          className="h-auto w-40 shrink-0 object-contain select-none"
+          draggable={false}
         />
       </div>
     );
   }
 
-  // Default horizontal
-  const fullLogoHeight = size === 'sm' ? 'h-8' : size === 'lg' ? 'h-12' : 'h-10';
+  const fullLogoHeight =
+    size === 'sm' ? 'h-7' : size === 'lg' ? 'h-11' : 'h-9';
 
   return (
-    <div className={`relative flex items-center overflow-hidden transition-all duration-200 ${className}`}>
+    <div
+      className={`relative flex shrink-0 items-center ${className}`}
+      data-testid="brand-logo-horizontal"
+    >
       <img
-        src={isDark ? '/brand/adhome-logo-full-dark.svg' : '/brand/adhome-logo-full.svg'}
+        src={
+          isDark
+            ? '/brand/adhome-logo-full-dark.svg'
+            : '/brand/adhome-logo-full.svg'
+        }
         alt="AdHome — Smart Property Management"
-        className={`${fullLogoHeight} w-auto max-w-[210px] object-contain select-none`}
+        className={`${fullLogoHeight} w-auto max-w-[180px] shrink-0 object-contain select-none`}
+        draggable={false}
       />
     </div>
   );

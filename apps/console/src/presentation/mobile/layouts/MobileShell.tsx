@@ -1,15 +1,15 @@
 import React, { useState } from 'react';
 import { Lock } from 'lucide-react';
-import { MobileHeader } from '../navigation/MobileHeader';
-import { MobileDrawer } from '../navigation/MobileDrawer';
-import { MobileBottomNav } from '../navigation/MobileBottomNav';
-import { useNavigation } from '@/app/providers/NavigationContext';
 import { useAuth } from '@/app/providers/AuthContext';
-import { OverviewDashboard } from '@/features/overview/OverviewDashboard';
+import { useNavigation } from '@/app/providers/NavigationContext';
 import { UnifiedBuildingCanvas } from '@/features/buildings/UnifiedBuildingCanvas';
-import { GenericModuleView } from '@/features/modules/GenericModuleView';
-import { AccountManagementView } from '@/features/settings/AccountManagementView';
+import { OperationalModuleWorkspace } from '@/features/modules/OperationalModuleWorkspace';
+import { OverviewDashboard } from '@/features/overview/OverviewDashboard';
+import { SettingsWorkspaceView } from '@/features/settings/SettingsWorkspaceView';
 import { GlobalSearchModal } from '@/shared/ui/GlobalSearchModal';
+import { MobileBottomNav } from '../navigation/MobileBottomNav';
+import { MobileDrawer } from '../navigation/MobileDrawer';
+import { MobileHeader } from '../navigation/MobileHeader';
 
 export const MobileShell: React.FC = () => {
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -21,7 +21,10 @@ export const MobileShell: React.FC = () => {
     : true;
 
   return (
-    <div className="min-h-screen bg-background dark:bg-background-dark text-appText-primary antialiased">
+    <div
+      data-testid="console-mobile-shell"
+      className="min-h-screen bg-[#F7F9FC] dark:bg-[#0B0F19] text-slate-900 dark:text-slate-100 antialiased overflow-x-hidden"
+    >
       <MobileHeader onOpenDrawer={() => setDrawerOpen(true)} />
 
       <MobileDrawer isOpen={drawerOpen} onClose={() => setDrawerOpen(false)} />
@@ -30,7 +33,7 @@ export const MobileShell: React.FC = () => {
         {!isModuleAllowed ? (
           <div
             data-testid="console-module-forbidden"
-            className="p-8 text-center bg-surface dark:bg-surface-dark border border-rose-200 dark:border-rose-900 rounded-2xl shadow-soft"
+            className="p-8 text-center bg-white dark:bg-[#111827] border border-rose-200 dark:border-rose-900 rounded-2xl"
           >
             <Lock className="w-7 h-7 text-rose-500 mx-auto mb-2" />
             <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
@@ -42,9 +45,9 @@ export const MobileShell: React.FC = () => {
         ) : activeModule === 'buildings' ? (
           <UnifiedBuildingCanvas />
         ) : activeModule === 'settings' ? (
-          <AccountManagementView />
+          <SettingsWorkspaceView />
         ) : (
-          <GenericModuleView moduleId={activeModule} />
+          <OperationalModuleWorkspace moduleId={activeModule} />
         )}
       </main>
 

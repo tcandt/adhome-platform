@@ -1,516 +1,393 @@
 import React from 'react';
 import {
-  TrendingUp,
-  Building2,
-  Home,
-  Users,
   AlertTriangle,
-  Clock,
-  ArrowUpRight,
-  Zap,
-  Receipt,
-  CreditCard,
-  Send,
-  Plus,
-  Eye,
-  CheckCircle2,
+  ArrowRight,
+  Building2,
+  Cpu,
+  DoorOpen,
+  FileSignature,
+  Loader2,
+  PhoneCall,
+  RefreshCw,
+  Users,
+  Wallet,
 } from 'lucide-react';
 import { useAuth } from '@/app/providers/AuthContext';
 import { useNavigation } from '@/app/providers/NavigationContext';
 import { usePortfolio } from '@/app/providers/PortfolioContext';
-import {
-  EXPIRING_CONTRACTS_MOCK,
-  PENDING_INVOICES_MOCK,
-  RECENT_TRANSACTIONS_MOCK,
-} from '@/shared/data/businessMetrics';
+import { formatPeriodDisplay } from '@/app/navigation/navigationConfig';
+
+function formatVnd(amount: number): string {
+  return `${Math.trunc(amount).toLocaleString('vi-VN')} đ`;
+}
 
 export const OverviewDashboard: React.FC = () => {
-  const { user, activeBuildingId, isBuildingAllowed, hasCapability } = useAuth();
-  const { setActiveModule } = useNavigation();
-  const { currentOrg, buildings, rooms } = usePortfolio();
+  const { user, hasCapability } = useAuth();
+  const {
+    setActiveModule,
+    openTenantsWorkspace,
+    setSelectedBuildingIds,
+    selectedPeriod,
+  } = useNavigation();
+  const {
+    syncStatus,
+    syncError,
+    organization,
+    scopedBuildings,
+    kpis,
+    recentLeads,
+    refreshPortfolio,
+  } = usePortfolio();
 
-  // Filter buildings according to user scope & header active building selection
-  const scopedBuildings = buildings.filter(b => {
-    if (activeBuildingId !== 'ALL' && b.id !== activeBuildingId) return false;
-    if (user?.assignedBuildingIds !== 'ALL') {
-      return isBuildingAllowed(b.id) || isBuildingAllowed(b.code);
-    }
-    return true;
-  });
-
-  const allowedBuildingCodes = new Set(scopedBuildings.map(b => b.code.toUpperCase()));
-
-  // Calculate metrics dynamically from dynamic portfolio rooms
-  const scopedRooms = rooms.filter(r => {
-    if (activeBuildingId !== 'ALL' && r.buildingId !== activeBuildingId) return false;
-    return isBuildingAllowed(r.buildingId) || isBuildingAllowed(r.buildingCode);
-  });
-
-  const scopedExpiringContracts = EXPIRING_CONTRACTS_MOCK.filter(c =>
-    allowedBuildingCodes.has(c.buildingCode.toUpperCase())
-  );
-  const scopedPendingInvoices = PENDING_INVOICES_MOCK.filter(inv =>
-    allowedBuildingCodes.has(inv.buildingCode.toUpperCase())
-  );
-  const scopedRecentTransactions = RECENT_TRANSACTIONS_MOCK.filter(tx =>
-    allowedBuildingCodes.has(tx.buildingCode.toUpperCase())
-  );
-
-  const totalRooms = scopedRooms.length;
-  const occupiedRooms = scopedRooms.filter(r => r.status === 'OCCUPIED').length;
-  const availableRooms = scopedRooms.filter(r => r.status === 'AVAILABLE').length;
-  const heldRooms = scopedRooms.filter(r => r.status === 'HELD').length;
-  const monthlyRevenue = scopedRooms.filter(r => r.status === 'OCCUPIED').reduce((acc, r) => acc + r.price, 0);
-  const occupancyRate = totalRooms > 0 ? Math.round((occupiedRooms / totalRooms) * 100) : 0;
-  const hunonicOnlineCount = scopedRooms.filter(r => r.meterStatus.hunonicOnline).length;
-  const hunonicOfflineRooms = scopedRooms.filter(r => !r.meterStatus.hunonicOnline);
-  const overdueInvoices = scopedPendingInvoices.filter(inv => inv.status === 'OVERDUE');
-  const totalReceivableAmount = scopedPendingInvoices.reduce((acc, inv) => acc + inv.amount, 0);
+  const hunonicBadge =
+    kpis.hunonicStatus === 'VERIFIED'
+      ? {
+          text: `${kpis.hunonicOnlineMeters}/${kpis.hunonicTotalMeters} công tơ online`,
+          cls: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/60',
+        }
+      : {
+          text: 'Hunonic: Chưa cấu hình',
+          cls: 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700',
+        };
 
   return (
     <div className="space-y-6">
-      {/* Top Banner & Quick Controls */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-800 rounded-2xl text-white shadow-elevated">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-white/20 text-white backdrop-blur-sm">
-              {activeBuildingId === 'ALL' ? `Tổ chức: ${currentOrg.name}` : scopedBuildings[0]?.name}
+      {/* Scope & Live PostgreSQL Summary Banner */}
+      <div
+        data-testid="console-overview-portfolio-summary"
+        className="flex flex-col gap-3 rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#111827] p-4 sm:flex-row sm:items-center sm:justify-between"
+      >
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-brand-primary dark:text-blue-400">
+              {organization?.name || user?.organizationName}
             </span>
-            <span className="text-xs text-blue-100 flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse motion-reduce:animate-none"></span> Đồng bộ Hunonic IoT trực tiếp
+            <span className="rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 py-0.5 text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+              {kpis.buildingsCount} tòa nhà · {kpis.floorsCount} tầng ·{' '}
+              {kpis.totalRooms} phòng
+            </span>
+            <span
+              data-testid="console-hunonic-status-pill"
+              className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-semibold ${hunonicBadge.cls}`}
+            >
+              <Cpu className="h-3 w-3" />
+              {hunonicBadge.text}
             </span>
           </div>
-          <h2 className="text-xl md:text-2xl font-bold tracking-tight">
-            Vận hành căn hộ dịch vụ AdHome
-          </h2>
-          <p
-            data-testid="console-overview-portfolio-summary"
-            className="text-xs text-blue-100/90 mt-1 max-w-xl"
-          >
-            Portfolio Workspace: {scopedBuildings.length} tòa nhà, {totalRooms} căn hộ, quản lý hợp đồng, hóa đơn FSM và đối soát tự động.
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            Dữ liệu đồng bộ trực tiếp từ PostgreSQL · Kỳ theo dõi{' '}
+            <strong className="text-slate-700 dark:text-slate-200">
+              {formatPeriodDisplay(selectedPeriod)}
+            </strong>{' '}
+            · Xuất bản Landing:{' '}
+            <strong className="text-slate-700 dark:text-slate-200">
+              {kpis.publishedLandingRooms} phòng công khai
+            </strong>
           </p>
         </div>
 
-        {/* Action Shortcuts */}
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex shrink-0 items-center gap-2">
           <button
-            onClick={() => setActiveModule('deposits')}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-white text-blue-700 hover:bg-blue-50 rounded-xl transition-colors shadow-sm"
+            type="button"
+            onClick={() => void refreshPortfolio()}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
           >
-            <Plus className="w-3.5 h-3.5" /> Tạo cọc giữ phòng
+            {syncStatus === 'loading' || syncStatus === 'refreshing' ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-brand-primary" />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5" />
+            )}
+            Làm mới
           </button>
           <button
-            onClick={() => setActiveModule('settlements')}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-xl transition-colors backdrop-blur-sm"
-          >
-            <Zap className="w-3.5 h-3.5 text-amber-300" /> Chốt số điện nước
-          </button>
-        </div>
-      </div>
-
-      {/* KPI Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Occupancy Card */}
-        <div className="p-5 bg-surface dark:bg-surface-dark border border-appBorder-light dark:border-appBorder-dark rounded-card shadow-soft">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-              Tỷ lệ lấp đầy
-            </span>
-            <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950 text-brand-primary">
-              <Home className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-              {occupancyRate}%
-            </span>
-            <span className="text-xs text-slate-500">
-              ({occupiedRooms}/{totalRooms} phòng)
-            </span>
-          </div>
-          {/* Progress Bar */}
-          <div className="mt-3 w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2 overflow-hidden flex">
-            <div className="bg-brand-primary h-full" style={{ width: `${occupancyRate}%` }} title={`Đang thuê: ${occupiedRooms} căn`} />
-            <div className="bg-amber-400 h-full" style={{ width: `${(heldRooms / totalRooms) * 100}%` }} title={`Giữ cọc: ${heldRooms} căn`} />
-          </div>
-          <div className="mt-2.5 flex items-center justify-between text-[11px] text-slate-500">
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-brand-primary"></span> Thuê: {occupiedRooms}
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-amber-400"></span> Cọc: {heldRooms}
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Trống: {availableRooms}
-            </span>
-          </div>
-        </div>
-
-        {/* Expected Revenue */}
-        <div className="p-5 bg-surface dark:bg-surface-dark border border-appBorder-light dark:border-appBorder-dark rounded-card shadow-soft">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-              Doanh thu tháng 10
-            </span>
-            <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950 text-emerald-600">
-              <TrendingUp className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-baseline gap-1.5">
-            <span className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-              {monthlyRevenue.toLocaleString('vi-VN')}₫
-            </span>
-          </div>
-          <div className="mt-3 flex items-center justify-between text-xs">
-            <span className="text-emerald-600 font-semibold flex items-center gap-0.5">
-              <ArrowUpRight className="w-3.5 h-3.5" /> {occupiedRooms} căn đang phát sinh dòng tiền
-            </span>
-            <span className="text-slate-400">Đã thu: 92%</span>
-          </div>
-        </div>
-
-        {/* Receivables & Debt */}
-        <div className="p-5 bg-surface dark:bg-surface-dark border border-appBorder-light dark:border-appBorder-dark rounded-card shadow-soft">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-              Công nợ cần thu
-            </span>
-            <div className="p-2 rounded-xl bg-rose-50 dark:bg-rose-950 text-rose-600">
-              <AlertTriangle className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-baseline gap-1.5">
-            <span className="text-2xl font-bold text-rose-600">
-              {totalReceivableAmount.toLocaleString('vi-VN')}₫
-            </span>
-            <span className="text-xs text-slate-500">({scopedPendingInvoices.length} hóa đơn)</span>
-          </div>
-          <div className="mt-3 flex items-center justify-between text-xs">
-            <span className="text-rose-500 font-medium">
-              {overdueInvoices.length > 0
-                ? `${overdueInvoices.length} hóa đơn quá hạn`
-                : 'Trong hạn thanh toán'}
-            </span>
-            <button
-              onClick={() => setActiveModule('invoices')}
-              className="text-brand-primary hover:underline font-semibold"
-            >
-              Nhắc nợ ➔
-            </button>
-          </div>
-        </div>
-
-        {/* Hunonic Metering Gateway */}
-        <div className="p-5 bg-surface dark:bg-surface-dark border border-appBorder-light dark:border-appBorder-dark rounded-card shadow-soft">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-              Công tơ Hunonic IoT
-            </span>
-            <div className="p-2 rounded-xl bg-cyan-50 dark:bg-cyan-950 text-cyan-600">
-              <Zap className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-3 flex items-baseline gap-1.5">
-            <span className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-              {hunonicOnlineCount}/{totalRooms}
-            </span>
-            <span className="text-xs text-emerald-600 font-semibold">
-              Online ({totalRooms > 0 ? Math.round((hunonicOnlineCount / totalRooms) * 100) : 0}%)
-            </span>
-          </div>
-          <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
-            <span className="flex items-center gap-1">
-              <span
-                className={`w-2 h-2 rounded-full ${
-                  hunonicOfflineRooms.length > 0 ? 'bg-rose-500' : 'bg-emerald-500'
-                }`}
-              ></span>{' '}
-              {hunonicOfflineRooms.length > 0
-                ? `${hunonicOfflineRooms.length} công tơ (${hunonicOfflineRooms[0].code}) bảo trì`
-                : '100% công tơ trực tuyến'}
-            </span>
-            <button
-              onClick={() => setActiveModule('settlements')}
-              className="text-cyan-600 hover:underline font-semibold"
-            >
-              Xem chỉ số ➔
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Buildings Breakdown Grid (Unified Workspace Portfolio) */}
-      <div className="p-5 bg-surface dark:bg-surface-dark border border-appBorder-light dark:border-appBorder-dark rounded-card shadow-soft">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h3
-              data-testid="console-overview-buildings-heading"
-              className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2"
-            >
-              <Building2 className="w-4 h-4 text-brand-primary" /> Danh mục {scopedBuildings.length} tòa nhà phụ trách
-            </h3>
-            <p className="text-xs text-slate-500">
-              Khu đô thị Ân Phú, phường Tân An, Đắk Lắk ({totalRooms} căn hộ dịch vụ)
-            </p>
-          </div>
-          <button
+            type="button"
             onClick={() => setActiveModule('buildings')}
-            className="text-xs font-semibold text-brand-primary hover:underline flex items-center gap-1"
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand-primary px-3.5 text-xs font-semibold text-white hover:bg-brand-hover transition-colors"
           >
-            Mở Workspace quản lý ➔
+            Quản lý phòng
+            <ArrowRight className="h-3.5 w-3.5" />
           </button>
         </div>
+      </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {scopedBuildings.map(b => {
-            const bRooms = rooms.filter(r => r.buildingId === b.id);
-            const bOccupied = bRooms.filter(r => r.status === 'OCCUPIED').length;
-            const bAvailable = bRooms.filter(r => r.status === 'AVAILABLE').length;
+      {syncError && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/30 p-3.5 text-xs text-red-700 dark:text-red-300">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span>{syncError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => void refreshPortfolio()}
+            className="shrink-0 font-bold underline"
+          >
+            Thử lại
+          </button>
+        </div>
+      )}
 
-            return (
-              <div
-                key={b.id}
-                className="p-4 rounded-xl border border-appBorder-light dark:border-appBorder-dark hover:border-brand-primary dark:hover:border-brand-primary transition-colors bg-slate-50/50 dark:bg-slate-900/40"
+      {/* 4 Authoritative PostgreSQL KPI Cards */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {/* Card 1: Occupancy */}
+        <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#111827] p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+              Công suất lấp đầy
+            </span>
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 dark:bg-blue-950/50 text-brand-primary dark:text-blue-400">
+              <DoorOpen className="h-4 w-4" />
+            </span>
+          </div>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-2xl font-bold tabular-nums text-slate-900 dark:text-white">
+              {kpis.occupancyRatePercent}%
+            </span>
+            <span className="text-xs font-medium text-slate-500">
+              ({kpis.occupiedRooms}/{kpis.totalRooms} phòng)
+            </span>
+          </div>
+          <div className="mt-2.5 flex flex-wrap gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+            <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+              {kpis.availableRooms} trống
+            </span>
+            <span>·</span>
+            <span>{kpis.reservedRooms} giữ chỗ</span>
+            <span>·</span>
+            <span>{kpis.maintenanceRooms} bảo trì</span>
+          </div>
+        </div>
+
+        {/* Card 2: Active Contracts & Contracted Rent */}
+        <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#111827] p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+              Tiền phòng theo hợp đồng
+            </span>
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400">
+              <FileSignature className="h-4 w-4" />
+            </span>
+          </div>
+          <div className="mt-2 text-2xl font-bold tabular-nums text-slate-900 dark:text-white">
+            {formatVnd(kpis.contractedMonthlyRentVnd)}
+          </div>
+          <div className="mt-2.5 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+            <span>{kpis.activeContractsCount} hợp đồng hiệu lực</span>
+            <span title="Tổng giá niêm yết của các phòng đang có khách">
+              Niêm yết đang ở: {formatVnd(kpis.occupiedListValueVnd)}
+            </span>
+          </div>
+        </div>
+
+        {/* Card 3: Period Receivables & Invoices */}
+        <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#111827] p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+              Công nợ phải thu ({selectedPeriod})
+            </span>
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400">
+              <Wallet className="h-4 w-4" />
+            </span>
+          </div>
+          <div className="mt-2 text-2xl font-bold tabular-nums text-slate-900 dark:text-white">
+            {formatVnd(kpis.periodReceivableVnd)}
+          </div>
+          <div className="mt-2.5 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+            <span>Đã thu: {formatVnd(kpis.periodCollectedVnd)}</span>
+            <span
+              className={
+                kpis.overdueInvoicesCount > 0
+                  ? 'font-semibold text-red-600 dark:text-red-400'
+                  : ''
+              }
+            >
+              {kpis.overdueInvoicesCount} quá hạn
+            </span>
+          </div>
+        </div>
+
+        {/* Card 4: Tenants & Incoming Landing Leads */}
+        <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#111827] p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+              Khách thuê & Yêu cầu mới
+            </span>
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400">
+              <Users className="h-4 w-4" />
+            </span>
+          </div>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-2xl font-bold tabular-nums text-slate-900 dark:text-white">
+              {kpis.tenantsCount}
+            </span>
+            <span className="text-xs text-slate-500">hồ sơ khách thuê</span>
+          </div>
+          <div className="mt-2.5 flex items-center justify-between text-[11px]">
+            <span className="text-slate-500 dark:text-slate-400">
+              Lead Landing mới: <strong>{kpis.newLeadsCount}</strong>
+            </span>
+            {hasCapability('canManageTenants') && (
+              <button
+                type="button"
+                onClick={() => openTenantsWorkspace()}
+                className="font-semibold text-brand-primary dark:text-blue-400 hover:underline"
               >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300">
-                      {b.code}
-                    </span>
-                    <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 mt-1.5 truncate">
-                      {b.name}
-                    </h4>
-                    <p className="text-[11px] text-slate-400 mt-0.5 truncate">{b.address}</p>
-                  </div>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
-                    IoT {b.hunonicGatewayStatus}
-                  </span>
-                </div>
-
-                <div className="mt-4 grid grid-cols-3 gap-2 text-center py-2 bg-white dark:bg-slate-800 rounded-lg border border-appBorder-light dark:border-appBorder-dark">
-                  <div>
-                    <span className="text-[10px] text-slate-400 block">Đang ở</span>
-                    <strong className="text-sm text-slate-800 dark:text-slate-100">{bOccupied}</strong>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-400 block">Phòng trống</span>
-                    <strong className="text-sm text-emerald-600">{bAvailable}</strong>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-400 block">Lấp đầy</span>
-                    <strong className="text-sm text-brand-primary">
-                      {Math.round((bOccupied / b.totalRooms) * 100)}%
-                    </strong>
-                  </div>
-                </div>
-
-                <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
-                  <span>Doanh thu: <b>{b.monthlyRevenue.toLocaleString('vi-VN')}₫</b></span>
-                  <span className="text-emerald-600 font-medium">Thu {b.collectionRate}%</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Two-Column Section: Expiring Contracts & Overdue Invoices */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Expiring Contracts */}
-        <div className="p-5 bg-surface dark:bg-surface-dark border border-appBorder-light dark:border-appBorder-dark rounded-card shadow-soft">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                <Clock className="w-4 h-4 text-amber-500" /> Hợp đồng sắp hết hạn (30 ngày)
-              </h3>
-              <p className="text-xs text-slate-400">Cần liên hệ khách thuê để gia hạn hoặc xếp lịch nhận phòng</p>
-            </div>
-            <button
-              onClick={() => setActiveModule('contracts')}
-              className="text-xs font-medium text-brand-primary hover:underline"
-            >
-              Tất cả ➔
-            </button>
-          </div>
-
-          <div className="divide-y divide-appBorder-light dark:divide-appBorder-dark">
-            {scopedExpiringContracts.map(contract => (
-              <div key={contract.id} className="py-3 flex items-center justify-between">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
-                      {contract.roomCode}
-                    </span>
-                    <span className="text-xs text-slate-500">• {contract.tenantName}</span>
-                    <span className="text-[11px] text-slate-400">({contract.phone})</span>
-                  </div>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    {contract.buildingName} • Tiền thuê: {contract.monthlyRent.toLocaleString('vi-VN')}₫/th
-                  </p>
-                </div>
-
-                <div className="text-right flex items-center gap-3">
-                  <div>
-                    <span
-                      className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                        contract.daysRemaining <= 15
-                          ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-400'
-                          : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400'
-                      }`}
-                    >
-                      Còn {contract.daysRemaining} ngày
-                    </span>
-                    <p className="text-[10px] text-slate-400 mt-0.5">Hết hạn: {contract.endDate}</p>
-                  </div>
-                  <button
-                    onClick={() => setActiveModule('contracts')}
-                    className="p-1.5 text-slate-400 hover:text-brand-primary rounded-lg hover:bg-slate-100"
-                    title="Chi tiết hợp đồng"
-                  >
-                    <Eye className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Pending & Overdue Invoices */}
-        <div className="p-5 bg-surface dark:bg-surface-dark border border-appBorder-light dark:border-appBorder-dark rounded-card shadow-soft">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                <Receipt className="w-4 h-4 text-rose-500" /> Hóa đơn chưa thanh toán
-              </h3>
-              <p className="text-xs text-slate-400">Quản lý thu tiền theo quy trình trạng thái FSM</p>
-            </div>
-            <button
-              onClick={() => setActiveModule('invoices')}
-              className="text-xs font-medium text-brand-primary hover:underline"
-            >
-              Xem hóa đơn ➔
-            </button>
-          </div>
-
-          <div className="divide-y divide-appBorder-light dark:divide-appBorder-dark">
-            {scopedPendingInvoices.map(inv => (
-              <div key={inv.id} className="py-3 flex items-center justify-between">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
-                      {inv.roomCode}
-                    </span>
-                    <span className="text-xs text-slate-500">• {inv.tenantName}</span>
-                    <span
-                      className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                        inv.status === 'OVERDUE'
-                          ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-400'
-                          : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400'
-                      }`}
-                    >
-                      {inv.status === 'OVERDUE' ? 'Quá hạn' : 'Chờ thanh toán'}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    Điện: {inv.electricAmount.toLocaleString('vi-VN')}₫ | Nước: {inv.waterAmount.toLocaleString('vi-VN')}₫ | Phòng: {inv.roomRentAmount.toLocaleString('vi-VN')}₫
-                  </p>
-                </div>
-
-                <div className="text-right flex items-center gap-3">
-                  <div>
-                    <span className="text-xs font-bold text-slate-900 dark:text-slate-100 block">
-                      {inv.amount.toLocaleString('vi-VN')}₫
-                    </span>
-                    <span className="text-[10px] text-slate-400">Hạn: {inv.dueDate}</span>
-                  </div>
-                  <button
-                    onClick={() => alert(`Gửi thông báo nhắc thanh toán hóa đơn ${inv.invoiceCode} cho khách ${inv.tenantName} qua Zalo & SMS.`)}
-                    className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950 rounded-lg"
-                    title="Gửi nhắc nợ Zalo"
-                  >
-                    <Send className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            ))}
+                Xem khách thuê →
+              </button>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Recent Transactions & Payment Ledger (Restricted to finance.read / canAccessFinance) */}
-      {hasCapability('canAccessFinance') && (
-        <div
-          data-testid="console-overview-finance-ledger"
-          className="p-5 bg-surface dark:bg-surface-dark border border-appBorder-light dark:border-appBorder-dark rounded-card shadow-soft"
-        >
-          <div className="flex items-center justify-between mb-3">
+      {/* Main Two-Column Section: Scoped Buildings + Real Landing Inquiries */}
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+        {/* Left 2 cols: Buildings in Authorized Scope */}
+        <section className="xl:col-span-2 rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#111827] p-4 sm:p-5">
+          <div className="mb-4 flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                <CreditCard className="w-4 h-4 text-emerald-500" /> Sổ quỹ & Giao dịch ngân hàng gần đây
-              </h3>
-              <p className="text-xs text-slate-400">
-                Đối soát tự động qua SePay Webhook và sao kê tài khoản ngân hàng VCB
+              <h2
+                data-testid="console-overview-buildings-heading"
+                className="text-sm font-bold text-slate-900 dark:text-white"
+              >
+                Danh mục tòa nhà trong phạm vi ({scopedBuildings.length})
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Chọn tòa nhà để đi thẳng vào sơ đồ tầng, phòng và hồ sơ khách
+                thuê
               </p>
             </div>
             <button
-              onClick={() => setActiveModule('payments')}
-              className="text-xs font-medium text-brand-primary hover:underline"
+              type="button"
+              onClick={() => setActiveModule('buildings')}
+              className="text-xs font-semibold text-brand-primary dark:text-blue-400 hover:underline"
             >
-              Lịch sử đối soát ➔
+              Mở sơ đồ phòng
             </button>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-appBorder-light dark:border-appBorder-dark text-slate-400 font-semibold">
-                  <th className="pb-2.5">Mã GD</th>
-                  <th className="pb-2.5">Thời gian</th>
-                  <th className="pb-2.5">Phòng / Khách</th>
-                  <th className="pb-2.5">Kênh thanh toán</th>
-                  <th className="pb-2.5">Nội dung đối soát</th>
-                  <th className="pb-2.5 text-right">Số tiền</th>
-                  <th className="pb-2.5 text-right">Trạng thái</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-appBorder-light dark:divide-appBorder-dark">
-                {scopedRecentTransactions.map(tx => (
-                  <tr key={tx.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                    <td className="py-2.5 font-mono text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                      {tx.code}
-                    </td>
-                    <td className="py-2.5 text-slate-400 text-[11px]">{tx.timestamp}</td>
-                    <td className="py-2.5 font-medium text-slate-800 dark:text-slate-200">
-                      {tx.roomCode} • {tx.payerName}
-                    </td>
-                    <td className="py-2.5">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300 border border-blue-200 dark:border-blue-900">
-                        {tx.method}
-                      </span>
-                    </td>
-                    <td className="py-2.5 text-slate-500 font-mono text-[11px] truncate max-w-xs">
-                      {tx.reference}
-                    </td>
-                    <td
-                      className={`py-2.5 text-right font-bold ${
-                        tx.type === 'EXPENSE_MAINTENANCE' ? 'text-rose-600' : 'text-emerald-600'
-                      }`}
-                    >
-                      {tx.type === 'EXPENSE_MAINTENANCE' ? '-' : '+'}
-                      {tx.amount.toLocaleString('vi-VN')}₫
-                    </td>
-                    <td className="py-2.5 text-right">
-                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600">
-                        <CheckCircle2 className="w-3.5 h-3.5" /> Đã ghi sổ
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          {scopedBuildings.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-800 py-10 text-center">
+              <Building2 className="mx-auto h-8 w-8 text-slate-300 dark:text-slate-600" />
+              <p className="mt-2 text-xs font-medium text-slate-500">
+                Chưa có tòa nhà nào trong phạm vi hiển thị hiện tại.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              {scopedBuildings.map((bld) => {
+                const occPct =
+                  bld.stats.totalRooms > 0
+                    ? Math.round(
+                        (bld.stats.occupiedRooms / bld.stats.totalRooms) * 100
+                      )
+                    : 0;
+                return (
+                  <button
+                    key={bld.id}
+                    type="button"
+                    data-testid={`console-overview-building-card-${bld.code}`}
+                    onClick={() => {
+                      setSelectedBuildingIds([bld.id]);
+                      setActiveModule('buildings');
+                    }}
+                    className="group flex flex-col justify-between rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 p-4 text-left hover:border-brand-primary/50 hover:bg-white dark:hover:bg-slate-800/60 transition-all"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="rounded-md bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 font-mono text-[11px] font-bold text-brand-primary dark:text-blue-300">
+                          {bld.code}
+                        </span>
+                        <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                          {bld.stats.floorsCount} tầng · {bld.stats.totalRooms}{' '}
+                          phòng
+                        </span>
+                      </div>
+                      <h3 className="mt-2 truncate text-sm font-bold text-slate-900 dark:text-white group-hover:text-brand-primary dark:group-hover:text-blue-400">
+                        {bld.name}
+                      </h3>
+                      <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">
+                        {bld.streetAddress}, {bld.ward}
+                      </p>
+                    </div>
+
+                    <div className="mt-4 space-y-2">
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+                        <div
+                          className="h-full rounded-full bg-brand-primary"
+                          style={{ width: `${occPct}%` }}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between text-[11px] text-slate-600 dark:text-slate-300">
+                        <span>
+                          Đang ở: <strong>{bld.stats.occupiedRooms}</strong> ·
+                          Trống:{' '}
+                          <strong className="text-emerald-600 dark:text-emerald-400">
+                            {bld.stats.availableRooms}
+                          </strong>
+                        </span>
+                        <span className="font-semibold">
+                          Web: {bld.stats.publishedRooms}
+                        </span>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        {/* Right col: Real PostgreSQL Landing Inquiries */}
+        <section className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#111827] p-4 sm:p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-bold text-slate-900 dark:text-white">
+                Yêu cầu xem phòng từ Landing
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Ghi nhận thực từ bảng lead_inquiries
+              </p>
+            </div>
+            <PhoneCall className="h-4 w-4 text-slate-400" />
           </div>
-        </div>
-      )}
+
+          {recentLeads.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-800 py-8 text-center">
+              <p className="text-xs text-slate-500">
+                Chưa có yêu cầu xem phòng mới từ Landing Page.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {recentLeads.slice(0, 6).map((lead) => (
+                <div
+                  key={lead.id}
+                  className="rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/40 p-3"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-[11px] font-bold text-brand-primary dark:text-blue-400">
+                      {lead.referenceCode}
+                    </span>
+                    <span className="rounded bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300">
+                      {lead.status}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-xs font-bold text-slate-900 dark:text-white">
+                    {lead.fullName} · {lead.phone}
+                  </div>
+                  <div className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+                    {lead.roomCode
+                      ? `Quan tâm phòng ${lead.roomCode}`
+                      : 'Tư vấn nhu cầu thuê phòng'}
+                    {lead.preferredMoveInDateDisplay
+                      ? ` · Dự kiến ${lead.preferredMoveInDateDisplay}`
+                      : ''}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
     </div>
   );
 };

@@ -1,49 +1,70 @@
 import React from 'react';
-import { LayoutDashboard, Building2, FileText, Receipt, Menu } from 'lucide-react';
-import { useNavigation, NavModuleId } from '@/app/providers/NavigationContext';
+import {
+  Building2,
+  CreditCard,
+  LayoutDashboard,
+  Menu,
+  Receipt,
+} from 'lucide-react';
+import {
+  type NavModuleId,
+  useNavigation,
+} from '@/app/providers/NavigationContext';
 
 interface MobileBottomNavProps {
   onOpenDrawer: () => void;
 }
 
-export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ onOpenDrawer }) => {
+export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
+  onOpenDrawer,
+}) => {
   const { activeModule, setActiveModule } = useNavigation();
 
-  const tabs: { id: NavModuleId | 'menu'; label: string; icon: React.ElementType }[] = [
+  const quickTabs: Array<{
+    id: NavModuleId;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+  }> = [
     { id: 'overview', label: 'Tổng quan', icon: LayoutDashboard },
-    { id: 'buildings', label: 'Tòa nhà', icon: Building2 },
-    { id: 'contracts', label: 'Hợp đồng', icon: FileText },
+    { id: 'buildings', label: 'Phòng & Khách', icon: Building2 },
     { id: 'invoices', label: 'Hóa đơn', icon: Receipt },
-    { id: 'menu', label: 'Thêm', icon: Menu },
+    { id: 'payments', label: 'Đối soát', icon: CreditCard },
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-30 h-16 bg-surface dark:bg-header-dark border-t border-appBorder-light dark:border-appBorder-dark flex items-center justify-around px-2 select-none pb-safe">
-      {tabs.map(tab => {
+    <nav
+      data-testid="console-mobile-bottom-nav"
+      aria-label="Điều hướng nhanh di động"
+      className="fixed bottom-0 left-0 right-0 z-30 flex h-16 items-center justify-around border-t border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-[#111827]/95 px-1 backdrop-blur-md"
+    >
+      {quickTabs.map((tab) => {
         const Icon = tab.icon;
         const isActive = activeModule === tab.id;
-
         return (
           <button
             key={tab.id}
-            onClick={() => {
-              if (tab.id === 'menu') {
-                onOpenDrawer();
-              } else {
-                setActiveModule(tab.id);
-              }
-            }}
-            className={`flex flex-col items-center justify-center w-16 py-1 rounded-xl transition-all ${
+            type="button"
+            onClick={() => setActiveModule(tab.id)}
+            className={`flex min-h-[48px] flex-1 flex-col items-center justify-center gap-0.5 rounded-xl text-[10px] transition-colors ${
               isActive
-                ? 'text-brand-primary font-bold'
-                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                ? 'font-bold text-brand-primary dark:text-blue-400'
+                : 'font-medium text-slate-500 dark:text-slate-400'
             }`}
           >
-            <Icon className={`w-5 h-5 mb-0.5 ${isActive ? 'stroke-[2.5px]' : 'stroke-[1.8px]'}`} />
-            <span className="text-[10px] leading-tight">{tab.label}</span>
+            <Icon className="h-5 w-5" />
+            <span className="truncate">{tab.label}</span>
           </button>
         );
       })}
+
+      <button
+        type="button"
+        onClick={onOpenDrawer}
+        className="flex min-h-[48px] flex-1 flex-col items-center justify-center gap-0.5 rounded-xl text-[10px] font-medium text-slate-500 dark:text-slate-400"
+      >
+        <Menu className="h-5 w-5" />
+        <span>Menu</span>
+      </button>
     </nav>
   );
 };

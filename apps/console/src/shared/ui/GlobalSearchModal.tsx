@@ -1,103 +1,169 @@
-import React, { useState, useEffect } from 'react';
-import { Search, X, Building, Home, User, FileText, ArrowRight } from 'lucide-react';
-import { useNavigation } from '@/app/providers/NavigationContext';
-import { usePortfolio } from '@/app/providers/PortfolioContext';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Building2,
+  DoorOpen,
+  LayoutGrid,
+  Search,
+  UserCheck,
+  X,
+} from 'lucide-react';
 import { useAuth } from '@/app/providers/AuthContext';
-import { EXPIRING_CONTRACTS_MOCK } from '@/shared/data/businessMetrics';
+import {
+  NAV_ITEMS_CONFIG,
+  useNavigation,
+} from '@/app/providers/NavigationContext';
+import { usePortfolio } from '@/app/providers/PortfolioContext';
 
 export const GlobalSearchModal: React.FC = () => {
-  const { isSearchOpen, setIsSearchOpen, setActiveModule } = useNavigation();
-  const { buildings, rooms } = usePortfolio();
-  const { isBuildingAllowed } = useAuth();
+  const { hasCapability } = useAuth();
+  const {
+    isSearchOpen,
+    setIsSearchOpen,
+    setActiveModule,
+    setBuildingsSubTab,
+    openTenantsWorkspace,
+    setSelectedBuildingIds,
+  } = useNavigation();
+  const { activeBuildings, rooms, tenants } = usePortfolio();
+
   const [query, setQuery] = useState('');
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        setIsSearchOpen(true);
-      }
+    if (isSearchOpen) {
+      setQuery('');
+      const timer = setTimeout(() => inputRef.current?.focus(), 30);
+      return () => clearTimeout(timer);
+    }
+  }, [isSearchOpen]);
+
+  useEffect(() => {
+    if (!isSearchOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setIsSearchOpen(false);
       }
     };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isSearchOpen, setIsSearchOpen]);
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [setIsSearchOpen]);
+  const q = query.trim().toLowerCase();
+
+  const matchedModules = useMemo(() => {
+    return NAV_ITEMS_CONFIG.filter(
+      (item) =>
+        (!item.requiredCapability || hasCapability(item.requiredCapability)) &&
+        (!q ||
+          item.label.toLowerCase().includes(q) ||
+          item.description.toLowerCase().includes(q))
+    ).slice(0, 5);
+  }, [q, hasCapability]);
+
+  const matchedBuildings = useMemo(() => {
+    if (!q) return activeBuildings.slice(0, 4);
+    return activeBuildings
+      .filter(
+        (b) =>
+          b.code.toLowerCase().includes(q) ||
+          b.name.toLowerCase().includes(q) ||
+          b.streetAddress.toLowerCase().includes(q)
+      )
+      .slice(0, 5);
+  }, [activeBuildings, q]);
+
+  const matchedRooms = useMemo(() => {
+    if (!q) return rooms.slice(0, 5);
+    return rooms
+      .filter(
+        (r) =>
+          r.code.toLowerCase().includes(q) ||
+          r.title.toLowerCase().includes(q) ||
+          r.buildingCode.toLowerCase().includes(q) ||
+          (r.currentTenant?.fullName.toLowerCase().includes(q) ?? false)
+      )
+      .slice(0, 6);
+  }, [rooms, q]);
+
+  const matchedTenants = useMemo(() => {
+    if (!hasCapability('canManageTenants')) return [];
+    if (!q) return tenants.slice(0, 5);
+    return tenants
+      .filter(
+        (t) =>
+          t.fullName.toLowerCase().includes(q) ||
+          t.phone.includes(q) ||
+          (t.currentRoomCode?.toLowerCase().includes(q) ?? false) ||
+          t.idNumber.toLowerCase().includes(q)
+      )
+      .slice(0, 6);
+  }, [tenants, q, hasCapability]);
 
   if (!isSearchOpen) return null;
 
-  const normalized = query.trim().toLowerCase();
-
-  const filteredBuildings = buildings.filter(b =>
-    b.name.toLowerCase().includes(normalized) || b.address.toLowerCase().includes(normalized) || b.code.toLowerCase().includes(normalized)
-  );
-
-  const filteredRooms = rooms.filter(r =>
-    r.code.toLowerCase().includes(normalized) ||
-    r.buildingName.toLowerCase().includes(normalized) ||
-    (r.currentTenant && r.currentTenant.name.toLowerCase().includes(normalized))
-  );
-
-  const filteredContracts = EXPIRING_CONTRACTS_MOCK.filter(c =>
-    isBuildingAllowed(c.buildingCode) &&
-    (c.contractCode.toLowerCase().includes(normalized) ||
-      c.tenantName.toLowerCase().includes(normalized) ||
-      c.roomCode.toLowerCase().includes(normalized))
-  );
-
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4 bg-slate-900/60 backdrop-blur-sm">
-      <div className="relative w-full max-w-xl bg-white dark:bg-slate-900 rounded-2xl shadow-elevated border border-appBorder-light dark:border-appBorder-dark overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-        {/* Search Input Bar */}
-        <div className="flex items-center px-4 py-3.5 border-b border-appBorder-light dark:border-appBorder-dark gap-3">
-          <Search className="w-5 h-5 text-slate-400 flex-shrink-0" />
+    <div
+      data-testid="console-global-search-modal"
+      onClick={() => setIsSearchOpen(false)}
+      className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/55 p-4 pt-16 sm:pt-20 backdrop-blur-[2px]"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl"
+      >
+        {/* Search Input */}
+        <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 px-4 py-3.5">
+          <Search className="h-4 w-4 shrink-0 text-brand-primary dark:text-blue-400" />
           <input
+            ref={inputRef}
             type="text"
             value={query}
-            onChange={e => setQuery(e.target.value)}
-            placeholder="Tìm theo số phòng (101, 201), tên khách thuê, mã tòa nhà..."
-            autoFocus
-            className="w-full bg-transparent text-sm text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none"
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Tìm tòa nhà, mã phòng, tên/SĐT khách thuê hoặc phân hệ..."
+            data-testid="console-global-search-input"
+            className="flex-1 bg-transparent text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none"
           />
           <button
+            type="button"
             onClick={() => setIsSearchOpen(false)}
-            className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
           >
-            <X className="w-4 h-4" />
+            <X className="h-4 w-4" />
           </button>
         </div>
 
-        {/* Results List */}
-        <div className="max-h-96 overflow-y-auto p-3 space-y-4">
-          {/* Buildings */}
-          {filteredBuildings.length > 0 && (
+        {/* Results */}
+        <div className="max-h-[65vh] space-y-4 overflow-y-auto p-4">
+          {/* Tenants */}
+          {matchedTenants.length > 0 && (
             <div>
-              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-2 mb-1.5">
-                Tòa nhà ({filteredBuildings.length})
-              </p>
+              <div className="mb-1.5 flex items-center gap-1.5 px-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                <UserCheck className="h-3.5 w-3.5" />
+                Khách thuê ({matchedTenants.length})
+              </div>
               <div className="space-y-1">
-                {filteredBuildings.map(b => (
+                {matchedTenants.map((t) => (
                   <button
-                    key={b.id}
+                    key={t.id}
+                    type="button"
                     onClick={() => {
-                      setActiveModule('buildings');
+                      openTenantsWorkspace(t.id);
                       setIsSearchOpen(false);
                     }}
-                    className="w-full flex items-center justify-between p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-left transition-colors"
+                    className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800/70"
                   >
-                    <div className="flex items-center gap-2.5">
-                      <div className="p-2 rounded-lg bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
-                        <Building className="w-4 h-4" />
+                    <div>
+                      <div className="text-xs font-bold text-slate-900 dark:text-white">
+                        {t.fullName} · {t.phone}
                       </div>
-                      <div>
-                        <p className="text-xs font-semibold text-slate-800 dark:text-slate-100">{b.name}</p>
-                        <p className="text-[11px] text-slate-400">{b.address}</p>
+                      <div className="text-[11px] text-slate-500">
+                        {t.currentRoomCode
+                          ? `Phòng ${t.currentRoomCode} (${t.buildingCode})`
+                          : 'Chưa gán phòng'}
                       </div>
                     </div>
-                    <span className="text-xs text-slate-400 flex items-center gap-1">
-                      {b.occupiedRooms}/{b.totalRooms} căn <ArrowRight className="w-3 h-3" />
+                    <span className="text-[11px] font-semibold text-brand-primary dark:text-blue-400">
+                      Tòa nhà & phòng / Khách thuê →
                     </span>
                   </button>
                 ))}
@@ -106,47 +172,36 @@ export const GlobalSearchModal: React.FC = () => {
           )}
 
           {/* Rooms */}
-          {filteredRooms.length > 0 && (
+          {matchedRooms.length > 0 && (
             <div>
-              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-2 mb-1.5">
-                Căn hộ / Phòng ({filteredRooms.length})
-              </p>
+              <div className="mb-1.5 flex items-center gap-1.5 px-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                <DoorOpen className="h-3.5 w-3.5" />
+                Phòng ({matchedRooms.length})
+              </div>
               <div className="space-y-1">
-                {filteredRooms.slice(0, 5).map(r => (
+                {matchedRooms.map((r) => (
                   <button
                     key={r.id}
+                    type="button"
                     onClick={() => {
+                      setSelectedBuildingIds([r.buildingId]);
                       setActiveModule('buildings');
+                      setBuildingsSubTab('rooms');
                       setIsSearchOpen(false);
                     }}
-                    className="w-full flex items-center justify-between p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-left transition-colors"
+                    className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800/70"
                   >
-                    <div className="flex items-center gap-2.5">
-                      <div className="p-2 rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-                        <Home className="w-4 h-4" />
+                    <div>
+                      <div className="text-xs font-bold text-slate-900 dark:text-white">
+                        Phòng {r.code} · {r.buildingCode}
                       </div>
-                      <div>
-                        <p className="text-xs font-semibold text-slate-800 dark:text-slate-100">
-                          {r.code} • {r.type} ({r.area}m²)
-                        </p>
-                        <p className="text-[11px] text-slate-400">
-                          {r.buildingName} • Khách:{' '}
-                          <span className="text-slate-600 dark:text-slate-300 font-medium">
-                            {r.currentTenant?.name || 'Trống'}
-                          </span>
-                        </p>
+                      <div className="text-[11px] text-slate-500">
+                        {r.roomType} · {r.area}m² ·{' '}
+                        {r.listPriceVnd.toLocaleString('vi-VN')} đ/tháng
                       </div>
                     </div>
-                    <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        r.status === 'OCCUPIED'
-                          ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
-                          : r.status === 'AVAILABLE'
-                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
-                          : 'bg-amber-100 text-amber-700'
-                      }`}
-                    >
-                      {r.status === 'OCCUPIED' ? 'Đang thuê' : r.status === 'AVAILABLE' ? 'Phòng trống' : 'Giữ cọc'}
+                    <span className="rounded bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:text-slate-300">
+                      {r.occupancyStatus}
                     </span>
                   </button>
                 ))}
@@ -154,38 +209,36 @@ export const GlobalSearchModal: React.FC = () => {
             </div>
           )}
 
-          {/* Contracts */}
-          {filteredContracts.length > 0 && (
+          {/* Buildings */}
+          {matchedBuildings.length > 0 && (
             <div>
-              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider px-2 mb-1.5">
-                Hợp đồng ({filteredContracts.length})
-              </p>
+              <div className="mb-1.5 flex items-center gap-1.5 px-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                <Building2 className="h-3.5 w-3.5" />
+                Tòa nhà ({matchedBuildings.length})
+              </div>
               <div className="space-y-1">
-                {filteredContracts.map(c => (
+                {matchedBuildings.map((b) => (
                   <button
-                    key={c.id}
+                    key={b.id}
+                    type="button"
                     onClick={() => {
-                      setActiveModule('contracts');
+                      setSelectedBuildingIds([b.id]);
+                      setActiveModule('buildings');
+                      setBuildingsSubTab('rooms');
                       setIsSearchOpen(false);
                     }}
-                    className="w-full flex items-center justify-between p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-left transition-colors"
+                    className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800/70"
                   >
-                    <div className="flex items-center gap-2.5">
-                      <div className="p-2 rounded-lg bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300">
-                        <FileText className="w-4 h-4" />
+                    <div>
+                      <div className="text-xs font-bold text-slate-900 dark:text-white">
+                        {b.code} · {b.name}
                       </div>
-                      <div>
-                        <p className="text-xs font-semibold text-slate-800 dark:text-slate-100">
-                          {c.contractCode} • {c.tenantName}
-                        </p>
-                        <p className="text-[11px] text-slate-400">
-                          {c.buildingName} - {c.roomCode} • Hết hạn:{' '}
-                          <span className="text-rose-600 font-semibold">{c.endDate}</span>
-                        </p>
+                      <div className="text-[11px] text-slate-500">
+                        {b.streetAddress}, {b.ward}
                       </div>
                     </div>
-                    <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                      {c.monthlyRent.toLocaleString('vi-VN')}₫/th
+                    <span className="text-[11px] text-slate-400">
+                      {b.stats.totalRooms} phòng
                     </span>
                   </button>
                 ))}
@@ -193,18 +246,50 @@ export const GlobalSearchModal: React.FC = () => {
             </div>
           )}
 
-          {filteredBuildings.length === 0 && filteredRooms.length === 0 && filteredContracts.length === 0 && (
-            <div className="py-12 text-center text-slate-400">
-              <p className="text-sm">Không tìm thấy kết quả phù hợp với "{query}"</p>
-              <p className="text-xs mt-1">Thử tìm kiếm với số phòng hoặc tên khách thuê</p>
+          {/* Modules */}
+          {matchedModules.length > 0 && (
+            <div>
+              <div className="mb-1.5 flex items-center gap-1.5 px-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                <LayoutGrid className="h-3.5 w-3.5" />
+                Phân hệ ({matchedModules.length})
+              </div>
+              <div className="space-y-1">
+                {matchedModules.map((m) => {
+                  const Icon = m.icon;
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => {
+                        setActiveModule(m.id);
+                        setIsSearchOpen(false);
+                      }}
+                      className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800/70"
+                    >
+                      <Icon className="h-4 w-4 text-brand-primary dark:text-blue-400" />
+                      <div>
+                        <div className="text-xs font-bold text-slate-900 dark:text-white">
+                          {m.label}
+                        </div>
+                        <div className="text-[11px] text-slate-500">
+                          {m.description}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
-        </div>
 
-        {/* Footer info */}
-        <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-800/60 border-t border-appBorder-light dark:border-appBorder-dark flex items-center justify-between text-[11px] text-slate-400">
-          <span>Dùng phím ↑ ↓ để di chuyển, ESC để đóng</span>
-          <span>Unified Search • AdHome V2</span>
+          {matchedTenants.length === 0 &&
+            matchedRooms.length === 0 &&
+            matchedBuildings.length === 0 &&
+            matchedModules.length === 0 && (
+              <p className="py-8 text-center text-xs text-slate-500">
+                Không tìm thấy kết quả phù hợp với &ldquo;{query}&rdquo;.
+              </p>
+            )}
         </div>
       </div>
     </div>

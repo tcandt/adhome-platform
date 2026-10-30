@@ -1,0 +1,200 @@
+{
+  "verifiedAt": "2026-10-30T11:23:18.422Z",
+  "environmentTier": "LOCAL_WORKSTATION_POSTGRESQL_18",
+  "productionReadyClaimed": false,
+  "productionPendingItems": [
+    "External public DNS & TLS cutover for https://adhome.vn and https://console.adhome.vn",
+    "Phase C3–C6 full financial FSMs (invoice lock/settlement batching) & live third-party provider adapters (SePay/payOS/Tingee, Zalo/Telegram, Hunonic)"
+  ],
+  "landingFreezeRegression": {
+    "home200AndCanonical": true,
+    "catalog200": true,
+    "robotsAndSitemapCanonical": true,
+    "legacyLanding301ToAdhomeVn": true,
+    "legacyConsole301ToConsoleAdhomeVn": true,
+    "publicRoomsApi200AndNonEmpty": true,
+    "publicRoomsZeroPiiFields": true,
+    "leadInquiryPersistedAndRefMatched": true,
+    "pass": true
+  },
+  "phaseC1_shellRedesign": {
+    "loginAndSession": {
+      "redirectedToLoginWhenUnauth": true,
+      "emailDefaultEmpty": true,
+      "zeroRoleTabsOnLogin": true,
+      "wrongPassword401FeedbackShown": true,
+      "authenticatedShellReached": true,
+      "httpOnlyCookieIssued": true,
+      "zeroJwtInLocalStorage": true,
+      "pass": true
+    },
+    "responsiveHeader3Zone": {
+      "breakpoints": [
+        {
+          "breakpoint": "1024x768",
+          "viewportWidth": 1024,
+          "docScrollWidth": 1018,
+          "zeroHorizontalOverflow": true,
+          "headerHeight": 64,
+          "headerHeightInSpec": true,
+          "zonesNonOverlapping": true,
+          "noHardcodedPeriodInHeader": true,
+          "noMobilePreviewBtnInHeader": true,
+          "noProBadgeInHeader": true
+        },
+        {
+          "breakpoint": "1280x800",
+          "viewportWidth": 1280,
+          "docScrollWidth": 1280,
+          "zeroHorizontalOverflow": true,
+          "headerHeight": 64,
+          "headerHeightInSpec": true,
+          "zonesNonOverlapping": true,
+          "noHardcodedPeriodInHeader": true,
+          "noMobilePreviewBtnInHeader": true,
+          "noProBadgeInHeader": true
+        },
+        {
+          "breakpoint": "1440x900",
+          "viewportWidth": 1440,
+          "docScrollWidth": 1440,
+          "zeroHorizontalOverflow": true,
+          "headerHeight": 64,
+          "headerHeightInSpec": true,
+          "zonesNonOverlapping": true,
+          "noHardcodedPeriodInHeader": true,
+          "noMobilePreviewBtnInHeader": true,
+          "noProBadgeInHeader": true
+        },
+        {
+          "breakpoint": "1920x1080",
+          "viewportWidth": 1920,
+          "docScrollWidth": 1920,
+          "zeroHorizontalOverflow": true,
+          "headerHeight": 64,
+          "headerHeightInSpec": true,
+          "zonesNonOverlapping": true,
+          "noHardcodedPeriodInHeader": true,
+          "noMobilePreviewBtnInHeader": true,
+          "noProBadgeInHeader": true
+        }
+      ],
+      "allBreakpointsPass": true,
+      "pass": true
+    },
+    "brandLogoSvg": {
+      "expandedHorizontalLogoLoaded": true,
+      "expandedLogoDimensions": "123x36",
+      "collapsedIconLogoLoaded": true,
+      "collapsedIconDimensions": "36x36",
+      "pass": true
+    },
+    "official10ModuleSidebar": {
+      "groupCount": 3,
+      "groupsMatchSpec": true,
+      "moduleCount": 10,
+      "modulesMatchExact10Spec": true,
+      "tenantsNotTopLevelSidebarItem": true,
+      "expandedWidthPx": 248,
+      "collapsedWidthPx": 72,
+      "collapseViaTriggerWorks": true,
+      "expandViaCtrlBWorks": true,
+      "railToggleWithReducedMotionWorks": true,
+      "pass": true
+    },
+    "breadcrumbsPeriodAndSettings8Tabs": {
+      "buildingsRootTitleIsModuleLabel": true,
+      "tenantsSubTabShows2ndLevelBreadcrumb": true,
+      "financialModuleHasDynamicPeriodToolbar": true,
+      "buildingScopeSelectorHiddenOnSettings": true,
+      "settings8TabsRendered": true,
+      "water3BillingMethodsSupported": true,
+      "notification4ChannelsRendered": true,
+      "payment3ProvidersRendered": true,
+      "hunonicTruthfulUnconfiguredState": true,
+      "cronTimezoneAsiaHoChiMinh": true,
+      "pass": true
+    },
+    "notificationsSearchAndTheme": {
+      "unreadBadgeVisibleWhenGreaterThanZero": true,
+      "unreadBadgeCompletelyAbsentWhenZero": true,
+      "ctrlKOpensGlobalSearch": true,
+      "escapeClosesGlobalSearch": true,
+      "darkThemeAppliedCleanly": true,
+      "lightThemeRestoredCleanly": true,
+      "pass": true
+    },
+    "mobileConsoleDrawerAndCards": {
+      "mobileShellRenderedAt390": true,
+      "mobileDrawerOpenedWith10Modules": true,
+      "drawerClosedViaEscape": true,
+      "drawerClosedViaBackdropClick": true,
+      "mobileOverviewZeroOverflow": true,
+      "mobileTenantCardsDisplayed": true,
+      "desktopTableHiddenOnMobile": true,
+      "mobileTenantsZeroOverflow": true,
+      "pass": true
+    }
+  },
+  "phaseC2_postgresFoundation": {
+    "uiCrudAndCrossSessionPersistence": {
+      "buildingCreatedViaUiAndDb": true,
+      "floorCreatedViaUiAndDb": true,
+      "roomCreatedViaUiAndDb": true,
+      "tenantCreatedViaUiAndDb": true,
+      "sessionBSeesBuildingImmediately": true,
+      "sessionBSeesRoomOccupiedAndWebBadges": true,
+      "sessionBSeesTenantImmediately": true,
+      "persistedAcrossHardReloadInSessionB": true,
+      "pass": true
+    },
+    "publicSyncAndZeroPii": {
+      "publishedRoomVisibleOnPublicApi": true,
+      "publishedRoomExactIntegerPriceVnd": true,
+      "publishedRoomOccupancyReflectedWithoutPii": true,
+      "zeroTenantNameInPublicPayload": true,
+      "zeroTenantPhoneInPublicPayload": true,
+      "zeroTenantIdNumberInPublicPayload": true,
+      "pass": true
+    },
+    "safeDeleteAndManagerRbac": {
+      "deleteCheckBlocksOccupiedRoom": true,
+      "deleteOccupiedRoomBlocked409": true,
+      "deleteOccupiedBuildingBlocked409": true,
+      "managerRoleBadgeDerivedFromDb": true,
+      "managerSidebarScopedTo8PermittedModules": true,
+      "managerCannotSeeUnassignedBuildingInDom": true,
+      "managerSettingsApiForbidden403": true,
+      "managerFinanceApiForbidden403": true,
+      "managerUnassignedBuildingMutationForbidden403": true,
+      "pass": true
+    },
+    "cleanDatabaseTeardown": {
+      "deleteTenant200": true,
+      "deleteRoomAfterUnassign200": true,
+      "deleteBuildingAfterEmpty200": true,
+      "zeroResidualTestEntitiesInPostgres": true,
+      "pass": true
+    }
+  },
+  "screenshots": [
+    "console_v2_1024_overview.png",
+    "console_v2_1280_overview.png",
+    "console_v2_1440_overview_light.png",
+    "console_v2_1440_sidebar_collapsed.png",
+    "console_v2_1440_invoices_period_toolbar.png",
+    "console_v2_1440_settings_tariffs.png",
+    "console_v2_1440_settings_hunonic.png",
+    "console_v2_1440_overview_dark.png",
+    "console_v2_1440_buildings_rooms.png",
+    "console_v2_1440_buildings_tenants.png",
+    "console_v2_390x844_drawer.png",
+    "console_v2_390x844_overview.png",
+    "console_v2_390x844_buildings_cards.png",
+    "console_v2_390x844_tenants_cards.png",
+    "console_v2_1440_manager_scoped.png"
+  ],
+  "overallVerdict": "LOCAL_GATE_PASSED",
+  "qualityGatePassed": true,
+  "qualityGateIssues": []
+}

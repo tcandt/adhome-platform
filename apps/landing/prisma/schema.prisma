@@ -8,39 +8,72 @@ datasource db {
 }
 
 model Organization {
-  id             String   @id
-  slug           String   @unique
-  name           String
-  hotline        String
-  addressSummary String   @map("address_summary")
-  isActive       Boolean  @default(true) @map("is_active")
-  catalogVersion Int      @default(1) @map("catalog_version")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  id                     String   @id
+  slug                   String   @unique
+  name                   String
+  hotline                String
+  contactEmail           String   @default("contact@adhome.vn") @map("contact_email")
+  addressSummary         String   @map("address_summary")
+  timezone               String   @default("Asia/Ho_Chi_Minh")
+  defaultElectricRateVnd Int      @default(3800) @map("default_electric_rate_vnd")
+  defaultWaterMethod     String   @default("PER_M3") @map("default_water_method")
+  defaultWaterRateVnd    Int      @default(15000) @map("default_water_rate_vnd")
+  defaultDepositMonths   Int      @default(1) @map("default_deposit_months")
+  isActive               Boolean  @default(true) @map("is_active")
+  catalogVersion         Int      @default(1) @map("catalog_version")
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
 
-  buildings Building[]
-  floors    Floor[]
-  rooms     PublicRoomListing[]
+  buildings            Building[]
+  floors               Floor[]
+  rooms                PublicRoomListing[]
+  consoleRooms         ConsoleRoom[]
+  tenants              Tenant[]
+  reservations         RoomReservation[]
+  deposits             Deposit[]
+  contracts            Contract[]
+  billingPeriods       BillingPeriod[]
+  electricMeters       ElectricMeter[]
+  invoices             Invoice[]
+  paymentTransactions  PaymentTransaction[]
+  ledgerEntries        LedgerEntry[]
+  integrations         IntegrationConnection[]
+  notificationChannels NotificationChannelConfig[]
+  cronJobs             CronJobConfig[]
+  consoleAuditLogs     ConsoleAuditLog[]
 
   @@map("organizations")
 }
 
 model Building {
-  id            String   @id
-  orgId         String   @map("org_id")
-  code          String
-  name          String
-  streetAddress String   @map("street_address")
-  ward          String
-  province      String
-  displayOrder  Int      @default(1) @map("display_order")
-  isActive      Boolean  @default(true) @map("is_active")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  id                 String   @id
+  orgId              String   @map("org_id")
+  code               String
+  name               String
+  streetAddress      String   @map("street_address")
+  ward               String
+  province           String
+  buildingType       String   @default("SERVICED_APARTMENT") @map("building_type")
+  status             String   @default("ACTIVE")
+  description        String?
+  managerName        String?  @map("manager_name")
+  managerPhone       String?  @map("manager_phone")
+  electricRateVnd    Int?     @map("electric_rate_vnd")
+  waterBillingMethod String?  @map("water_billing_method")
+  waterRateVnd       Int?     @map("water_rate_vnd")
+  displayOrder       Int      @default(1) @map("display_order")
+  isActive           Boolean  @default(true) @map("is_active")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
 
-  organization Organization        @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  floors       Floor[]
-  rooms        PublicRoomListing[]
+  organization   Organization        @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  floors         Floor[]
+  rooms          PublicRoomListing[]
+  consoleRooms   ConsoleRoom[]
+  reservations   RoomReservation[]
+  contracts      Contract[]
+  billingPeriods BillingPeriod[]
+  invoices       Invoice[]
 
   @@unique([orgId, code])
   @@index([orgId, isActive, displayOrder])
@@ -59,6 +92,7 @@ model Floor {
   organization Organization        @relation(fields: [orgId], references: [id], onDelete: Cascade)
   building     Building            @relation(fields: [buildingId], references: [id], onDelete: Cascade)
   rooms        PublicRoomListing[]
+  consoleRooms ConsoleRoom[]
 
   @@unique([buildingId, floorNumber])
   @@index([orgId, buildingId])
@@ -110,10 +144,430 @@ model PublicRoomListing {
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   building     Building     @relation(fields: [buildingId], references: [id], onDelete: Cascade)
   floor        Floor?       @relation(fields: [floorId], references: [id], onDelete: SetNull)
+  consoleRoom  ConsoleRoom?
 
   @@index([orgId, buildingId])
   @@index([isPublic, status, displayOrder])
   @@map("public_room_listings")
+}
+
+/// Authoritative internal Console Room record (separated operational states & integer VND).
+model ConsoleRoom {
+  id                   String   @id @default(uuid())
+  orgId                String   @map("org_id")
+  buildingId           String   @map("building_id")
+  floorId              String   @map("floor_id")
+  publicListingId      String?  @unique @map("public_listing_id")
+  code                 String
+  title                String
+  roomType             String   @default("Studio") @map("room_type")
+  area                 Float
+  listPriceVnd         BigInt   @map("list_price_vnd")
+  depositMonths        Int      @default(1) @map("deposit_months")
+  maxOccupants         Int      @default(2) @map("max_occupants")
+  /// AVAILABLE | RESERVED | OCCUPIED | MAINTENANCE | ARCHIVED
+  occupancyStatus      String   @default("AVAILABLE") @map("occupancy_status")
+  furnishedLevel       String   @default("FULL") @map("furnished_level")
+  amenities            Json     @default("[]")
+  media                Json     @default("[]")
+  availableFrom        String   @default("2026-10-30") @map("available_from")
+  /// Optional room-level water policy override: PER_M3 | PER_PERSON | FIXED_PER_ROOM
+  waterBillingMethod   String?  @map("water_billing_method")
+  waterRateVnd         Int?     @map("water_rate_vnd")
+  electricRateVnd      Int?     @map("electric_rate_vnd")
+  isPublishedToLanding Boolean  @default(false) @map("is_published_to_landing")
+  publicSlug           String?  @unique @map("public_slug")
+  internalNotes        String?  @map("internal_notes")
+  displayOrder         Int      @default(1) @map("display_order")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  organization  Organization       @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  building      Building           @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  floor         Floor              @relation(fields: [floorId], references: [id], onDelete: Restrict)
+  publicListing PublicRoomListing? @relation(fields: [publicListingId], references: [id], onDelete: SetNull)
+  electricMeter ElectricMeter?
+  reservations  RoomReservation[]
+  contracts     Contract[]
+  invoices      Invoice[]
+
+  @@unique([buildingId, code])
+  @@index([orgId, buildingId, occupancyStatus])
+  @@map("console_rooms")
+}
+
+/// Authoritative Tenant profile (never exposed to public Landing APIs).
+model Tenant {
+  id                 String   @id @default(uuid())
+  orgId              String   @map("org_id")
+  primaryBuildingId  String?  @map("primary_building_id")
+  currentRoomId      String?  @map("current_room_id")
+  fullName           String   @map("full_name")
+  phone              String
+  normalizedPhone    String   @map("normalized_phone")
+  email              String?
+  idNumber           String?  @map("id_number")
+  /// PENDING | REGISTERED | EXPIRED
+  residenceRegStatus String   @default("PENDING") @map("residence_reg_status")
+  emergencyContact   String?  @map("emergency_contact")
+  notes              String?
+  isActive           Boolean  @default(true) @map("is_active")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  organization Organization      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  reservations RoomReservation[]
+  contracts    Contract[]
+  invoices     Invoice[]
+
+  @@index([orgId, primaryBuildingId])
+  @@index([orgId, normalizedPhone])
+  @@map("tenants")
+}
+
+model RoomReservation {
+  id              String    @id @default(uuid())
+  orgId           String    @map("org_id")
+  buildingId      String    @map("building_id")
+  roomId          String    @map("room_id")
+  tenantId        String?   @map("tenant_id")
+  leadInquiryId   String?   @map("lead_inquiry_id")
+  reservationCode String    @unique @map("reservation_code")
+  customerName    String    @map("customer_name")
+  customerPhone   String    @map("customer_phone")
+  holdAmountVnd   BigInt    @default(0) @map("hold_amount_vnd")
+  /// PENDING | CONFIRMED | CONVERTED | CANCELLED | EXPIRED
+  status          String    @default("PENDING")
+  holdUntil       DateTime? @map("hold_until")
+  expectedMoveIn  String?   @map("expected_move_in")
+  notes           String?
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  building     Building     @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  room         ConsoleRoom  @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  tenant       Tenant?      @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  deposits     Deposit[]
+
+  @@index([orgId, buildingId, status])
+  @@map("room_reservations")
+}
+
+model Deposit {
+  id            String   @id @default(uuid())
+  orgId         String   @map("org_id")
+  reservationId String?  @map("reservation_id")
+  contractId    String?  @map("contract_id")
+  amountVnd     BigInt   @map("amount_vnd")
+  refundedVnd   BigInt   @default(0) @map("refunded_vnd")
+  /// HELD | APPLIED_TO_CONTRACT | PARTIALLY_REFUNDED | REFUNDED | FORFEITED
+  status        String   @default("HELD")
+  notes         String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  organization Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  reservation  RoomReservation? @relation(fields: [reservationId], references: [id], onDelete: SetNull)
+
+  @@index([orgId, status])
+  @@map("deposits")
+}
+
+model Contract {
+  id                 String   @id @default(uuid())
+  orgId              String   @map("org_id")
+  buildingId         String   @map("building_id")
+  roomId             String   @map("room_id")
+  tenantId           String   @map("tenant_id")
+  contractCode       String   @map("contract_code")
+  startDate          String   @map("start_date")
+  endDate            String   @map("end_date")
+  monthlyRentVnd     BigInt   @map("monthly_rent_vnd")
+  depositVnd         BigInt   @map("deposit_vnd")
+  occupantsCount     Int      @default(1) @map("occupants_count")
+  electricRateVnd    Int      @default(3800) @map("electric_rate_vnd")
+  /// PER_M3 | PER_PERSON | FIXED_PER_ROOM
+  waterBillingMethod String   @default("PER_M3") @map("water_billing_method")
+  waterRateVnd       Int      @default(15000) @map("water_rate_vnd")
+  /// DRAFT | ACTIVE | EXPIRING | TERMINATED | EXPIRED
+  status             String   @default("ACTIVE")
+  notes              String?
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  building     Building     @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  room         ConsoleRoom  @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  invoices     Invoice[]
+
+  @@unique([orgId, contractCode])
+  @@index([orgId, buildingId, status])
+  @@index([roomId, status])
+  @@map("contracts")
+}
+
+model ElectricMeter {
+  id                String    @id @default(uuid())
+  orgId             String    @map("org_id")
+  roomId            String    @unique @map("room_id")
+  hunonicDeviceId   String?   @map("hunonic_device_id")
+  meterSerial       String?   @map("meter_serial")
+  /// UNCONFIGURED | ONLINE | OFFLINE | STALE
+  connectionStatus  String    @default("UNCONFIGURED") @map("connection_status")
+  instantPowerW     Float?    @map("instant_power_w")
+  cumulativeKwh     Float?    @map("cumulative_kwh")
+  monthReportedKwh  Float?    @map("month_reported_kwh")
+  providerEstVnd    BigInt?   @map("provider_est_vnd")
+  lastSyncedAt      DateTime? @map("last_synced_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  organization Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  room         ConsoleRoom    @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  readings     MeterReading[]
+
+  @@index([orgId, connectionStatus])
+  @@map("electric_meters")
+}
+
+model MeterReading {
+  id              String   @id @default(uuid())
+  meterId         String   @map("meter_id")
+  periodKey       String   @map("period_key")
+  readingKwh      Float    @map("reading_kwh")
+  /// HUNONIC_AUTO | MANUAL_OVERRIDE
+  source          String   @default("HUNONIC_AUTO")
+  recordedByActor String?  @map("recorded_by_actor")
+  overrideReason  String?  @map("override_reason")
+  recordedAt      DateTime @default(now()) @map("recorded_at")
+
+  meter ElectricMeter @relation(fields: [meterId], references: [id], onDelete: Cascade)
+
+  @@index([meterId, periodKey])
+  @@map("meter_readings")
+}
+
+model BillingPeriod {
+  id              String    @id @default(uuid())
+  orgId           String    @map("org_id")
+  buildingId      String    @map("building_id")
+  /// YYYY-MM
+  periodKey       String    @map("period_key")
+  /// DRAFT | REVIEW | APPROVED | ISSUED | LOCKED | EXCEPTION
+  status          String    @default("DRAFT")
+  isProcessing    Boolean   @default(false) @map("is_processing")
+  exceptionCount  Int       @default(0) @map("exception_count")
+  notes           String?
+  lockedAt        DateTime? @map("locked_at")
+  lockedByActorId String?   @map("locked_by_actor_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  building     Building     @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  invoices     Invoice[]
+
+  @@unique([orgId, buildingId, periodKey])
+  @@index([orgId, periodKey, status])
+  @@map("billing_periods")
+}
+
+model Invoice {
+  id              String   @id @default(uuid())
+  orgId           String   @map("org_id")
+  buildingId      String   @map("building_id")
+  roomId          String   @map("room_id")
+  contractId      String?  @map("contract_id")
+  tenantId        String?  @map("tenant_id")
+  billingPeriodId String?  @map("billing_period_id")
+  invoiceCode     String   @map("invoice_code")
+  periodKey       String   @map("period_key")
+  dueDate         String   @map("due_date")
+  roomRentVnd     BigInt   @default(0) @map("room_rent_vnd")
+  electricVnd     BigInt   @default(0) @map("electric_vnd")
+  waterVnd        BigInt   @default(0) @map("water_vnd")
+  serviceFeeVnd   BigInt   @default(0) @map("service_fee_vnd")
+  adjustmentVnd   BigInt   @default(0) @map("adjustment_vnd")
+  totalAmountVnd  BigInt   @map("total_amount_vnd")
+  paidAmountVnd   BigInt   @default(0) @map("paid_amount_vnd")
+  /// DRAFT | ISSUED | PARTIAL | PAID | OVERDUE | VOID
+  status          String   @default("DRAFT")
+  policySnapshot  Json     @default("{}") @map("policy_snapshot")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  organization  Organization         @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  building      Building             @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  room          ConsoleRoom          @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  contract      Contract?            @relation(fields: [contractId], references: [id], onDelete: SetNull)
+  tenant        Tenant?              @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  billingPeriod BillingPeriod?       @relation(fields: [billingPeriodId], references: [id], onDelete: SetNull)
+  payments      PaymentTransaction[]
+
+  @@unique([orgId, invoiceCode])
+  @@index([orgId, buildingId, periodKey, status])
+  @@map("invoices")
+}
+
+model PaymentTransaction {
+  id             String   @id @default(uuid())
+  orgId          String   @map("org_id")
+  buildingId     String?  @map("building_id")
+  invoiceId      String?  @map("invoice_id")
+  /// SEPAY | PAYOS | TINGEE | MANUAL_CASH | MANUAL_TRANSFER
+  providerId     String   @map("provider_id")
+  externalTxId   String   @map("external_tx_id")
+  idempotencyKey String   @unique @map("idempotency_key")
+  amountVnd      BigInt   @map("amount_vnd")
+  payerName      String?  @map("payer_name")
+  referenceText  String?  @map("reference_text")
+  /// UNMATCHED | MATCHED | PARTIAL_MATCH | OVERPAID | REJECTED
+  reconcileState String   @default("UNMATCHED") @map("reconcile_state")
+  verifiedAt     DateTime @default(now()) @map("verified_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  invoice      Invoice?     @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+
+  @@index([orgId, periodKey, reconcileState])
+  periodKey String @default("2026-10") @map("period_key")
+  @@map("payment_transactions")
+}
+
+model LedgerEntry {
+  id          String   @id @default(uuid())
+  orgId       String   @map("org_id")
+  buildingId  String?  @map("building_id")
+  periodKey   String   @map("period_key")
+  entryCode   String   @map("entry_code")
+  /// INCOME | EXPENSE
+  entryType   String   @map("entry_type")
+  category    String
+  amountVnd   BigInt   @map("amount_vnd")
+  description String
+  recordedBy  String   @map("recorded_by")
+  occurredAt  DateTime @default(now()) @map("occurred_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, entryCode])
+  @@index([orgId, buildingId, periodKey])
+  @@map("ledger_entries")
+}
+
+model IntegrationConnection {
+  id              String    @id @default(uuid())
+  orgId           String    @map("org_id")
+  /// HUNONIC | SEPAY | PAYOS | TINGEE
+  providerId      String    @map("provider_id")
+  category        String    /// METERING | PAYMENT
+  displayName     String    @map("display_name")
+  isEnabled       Boolean   @default(false) @map("is_enabled")
+  /// UNCONFIGURED | VERIFIED | ERROR | DISABLED
+  status          String    @default("UNCONFIGURED")
+  accountLabel    String?   @map("account_label")
+  buildingScopeId String?   @map("building_scope_id")
+  /// Server-only credentials JSON (never serialized to client responses)
+  credentialsJson Json      @default("{}") @map("credentials_json")
+  secretHint      String?   @map("secret_hint")
+  capabilities    Json      @default("[]")
+  apiVersion      String    @default("v1") @map("api_version")
+  lastTestedAt    DateTime? @map("last_tested_at")
+  lastSyncedAt    DateTime? @map("last_synced_at")
+  lastError       String?   @map("last_error")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, providerId])
+  @@map("integration_connections")
+}
+
+model NotificationChannelConfig {
+  id               String    @id @default(uuid())
+  orgId            String    @map("org_id")
+  /// ZALO_OA | ZALO_BOT | TELEGRAM_BOT | FACEBOOK_MESSENGER
+  channelType      String    @map("channel_type")
+  displayName      String    @map("display_name")
+  isEnabled        Boolean   @default(false) @map("is_enabled")
+  /// UNCONFIGURED | VERIFIED | ERROR | DISABLED
+  status           String    @default("UNCONFIGURED")
+  targetLabel      String?   @map("target_label")
+  /// Server-only credentials JSON (never serialized to client responses)
+  credentialsJson  Json      @default("{}") @map("credentials_json")
+  secretHint       String?   @map("secret_hint")
+  subscribedEvents Json      @default("[]") @map("subscribed_events")
+  retryMaxAttempts Int       @default(3) @map("retry_max_attempts")
+  lastTestedAt     DateTime? @map("last_tested_at")
+  lastError        String?   @map("last_error")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, channelType])
+  @@map("notification_channel_configs")
+}
+
+model CronJobConfig {
+  id             String    @id @default(uuid())
+  orgId          String    @map("org_id")
+  jobKey         String    @map("job_key")
+  displayName    String    @map("display_name")
+  cronExpression String    @map("cron_expression")
+  timezone       String    @default("Asia/Ho_Chi_Minh")
+  isEnabled      Boolean   @default(false) @map("is_enabled")
+  isLocked       Boolean   @default(false) @map("is_locked")
+  lastRunAt      DateTime? @map("last_run_at")
+  nextRunAt      DateTime? @map("next_run_at")
+  /// NEVER_RUN | SUCCESS | PARTIAL_ERROR | FAILED
+  lastRunStatus  String    @default("NEVER_RUN") @map("last_run_status")
+  successCount   Int       @default(0) @map("success_count")
+  failureCount   Int       @default(0) @map("failure_count")
+  lastError      String?   @map("last_error")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, jobKey])
+  @@map("cron_job_configs")
+}
+
+model ConsoleNotificationRead {
+  id              String   @id @default(uuid())
+  actorId         String   @map("actor_id")
+  notificationKey String   @map("notification_key")
+  readAt          DateTime @default(now()) @map("read_at")
+
+  @@unique([actorId, notificationKey])
+  @@index([actorId])
+  @@map("console_notification_reads")
+}
+
+model ConsoleAuditLog {
+  id         String   @id @default(uuid())
+  orgId      String   @map("org_id")
+  buildingId String?  @map("building_id")
+  actorId    String   @map("actor_id")
+  actorEmail String   @map("actor_email")
+  actorRole  String   @map("actor_role")
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id")
+  action     String
+  summary    String
+  metadata   Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, createdAt])
+  @@index([orgId, buildingId, createdAt])
+  @@map("console_audit_logs")
 }
 
 model LeadInquiry {
@@ -162,20 +616,20 @@ model RoomAuditLog {
 }
 
 model ConsoleActor {
-  id             String   @id
-  email          String   @unique
-  displayName    String?  @map("display_name")
-  orgId          String   @map("org_id")
-  role           String
-  permissions    Json
-  buildingScopes Json     @map("building_scopes")
-  sessionVersion Int      @default(1) @map("session_version")
-  isActive       Boolean  @default(true) @map("is_active")
+  id                String    @id
+  email             String    @unique
+  displayName       String?   @map("display_name")
+  orgId             String    @map("org_id")
+  role              String
+  permissions       Json
+  buildingScopes    Json      @map("building_scopes")
+  sessionVersion    Int       @default(1) @map("session_version")
+  isActive          Boolean   @default(true) @map("is_active")
   /// Per-account scrypt hash (format: scrypt$N$r$p$salt$hash). NULL = login impossible.
   passwordHash      String?   @map("password_hash")
   passwordUpdatedAt DateTime? @map("password_updated_at")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
 
   @@index([orgId, isActive])
   @@map("console_actors")

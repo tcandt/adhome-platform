@@ -40,12 +40,13 @@ const prisma = new PrismaClient({
 });
 
 async function cleanTestFixtures(prismaClient) {
-  // Find test rooms (C3A-*, RACE-*)
+  // Find test rooms (C3A-*, RACE-*, DIR-*)
   const testRooms = await prismaClient.consoleRoom.findMany({
     where: {
       OR: [
         { code: { startsWith: 'C3A-' } },
         { code: { startsWith: 'RACE-' } },
+        { code: { startsWith: 'DIR-' } },
       ],
     },
     select: { id: true },
@@ -102,6 +103,7 @@ async function cleanTestFixtures(prismaClient) {
           '0906667777',
           '0905554444',
           '0977112234',
+          '0903332211',
         ],
       },
     },
@@ -149,6 +151,9 @@ async function cleanTestFixtures(prismaClient) {
   await prismaClient.consoleActor.deleteMany({
     where: { email: 'manager.c3@adhome.vn' },
   });
+  await prismaClient.tenant.deleteMany({
+    where: { orgId: 'org-test-isolation-99' },
+  });
   await prismaClient.organization.deleteMany({
     where: { slug: 'test-isolation-org-99' },
   });
@@ -195,7 +200,7 @@ async function waitForHttp200(url, maxTries = 45) {
     try {
       const r = await fetch(url);
       if (r.status === 200) return true;
-    } catch {}
+    } catch { }
     await new Promise((r) => setTimeout(r, 250));
   }
   return false;
@@ -264,7 +269,7 @@ class CdpClient {
     if (this.ws) {
       try {
         this.ws.close();
-      } catch {}
+      } catch { }
     }
   }
 }
@@ -275,12 +280,12 @@ async function fetchHttp(url, opts = {}) {
   let json = null;
   try {
     json = JSON.parse(text);
-  } catch {}
+  } catch { }
   return { status: res.status, headers: res.headers, text, json };
 }
 
 async function main() {
-  console.log('=== ADHOME CONSOLE V2: C2 HARDENING, C3A & C3B VERIFICATION ===');
+  console.log('=== ADHOME CONSOLE V2: C3 HARDENING VERIFICATION ===');
   const startedAt = new Date().toISOString();
   const testResults = {
     evaluatedAt: startedAt,
@@ -376,6 +381,15 @@ async function main() {
         hotline: '0905999999',
         addressSummary: 'Địa chỉ cách ly test',
         catalogVersion: 1,
+      },
+    });
+
+    const secondOrgTenant = await prisma.tenant.create({
+      data: {
+        orgId: secondOrg.id,
+        fullName: 'Khách Ngoại Lai Org 99',
+        phone: '0905554444',
+        normalizedPhone: '0905554444',
       },
     });
 
@@ -495,8 +509,7 @@ async function main() {
       leakedOtherOrg,
     };
     console.log(
-      `-> Multi-tenant login audit isolation: ${
-        testResults.checks.multiTenantAuditIsolation.pass ? 'PASS' : 'FAIL'
+      `-> Multi-tenant login audit isolation: ${testResults.checks.multiTenantAuditIsolation.pass ? 'PASS' : 'FAIL'
       }`
     );
 
@@ -541,8 +554,7 @@ async function main() {
       secretHint: rawConnInDb?.secretHint,
     };
     console.log(
-      `-> AES-256-GCM Credentials Vault: ${
-        testResults.checks.credentialsCryptoVault.pass ? 'PASS' : 'FAIL'
+      `-> AES-256-GCM Credentials Vault: ${testResults.checks.credentialsCryptoVault.pass ? 'PASS' : 'FAIL'
       }`
     );
 
@@ -596,8 +608,7 @@ async function main() {
       adminStatus: adminLedgerResp.status,
     };
     console.log(
-      `-> finance.write Permission Separation: ${
-        testResults.checks.financeWritePermissionSeparation.pass ? 'PASS' : 'FAIL'
+      `-> finance.write Permission Separation: ${testResults.checks.financeWritePermissionSeparation.pass ? 'PASS' : 'FAIL'
       }`
     );
 
@@ -665,7 +676,7 @@ async function main() {
     const activeContractsInDb = await prisma.contract.count({
       where: {
         roomId: raceRoom.id,
-        status: { in: ['ACTIVE', 'EXPIRING', 'EXTENDED'] },
+        status: { in: ['ACTIVE', 'EXPIRING', 'EXTENDED', 'DRAFT'] },
       },
     });
 
@@ -677,13 +688,12 @@ async function main() {
       activeContractsInDb,
     };
     console.log(
-      `-> Concurrency Row-Level Lock: ${
-        testResults.checks.concurrencyRowLevelLock.pass ? 'PASS' : 'FAIL'
+      `-> Concurrency Row-Level Lock: ${testResults.checks.concurrencyRowLevelLock.pass ? 'PASS' : 'FAIL'
       } (ReqA: ${reqA.status}, ReqB: ${reqB.status}, DB contracts: ${activeContractsInDb})`
     );
 
-    // 8. CHECK 5: C3A FULL LIFECYCLE & GOLDEN FLOW STATE MACHINES
-    console.log('[Step 8] Testing C3A Golden Flow Lifecycle State Machines...');
+    // 8. CHECK 5: C3 HARDENED LIFECYCLE & INVARIANTS
+    console.log('[Step 8] Testing C3 Hardened Lifecycle State Machines & Invariants...');
     const lifeRoom1 = await prisma.consoleRoom.create({
       data: {
         orgId,
@@ -727,8 +737,33 @@ async function main() {
       },
     });
 
-    // 8.1 C3.1 Customer & Occupancy Decoupling
-    console.log('  Testing 8.1: Customer profile decoupled from room occupancy status...');
+    // Dedicated room for Direct Contract Creation Test (Unpaid deposit, Draft status, Pre-handover)
+    const directRoom = await prisma.consoleRoom.create({
+      data: {
+        orgId,
+        buildingId: bldLk.id,
+        floorId: bldLkFloor.id,
+        code: `DIR-${crypto.randomBytes(2).toString('hex').toUpperCase()}`,
+        title: 'Phòng Direct Contract Test',
+        area: 28,
+        listPriceVnd: 4500000n,
+        occupancyStatus: 'AVAILABLE',
+        rentalModel: 'ENTIRE_ROOM',
+        totalBeds: 1,
+      },
+    });
+    const directTenant = await prisma.tenant.create({
+      data: {
+        orgId,
+        fullName: 'Khách Hàng Tạo Trực Tiếp',
+        phone: '0903332211',
+        normalizedPhone: '0903332211',
+        primaryBuildingId: bldLk.id,
+      },
+    });
+
+    // 8.1 Customer Profile Decoupling & Soft-delete Occupants (P1)
+    console.log('  Testing 8.1: Customer profile decoupled & Soft Delete Occupants...');
     const createTenantResp = await fetchHttp(
       `${LANDING_URL}/api/v1/console/v2/tenants`,
       {
@@ -752,7 +787,7 @@ async function main() {
       createTenantResp.status === 201 &&
       roomAfterTenantCreate?.occupancyStatus === 'AVAILABLE';
 
-    // Room Occupants API
+    // Room Occupants API: Add & Soft Delete
     const addOccupantResp = await fetchHttp(
       `${LANDING_URL}/api/v1/console/v2/rooms/${encodeURIComponent(
         lifeRoom1.id
@@ -772,6 +807,7 @@ async function main() {
         }),
       }
     );
+    const addedOccupant = addOccupantResp.json?.occupant;
     const getOccupantsResp = await fetchHttp(
       `${LANDING_URL}/api/v1/console/v2/rooms/${encodeURIComponent(
         lifeRoom1.id
@@ -785,8 +821,107 @@ async function main() {
       addOccupantResp.status === 201 &&
       occupantsList.some((o) => o.fullName === 'Lê Thị Bạn Ở Ghép');
 
-    // 8.2 C3.2 Booking Hold & Deposit Ledger (Unpaid vs Paid)
-    console.log('  Testing 8.2: Booking hold without payment (zero ledger entry)...');
+    // Test Soft Delete Occupant (P1)
+    const softDeleteResp = await fetchHttp(
+      `${LANDING_URL}/api/v1/console/v2/occupants/${encodeURIComponent(
+        addedOccupant.id
+      )}`,
+      {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: adminCookie,
+          'X-Requested-With': 'AdHome-Console',
+        },
+        body: JSON.stringify({ moveOutDate: '2026-11-01' }),
+      }
+    );
+    const softDeletedInDb = await prisma.roomOccupant.findUnique({
+      where: { id: addedOccupant.id },
+    });
+    const deactAuditLog = await prisma.consoleAuditLog.findFirst({
+      where: { entityId: addedOccupant.id, action: 'DEACTIVATE_OCCUPANT' },
+    });
+    const softDeletePass =
+      softDeleteResp.status === 200 &&
+      softDeleteResp.json?.softDeleted === true &&
+      softDeletedInDb !== null &&
+      softDeletedInDb.isActive === false &&
+      softDeletedInDb.moveOutDate === '2026-11-01' &&
+      deactAuditLog !== null;
+
+    testResults.checks.softDeleteRoomOccupants = {
+      pass: softDeletePass,
+      status: softDeleteResp.status,
+      isActive: softDeletedInDb?.isActive,
+      moveOutDate: softDeletedInDb?.moveOutDate,
+      auditAction: deactAuditLog?.action,
+    };
+    console.log(
+      `  -> Soft Delete Room Occupants (P1): ${softDeletePass ? 'PASS' : 'FAIL'}`
+    );
+
+    // 8.2 Direct Contract Creation: Unpaid Deposit, Draft Status, Pre-handover State (P0)
+    console.log('  Testing 8.2: Direct contract creation without payment proof (P0)...');
+    const directContractResp = await fetchHttp(
+      `${LANDING_URL}/api/v1/console/v2/contracts`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: adminCookie,
+          'X-Requested-With': 'AdHome-Console',
+        },
+        body: JSON.stringify({
+          roomId: directRoom.id,
+          tenantId: directTenant.id,
+          startDate: '2026-11-01',
+          endDate: '2027-10-31',
+          monthlyRentVnd: 4500000,
+          depositVnd: 4500000,
+          isDepositPaid: false, // Default: no payment proof
+        }),
+      }
+    );
+    const directContract = directContractResp.json?.contract;
+    const directRoomAfter = await prisma.consoleRoom.findUnique({
+      where: { id: directRoom.id },
+    });
+    const directDepositInDb = await prisma.deposit.findFirst({
+      where: { contractId: directContract?.id, depositType: 'CONTRACT' },
+    });
+    const directLedgerCount = await prisma.ledgerEntry.count({
+      where: {
+        description: { contains: directContract?.contractCode || 'NON_EXISTENT' },
+        entryType: 'INCOME',
+      },
+    });
+
+    const directContractProofPass =
+      directContractResp.status === 201 &&
+      directContract?.status === 'DRAFT' &&
+      directRoomAfter?.occupancyStatus === 'RESERVED' &&
+      directDepositInDb !== null &&
+      directDepositInDb.amountVnd === 4500000n &&
+      directDepositInDb.paidAmountVnd === 0n &&
+      directDepositInDb.paymentStatus === 'PENDING' &&
+      directLedgerCount === 0;
+
+    testResults.checks.directContractDepositProof = {
+      pass: directContractProofPass,
+      status: directContractResp.status,
+      contractStatus: directContract?.status,
+      roomOccupancy: directRoomAfter?.occupancyStatus,
+      depositPaymentStatus: directDepositInDb?.paymentStatus,
+      depositPaidAmountVnd: Number(directDepositInDb?.paidAmountVnd || 0),
+      incomeLedgerEntries: directLedgerCount,
+    };
+    console.log(
+      `  -> Direct Contract Deposit Proof (P0): ${directContractProofPass ? 'PASS' : 'FAIL'}`
+    );
+
+    // 8.3 Booking Hold Without Payment (Zero Ledger Entry)
+    console.log('  Testing 8.3: Booking hold without payment (zero ledger entry)...');
     const unpaidResvResp = await fetchHttp(
       `${LANDING_URL}/api/v1/console/v2/reservations`,
       {
@@ -819,11 +954,12 @@ async function main() {
       unpaidResvResp.status === 201 &&
       unpaidResv?.status === 'PENDING' &&
       unpaidDep?.paymentStatus === 'PENDING' &&
+      unpaidDep?.paidAmountVnd === 0 &&
       unpaidLedgerCount === 0;
 
-    // Confirm Payment
-    console.log('  Testing 8.2b: Confirm payment on booking (creates INCOME ledger entry)...');
-    const confirmPaymentResp = await fetchHttp(
+    // 8.4 Confirm Payment with Idempotency Test (P0)
+    console.log('  Testing 8.4: Confirm payment idempotency & row locking (P0)...');
+    const confirmPaymentResp1 = await fetchHttp(
       `${LANDING_URL}/api/v1/console/v2/reservations/${encodeURIComponent(
         unpaidResv.id
       )}/confirm-payment`,
@@ -840,20 +976,83 @@ async function main() {
         }),
       }
     );
+
+    // Second call to test idempotency
+    const confirmPaymentResp2 = await fetchHttp(
+      `${LANDING_URL}/api/v1/console/v2/reservations/${encodeURIComponent(
+        unpaidResv.id
+      )}/confirm-payment`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: adminCookie,
+          'X-Requested-With': 'AdHome-Console',
+        },
+        body: JSON.stringify({
+          paymentMethod: 'BANK_TRANSFER',
+          notes: 'Gọi lại lần 2 để kiểm thử idempotency',
+        }),
+      }
+    );
+
     const paidLedgerCount = await prisma.ledgerEntry.count({
       where: {
         description: { contains: unpaidResv.reservationCode },
         entryType: 'INCOME',
       },
     });
-    const confirmPaymentPass =
-      confirmPaymentResp.status === 200 &&
-      confirmPaymentResp.json?.reservation?.status === 'CONFIRMED' &&
-      confirmPaymentResp.json?.deposit?.paymentStatus === 'PAID' &&
-      paidLedgerCount === 1;
+    const depositRowsCount = await prisma.deposit.count({
+      where: { reservationId: unpaidResv.id },
+    });
 
-    // Cancel Reservation with Invariant (Refund + Deduction + Forfeit = B)
-    console.log('  Testing 8.2c: Cancel reservation with ledger expense...');
+    const confirmPaymentPass =
+      confirmPaymentResp1.status === 200 &&
+      confirmPaymentResp1.json?.reservation?.status === 'CONFIRMED' &&
+      confirmPaymentResp1.json?.deposit?.paymentStatus === 'PAID' &&
+      confirmPaymentResp2.status === 200 &&
+      confirmPaymentResp2.json?.reservation?.status === 'CONFIRMED' &&
+      paidLedgerCount === 1 && // Strictly exactly 1! Zero duplicate income entries!
+      depositRowsCount === 1; // Strictly exactly 1! Zero duplicate deposit rows!
+
+    testResults.checks.paymentConfirmationIdempotency = {
+      pass: confirmPaymentPass,
+      statusCall1: confirmPaymentResp1.status,
+      statusCall2: confirmPaymentResp2.status,
+      incomeLedgerEntries: paidLedgerCount,
+      depositRowsInDb: depositRowsCount,
+    };
+    console.log(
+      `  -> Payment Confirmation Idempotency (P0): ${confirmPaymentPass ? 'PASS' : 'FAIL'} (Ledger: ${paidLedgerCount}, Deposits: ${depositRowsCount})`
+    );
+
+    // 8.5 Strict Cancellation Allocation Invariant (P0)
+    console.log('  Testing 8.5: Strict cancellation allocation invariant (P0)...');
+    // First: unbalanced allocation attempt (sum = 1M + 250k + 250k = 1.5M != 2.0M paid deposit)
+    const unbalancedCancelResp = await fetchHttp(
+      `${LANDING_URL}/api/v1/console/v2/reservations/${encodeURIComponent(
+        unpaidResv.id
+      )}/cancel`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: adminCookie,
+          'X-Requested-With': 'AdHome-Console',
+        },
+        body: JSON.stringify({
+          reason: 'Hủy thử nghiệm phân bổ không cân bằng',
+          refundAmountVnd: 1000000,
+          deductionAmountVnd: 250000,
+          forfeitAmountVnd: 250000,
+        }),
+      }
+    );
+    const unbalancedBlocked =
+      unbalancedCancelResp.status === 422 &&
+      unbalancedCancelResp.json?.errorCode === 'INVALID_CANCELLATION_ALLOCATION';
+
+    // Second: balanced allocation (1.5M + 250k + 250k = 2.0M)
     const cancelResvResp = await fetchHttp(
       `${LANDING_URL}/api/v1/console/v2/reservations/${encodeURIComponent(
         unpaidResv.id
@@ -885,14 +1084,28 @@ async function main() {
         entryType: 'EXPENSE',
       },
     });
+
     const resvCancelledPass =
+      unbalancedBlocked &&
       cancelResvResp.status === 200 &&
       roomAfterCancel?.occupancyStatus === 'AVAILABLE' &&
       (depAfterCancel?.status === 'REFUNDED' || depAfterCancel?.status === 'PARTIALLY_REFUNDED') &&
       cancelExpenseCount === 1;
 
-    // 8.3 C3.2 & C3.3 Conversion Math: Case B <= C
-    console.log('  Testing 8.3: Conversion math B <= C (Additional Due = C + R - B, original deposit intact)...');
+    testResults.checks.strictCancellationAllocation = {
+      pass: resvCancelledPass,
+      unbalancedBlocked,
+      unbalancedStatusCode: unbalancedCancelResp.status,
+      unbalancedErrorCode: unbalancedCancelResp.json?.errorCode,
+      balancedStatusCode: cancelResvResp.status,
+      refundExpenseRecorded: cancelExpenseCount === 1,
+    };
+    console.log(
+      `  -> Strict Cancellation Allocation (P0): ${resvCancelledPass ? 'PASS' : 'FAIL'} (Unbalanced: ${unbalancedCancelResp.status}, Balanced: ${cancelResvResp.status})`
+    );
+
+    // 8.6 Conversion Math Case B <= C & Multi-tenant Isolation Check (P0)
+    console.log('  Testing 8.6: Conversion math B <= C and Multi-tenant Isolation (P0)...');
     const resv2Resp = await fetchHttp(
       `${LANDING_URL}/api/v1/console/v2/reservations`,
       {
@@ -915,6 +1128,41 @@ async function main() {
     );
     const resv2 = resv2Resp.json?.reservation;
 
+    // Cross-tenant Isolation Attack Attempt: Pass tenantId belonging to secondOrg
+    const crossTenantConvertResp = await fetchHttp(
+      `${LANDING_URL}/api/v1/console/v2/reservations/${encodeURIComponent(
+        resv2.id
+      )}/convert-to-contract`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: adminCookie,
+          'X-Requested-With': 'AdHome-Console',
+        },
+        body: JSON.stringify({
+          tenantId: secondOrgTenant.id, // Alien tenant from other org!
+          startDate: '2026-11-01',
+          endDate: '2027-10-31',
+          monthlyRentVnd: 5000000,
+          depositVnd: 5000000,
+        }),
+      }
+    );
+    const multiTenantConvertBlocked =
+      crossTenantConvertResp.status === 404 &&
+      crossTenantConvertResp.json?.errorCode === 'TENANT_NOT_FOUND';
+
+    testResults.checks.multiTenantIsolationCheck = {
+      pass: multiTenantConvertBlocked,
+      status: crossTenantConvertResp.status,
+      errorCode: crossTenantConvertResp.json?.errorCode,
+    };
+    console.log(
+      `  -> Multi-tenant Isolation in Conversion (P0): ${multiTenantConvertBlocked ? 'PASS' : 'FAIL'}`
+    );
+
+    // Legitimate conversion (B = 2M <= C = 5M)
     const convertResp = await fetchHttp(
       `${LANDING_URL}/api/v1/console/v2/reservations/${encodeURIComponent(
         resv2.id
@@ -949,7 +1197,6 @@ async function main() {
       where: { id: resv2.id },
     });
 
-    // Verify original booking deposit preserved
     const origBookingDep = await prisma.deposit.findFirst({
       where: { reservationId: resv2.id, depositType: 'BOOKING' },
     });
@@ -964,18 +1211,19 @@ async function main() {
 
     const convertShortagePass =
       convertResp.status === 201 &&
-      contract?.status === 'ACTIVE' &&
-      roomAfterConvert?.occupancyStatus === 'OCCUPIED' &&
+      contract?.status === 'DRAFT' && // Pre-handover status is DRAFT
+      roomAfterConvert?.occupancyStatus === 'RESERVED' && // Pre-handover room is RESERVED
       resvAfterConvert?.status === 'CONVERTED' &&
       origBookingDep?.amountVnd === 2000000n &&
       origBookingDep?.status === 'APPLIED_TO_CONTRACT' &&
       origBookingDep?.paymentStatus === 'TRANSFERRED' &&
-      newContractDep?.amountVnd === 2000000n &&
-      newContractDep?.paymentStatus === 'PAID' &&
+      newContractDep?.amountVnd === 5000000n && // Full required deposit C stored!
+      newContractDep?.paidAmountVnd === 2000000n && // Transferred amount B stored!
+      newContractDep?.paymentStatus === 'PARTIALLY_PAID' && // B < C is PARTIALLY_PAID!
       firstInvoice?.totalAmountVnd === 8000000n;
 
-    // 8.4 Conversion Math: Case B > C (Surplus Rent Credit)
-    console.log('  Testing 8.4: Conversion math B > C with RENT_CREDIT...');
+    // 8.7 Conversion Math Case B > C with S > R and Advance Rent Credit (P0)
+    console.log('  Testing 8.7: Conversion math B > C (S > R) with ADVANCE_RENT preservation (P0)...');
     const surplusResvResp = await fetchHttp(
       `${LANDING_URL}/api/v1/console/v2/reservations`,
       {
@@ -989,7 +1237,7 @@ async function main() {
           roomId: lifeRoom3.id,
           customerName: 'Đặng Tuấn Anh',
           customerPhone: '0906667777',
-          holdAmountVnd: 6000000,
+          holdAmountVnd: 12000000, // B = 12M!
           paymentConfirmed: true,
           expectedMoveIn: '2026-11-01',
           holdDays: 5,
@@ -1012,8 +1260,8 @@ async function main() {
         body: JSON.stringify({
           startDate: '2026-11-01',
           endDate: '2027-10-31',
-          monthlyRentVnd: 5000000,
-          depositVnd: 5000000,
+          monthlyRentVnd: 5000000, // R = 5M
+          depositVnd: 5000000, // C = 5M
           surplusAction: 'RENT_CREDIT',
         }),
       }
@@ -1022,13 +1270,45 @@ async function main() {
     const surplusInvoice = await prisma.invoice.findFirst({
       where: { contractId: surplusContract?.id },
     });
-    // With 1M surplus credited against rent: 5M rent - 1M credit = 4M, deposit due = 0 -> total invoice = 4M!
+    // B = 12M, C = 5M -> Surplus S = 7M.
+    // Applied to month 1 rent: min(7M, 5M) = 5M -> first month invoice due = 0!
+    // Remaining surplus credit S - R = 7M - 5M = 2M stored in ADVANCE_RENT row!
+    const advanceRentDep = await prisma.deposit.findFirst({
+      where: { contractId: surplusContract?.id, depositType: 'ADVANCE_RENT' },
+    });
+
     const convertSurplusPass =
       surplusConvertResp.status === 201 &&
-      surplusInvoice?.totalAmountVnd === 4000000n;
+      surplusInvoice?.totalAmountVnd === 0n &&
+      advanceRentDep !== null &&
+      advanceRentDep.amountVnd === 2000000n &&
+      advanceRentDep.paidAmountVnd === 2000000n &&
+      advanceRentDep.paymentStatus === 'PAID';
 
-    // 8.5 Handover Baseline Readings
-    console.log('  Testing 8.5: Contract handover with baseline meter readings...');
+    testResults.checks.accurateContractDepositTracking = {
+      pass: convertShortagePass && convertSurplusPass,
+      shortageMath: {
+        pass: convertShortagePass,
+        contractStatus: contract?.status,
+        roomStatus: roomAfterConvert?.occupancyStatus,
+        contractDepositAmountVnd: Number(newContractDep?.amountVnd || 0),
+        contractDepositPaidAmountVnd: Number(newContractDep?.paidAmountVnd || 0),
+        contractDepositPaymentStatus: newContractDep?.paymentStatus,
+        firstInvoiceTotalVnd: Number(firstInvoice?.totalAmountVnd || 0),
+      },
+      surplusMath: {
+        pass: convertSurplusPass,
+        firstInvoiceTotalVnd: Number(surplusInvoice?.totalAmountVnd || 0),
+        advanceRentAmountVnd: Number(advanceRentDep?.amountVnd || 0),
+        advanceRentPaymentStatus: advanceRentDep?.paymentStatus,
+      },
+    };
+    console.log(
+      `  -> Accurate Contract Deposit Tracking (P0): ${testResults.checks.accurateContractDepositTracking.pass ? 'PASS' : 'FAIL'}`
+    );
+
+    // 8.8 Contract Handover Baseline Readings & Transition to ACTIVE/OCCUPIED (P0)
+    console.log('  Testing 8.8: Contract handover with baseline readings & activation (P0)...');
     const handoverResp = await fetchHttp(
       `${LANDING_URL}/api/v1/console/v2/contracts/${encodeURIComponent(
         contract.id
@@ -1050,12 +1330,17 @@ async function main() {
     const contractAfterHandover = await prisma.contract.findUnique({
       where: { id: contract.id },
     });
+    const roomAfterHandover = await prisma.consoleRoom.findUnique({
+      where: { id: lifeRoom1.id },
+    });
     const handoverPass =
       handoverResp.status === 200 &&
+      contractAfterHandover?.status === 'ACTIVE' &&
+      roomAfterHandover?.occupancyStatus === 'OCCUPIED' &&
       contractAfterHandover?.handoverMeterKwh === 125.5 &&
       contractAfterHandover?.handoverWaterM3 === 35.0;
 
-    // Deposit Partial Refund with Deduction
+    // 8.9 Deposit Partial Refund with Deduction
     const depRefundResp = await fetchHttp(
       `${LANDING_URL}/api/v1/console/v2/deposits/${encodeURIComponent(
         newContractDep.id
@@ -1078,7 +1363,7 @@ async function main() {
       depRefundResp.status === 200 &&
       depRefundResp.json?.deposit?.status === 'REFUNDED';
 
-    // Contract Extension
+    // 8.10 Contract Extension
     const extendResp = await fetchHttp(
       `${LANDING_URL}/api/v1/console/v2/contracts/${encodeURIComponent(
         contract.id
@@ -1102,7 +1387,7 @@ async function main() {
       extendResp.json?.contract?.status === 'EXTENDED' &&
       extendResp.json?.contract?.endDate === '2028-04-30';
 
-    // Transfer Room
+    // 8.11 Transfer Room
     const transferResp = await fetchHttp(
       `${LANDING_URL}/api/v1/console/v2/contracts/${encodeURIComponent(
         contract.id
@@ -1132,7 +1417,7 @@ async function main() {
       newRoomAfterTransfer?.occupancyStatus === 'OCCUPIED' &&
       transferResp.json?.contract?.roomId === lifeRoom2.id;
 
-    // Terminate Contract
+    // 8.12 Terminate Contract
     const terminateResp = await fetchHttp(
       `${LANDING_URL}/api/v1/console/v2/contracts/${encodeURIComponent(
         contract.id
@@ -1162,6 +1447,8 @@ async function main() {
       pass:
         tenantDecoupledPass &&
         roomOccupantsPass &&
+        softDeletePass &&
+        directContractProofPass &&
         unpaidHoldPass &&
         confirmPaymentPass &&
         resvCancelledPass &&
@@ -1174,8 +1461,10 @@ async function main() {
         terminatePass,
       tenantDecoupled: tenantDecoupledPass,
       roomOccupants: roomOccupantsPass,
+      occupantSoftDeleted: softDeletePass,
+      directContractProof: directContractProofPass,
       unpaidHoldZeroLedger: unpaidHoldPass,
-      confirmPaymentLedger: confirmPaymentPass,
+      confirmPaymentLedgerIdempotent: confirmPaymentPass,
       cancellationInvariant: resvCancelledPass,
       conversionShortageMath: convertShortagePass,
       conversionSurplusMath: convertSurplusPass,
@@ -1186,8 +1475,7 @@ async function main() {
       contractTerminated: terminatePass,
     };
     console.log(
-      `-> C3A State Machines: ${
-        testResults.checks.c3aLifecycleStateMachines.pass ? 'PASS' : 'FAIL'
+      `-> C3A State Machines: ${testResults.checks.c3aLifecycleStateMachines.pass ? 'PASS' : 'FAIL'
       }`
     );
 
@@ -1356,8 +1644,7 @@ async function main() {
       water3Methods: waterCalcPass,
     };
     console.log(
-      `-> C3B Hunonic & Water: ${
-        testResults.checks.c3bHunonicAndWater.pass ? 'PASS' : 'FAIL'
+      `-> C3B Hunonic & Water: ${testResults.checks.c3bHunonicAndWater.pass ? 'PASS' : 'FAIL'
       } (Fail-closed: ${failClosedPass ? 'PASS' : 'FAIL'}, MockSource: ${mockReadingSourcePass ? 'PASS' : 'FAIL'}, ManualApproved: ${manualPass ? 'PASS' : 'FAIL'}, Water: ${waterCalcPass ? 'PASS' : 'FAIL'})`
     );
 
@@ -1398,7 +1685,7 @@ async function main() {
           wsUrl = pageTarget.webSocketDebuggerUrl;
           break;
         }
-      } catch {}
+      } catch { }
     }
     if (!wsUrl) throw new Error('Cannot connect to Chromium CDP port.');
 
@@ -1453,21 +1740,39 @@ async function main() {
     if (!headerFound) throw new Error('Timeout waiting for console desktop header after login');
     console.log('  Console UI authenticated successfully as Admin.');
 
-    async function switchModuleAndCapture(
-      moduleId,
+    async function captureScreen(
+      url,
+      width,
+      height,
       filename,
       readySelector,
-      postNavigateAction,
+      preWaitAction,
       waitForSelectorAfterAction
     ) {
-      if (moduleId) {
-        await cdp.eval(`(() => {
-          const btn = document.querySelector('[data-testid="console-nav-' + ${JSON.stringify(moduleId)} + '"]');
-          if (btn) btn.click();
-          if (window.__adhome_setActiveModule) {
-            window.__adhome_setActiveModule(${JSON.stringify(moduleId)});
-          }
-        })()`);
+      await cdp.send('Emulation.setDeviceMetricsOverride', {
+        width,
+        height,
+        deviceScaleFactor: 2,
+        mobile: width < 768,
+      });
+
+      await cdp.send('Page.navigate', { url });
+
+      if (preWaitAction) {
+        for (let i = 0; i < 20; i++) {
+          await new Promise((r) => setTimeout(r, 200));
+          const executed = await cdp
+            .eval(`(() => {
+              try {
+                ${preWaitAction};
+                return true;
+              } catch {
+                return false;
+              }
+            })()`)
+            .catch(() => false);
+          if (executed) break;
+        }
       }
 
       let readyFound = false;
@@ -1482,115 +1787,151 @@ async function main() {
         }
       }
       if (!readyFound) {
-        throw new Error(`Timeout waiting for selector: ${readySelector}`);
+        throw new Error(`Timeout waiting for selector: ${readySelector} on ${url}`);
       }
 
-      if (postNavigateAction) {
-        await cdp.eval(postNavigateAction);
-        if (waitForSelectorAfterAction) {
-          let afterActionFound = false;
-          for (let i = 0; i < 60; i++) {
-            await new Promise((r) => setTimeout(r, 250));
-            const ok = await cdp
-              .eval(`document.querySelector('${waitForSelectorAfterAction}') !== null`)
-              .catch(() => false);
-            if (ok) {
-              afterActionFound = true;
-              break;
-            }
+      if (waitForSelectorAfterAction) {
+        let afterActionFound = false;
+        for (let i = 0; i < 60; i++) {
+          await new Promise((r) => setTimeout(r, 250));
+          const ok = await cdp
+            .eval(`document.querySelector('${waitForSelectorAfterAction}') !== null`)
+            .catch(() => false);
+          if (ok) {
+            afterActionFound = true;
+            break;
           }
-          if (!afterActionFound) {
-            throw new Error(`Timeout waiting for afterAction selector: ${waitForSelectorAfterAction}`);
-          }
-        } else {
-          await new Promise((r) => setTimeout(r, 600));
         }
+        if (!afterActionFound) {
+          throw new Error(`Timeout waiting for afterAction selector: ${waitForSelectorAfterAction}`);
+        }
+      } else {
+        await new Promise((r) => setTimeout(r, 600));
       }
 
       // Allow typography, CSS transitions, and SVG charts to settle
-      await new Promise((r) => setTimeout(r, 800));
+      await new Promise((r) => setTimeout(r, 600));
 
       const outAppPath = path.join(ARTIFACT_DIR, filename);
       const outEvidencePath = path.join(EVIDENCE_DIR, filename);
       await cdp.screenshot([outAppPath, outEvidencePath]);
       testResults.evidenceFiles.push(filename);
-      console.log(`  Captured: ${filename}`);
+      console.log(`  Captured: ${filename} (${width}x${height})`);
     }
 
-    // Capture 1: Contracts Workspace (1440x900)
-    await switchModuleAndCapture(
-      'contracts',
+    // Capture 1: Contracts Workspace (1440x900) - Shows Status Filters, Draft Contract & "Bàn giao phòng" button
+    await captureScreen(
+      `${CONSOLE_URL}/?module=contracts`,
+      1440,
+      900,
       'console_v2_1440_contracts_workspace.png',
-      '[data-testid="console-module-workspace-contracts"]'
-    );
-
-    // Capture 2: Deposits & Reservations Workspace (1440x900)
-    await switchModuleAndCapture(
-      'deposits',
-      'console_v2_1440_deposits_workspace.png',
-      '[data-testid="console-module-workspace-deposits"]'
-    );
-
-    // Capture 3: Settlements & Hunonic Meters Workspace (1440x900)
-    await switchModuleAndCapture(
-      'settlements',
-      'console_v2_1440_settlements_hunonic.png',
-      '[data-testid="console-module-workspace-settlements"]'
-    );
-
-    // Capture 4: Contract Creation Wizard Modal with Dynamic Vietnam Dates (1440x900)
-    await switchModuleAndCapture(
-      'contracts',
-      'console_v2_1440_contract_modal_dynamic_dates.png',
-      '[data-testid="btn-open-create-contract"]',
+      '[data-testid="console-module-workspace-contracts"]',
       `(() => {
-        const btn = document.querySelector('[data-testid="btn-open-create-contract"]');
-        if (btn) btn.click();
+        if (window.__adhome_setActiveModule) window.__adhome_setActiveModule('contracts');
       })()`,
-      '[data-testid="contract-creation-wizard-modal"]'
+      '[data-testid="btn-open-create-contract"]'
     );
-    // Advance wizard to Step 4 to highlight dynamic Vietnam dates, rent, deposit & co-occupants
-    await cdp.eval(`(() => {
-      const nextBtn = document.querySelector('[data-testid="wizard-btn-next"]');
-      if (nextBtn) {
-        nextBtn.click();
-        setTimeout(() => {
-          const btn2 = document.querySelector('[data-testid="wizard-btn-next"]');
-          if (btn2) btn2.click();
-          setTimeout(() => {
-            const btn3 = document.querySelector('[data-testid="wizard-btn-next"]');
-            if (btn3) btn3.click();
-          }, 150);
-        }, 150);
-      }
-    })()`);
-    await new Promise((r) => setTimeout(r, 600));
-    // Retake screenshot 4 with Step 4 clearly presented
-    await cdp.screenshot([
-      path.join(ARTIFACT_DIR, 'console_v2_1440_contract_modal_dynamic_dates.png'),
-      path.join(EVIDENCE_DIR, 'console_v2_1440_contract_modal_dynamic_dates.png'),
-    ]);
-    // Close modal cleanly
-    await cdp.eval(`(() => {
-      const modal = document.querySelector('[data-testid="contract-creation-wizard-modal"]');
-      const closeBtn = modal?.querySelector('button');
-      if (closeBtn) closeBtn.click();
-    })()`);
-    await new Promise((r) => setTimeout(r, 400));
 
-    // Capture 5: Mobile Bottom Nav & Operations (390x844)
-    await cdp.send('Emulation.setDeviceMetricsOverride', {
-      width: 390,
-      height: 844,
-      deviceScaleFactor: 2,
-      mobile: true,
-    });
-    await cdp.eval(`window.dispatchEvent(new Event('resize'))`);
-    await new Promise((r) => setTimeout(r, 600));
-    await switchModuleAndCapture(
-      'contracts',
+    // Capture 2: Handover Modal with Baseline Meter Inputs (1440x900)
+    console.log('  Opening Handover Modal for DRAFT contract...');
+    await cdp.eval(`(() => {
+      const btn = document.querySelector('[data-testid="btn-open-handover"]') ||
+                  document.querySelector('button[data-testid^="btn-open-handover-"]');
+      if (btn) btn.click();
+    })()`);
+    const handoverModalFound = await waitForSelector('[data-testid="contract-handover-modal"]', 40, 250);
+    if (handoverModalFound) {
+      await setControlledInput('input[placeholder*="105.5"]', 125.5);
+      await setControlledInput('input[placeholder*="12.0"]', 35.0);
+      await new Promise((r) => setTimeout(r, 600));
+      await cdp.screenshot([
+        path.join(ARTIFACT_DIR, 'console_v2_1440_contract_handover_modal.png'),
+        path.join(EVIDENCE_DIR, 'console_v2_1440_contract_handover_modal.png'),
+      ]);
+      testResults.evidenceFiles.push('console_v2_1440_contract_handover_modal.png');
+      console.log('  Captured: console_v2_1440_contract_handover_modal.png (1440x900)');
+      // Close handover modal cleanly
+      await cdp.eval(`(() => {
+        const modal = document.querySelector('[data-testid="contract-handover-modal"]');
+        const cancelBtn = modal?.querySelector('button[type="button"]');
+        if (cancelBtn) cancelBtn.click();
+      })()`);
+      await new Promise((r) => setTimeout(r, 400));
+    }
+
+    // Capture 3: Contract Creation Wizard Modal with Dynamic Vietnam Dates (1440x900)
+    console.log('  Opening Contract Creation Wizard Modal...');
+    await cdp.eval(`(() => {
+      const btn = document.querySelector('[data-testid="btn-open-create-contract"]');
+      if (btn) btn.click();
+    })()`);
+    const wizardModalFound = await waitForSelector('[data-testid="contract-creation-wizard-modal"]', 40, 250);
+    if (wizardModalFound) {
+      // Advance wizard to Step 4/5
+      await cdp.eval(`(() => {
+        const nextBtn = document.querySelector('[data-testid="wizard-btn-next"]');
+        if (nextBtn) {
+          nextBtn.click();
+          setTimeout(() => {
+            const btn2 = document.querySelector('[data-testid="wizard-btn-next"]');
+            if (btn2) btn2.click();
+            setTimeout(() => {
+              const btn3 = document.querySelector('[data-testid="wizard-btn-next"]');
+              if (btn3) btn3.click();
+            }, 150);
+          }, 150);
+        }
+      })()`);
+      await new Promise((r) => setTimeout(r, 800));
+      await cdp.screenshot([
+        path.join(ARTIFACT_DIR, 'console_v2_1440_contract_modal_dynamic_dates.png'),
+        path.join(EVIDENCE_DIR, 'console_v2_1440_contract_modal_dynamic_dates.png'),
+      ]);
+      testResults.evidenceFiles.push('console_v2_1440_contract_modal_dynamic_dates.png');
+      console.log('  Captured: console_v2_1440_contract_modal_dynamic_dates.png (1440x900)');
+      // Close wizard modal cleanly
+      await cdp.eval(`(() => {
+        const modal = document.querySelector('[data-testid="contract-creation-wizard-modal"]');
+        const closeBtn = modal?.querySelector('button');
+        if (closeBtn) closeBtn.click();
+      })()`);
+      await new Promise((r) => setTimeout(r, 400));
+    }
+
+    // Capture 4: Deposits & Reservations Workspace (1440x900) - Vietnamese badges & paidAmountVnd
+    await captureScreen(
+      `${CONSOLE_URL}/?module=deposits`,
+      1440,
+      900,
+      'console_v2_1440_deposits_workspace.png',
+      '[data-testid="console-module-workspace-deposits"]',
+      `(() => {
+        if (window.__adhome_setActiveModule) window.__adhome_setActiveModule('deposits');
+      })()`
+    );
+
+    // Capture 5: Settlements & Hunonic Meters Workspace (1440x900)
+    await captureScreen(
+      `${CONSOLE_URL}/?module=settlements`,
+      1440,
+      900,
+      'console_v2_1440_settlements_hunonic.png',
+      '[data-testid="console-module-workspace-settlements"]',
+      `(() => {
+        if (window.__adhome_setActiveModule) window.__adhome_setActiveModule('settlements');
+      })()`
+    );
+
+    // Capture 6: Mobile Bottom Nav & Contracts Cards View (390x844)
+    await captureScreen(
+      `${CONSOLE_URL}/?module=contracts&mode=mobile`,
+      390,
+      844,
       'console_v2_390x844_contracts_mobile.png',
-      '[data-testid="console-mobile-bottom-nav"]'
+      '[data-testid="console-mobile-bottom-nav"]',
+      `(() => {
+        if (window.__adhome_setActiveModule) window.__adhome_setActiveModule('contracts');
+      })()`
     );
 
     cdp.close();
@@ -1599,15 +1940,19 @@ async function main() {
     console.log('\n[Step 10.1] Computing SHA-256 checksums and verifying distinctness...');
     const screenshotFiles = [
       'console_v2_1440_contracts_workspace.png',
+      'console_v2_1440_contract_handover_modal.png',
+      'console_v2_1440_contract_modal_dynamic_dates.png',
       'console_v2_1440_deposits_workspace.png',
       'console_v2_1440_settlements_hunonic.png',
-      'console_v2_1440_contract_modal_dynamic_dates.png',
       'console_v2_390x844_contracts_mobile.png',
     ];
 
     const imageHashes = [];
     for (const f of screenshotFiles) {
       const artPath = path.join(ARTIFACT_DIR, f);
+      if (!fs.existsSync(artPath)) {
+        throw new Error(`Screenshot file missing: ${f}`);
+      }
       const buf = fs.readFileSync(artPath);
       const sha256 = crypto.createHash('sha256').update(buf).digest('hex');
       imageHashes.push({
@@ -1631,8 +1976,7 @@ async function main() {
       hashes: imageHashes,
     };
     console.log(
-      `-> UI Evidence Distinctness: ${
-        testResults.checks.evidenceScreenshotsValid.pass ? 'PASS' : 'FAIL'
+      `-> UI Evidence Distinctness: ${testResults.checks.evidenceScreenshotsValid.pass ? 'PASS' : 'FAIL'
       } (${uniqueShaSet.size} unique hashes out of ${screenshotFiles.length})`
     );
 
@@ -1680,17 +2024,17 @@ async function main() {
     if (browserProc) {
       try {
         await killProcessTreeWindows(browserProc);
-      } catch {}
+      } catch { }
     }
     if (landingProc) {
       try {
         await killProcessTreeWindows(landingProc);
-      } catch {}
+      } catch { }
     }
     if (consoleProc) {
       try {
         await killProcessTreeWindows(consoleProc);
-      } catch {}
+      } catch { }
     }
   }
 }

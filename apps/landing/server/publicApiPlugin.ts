@@ -601,7 +601,9 @@ function sendJson(
       res.setHeader(k, v);
     }
   }
-  res.end(JSON.stringify(payload));
+  res.end(
+    JSON.stringify(payload, (_k, v) => (typeof v === 'bigint' ? Number(v) : v))
+  );
 }
 
 function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {

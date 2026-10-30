@@ -1,8 +1,9 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
   ArrowRightLeft,
   BarChart3,
+  Building2,
   Calendar,
   CalendarClock,
   CheckCircle2,
@@ -168,6 +169,18 @@ export const OperationalModuleWorkspace: React.FC<
 
   const [lifecycleError, setLifecycleError] = useState<string | null>(null);
   const [isSavingLifecycle, setIsSavingLifecycle] = useState(false);
+
+  // Contract Status Filter & Handover Modal state
+  const [contractStatusFilter, setContractStatusFilter] = useState<
+    'ALL' | 'ACTIVE' | 'DRAFT' | 'EXPIRING' | 'TERMINATED'
+  >('ALL');
+  const [isHandoverModalOpen, setIsHandoverModalOpen] = useState(false);
+  const [selectedHandoverContract, setSelectedHandoverContract] = useState<any>(null);
+  const [handoverKwh, setHandoverKwh] = useState<number | ''>('');
+  const [handoverWaterM3, setHandoverWaterM3] = useState<number | ''>('');
+  const [handoverMoveInDate, setHandoverMoveInDate] = useState(getTodayIsoVn());
+  const [isSavingHandover, setIsSavingHandover] = useState(false);
+  const [handoverError, setHandoverError] = useState<string | null>(null);
 
   // Hunonic Sync & Manual Index Modal state
   const [isSyncingHunonic, setIsSyncingHunonic] = useState(false);
@@ -481,6 +494,45 @@ export const OperationalModuleWorkspace: React.FC<
     }
   };
 
+  const handleHandoverSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedHandoverContract) return;
+    setIsSavingHandover(true);
+    setHandoverError(null);
+    try {
+      const res = await fetch(
+        `/api/v1/console/v2/contracts/${encodeURIComponent(
+          selectedHandoverContract.id
+        )}/handover`,
+        {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': CONSOLE_CSRF_HEADER,
+          },
+          body: JSON.stringify({
+            handoverMeterKwh: handoverKwh !== '' ? Number(handoverKwh) : null,
+            handoverWaterM3: handoverWaterM3 !== '' ? Number(handoverWaterM3) : null,
+            moveInDate: handoverMoveInDate,
+          }),
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        setHandoverError(data.message || 'Không thể thực hiện bàn giao phòng.');
+        return;
+      }
+      setIsHandoverModalOpen(false);
+      setSelectedHandoverContract(null);
+      await Promise.all([loadModuleData(), refreshPortfolio()]);
+    } catch {
+      setHandoverError('Lỗi kết nối khi bàn giao phòng.');
+    } finally {
+      setIsSavingHandover(false);
+    }
+  };
+
   const handleSyncHunonic = async () => {
     setIsSyncingHunonic(true);
     setHunonicFeedback(null);
@@ -602,8 +654,11 @@ export const OperationalModuleWorkspace: React.FC<
   const depositsList = Array.isArray(payload?.deposits)
     ? (payload.deposits as Array<{
         id: string;
+        depositType?: string;
         amountVnd: number;
+        paidAmountVnd?: number;
         refundedVnd: number;
+        paymentStatus?: string;
         status: string;
         createdAt: string;
       }>)
@@ -628,6 +683,23 @@ export const OperationalModuleWorkspace: React.FC<
         status: string;
       }>)
     : [];
+
+  const displayedContracts = useMemo(() => {
+    if (contractStatusFilter === 'ALL') return contracts;
+    if (contractStatusFilter === 'ACTIVE')
+      return contracts.filter(
+        (c) => c.status === 'ACTIVE' || c.status === 'EXTENDED'
+      );
+    if (contractStatusFilter === 'DRAFT')
+      return contracts.filter((c) => c.status === 'DRAFT');
+    if (contractStatusFilter === 'EXPIRING')
+      return contracts.filter((c) => c.status === 'EXPIRING');
+    if (contractStatusFilter === 'TERMINATED')
+      return contracts.filter(
+        (c) => c.status === 'TERMINATED' || c.status === 'EXPIRED'
+      );
+    return contracts;
+  }, [contracts, contractStatusFilter]);
 
   const billingPeriods = Array.isArray(payload?.billingPeriods)
     ? (payload.billingPeriods as Array<{
@@ -988,15 +1060,27 @@ export const OperationalModuleWorkspace: React.FC<
                             <td className="py-3">{r.expectedMoveIn || '—'}</td>
                             <td className="py-3">
                               <span
-                                className={`px-2 py-0.5 rounded-full text-[10.5px] font-bold ${
+                                className={`px-2.5 py-0.5 rounded-full text-[10.5px] font-bold ${
                                   r.status === 'CONFIRMED'
-                                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-                                    : r.status === 'CONVERTED'
                                     ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                                    : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                                    : r.status === 'CONVERTED'
+                                    ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300'
+                                    : r.status === 'CANCELLED'
+                                    ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                                    : r.status === 'EXPIRED'
+                                    ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                                    : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
                                 }`}
                               >
-                                {r.status}
+                                {r.status === 'CONFIRMED'
+                                  ? 'Đã cọc giữ chỗ'
+                                  : r.status === 'CONVERTED'
+                                  ? 'Đã lên hợp đồng'
+                                  : r.status === 'CANCELLED'
+                                  ? 'Đã hủy giữ'
+                                  : r.status === 'EXPIRED'
+                                  ? 'Hết hạn'
+                                  : 'Chờ đặt cọc'}
                               </span>
                             </td>
                             <td className="py-3 text-right">
@@ -1052,9 +1136,12 @@ export const OperationalModuleWorkspace: React.FC<
                       <thead>
                         <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 font-semibold">
                           <th className="pb-3">Mã khoản cọc</th>
-                          <th className="pb-3">Tiền cọc</th>
+                          <th className="pb-3">Phân loại</th>
+                          <th className="pb-3">Tiền cọc yêu cầu</th>
+                          <th className="pb-3">Đã thu</th>
                           <th className="pb-3">Đã hoàn</th>
-                          <th className="pb-3">Trạng thái</th>
+                          <th className="pb-3">Thanh toán</th>
+                          <th className="pb-3">Trạng thái cọc</th>
                           <th className="pb-3 text-right">Xử lý cọc</th>
                         </tr>
                       </thead>
@@ -1064,15 +1151,72 @@ export const OperationalModuleWorkspace: React.FC<
                             <td className="py-3 font-mono font-bold">
                               {d.id.slice(0, 8).toUpperCase()}
                             </td>
-                            <td className="py-3 font-bold tabular-nums text-emerald-600">
+                            <td className="py-3">
+                              <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                                {d.depositType === 'BOOKING'
+                                  ? 'Cọc giữ phòng'
+                                  : d.depositType === 'ADVANCE_RENT'
+                                  ? 'Tiền trả trước'
+                                  : 'Cọc hợp đồng'}
+                              </span>
+                            </td>
+                            <td className="py-3 font-bold tabular-nums text-slate-900 dark:text-white">
                               {d.amountVnd.toLocaleString('vi-VN')} đ
+                            </td>
+                            <td className="py-3 font-bold tabular-nums text-emerald-600">
+                              {(d.paidAmountVnd ?? (d.paymentStatus === 'PAID' ? d.amountVnd : 0)).toLocaleString('vi-VN')} đ
                             </td>
                             <td className="py-3 tabular-nums text-slate-500">
                               {d.refundedVnd.toLocaleString('vi-VN')} đ
                             </td>
                             <td className="py-3">
-                              <span className="px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                                {d.status}
+                              <span
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                  d.paymentStatus === 'PAID'
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
+                                    : d.paymentStatus === 'PARTIALLY_PAID'
+                                    ? 'bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800'
+                                    : d.paymentStatus === 'TRANSFERRED'
+                                    ? 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800'
+                                    : 'bg-slate-100 text-slate-600 border border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
+                                }`}
+                              >
+                                {d.paymentStatus === 'PAID'
+                                  ? 'Đã thu tiền'
+                                  : d.paymentStatus === 'PARTIALLY_PAID'
+                                  ? 'Thu 1 phần'
+                                  : d.paymentStatus === 'TRANSFERRED'
+                                  ? 'Đã chuyển HĐ'
+                                  : 'Chờ thu'}
+                              </span>
+                            </td>
+                            <td className="py-3">
+                              <span
+                                className={`px-2.5 py-0.5 rounded-full text-[10.5px] font-bold ${
+                                  d.status === 'HELD'
+                                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                                    : d.status === 'APPLIED_TO_CONTRACT'
+                                    ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300'
+                                    : d.status === 'PARTIALLY_REFUNDED'
+                                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                                    : d.status === 'REFUNDED'
+                                    ? 'bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300'
+                                    : d.status === 'FORFEITED'
+                                    ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                                    : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                                }`}
+                              >
+                                {d.status === 'HELD'
+                                  ? 'Đang giữ cọc'
+                                  : d.status === 'APPLIED_TO_CONTRACT'
+                                  ? 'Đã chuyển sang HĐ'
+                                  : d.status === 'PARTIALLY_REFUNDED'
+                                  ? 'Đã hoàn 1 phần'
+                                  : d.status === 'REFUNDED'
+                                  ? 'Đã hoàn cọc'
+                                  : d.status === 'FORFEITED'
+                                  ? 'Đã phạt/tịch thu'
+                                  : d.status}
                               </span>
                             </td>
                             <td className="py-3 text-right">
@@ -1096,7 +1240,7 @@ export const OperationalModuleWorkspace: React.FC<
                                   }}
                                   className="px-2.5 py-1 text-[11px] font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-lg"
                                 >
-                                  Hoàn / Khấu trừ cọc
+                                  Hoàn / Khấu trừ
                                 </button>
                               ) : (
                                 <span className="text-[11px] text-slate-400">
@@ -1131,42 +1275,78 @@ export const OperationalModuleWorkspace: React.FC<
                 </div>
               ) : (
                 <>
+                  {/* CONTRACTS STATUS FILTER BAR */}
+                  <div className="flex items-center gap-1.5 pb-3 border-b border-slate-100 dark:border-slate-800 mb-4 overflow-x-auto">
+                    {[
+                      { id: 'ALL', label: 'Tất cả' },
+                      { id: 'ACTIVE', label: 'Đang hiệu lực' },
+                      { id: 'DRAFT', label: 'Chờ bàn giao' },
+                      { id: 'EXPIRING', label: 'Sắp hết hạn' },
+                      { id: 'TERMINATED', label: 'Đã thanh lý' },
+                    ].map((tab) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setContractStatusFilter(tab.id as any)}
+                        className={`px-3 py-1 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap ${
+                          contractStatusFilter === tab.id
+                            ? 'bg-brand-primary text-white shadow-sm'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+
                   {/* Mobile Contracts Cards */}
                   <div className="block md:hidden space-y-3">
-                    {contracts.map((c) => (
+                    {displayedContracts.map((c) => (
                       <div
                         key={c.id}
                         data-testid={`contract-mobile-card-${c.contractCode}`}
                         className="p-3.5 rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900/60 space-y-2.5 text-xs shadow-sm"
                       >
                         <div className="flex items-center justify-between">
-                          <span className="font-mono font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                            <FileSignature className="w-3.5 h-3.5 text-brand-primary" />
-                            {c.contractCode}
-                          </span>
+                          <div className="font-bold text-slate-900 dark:text-white text-xs flex items-center gap-1.5">
+                            <Building2 className="w-3.5 h-3.5 text-brand-primary" />
+                            {c.buildingCode} · {c.roomCode}
+                          </div>
                           <span
                             className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                               c.status === 'ACTIVE' || c.status === 'EXTENDED'
-                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                                : c.status === 'DRAFT'
+                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                                : c.status === 'EXPIRING'
+                                ? 'bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300'
                                 : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
                             }`}
                           >
-                            {c.status}
+                            {c.status === 'ACTIVE' || c.status === 'EXTENDED'
+                              ? 'Đang hiệu lực'
+                              : c.status === 'DRAFT'
+                              ? 'Chờ bàn giao'
+                              : c.status === 'EXPIRING'
+                              ? 'Sắp hết hạn'
+                              : 'Đã thanh lý'}
                           </span>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600 dark:text-slate-300">
+                        <div className="text-[11px] font-mono text-slate-500 flex items-center gap-1">
+                          <FileSignature className="w-3 h-3 text-slate-400" />
+                          {c.contractCode}
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600 dark:text-slate-300 bg-slate-50/60 dark:bg-slate-800/40 p-2.5 rounded-lg">
                           <div>
-                            Tòa &amp; Phòng: <b className="text-slate-900 dark:text-white">{c.buildingCode} · {c.roomCode}</b>
+                            Khách: <b className="text-slate-900 dark:text-white">{c.tenantName}</b>
                           </div>
                           <div>
-                            Khách thuê: <b className="text-slate-900 dark:text-white">{c.tenantName}</b>
+                            Giá thuê: <b className="tabular-nums text-slate-900 dark:text-white">{c.monthlyRentVnd.toLocaleString('vi-VN')} đ</b>
                           </div>
-                          <div>
+                          <div className="col-span-2">
                             Thời hạn: <span className="font-mono">{c.startDate} → {c.endDate}</span>
-                          </div>
-                          <div>
-                            Giá thuê: <b className="tabular-nums text-slate-900 dark:text-white">{c.monthlyRentVnd.toLocaleString('vi-VN')} đ/th</b>
                           </div>
                         </div>
 
@@ -1174,129 +1354,31 @@ export const OperationalModuleWorkspace: React.FC<
                           <span className="text-slate-500">
                             Cọc: {c.depositVnd.toLocaleString('vi-VN')} đ
                           </span>
-                          {c.status === 'ACTIVE' || c.status === 'EXTENDED' || c.status === 'EXPIRING' ? (
-                            <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-1">
+                            {c.status === 'DRAFT' && (
                               <button
                                 type="button"
                                 onClick={() => {
-                                  setSelectedContract(c);
-                                  setExtNewEndDate(computeEndDateIsoVn(c.endDate, 6));
-                                  setExtNewRentVnd(c.monthlyRentVnd);
-                                  setExtNotes('');
-                                  setLifecycleError(null);
-                                  setIsExtendModalOpen(true);
+                                  setSelectedHandoverContract(c);
+                                  setHandoverKwh('');
+                                  setHandoverWaterM3('');
+                                  setHandoverMoveInDate(getTodayIsoVn());
+                                  setHandoverError(null);
+                                  setIsHandoverModalOpen(true);
                                 }}
-                                className="px-2 py-1 text-[10.5px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded"
+                                data-testid="btn-open-handover-mobile"
+                                className="px-2.5 py-1 text-[11px] font-bold bg-emerald-600 text-white rounded hover:bg-emerald-700 shadow-sm"
                               >
-                                Gia hạn
+                                Bàn giao
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedContract(c);
-                                  setTransferTargetRoomId('');
-                                  setTransferNewRentVnd(c.monthlyRentVnd);
-                                  setLifecycleError(null);
-                                  setIsTransferModalOpen(true);
-                                }}
-                                className="px-2 py-1 text-[10.5px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded"
-                              >
-                                Đổi phòng
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedContract(c);
-                                  setTermReason('Hết hạn hợp đồng');
-                                  setTermRoomNextStatus('AVAILABLE');
-                                  setLifecycleError(null);
-                                  setIsTerminateModalOpen(true);
-                                }}
-                                className="px-2 py-1 text-[10.5px] font-semibold bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 text-rose-600 dark:text-rose-300 rounded"
-                              >
-                                Thanh lý
-                              </button>
-                            </div>
-                          ) : (
-                            <span className="text-slate-400">Đã kết thúc</span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Desktop Contracts Table */}
-                  <div className="hidden md:block overflow-x-auto">
-                    <table
-                      data-testid="contracts-table"
-                      className="w-full text-left text-xs"
-                    >
-                    <thead>
-                      <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 font-semibold">
-                        <th className="pb-3">Mã hợp đồng</th>
-                        <th className="pb-3">Tòa &amp; Phòng</th>
-                        <th className="pb-3">Khách đứng tên</th>
-                        <th className="pb-3">Thời hạn</th>
-                        <th className="pb-3">Giá thuê / Cọc</th>
-                        <th className="pb-3">Điện &amp; Nước</th>
-                        <th className="pb-3">Trạng thái</th>
-                        <th className="pb-3 text-right">Thao tác</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                      {contracts.map((c) => (
-                        <tr key={c.id}>
-                          <td className="py-3 font-mono font-bold text-slate-900 dark:text-white">
-                            {c.contractCode}
-                          </td>
-                          <td className="py-3 font-semibold">
-                            {c.buildingCode} · {c.roomCode}
-                          </td>
-                          <td className="py-3">
-                            <div className="font-bold">{c.tenantName}</div>
-                            <div className="text-[11px] font-mono text-slate-500">
-                              {c.tenantPhone}
-                            </div>
-                          </td>
-                          <td className="py-3 font-mono text-[11px]">
-                            {c.startDate} → {c.endDate}
-                          </td>
-                          <td className="py-3 tabular-nums">
-                            <div className="font-bold">
-                              {c.monthlyRentVnd.toLocaleString('vi-VN')} đ/th
-                            </div>
-                            <div className="text-[11px] text-slate-500">
-                              Cọc: {c.depositVnd.toLocaleString('vi-VN')} đ
-                            </div>
-                          </td>
-                          <td className="py-3 text-[11px] text-slate-600 dark:text-slate-300">
-                            Điện: {c.electricRateVnd.toLocaleString('vi-VN')}đ ·
-                            Nước: {c.waterRateVnd.toLocaleString('vi-VN')}đ (
-                            {c.waterBillingMethod})
-                          </td>
-                          <td className="py-3">
-                            <span
-                              className={`px-2 py-0.5 rounded-full text-[10.5px] font-bold ${
-                                c.status === 'ACTIVE' || c.status === 'EXTENDED'
-                                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
-                                  : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
-                              }`}
-                            >
-                              {c.status}
-                            </span>
-                          </td>
-                          <td className="py-3 text-right">
-                            {c.status === 'ACTIVE' ||
-                            c.status === 'EXTENDED' ||
-                            c.status === 'EXPIRING' ? (
-                              <div className="inline-flex items-center gap-1">
+                            )}
+                            {c.status === 'ACTIVE' || c.status === 'EXTENDED' || c.status === 'EXPIRING' ? (
+                              <>
                                 <button
                                   type="button"
                                   onClick={() => {
                                     setSelectedContract(c);
-                                    setExtNewEndDate(
-                                      computeEndDateIsoVn(c.endDate, 6)
-                                    );
+                                    setExtNewEndDate(computeEndDateIsoVn(c.endDate, 6));
                                     setExtNewRentVnd(c.monthlyRentVnd);
                                     setExtNotes('');
                                     setLifecycleError(null);
@@ -1332,12 +1414,152 @@ export const OperationalModuleWorkspace: React.FC<
                                 >
                                   Thanh lý
                                 </button>
-                              </div>
-                            ) : (
-                              <span className="text-[11px] text-slate-400">
-                                Đã kết thúc
-                              </span>
-                            )}
+                              </>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Desktop Contracts Table */}
+                  <div className="hidden md:block overflow-x-auto">
+                    <table
+                      data-testid="contracts-table"
+                      className="w-full text-left text-xs"
+                    >
+                    <thead>
+                      <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 font-semibold">
+                        <th className="pb-3">Mã hợp đồng</th>
+                        <th className="pb-3">Tòa & Phòng</th>
+                        <th className="pb-3">Khách đứng tên</th>
+                        <th className="pb-3">Thời hạn</th>
+                        <th className="pb-3">Giá thuê / Cọc</th>
+                        <th className="pb-3">Điện & Nước</th>
+                        <th className="pb-3">Trạng thái</th>
+                        <th className="pb-3 text-right">Thao tác</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {displayedContracts.map((c) => (
+                        <tr key={c.id}>
+                          <td className="py-3 font-mono font-bold text-slate-900 dark:text-white">
+                            {c.contractCode}
+                          </td>
+                          <td className="py-3 font-semibold">
+                            {c.buildingCode} · {c.roomCode}
+                          </td>
+                          <td className="py-3">
+                            <div className="font-bold">{c.tenantName}</div>
+                            <div className="text-[11px] font-mono text-slate-500">
+                              {c.tenantPhone}
+                            </div>
+                          </td>
+                          <td className="py-3 font-mono text-[11px]">
+                            {c.startDate} → {c.endDate}
+                          </td>
+                          <td className="py-3 tabular-nums">
+                            <div className="font-bold">
+                              {c.monthlyRentVnd.toLocaleString('vi-VN')} đ/th
+                            </div>
+                            <div className="text-[11px] text-slate-500">
+                              Cọc: {c.depositVnd.toLocaleString('vi-VN')} đ
+                            </div>
+                          </td>
+                          <td className="py-3 text-[11px] text-slate-600 dark:text-slate-300">
+                            Điện: {c.electricRateVnd.toLocaleString('vi-VN')}đ ·
+                            Nước: {c.waterRateVnd.toLocaleString('vi-VN')}đ (
+                            {c.waterBillingMethod})
+                          </td>
+                          <td className="py-3">
+                            <span
+                              className={`px-2.5 py-0.5 rounded-full text-[10.5px] font-bold ${
+                                c.status === 'ACTIVE' || c.status === 'EXTENDED'
+                                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                                  : c.status === 'DRAFT'
+                                  ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                                  : c.status === 'EXPIRING'
+                                  ? 'bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300'
+                                  : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                              }`}
+                            >
+                              {c.status === 'ACTIVE' || c.status === 'EXTENDED'
+                                ? 'Đang hiệu lực'
+                                : c.status === 'DRAFT'
+                                ? 'Chờ bàn giao'
+                                : c.status === 'EXPIRING'
+                                ? 'Sắp hết hạn'
+                                : 'Đã thanh lý'}
+                            </span>
+                          </td>
+                          <td className="py-3 text-right">
+                            <div className="inline-flex items-center gap-1">
+                              {c.status === 'DRAFT' && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedHandoverContract(c);
+                                    setHandoverKwh('');
+                                    setHandoverWaterM3('');
+                                    setHandoverMoveInDate(getTodayIsoVn());
+                                    setHandoverError(null);
+                                    setIsHandoverModalOpen(true);
+                                  }}
+                                  data-testid="btn-open-handover"
+                                  className="px-2.5 py-1 text-[11px] font-bold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 shadow-sm"
+                                >
+                                  Bàn giao phòng
+                                </button>
+                              )}
+                              {c.status === 'ACTIVE' ||
+                              c.status === 'EXTENDED' ||
+                              c.status === 'EXPIRING' ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedContract(c);
+                                      setExtNewEndDate(
+                                        computeEndDateIsoVn(c.endDate, 6)
+                                      );
+                                      setExtNewRentVnd(c.monthlyRentVnd);
+                                      setExtNotes('');
+                                      setLifecycleError(null);
+                                      setIsExtendModalOpen(true);
+                                    }}
+                                    className="px-2 py-1 text-[10.5px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded"
+                                  >
+                                    Gia hạn
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedContract(c);
+                                      setTransferTargetRoomId('');
+                                      setTransferNewRentVnd(c.monthlyRentVnd);
+                                      setLifecycleError(null);
+                                      setIsTransferModalOpen(true);
+                                    }}
+                                    className="px-2 py-1 text-[10.5px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded"
+                                  >
+                                    Đổi phòng
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedContract(c);
+                                      setTermReason('Hết hạn hợp đồng');
+                                      setTermRoomNextStatus('AVAILABLE');
+                                      setLifecycleError(null);
+                                      setIsTerminateModalOpen(true);
+                                    }}
+                                    className="px-2 py-1 text-[10.5px] font-semibold bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 text-rose-600 dark:text-rose-300 rounded"
+                                  >
+                                    Thanh lý
+                                  </button>
+                                </>
+                              ) : null}
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -2302,7 +2524,101 @@ export const OperationalModuleWorkspace: React.FC<
         </div>
       )}
 
-      {/* MODAL 6: TERMINATE CONTRACT */}
+      {/* MODAL 6: HANDOVER ROOM MODAL */}
+      {isHandoverModalOpen && selectedHandoverContract && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div data-testid="contract-handover-modal" className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <h3 className="text-sm font-bold text-emerald-600 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4" />
+                Bàn giao phòng &amp; Kích hoạt hợp đồng
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsHandoverModalOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleHandoverSubmit} className="p-5 space-y-4 text-xs">
+              {handoverError && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs">
+                  {handoverError}
+                </div>
+              )}
+
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 space-y-1">
+                <div>Hợp đồng: <b className="font-mono">{selectedHandoverContract.contractCode}</b></div>
+                <div>Phòng: <b>{selectedHandoverContract.buildingCode} · {selectedHandoverContract.roomCode}</b></div>
+                <div>Khách thuê: <b>{selectedHandoverContract.tenantName}</b> ({selectedHandoverContract.tenantPhone})</div>
+              </div>
+
+              <div>
+                <label className="block text-slate-600 dark:text-slate-300 font-semibold mb-1">
+                  Chỉ số công tơ điện ban đầu (kWh) *
+                </label>
+                <input
+                  type="number"
+                  step="0.1"
+                  required
+                  value={handoverKwh}
+                  onChange={(e) => setHandoverKwh(e.target.value === '' ? '' : Number(e.target.value))}
+                  placeholder="Ví dụ: 105.5"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-mono font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-600 dark:text-slate-300 font-semibold mb-1">
+                  Chỉ số đồng hồ nước ban đầu (m³) (Tùy chọn)
+                </label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={handoverWaterM3}
+                  onChange={(e) => setHandoverWaterM3(e.target.value === '' ? '' : Number(e.target.value))}
+                  placeholder="Ví dụ: 12.0"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-mono font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-600 dark:text-slate-300 font-semibold mb-1">
+                  Ngày nhận phòng thực tế *
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={handoverMoveInDate}
+                  onChange={(e) => setHandoverMoveInDate(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsHandoverModalOpen(false)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 rounded-xl"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingHandover}
+                  className="px-4 py-2 text-xs font-bold bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  {isSavingHandover ? 'Đang kích hoạt...' : 'Xác nhận bàn giao & Kích hoạt'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 5: TERMINATE CONTRACT */}
       {isTerminateModalOpen && selectedContract && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
           <div className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">

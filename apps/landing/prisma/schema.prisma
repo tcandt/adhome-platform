@@ -269,6 +269,7 @@ model Deposit {
   /// BOOKING | CONTRACT
   depositType            String    @default("BOOKING") @map("deposit_type")
   amountVnd              BigInt    @map("amount_vnd")
+  paidAmountVnd          BigInt    @default(0) @map("paid_amount_vnd")
   refundedVnd            BigInt    @default(0) @map("refunded_vnd")
   /// PENDING | PARTIALLY_PAID | PAID | TRANSFERRED | REFUNDED | FORFEITED
   paymentStatus          String    @default("PENDING") @map("payment_status")

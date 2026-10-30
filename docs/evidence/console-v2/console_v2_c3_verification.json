@@ -1,5 +1,5 @@
 {
-  "evaluatedAt": "2026-10-30T15:08:29.849Z",
+  "evaluatedAt": "2026-10-30T16:26:55.824Z",
   "verdict": "LOCAL_GATE_PASSED",
   "reportingTier": "LOCAL_GATE_PASSED",
   "checks": {
@@ -28,12 +28,68 @@
       "errorCode409": "ROOM_ALREADY_HAS_CONTRACT",
       "activeContractsInDb": 1
     },
+    "softDeleteRoomOccupants": {
+      "pass": true,
+      "status": 200,
+      "isActive": false,
+      "moveOutDate": "2026-11-01",
+      "auditAction": "DEACTIVATE_OCCUPANT"
+    },
+    "directContractDepositProof": {
+      "pass": true,
+      "status": 201,
+      "contractStatus": "DRAFT",
+      "roomOccupancy": "RESERVED",
+      "depositPaymentStatus": "PENDING",
+      "depositPaidAmountVnd": 0,
+      "incomeLedgerEntries": 0
+    },
+    "paymentConfirmationIdempotency": {
+      "pass": true,
+      "statusCall1": 200,
+      "statusCall2": 200,
+      "incomeLedgerEntries": 1,
+      "depositRowsInDb": 1
+    },
+    "strictCancellationAllocation": {
+      "pass": true,
+      "unbalancedBlocked": true,
+      "unbalancedStatusCode": 422,
+      "unbalancedErrorCode": "INVALID_CANCELLATION_ALLOCATION",
+      "balancedStatusCode": 200,
+      "refundExpenseRecorded": true
+    },
+    "multiTenantIsolationCheck": {
+      "pass": true,
+      "status": 404,
+      "errorCode": "TENANT_NOT_FOUND"
+    },
+    "accurateContractDepositTracking": {
+      "pass": true,
+      "shortageMath": {
+        "pass": true,
+        "contractStatus": "DRAFT",
+        "roomStatus": "RESERVED",
+        "contractDepositAmountVnd": 5000000,
+        "contractDepositPaidAmountVnd": 2000000,
+        "contractDepositPaymentStatus": "PARTIALLY_PAID",
+        "firstInvoiceTotalVnd": 8000000
+      },
+      "surplusMath": {
+        "pass": true,
+        "firstInvoiceTotalVnd": 0,
+        "advanceRentAmountVnd": 2000000,
+        "advanceRentPaymentStatus": "PAID"
+      }
+    },
     "c3aLifecycleStateMachines": {
       "pass": true,
       "tenantDecoupled": true,
       "roomOccupants": true,
+      "occupantSoftDeleted": true,
+      "directContractProof": true,
       "unpaidHoldZeroLedger": true,
-      "confirmPaymentLedger": true,
+      "confirmPaymentLedgerIdempotent": true,
       "cancellationInvariant": true,
       "conversionShortageMath": true,
       "conversionSurplusMath": true,
@@ -55,45 +111,51 @@
     },
     "evidenceScreenshotsValid": {
       "pass": true,
-      "totalScreenshots": 5,
-      "distinctScreenshots": 5,
+      "totalScreenshots": 6,
+      "distinctScreenshots": 6,
       "allDistinct": true,
       "allSufficientSize": true,
       "hashes": [
         {
           "filename": "console_v2_1440_contracts_workspace.png",
-          "sizeBytes": 281946,
-          "sha256": "bbc6f634ce0b88c24a6256d4cd98ada8e0c938d1235fee4585c56acc4dcc97a9"
+          "sizeBytes": 328475,
+          "sha256": "378c0d5302d5765575f360765eac752b2f8a839a3832a7ebf071b4a8ebe411db"
         },
         {
-          "filename": "console_v2_1440_deposits_workspace.png",
-          "sizeBytes": 327496,
-          "sha256": "75b0b56aea23b5e0e35b103c5102c6f1821f5ec6f625ff301925cf7c1c25e70f"
-        },
-        {
-          "filename": "console_v2_1440_settlements_hunonic.png",
-          "sizeBytes": 427096,
-          "sha256": "cc74ffd6e0e2b64862ce4bc2e14e6dd7b182d3681165568350d2b0930cb5839d"
+          "filename": "console_v2_1440_contract_handover_modal.png",
+          "sizeBytes": 492245,
+          "sha256": "e863e5a610d6638ff166414fc75df45741c977164d44b47427849f0b3b986f82"
         },
         {
           "filename": "console_v2_1440_contract_modal_dynamic_dates.png",
-          "sizeBytes": 427207,
-          "sha256": "370b3fe43f4db501be026b876a2daa59ccb38b6ac2292e91f0f47944dc29157a"
+          "sizeBytes": 450115,
+          "sha256": "1f6358050ab5960fd3d021ec1bbc185dd05fe4da016ccc539c420f85303d3945"
+        },
+        {
+          "filename": "console_v2_1440_deposits_workspace.png",
+          "sizeBytes": 399231,
+          "sha256": "c5cc32d00a7474b54a6ea7e38be7f557c7ecc3e1280a4bc8252ae6c7fb2fd22b"
+        },
+        {
+          "filename": "console_v2_1440_settlements_hunonic.png",
+          "sizeBytes": 425843,
+          "sha256": "2527f6f4b2045eb68583cf505784b22292d029da2d4dec61569c74af683bf317"
         },
         {
           "filename": "console_v2_390x844_contracts_mobile.png",
-          "sizeBytes": 155872,
-          "sha256": "cfb26a30ce56529355405c7dde51db3b54a343ea2031158956c07edcade2cc55"
+          "sizeBytes": 147025,
+          "sha256": "4898e33277fdba8cb7d2331a87dd284b360519404a04e219f79b10f208089147"
         }
       ]
     }
   },
   "evidenceFiles": [
     "console_v2_1440_contracts_workspace.png",
+    "console_v2_1440_contract_handover_modal.png",
+    "console_v2_1440_contract_modal_dynamic_dates.png",
     "console_v2_1440_deposits_workspace.png",
     "console_v2_1440_settlements_hunonic.png",
-    "console_v2_1440_contract_modal_dynamic_dates.png",
     "console_v2_390x844_contracts_mobile.png"
   ],
-  "finishedAt": "2026-10-30T15:08:41.685Z"
+  "finishedAt": "2026-10-30T16:27:09.970Z"
 }

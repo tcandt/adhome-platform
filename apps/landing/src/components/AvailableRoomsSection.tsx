@@ -123,7 +123,7 @@ export const AvailableRoomsSection: React.FC<AvailableRoomsSectionProps> = ({
         {/* Content: Loading / API Error (No Seed Fallback!) / 3-Column Grid */}
         {isLoading ? (
           <div className="mt-2.5 sm:mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
-            {[1, 2, 3].map((n) => (
+            {[1, 2, 3, 4, 5, 6].map((n) => (
               <div
                 key={n}
                 className="bg-canvas-pure rounded-card border border-line overflow-hidden animate-pulse"

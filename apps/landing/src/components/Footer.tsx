@@ -123,7 +123,7 @@ export const Footer: React.FC<FooterProps> = ({
                 Liên hệ tư vấn thuê phòng
               </button>
               <a
-                href="https://console-adhome.ductinh.one"
+                href="https://console.adhome.vn/login"
                 target="_blank"
                 rel="noreferrer"
                 className="px-3.5 py-2.5 rounded-lg text-xs font-medium text-white/85 hover:text-white border border-white/25 inline-flex items-center gap-1.5 min-h-[40px]"
@@ -137,7 +137,7 @@ export const Footer: React.FC<FooterProps> = ({
 
         <div className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-white/70">
           <p>
-            © {new Date().getFullYear()} AdHome (adhome.ductinh.one) — Khu đô
+            © {new Date().getFullYear()} AdHome (adhome.vn) — Khu đô
             thị Ân Phú, Phường Tân An, Đắk Lắk.
           </p>
           <p>Một số hình ảnh trên trang là ảnh minh họa không gian mẫu.</p>

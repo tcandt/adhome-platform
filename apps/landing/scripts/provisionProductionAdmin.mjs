@@ -42,7 +42,7 @@ const prisma = new PrismaClient({
 });
 
 export const PROD_ADMIN_ID = 'usr-admin-prod';
-export const DEFAULT_PROD_ADMIN_EMAIL = 'admin@adhome.ductinh.one';
+export const DEFAULT_PROD_ADMIN_EMAIL = 'admin@adhome.vn';
 export const DEV_SAMPLE_ACTOR_IDS = [
   'usr-admin-01',
   'usr-mgr-lk01',
@@ -51,9 +51,29 @@ export const DEV_SAMPLE_ACTOR_IDS = [
 ];
 
 const PROD_ADMIN_PROFILE = {
+  displayName: 'Quản trị viên Hệ thống',
   orgId: 'org-adhome-anphu',
   role: 'ADMIN',
-  permissions: ['rooms.publish.write', 'rooms.read', 'leads.read', 'system.admin'],
+  permissions: [
+    'overview.read',
+    'buildings.manage',
+    'rooms.read',
+    'rooms.manage',
+    'rooms.publish.write',
+    'tenants.manage',
+    'deposits.manage',
+    'deposits.refund',
+    'contracts.manage',
+    'settlements.manage',
+    'invoices.manage',
+    'payments.manage',
+    'finance.read',
+    'reports.read',
+    'settings.manage',
+    'accounts.manage',
+    'leads.read',
+    'system.admin',
+  ],
   buildingScopes: ['*'],
 };
 
@@ -68,6 +88,22 @@ export async function provisionProductionAdmin({
 } = {}) {
   if (forceActivate && deactivate) {
     throw new Error('--force-activate and --deactivate are mutually exclusive.');
+  }
+
+  // Isolate legacy dev sample actor emails to @adhome.internal so official @adhome.vn emails never collide
+  const sampleEmailMap = [
+    { id: 'usr-admin-01', email: 'dev.sample.admin@adhome.internal' },
+    { id: 'usr-mgr-lk01', email: 'dev.sample.mgr.lk01@adhome.internal' },
+    { id: 'usr-viewer-01', email: 'dev.sample.viewer@adhome.internal' },
+    { id: 'usr-other-org-01', email: 'dev.sample.otherorg@adhome.internal' },
+  ];
+  for (const s of sampleEmailMap) {
+    await prisma.consoleActor
+      .updateMany({
+        where: { id: s.id },
+        data: { email: s.email, isActive: false },
+      })
+      .catch(() => {});
   }
 
   let passwordHash = null;

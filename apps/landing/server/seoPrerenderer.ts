@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { RoomListing } from '../src/types/room';
 
-const SITE_ORIGIN = 'https://adhome.ductinh.one';
+const SITE_ORIGIN = 'https://adhome.vn';
 
 function escapeHtml(str: string): string {
   return String(str)
@@ -38,7 +38,7 @@ function getBaseHtmlTemplate(rootDir: string = process.cwd()): string {
       return fs.readFileSync(c, 'utf-8');
     }
   }
-  return `<!doctype html><html lang="vi"><head><meta charset="UTF-8" /><title>AdHome</title><meta name="description" content="" /><link rel="canonical" href="https://adhome.ductinh.one/" /><meta property="og:url" content="https://adhome.ductinh.one/" /><meta property="og:title" content="" /><meta property="og:description" content="" /><meta property="og:image" content="" /></head><body><div id="root"></div></body></html>`;
+  return `<!doctype html><html lang="vi"><head><meta charset="UTF-8" /><title>AdHome</title><meta name="description" content="" /><link rel="canonical" href="https://adhome.vn/" /><meta property="og:url" content="https://adhome.vn/" /><meta property="og:title" content="" /><meta property="og:description" content="" /><meta property="og:image" content="" /></head><body><div id="root"></div></body></html>`;
 }
 
 function injectRouteMeta(baseHtml: string, meta: RouteMetaPayload): string {

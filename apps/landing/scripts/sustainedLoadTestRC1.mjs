@@ -614,7 +614,7 @@ export async function runSustainedLoadTestSuite() {
   console.log(
     `============================================================\n` +
       `   ADHOME RC1 SUSTAINED LOAD TESTING ON POSTGRESQL 18     \n` +
-      `   Target: ${BASE_URL} (Canonical: https://adhome.ductinh.one)\n` +
+      `   Target: ${BASE_URL} (Canonical: https://adhome.vn)\n` +
       `============================================================`
   );
 
@@ -667,7 +667,7 @@ export async function runSustainedLoadTestSuite() {
     testName: 'ADHOME Landing RC1 Sustained Load Test',
     timestamp: new Date().toISOString(),
     baseUrl: BASE_URL,
-    canonicalDomain: 'https://adhome.ductinh.one',
+    canonicalDomain: 'https://adhome.vn',
     databaseEngine: 'PostgreSQL 18.0.4 (x64 Windows)',
     runtime: `Node ${process.version}`,
     operatingSystem: `${os.type()} ${os.release()} (${os.arch()})`,

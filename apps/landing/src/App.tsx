@@ -188,6 +188,7 @@ export function App() {
             {/* 3. Coming Soon Rooms (Compact 2-Column Horizontal Layout) */}
             <ComingSoonSection
               rooms={comingSoonRooms}
+              isLoading={isLoading}
               sourceVerified={sourceVerified && dataMode === 'LIVE'}
               onSelectRoom={(room) => setQuickViewRoom(room)}
               onNotifyRoom={(room) => handleOpenInquiry(room)}

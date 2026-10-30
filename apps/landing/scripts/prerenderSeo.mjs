@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { PrismaClient } from '@prisma/client';
 
-const SITE_ORIGIN = 'https://adhome.ductinh.one';
+const SITE_ORIGIN = 'https://adhome.vn';
 const ROOT_DIR = process.cwd();
 const DIST_DIR = path.join(ROOT_DIR, 'dist');
 const PUBLIC_DIR = path.join(ROOT_DIR, 'public');

@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Search, X, Building, Home, User, FileText, ArrowRight } from 'lucide-react';
 import { useNavigation } from '@/app/providers/NavigationContext';
 import { usePortfolio } from '@/app/providers/PortfolioContext';
+import { useAuth } from '@/app/providers/AuthContext';
 import { EXPIRING_CONTRACTS_MOCK } from '@/shared/data/businessMetrics';
 
 export const GlobalSearchModal: React.FC = () => {
   const { isSearchOpen, setIsSearchOpen, setActiveModule } = useNavigation();
   const { buildings, rooms } = usePortfolio();
+  const { isBuildingAllowed } = useAuth();
   const [query, setQuery] = useState('');
 
   useEffect(() => {
@@ -39,9 +41,10 @@ export const GlobalSearchModal: React.FC = () => {
   );
 
   const filteredContracts = EXPIRING_CONTRACTS_MOCK.filter(c =>
-    c.contractCode.toLowerCase().includes(normalized) ||
-    c.tenantName.toLowerCase().includes(normalized) ||
-    c.roomCode.toLowerCase().includes(normalized)
+    isBuildingAllowed(c.buildingCode) &&
+    (c.contractCode.toLowerCase().includes(normalized) ||
+      c.tenantName.toLowerCase().includes(normalized) ||
+      c.roomCode.toLowerCase().includes(normalized))
   );
 
   return (

@@ -8,9 +8,77 @@ loadAdhomeEnv();
 export type ConsoleRole = 'ADMIN' | 'MANAGER' | 'VIEWER';
 
 export type ConsolePermission =
-  | 'rooms.publish.write'
+  | 'overview.read'
+  | 'buildings.manage'
   | 'rooms.read'
-  | 'leads.read';
+  | 'rooms.manage'
+  | 'rooms.publish.write'
+  | 'tenants.manage'
+  | 'deposits.manage'
+  | 'deposits.refund'
+  | 'contracts.manage'
+  | 'settlements.manage'
+  | 'invoices.manage'
+  | 'payments.manage'
+  | 'finance.read'
+  | 'reports.read'
+  | 'settings.manage'
+  | 'accounts.manage'
+  | 'leads.read'
+  | 'system.admin';
+
+export const ALL_CONSOLE_PERMISSIONS: readonly ConsolePermission[] = [
+  'overview.read',
+  'buildings.manage',
+  'rooms.read',
+  'rooms.manage',
+  'rooms.publish.write',
+  'tenants.manage',
+  'deposits.manage',
+  'deposits.refund',
+  'contracts.manage',
+  'settlements.manage',
+  'invoices.manage',
+  'payments.manage',
+  'finance.read',
+  'reports.read',
+  'settings.manage',
+  'accounts.manage',
+  'leads.read',
+  'system.admin',
+] as const;
+
+export const DEFAULT_MANAGER_PERMISSIONS: readonly ConsolePermission[] = [
+  'overview.read',
+  'rooms.read',
+  'rooms.manage',
+  'rooms.publish.write',
+  'tenants.manage',
+  'deposits.manage',
+  'contracts.manage',
+  'settlements.manage',
+  'invoices.manage',
+  'payments.manage',
+  'reports.read',
+  'leads.read',
+] as const;
+
+export interface ConsoleCapabilities {
+  canViewOverview: boolean;
+  canManageBuildings: boolean;
+  canManageRooms: boolean;
+  canManageTenants: boolean;
+  canManageContracts: boolean;
+  canManageDeposits: boolean;
+  canRefundDeposits: boolean;
+  canManageSettlements: boolean;
+  canManageInvoices: boolean;
+  canManagePayments: boolean;
+  canAccessFinance: boolean;
+  canViewReports: boolean;
+  canManageSettings: boolean;
+  canManageRoles: boolean;
+}
 
 export interface ConsoleTokenClaims {
   jti?: string;
@@ -26,19 +94,112 @@ export interface ConsoleTokenClaims {
 }
 
 export interface AuthoritativeConsoleActor {
+  id: string;
   sub: string;
   email: string;
+  displayName: string | null;
   orgId: string;
   role: ConsoleRole;
   permissions: ConsolePermission[];
   buildingScopes: string[];
+  capabilities: ConsoleCapabilities;
   sessionVersion: number;
   jti: string;
   kid: string;
 }
 
+export const CONSOLE_SESSION_COOKIE_NAME = 'adhome_console_session';
+export const CONSOLE_CSRF_HEADER_VALUE = 'AdHome-Console';
+
 export const ACTIVE_KEY_ID = 'k4-2026-10';
 export const PREVIOUS_KEY_ID = 'k3-2026-10';
+
+export function normalizeSingleBuildingScope(raw: string): string {
+  const trimmed = String(raw || '').trim();
+  if (!trimmed) return '';
+  if (trimmed === '*') return '*';
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith('bld-')) return lower;
+  if (/^lk\d{2}-\d{2}$/i.test(trimmed)) return `bld-${lower}`;
+  return lower;
+}
+
+export function normalizeBuildingScopes(rawScopes: unknown): string[] {
+  if (!Array.isArray(rawScopes)) return [];
+  const normalized = rawScopes
+    .map((item) => normalizeSingleBuildingScope(String(item ?? '')))
+    .filter(Boolean);
+  if (normalized.includes('*')) return ['*'];
+  return Array.from(new Set(normalized));
+}
+
+export function resolveConsoleCapabilities(
+  role: ConsoleRole,
+  permissions: readonly string[]
+): ConsoleCapabilities {
+  if (role === 'ADMIN') {
+    return {
+      canViewOverview: true,
+      canManageBuildings: true,
+      canManageRooms: true,
+      canManageTenants: true,
+      canManageContracts: true,
+      canManageDeposits: true,
+      canRefundDeposits: true,
+      canManageSettlements: true,
+      canManageInvoices: true,
+      canManagePayments: true,
+      canAccessFinance: true,
+      canViewReports: true,
+      canManageSettings: true,
+      canManageRoles: true,
+    };
+  }
+
+  const perms = new Set(permissions);
+  return {
+    canViewOverview: perms.has('overview.read') || perms.has('rooms.read'),
+    canManageBuildings: perms.has('buildings.manage'),
+    canManageRooms: perms.has('rooms.manage') || perms.has('rooms.publish.write'),
+    canManageTenants: perms.has('tenants.manage'),
+    canManageContracts: perms.has('contracts.manage'),
+    canManageDeposits: perms.has('deposits.manage'),
+    canRefundDeposits: perms.has('deposits.refund'),
+    canManageSettlements: perms.has('settlements.manage'),
+    canManageInvoices: perms.has('invoices.manage'),
+    canManagePayments: perms.has('payments.manage'),
+    canAccessFinance: perms.has('finance.read'),
+    canViewReports: perms.has('reports.read'),
+    canManageSettings: perms.has('settings.manage'),
+    canManageRoles: false, // Strictly ADMIN-only
+  };
+}
+
+export function isBuildingAllowedForActor(
+  actor: Pick<AuthoritativeConsoleActor, 'role' | 'buildingScopes'>,
+  buildingId?: string | null,
+  buildingCode?: string | null
+): boolean {
+  if (actor.role === 'ADMIN') return true;
+  const scopes = normalizeBuildingScopes(actor.buildingScopes);
+  if (scopes.length === 0) return false;
+  if (scopes.includes('*')) return true;
+
+  const candidateId = buildingId ? normalizeSingleBuildingScope(buildingId) : '';
+  const candidateCode = buildingCode ? normalizeSingleBuildingScope(buildingCode) : '';
+
+  if (candidateId && scopes.includes(candidateId)) return true;
+  if (candidateCode && scopes.includes(candidateCode)) return true;
+  return false;
+}
+
+export function actorHasPermission(
+  actor: Pick<AuthoritativeConsoleActor, 'role' | 'permissions'>,
+  permission: ConsolePermission
+): boolean {
+  if (actor.role === 'ADMIN') return true;
+  return Array.isArray(actor.permissions) && actor.permissions.includes(permission);
+}
 
 export function getConsoleSecretKeyring(): Record<string, string> {
   loadAdhomeEnv();
@@ -222,8 +383,9 @@ export function verifyConsoleToken(
 /**
  * Verifies token signature + expiration, checks token revocation (`RevokedToken`)
  * and session version (`ConsoleActor.sessionVersion`), and resolves `orgId`,
- * `role`, `permissions`, and `buildingScopes` strictly from PostgreSQL so
- * client-supplied self-declared claims in the token payload are NEVER trusted.
+ * `role`, `permissions`, `buildingScopes`, and `capabilities` strictly from
+ * PostgreSQL so client-supplied self-declared claims in the token payload are
+ * NEVER trusted.
  */
 export async function verifyAndResolveConsoleActor(
   token: string,
@@ -285,22 +447,28 @@ export async function verifyAndResolveConsoleActor(
     };
   }
 
+  const dbRole = dbActor.role as ConsoleRole;
   const dbPermissions = Array.isArray(dbActor.permissions)
     ? (dbActor.permissions as ConsolePermission[])
     : [];
-  const dbBuildingScopes = Array.isArray(dbActor.buildingScopes)
-    ? (dbActor.buildingScopes as string[])
-    : [];
+  const dbBuildingScopes =
+    dbRole === 'ADMIN'
+      ? ['*']
+      : normalizeBuildingScopes(dbActor.buildingScopes);
+  const capabilities = resolveConsoleCapabilities(dbRole, dbPermissions);
 
   return {
     ok: true,
     actor: {
+      id: dbActor.id,
       sub: dbActor.id,
       email: dbActor.email,
+      displayName: dbActor.displayName ?? null,
       orgId: dbActor.orgId,
-      role: dbActor.role as ConsoleRole,
+      role: dbRole,
       permissions: dbPermissions,
       buildingScopes: dbBuildingScopes,
+      capabilities,
       sessionVersion: dbActor.sessionVersion,
       jti,
       kid,
@@ -308,11 +476,89 @@ export async function verifyAndResolveConsoleActor(
   };
 }
 
+export function parseCookieHeader(cookieHeader: string | undefined): Record<string, string> {
+  if (!cookieHeader || typeof cookieHeader !== 'string') return {};
+  const out: Record<string, string> = {};
+  for (const part of cookieHeader.split(';')) {
+    const idx = part.indexOf('=');
+    if (idx <= 0) continue;
+    const key = part.slice(0, idx).trim();
+    const val = part.slice(idx + 1).trim();
+    if (key) {
+      try {
+        out[key] = decodeURIComponent(val);
+      } catch {
+        out[key] = val;
+      }
+    }
+  }
+  return out;
+}
+
 export function extractBearerToken(req: IncomingMessage): string | null {
   const authHeader = req.headers['authorization'];
   if (!authHeader || typeof authHeader !== 'string') return null;
   const match = /^Bearer\s+(.+)$/i.exec(authHeader.trim());
   return match ? match[1].trim() : null;
+}
+
+export function extractConsoleCredentials(req: IncomingMessage):
+  | { token: string; source: 'bearer' | 'cookie' }
+  | { token: null; csrfRejected?: boolean } {
+  const bearer = extractBearerToken(req);
+  if (bearer) {
+    return { token: bearer, source: 'bearer' };
+  }
+
+  const cookies = parseCookieHeader(req.headers['cookie']);
+  const cookieToken = cookies[CONSOLE_SESSION_COOKIE_NAME];
+  if (!cookieToken) {
+    return { token: null };
+  }
+
+  const method = (req.method || 'GET').toUpperCase();
+  const isMutation =
+    method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE';
+  if (isMutation) {
+    const csrfHeader = req.headers['x-requested-with'];
+    if (csrfHeader !== CONSOLE_CSRF_HEADER_VALUE) {
+      return { token: null, csrfRejected: true };
+    }
+  }
+
+  return { token: cookieToken, source: 'cookie' };
+}
+
+export function buildConsoleSessionCookieHeader(
+  token: string,
+  maxAgeSec: number,
+  isHttps: boolean
+): string {
+  const parts = [
+    `${CONSOLE_SESSION_COOKIE_NAME}=${encodeURIComponent(token)}`,
+    'Path=/',
+    'HttpOnly',
+    'SameSite=Lax',
+    `Max-Age=${Math.max(0, Math.floor(maxAgeSec))}`,
+  ];
+  if (isHttps) {
+    parts.push('Secure');
+  }
+  return parts.join('; ');
+}
+
+export function buildClearConsoleSessionCookieHeader(isHttps: boolean): string {
+  const parts = [
+    `${CONSOLE_SESSION_COOKIE_NAME}=`,
+    'Path=/',
+    'HttpOnly',
+    'SameSite=Lax',
+    'Max-Age=0',
+  ];
+  if (isHttps) {
+    parts.push('Secure');
+  }
+  return parts.join('; ');
 }
 
 export function authorizeRoomPublishAccess(
@@ -335,8 +581,10 @@ export function authorizeRoomPublishAccess(
   // 1. Role & Permission check (strictly from DB-resolved actor)
   const hasRole = actor.role === 'ADMIN' || actor.role === 'MANAGER';
   const hasPermission =
-    Array.isArray(actor.permissions) &&
-    actor.permissions.includes('rooms.publish.write');
+    actor.role === 'ADMIN' ||
+    (Array.isArray(actor.permissions) &&
+      (actor.permissions.includes('rooms.publish.write') ||
+        actor.permissions.includes('rooms.manage')));
 
   if (!hasRole || !hasPermission) {
     return {
@@ -361,15 +609,12 @@ export function authorizeRoomPublishAccess(
 
   // 3. Building Scope Isolation for MANAGER role
   if (actor.role === 'MANAGER') {
-    const scopes = Array.isArray(actor.buildingScopes)
-      ? actor.buildingScopes
-      : [];
-    const hasBuildingScope =
-      scopes.includes('*') ||
-      scopes.includes(targetRoom.buildingId) ||
-      scopes.includes(targetRoom.buildingCode);
-
-    if (!hasBuildingScope) {
+    const allowed = isBuildingAllowedForActor(
+      actor,
+      targetRoom.buildingId,
+      targetRoom.buildingCode
+    );
+    if (!allowed) {
       return {
         allowed: false,
         status: 403,

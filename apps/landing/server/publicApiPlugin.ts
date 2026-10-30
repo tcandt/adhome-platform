@@ -6,15 +6,28 @@ import { ROOMS_PUBLIC_SEED } from '../src/data/roomsSeed';
 import type { RoomListing } from '../src/types/room';
 import { loadAdhomeEnv } from './envLoader.js';
 import {
+  ALL_CONSOLE_PERMISSIONS,
+  DEFAULT_MANAGER_PERMISSIONS,
+  actorHasPermission,
   assertSecurityConfiguration,
   authorizeRoomPublishAccess,
+  buildClearConsoleSessionCookieHeader,
+  buildConsoleSessionCookieHeader,
   checkRateLimit,
-  extractBearerToken,
+  extractConsoleCredentials,
+  isBuildingAllowedForActor,
+  normalizeBuildingScopes,
+  resolveConsoleCapabilities,
   signConsoleToken,
   verifyAndResolveConsoleActor,
 } from './authRbac';
 import type { ConsolePermission, ConsoleRole } from './authRbac';
-import { MAX_PASSWORD_LENGTH, verifyPassword } from './passwordHash';
+import {
+  MAX_PASSWORD_LENGTH,
+  hashPassword,
+  validatePasswordPolicy,
+  verifyPassword,
+} from './passwordHash';
 import {
   renderDynamicRobotsTxt,
   renderDynamicSeoRouteFromDb,
@@ -191,11 +204,12 @@ export async function ensurePostgreSqlSeeded(): Promise<void> {
     //    They are provisioned explicitly via scripts/provisionProductionAdmin.mjs,
     //    which requires a per-account password and preserves isActive.
 
-    // 2b. Maintain Dev Sample Actors as Deactivated in PostgreSQL
+    // 2b. Maintain Dev Sample Actors as Deactivated in PostgreSQL (isolated @adhome.internal emails)
     const sampleActorsToSeed = [
       {
         id: 'usr-admin-01',
-        email: 'admin@adhome.vn',
+        email: 'dev.sample.admin@adhome.internal',
+        displayName: 'Dev Sample Admin (Deactivated)',
         orgId: DEFAULT_ORG_ID,
         role: 'ADMIN',
         permissions: ['rooms.publish.write', 'rooms.read', 'leads.read'],
@@ -205,17 +219,19 @@ export async function ensurePostgreSqlSeeded(): Promise<void> {
       },
       {
         id: 'usr-mgr-lk01',
-        email: 'manager.lk01@adhome.vn',
+        email: 'dev.sample.mgr@adhome.internal',
+        displayName: 'Dev Sample Manager LK01 (Deactivated)',
         orgId: DEFAULT_ORG_ID,
         role: 'MANAGER',
         permissions: ['rooms.publish.write', 'rooms.read', 'leads.read'],
-        buildingScopes: ['BLD-LK01-31', 'BLD-LK01-32'],
+        buildingScopes: ['bld-lk01-31', 'bld-lk01-32'],
         sessionVersion: 1,
         isActive: false,
       },
       {
         id: 'usr-viewer-01',
-        email: 'viewer@adhome.vn',
+        email: 'dev.sample.viewer@adhome.internal',
+        displayName: 'Dev Sample Viewer (Deactivated)',
         orgId: DEFAULT_ORG_ID,
         role: 'VIEWER',
         permissions: ['rooms.read'],
@@ -225,7 +241,8 @@ export async function ensurePostgreSqlSeeded(): Promise<void> {
       },
       {
         id: 'usr-other-org-01',
-        email: 'admin@other-tenant.vn',
+        email: 'dev.sample.other@adhome.internal',
+        displayName: 'Dev Sample Other Org (Deactivated)',
         orgId: EMPTY_SAAS_ORG_ID,
         role: 'ADMIN',
         permissions: ['rooms.publish.write', 'rooms.read', 'leads.read'],
@@ -239,6 +256,8 @@ export async function ensurePostgreSqlSeeded(): Promise<void> {
       await prisma.consoleActor.upsert({
         where: { id: actor.id },
         update: {
+          email: actor.email,
+          displayName: actor.displayName,
           orgId: actor.orgId,
           role: actor.role,
           permissions: actor.permissions as Prisma.InputJsonValue,
@@ -248,6 +267,7 @@ export async function ensurePostgreSqlSeeded(): Promise<void> {
         create: {
           id: actor.id,
           email: actor.email,
+          displayName: actor.displayName,
           orgId: actor.orgId,
           role: actor.role,
           permissions: actor.permissions as Prisma.InputJsonValue,
@@ -605,11 +625,27 @@ function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
 // CONSOLE LOGIN (fail-closed, per-account scrypt verification)
 // =============================================================================
 
-const LOGIN_IP_MAX_ATTEMPTS = 10;
+const DEV_SAMPLE_ACTOR_IDS = new Set([
+  'usr-admin-01',
+  'usr-mgr-lk01',
+  'usr-viewer-01',
+  'usr-other-org-01',
+]);
+
+const LOGIN_IP_MAX_ATTEMPTS = 25;
 const LOGIN_IP_WINDOW_MS = 10 * 60_000;
 const LOGIN_ACCOUNT_MAX_FAILURES = 5;
 const LOGIN_ACCOUNT_LOCK_MS = 15 * 60_000;
 const LOGIN_EMAIL_REGEX = /^[^\s@]{1,128}@[^\s@]{1,128}\.[^\s@]{2,32}$/;
+
+function isRequestHttps(req: IncomingMessage): boolean {
+  const xfProto = req.headers['x-forwarded-proto'];
+  if (typeof xfProto === 'string' && xfProto.split(',')[0].trim().toLowerCase() === 'https') {
+    return true;
+  }
+  const encryptedSocket = req.socket as unknown as { encrypted?: boolean };
+  return Boolean(encryptedSocket?.encrypted);
+}
 
 const loginFailureBuckets = new Map<string, { failures: number; resetAt: number }>();
 
@@ -767,32 +803,67 @@ async function handleConsoleLogin(
 
   loginFailureBuckets.delete(email);
 
+  const rememberMe = body.rememberMe === true;
+  const expiresIn = rememberMe ? 7 * 24 * 3600 : 8 * 3600;
+  const nowSec = Math.floor(Date.now() / 1000);
+  const dbRole = actor.role as ConsoleRole;
+  const dbPermissions = Array.isArray(actor.permissions)
+    ? (actor.permissions as ConsolePermission[])
+    : [];
+  const dbBuildingScopes =
+    dbRole === 'ADMIN' ? ['*'] : normalizeBuildingScopes(actor.buildingScopes);
+  const capabilities = resolveConsoleCapabilities(dbRole, dbPermissions);
+
+  const org = await prisma.organization.findUnique({ where: { id: actor.orgId } });
+
   const jti = `jti-${crypto.randomUUID()}`;
   const token = signConsoleToken({
     jti,
     sub: actor.id,
     email: actor.email,
     orgId: actor.orgId,
-    role: actor.role as ConsoleRole,
-    permissions: Array.isArray(actor.permissions) ? (actor.permissions as ConsolePermission[]) : [],
-    buildingScopes: Array.isArray(actor.buildingScopes) ? (actor.buildingScopes as string[]) : [],
+    role: dbRole,
+    permissions: dbPermissions,
+    buildingScopes: dbBuildingScopes,
     sessionVersion: actor.sessionVersion,
+    iat: nowSec,
+    exp: nowSec + expiresIn,
   });
 
   await writeLoginAudit(prisma, { actorId: actor.id, email, outcome: 'SUCCESS', clientIp, jti });
 
-  return sendJson(res, 200, {
-    ok: true,
+  const cookieHeader = buildConsoleSessionCookieHeader(
     token,
-    tokenType: 'Bearer',
-    expiresIn: 3600,
-    actor: {
-      id: actor.id,
-      email: actor.email,
-      role: actor.role,
-      orgId: actor.orgId,
+    expiresIn,
+    isRequestHttps(req)
+  );
+
+  return sendJson(
+    res,
+    200,
+    {
+      ok: true,
+      token,
+      tokenType: 'Bearer',
+      sessionTransport: 'httpOnly-cookie+bearer',
+      expiresIn,
+      actor: {
+        id: actor.id,
+        displayName:
+          actor.displayName ||
+          (dbRole === 'ADMIN' ? 'Quản trị viên Hệ thống' : 'Quản lý tòa nhà'),
+        email: actor.email,
+        role: dbRole,
+        orgId: actor.orgId,
+        orgName: org?.name || 'AdHome KĐT Ân Phú',
+        permissions: dbPermissions,
+        buildingScopes: dbBuildingScopes,
+        capabilities,
+        sessionVersion: actor.sessionVersion,
+      },
     },
-  });
+    { 'Set-Cookie': cookieHeader }
+  );
 }
 
 export function isTrustProxyEnabled(): boolean {
@@ -869,6 +940,36 @@ function createApiAndDynamicSeoMiddleware() {
     const rawUrl = req.url || '';
     const parsedUrl = new URL(rawUrl, 'http://127.0.0.1');
     const pathname = parsedUrl.pathname;
+
+    // =========================================================================
+    // -1. PERMANENT 301 REDIRECT FROM LEGACY *.ductinh.one DOMAINS TO OFFICIAL
+    //     adhome.vn & console.adhome.vn DOMAINS
+    // =========================================================================
+    const rawHostHeader = String(
+      req.headers['x-forwarded-host'] || req.headers['host'] || ''
+    )
+      .split(',')[0]
+      .trim()
+      .toLowerCase();
+    const hostWithoutPort = rawHostHeader.replace(/:\d+$/, '');
+
+    if (hostWithoutPort === 'adhome.ductinh.one') {
+      const targetLocation = `https://adhome.vn${rawUrl || '/'}`;
+      res.statusCode = 301;
+      res.setHeader('Location', targetLocation);
+      res.setHeader('Cache-Control', 'public, max-age=31536000');
+      res.end();
+      return;
+    }
+
+    if (hostWithoutPort === 'console-adhome.ductinh.one') {
+      const targetLocation = `https://console.adhome.vn${rawUrl || '/'}`;
+      res.statusCode = 301;
+      res.setHeader('Location', targetLocation);
+      res.setHeader('Cache-Control', 'public, max-age=31536000');
+      res.end();
+      return;
+    }
 
     // =========================================================================
     // 0. DYNAMIC SEO ROUTES DIRECTLY FROM POSTGRESQL SOURCE OF TRUTH
@@ -1063,10 +1164,44 @@ function createApiAndDynamicSeoMiddleware() {
     }
 
     if (pathname === '/api/v1/public/rum/reset' && req.method === 'POST') {
+      // Strictly restricted to authenticated ADMIN actor (prevents unauthenticated telemetry wiping)
+      const creds = extractConsoleCredentials(req);
+      if (creds.csrfRejected) {
+        return sendJson(res, 403, {
+          ok: false,
+          errorCode: 'CSRF_HEADER_REQUIRED',
+          message: 'Thiếu header bảo vệ CSRF (X-Requested-With: AdHome-Console).',
+        });
+      }
+      if (!creds.token) {
+        return sendJson(res, 401, {
+          ok: false,
+          errorCode: 'UNAUTHORIZED',
+          message: 'Chỉ quản trị viên đã xác thực (ADMIN) mới được phép xóa bộ đệm RUM.',
+        });
+      }
+      const resolved = await verifyAndResolveConsoleActor(creds.token, prisma);
+      if (!resolved.ok) {
+        return sendJson(res, 401, {
+          ok: false,
+          errorCode: 'UNAUTHORIZED',
+          reason: resolved.reason,
+          message: resolved.message,
+        });
+      }
+      if (resolved.actor.role !== 'ADMIN') {
+        return sendJson(res, 403, {
+          ok: false,
+          errorCode: 'INSUFFICIENT_PERMISSION',
+          message: 'Chỉ tài khoản vai trò ADMIN mới được phép reset RUM telemetry.',
+        });
+      }
+
       clearRumSamples();
       return sendJson(res, 200, {
         ok: true,
-        message: 'RUM samples buffer cleared.',
+        message: 'RUM samples buffer cleared by authorized ADMIN.',
+        clearedBy: resolved.actor.id,
         totalBuffered: 0,
       });
     }
@@ -1552,12 +1687,13 @@ function createApiAndDynamicSeoMiddleware() {
 
     // =========================================================================
     // C. AUTHENTICATED CONSOLE API (/api/v1/console/*)
-    //    Requires signed Bearer Token + Revocation/Session Check +
-    //    PostgreSQL-authoritative RBAC Permission + Tenant & Building Scope
+    //    Requires signed Bearer Token or HttpOnly Session Cookie (+ CSRF header
+    //    on mutations) + Revocation/SessionVersion Check + PostgreSQL-authoritative
+    //    RBAC Permissions + Tenant & Building Scope enforcement
     // =========================================================================
     if (pathname.startsWith('/api/v1/console/')) {
       const clientIp = getClientIp(req);
-      const rl = checkRateLimit(`console-api:${clientIp}`, 60, 60_000);
+      const rl = checkRateLimit(`console-api:${clientIp}`, 240, 60_000);
       if (!rl.allowed) {
         return sendJson(
           res,
@@ -1571,42 +1707,133 @@ function createApiAndDynamicSeoMiddleware() {
         );
       }
 
-      // 0. POST /api/v1/console/auth/login
-      //    Per-account scrypt password verification. Fail-closed on every branch:
-      //    - Endpoint disabled unless ADHOME_CONSOLE_LOGIN_ENABLED === 'true'
-      //    - email AND password must both be non-empty strings (no optional password)
-      //    - No default / fallback / shared password exists anywhere
-      //    - Accounts without a passwordHash can never log in
-      //    - Password verified BEFORE revealing account state (no enumeration)
-      //    - Per-IP attempt limit + per-account failure lockout
-      //    - Every attempt is written to console_login_audit
+      // 0a. POST /api/v1/console/auth/login
       if (pathname === '/api/v1/console/auth/login') {
         return handleConsoleLogin(req, res, prisma, clientIp);
       }
 
-      const rawToken = extractBearerToken(req);
-      if (!rawToken) {
+      const creds = extractConsoleCredentials(req);
+      if (creds.csrfRejected) {
+        return sendJson(res, 403, {
+          ok: false,
+          errorCode: 'CSRF_HEADER_REQUIRED',
+          message:
+            'Thiếu header bảo vệ CSRF (X-Requested-With: AdHome-Console) cho thao tác thay đổi dữ liệu.',
+        });
+      }
+      if (!creds.token) {
         return sendJson(res, 401, {
           ok: false,
           errorCode: 'UNAUTHORIZED',
           message:
-            'Thiếu thông tin xác thực (Authorization: Bearer <token>).',
+            'Thiếu thông tin phiên đăng nhập (HttpOnly Session Cookie hoặc Authorization: Bearer <token>).',
         });
       }
 
-      const resolved = await verifyAndResolveConsoleActor(rawToken, prisma);
+      const resolved = await verifyAndResolveConsoleActor(creds.token, prisma);
       if (!resolved.ok) {
-        return sendJson(res, resolved.status, {
-          ok: false,
-          errorCode: 'UNAUTHORIZED',
-          reason: resolved.reason,
-          message: resolved.message,
-        });
+        const extraHeaders: Record<string, string> =
+          creds.source === 'cookie'
+            ? {
+                'Set-Cookie': buildClearConsoleSessionCookieHeader(
+                  isRequestHttps(req)
+                ),
+              }
+            : {};
+        return sendJson(
+          res,
+          resolved.status,
+          {
+            ok: false,
+            errorCode: 'UNAUTHORIZED',
+            reason: resolved.reason,
+            message: resolved.message,
+          },
+          extraHeaders
+        );
       }
 
       const { actor } = resolved;
 
-      // 0. POST /api/v1/console/auth/revoke (Token Revocation & Session Invalidation)
+      // 0b. GET /api/v1/console/auth/me (Live Session & Permission Re-verification from PostgreSQL)
+      if (req.method === 'GET' && pathname === '/api/v1/console/auth/me') {
+        const org = await prisma.organization.findUnique({
+          where: { id: actor.orgId },
+        });
+        return sendJson(res, 200, {
+          ok: true,
+          actor: {
+            id: actor.id,
+            displayName:
+              actor.displayName ||
+              (actor.role === 'ADMIN'
+                ? 'Quản trị viên Hệ thống'
+                : 'Quản lý tòa nhà'),
+            email: actor.email,
+            role: actor.role,
+            orgId: actor.orgId,
+            orgName: org?.name || 'AdHome KĐT Ân Phú',
+            permissions: actor.permissions,
+            buildingScopes: actor.buildingScopes,
+            capabilities: actor.capabilities,
+            sessionVersion: actor.sessionVersion,
+          },
+        });
+      }
+
+      // 0c. POST /api/v1/console/auth/logout (Revoke JTI + Clear HttpOnly Cookie)
+      if (req.method === 'POST' && pathname === '/api/v1/console/auth/logout') {
+        await prisma.revokedToken.upsert({
+          where: { jti: actor.jti },
+          update: {},
+          create: {
+            jti: actor.jti,
+            actorId: actor.id,
+            reason: 'USER_LOGOUT',
+            expiresAt: new Date(Date.now() + 7 * 24 * 3600 * 1000),
+          },
+        });
+        await writeLoginAudit(prisma, {
+          actorId: actor.id,
+          email: actor.email,
+          outcome: 'LOGOUT',
+          clientIp,
+          jti: actor.jti,
+        });
+        return sendJson(
+          res,
+          200,
+          {
+            ok: true,
+            revokedJti: actor.jti,
+            message: 'Đã đăng xuất và hủy phiên làm việc an toàn.',
+          },
+          {
+            'Set-Cookie': buildClearConsoleSessionCookieHeader(
+              isRequestHttps(req)
+            ),
+          }
+        );
+      }
+
+      // 0d. POST /api/v1/console/rum/reset (ADMIN-only RUM buffer reset)
+      if (req.method === 'POST' && pathname === '/api/v1/console/rum/reset') {
+        if (actor.role !== 'ADMIN') {
+          return sendJson(res, 403, {
+            ok: false,
+            errorCode: 'INSUFFICIENT_PERMISSION',
+            message: 'Chỉ quản trị viên (ADMIN) mới có quyền reset RUM telemetry.',
+          });
+        }
+        clearRumSamples();
+        return sendJson(res, 200, {
+          ok: true,
+          clearedBy: actor.id,
+          totalBuffered: 0,
+        });
+      }
+
+      // 0e. POST /api/v1/console/auth/revoke (Token Revocation & Session Invalidation)
       if (req.method === 'POST' && pathname === '/api/v1/console/auth/revoke') {
         try {
           const body = await readJsonBody(req);
@@ -1671,6 +1898,529 @@ function createApiAndDynamicSeoMiddleware() {
             message: 'Không thể thu hồi token.',
           });
         }
+      }
+
+      // 0f. ADMIN-ONLY STAFF ACCOUNT & PERMISSION MANAGEMENT (/api/v1/console/accounts*)
+      if (
+        pathname === '/api/v1/console/accounts' ||
+        pathname.startsWith('/api/v1/console/accounts/')
+      ) {
+        if (actor.role !== 'ADMIN' || !actorHasPermission(actor, 'accounts.manage')) {
+          return sendJson(res, 403, {
+            ok: false,
+            errorCode: 'INSUFFICIENT_PERMISSION',
+            message:
+              'Chỉ Quản trị viên hệ thống (ADMIN) mới có quyền quản lý tài khoản và phân quyền nhân sự.',
+          });
+        }
+
+        // GET /api/v1/console/accounts
+        if (req.method === 'GET' && pathname === '/api/v1/console/accounts') {
+          const [dbActors, orgBuildings] = await Promise.all([
+            prisma.consoleActor.findMany({
+              where: { orgId: actor.orgId },
+              orderBy: { createdAt: 'asc' },
+            }),
+            prisma.building.findMany({
+              where: { orgId: actor.orgId, isActive: true },
+              orderBy: { displayOrder: 'asc' },
+            }),
+          ]);
+
+          const accounts = dbActors
+            .filter((a) => !DEV_SAMPLE_ACTOR_IDS.has(a.id))
+            .map((a) => {
+              const role = a.role as ConsoleRole;
+              const perms = Array.isArray(a.permissions)
+                ? (a.permissions as ConsolePermission[])
+                : [];
+              const scopes =
+                role === 'ADMIN' ? ['*'] : normalizeBuildingScopes(a.buildingScopes);
+              return {
+                id: a.id,
+                email: a.email,
+                displayName:
+                  a.displayName ||
+                  (role === 'ADMIN' ? 'Quản trị viên Hệ thống' : 'Quản lý tòa nhà'),
+                orgId: a.orgId,
+                role,
+                permissions: perms,
+                buildingScopes: scopes,
+                capabilities: resolveConsoleCapabilities(role, perms),
+                isActive: a.isActive,
+                hasPassword: Boolean(a.passwordHash),
+                sessionVersion: a.sessionVersion,
+                passwordUpdatedAt: a.passwordUpdatedAt?.toISOString() ?? null,
+                createdAt: a.createdAt.toISOString(),
+                updatedAt: a.updatedAt.toISOString(),
+              };
+            });
+
+          return sendJson(res, 200, {
+            ok: true,
+            count: accounts.length,
+            availablePermissions: ALL_CONSOLE_PERMISSIONS,
+            defaultManagerPermissions: DEFAULT_MANAGER_PERMISSIONS,
+            buildings: orgBuildings.map((b) => ({
+              id: b.id,
+              code: b.code,
+              name: b.name,
+              address: b.streetAddress,
+            })),
+            accounts,
+          });
+        }
+
+        // POST /api/v1/console/accounts (Admin creates a new staff account)
+        if (req.method === 'POST' && pathname === '/api/v1/console/accounts') {
+          try {
+            const body = await readJsonBody(req);
+            const email =
+              typeof body.email === 'string'
+                ? body.email.trim().toLowerCase()
+                : '';
+            const displayName =
+              typeof body.displayName === 'string' && body.displayName.trim()
+                ? body.displayName.trim().slice(0, 120)
+                : null;
+            const role: ConsoleRole =
+              body.role === 'ADMIN' ? 'ADMIN' : 'MANAGER';
+            const rawPassword =
+              typeof body.password === 'string' ? body.password : '';
+
+            if (!email || !LOGIN_EMAIL_REGEX.test(email)) {
+              return sendJson(res, 422, {
+                ok: false,
+                errorCode: 'VALIDATION_ERROR',
+                message: 'Địa chỉ email nhân sự không hợp lệ.',
+              });
+            }
+
+            if (email.endsWith('@adhome.internal')) {
+              return sendJson(res, 422, {
+                ok: false,
+                errorCode: 'VALIDATION_ERROR',
+                message: 'Tên miền @adhome.internal chỉ dành riêng cho fixture kiểm thử.',
+              });
+            }
+
+            const pwCheck = validatePasswordPolicy(rawPassword);
+            if (!pwCheck.ok) {
+              return sendJson(res, 422, {
+                ok: false,
+                errorCode: 'WEAK_PASSWORD',
+                message: `Mật khẩu không đạt chuẩn bảo mật: ${pwCheck.reason}`,
+              });
+            }
+
+            const allowedPermSet = new Set<string>(ALL_CONSOLE_PERMISSIONS);
+            const requestedPerms = Array.isArray(body.permissions)
+              ? body.permissions
+                  .map((p) => String(p))
+                  .filter((p): p is ConsolePermission => allowedPermSet.has(p))
+              : [...DEFAULT_MANAGER_PERMISSIONS];
+
+            const finalPermissions: ConsolePermission[] =
+              role === 'ADMIN'
+                ? [...ALL_CONSOLE_PERMISSIONS]
+                : Array.from(new Set(requestedPerms)).filter(
+                    (p) => p !== 'accounts.manage' && p !== 'system.admin'
+                  );
+
+            const orgBuildings = await prisma.building.findMany({
+              where: { orgId: actor.orgId, isActive: true },
+              select: { id: true, code: true },
+            });
+            const validBuildingIds = new Set(
+              orgBuildings.map((b) => b.id.toLowerCase())
+            );
+
+            let finalScopes: string[];
+            if (role === 'ADMIN') {
+              finalScopes = ['*'];
+            } else {
+              const normalized = normalizeBuildingScopes(body.buildingScopes).filter(
+                (s) => s !== '*' && validBuildingIds.has(s)
+              );
+              if (normalized.length === 0) {
+                return sendJson(res, 422, {
+                  ok: false,
+                  errorCode: 'BUILDING_SCOPE_REQUIRED',
+                  message:
+                    'Tài khoản Quản lý tòa nhà (MANAGER) bắt buộc phải được phân công ít nhất 1 tòa nhà cụ thể.',
+                });
+              }
+              finalScopes = normalized;
+            }
+
+            const existingByEmail = await prisma.consoleActor.findUnique({
+              where: { email },
+            });
+            if (existingByEmail) {
+              return sendJson(res, 409, {
+                ok: false,
+                errorCode: 'EMAIL_ALREADY_EXISTS',
+                message: `Email ${email} đã tồn tại trên hệ thống.`,
+              });
+            }
+
+            const passwordHash = await hashPassword(rawPassword);
+            const newId = `usr-staff-${crypto.randomUUID().slice(0, 8)}`;
+            const isActive = body.isActive !== false;
+
+            const created = await prisma.consoleActor.create({
+              data: {
+                id: newId,
+                email,
+                displayName:
+                  displayName ||
+                  (role === 'ADMIN' ? 'Quản trị viên' : 'Quản lý tòa nhà'),
+                orgId: actor.orgId,
+                role,
+                permissions: finalPermissions as Prisma.InputJsonValue,
+                buildingScopes: finalScopes as Prisma.InputJsonValue,
+                sessionVersion: 1,
+                isActive,
+                passwordHash,
+                passwordUpdatedAt: new Date(),
+              },
+            });
+
+            await writeLoginAudit(prisma, {
+              actorId: created.id,
+              email: created.email,
+              outcome: `ADMIN_CREATED_BY_${actor.id}`,
+              clientIp,
+            });
+
+            return sendJson(res, 201, {
+              ok: true,
+              account: {
+                id: created.id,
+                email: created.email,
+                displayName: created.displayName,
+                orgId: created.orgId,
+                role: created.role,
+                permissions: finalPermissions,
+                buildingScopes: finalScopes,
+                capabilities: resolveConsoleCapabilities(role, finalPermissions),
+                isActive: created.isActive,
+                hasPassword: true,
+                sessionVersion: created.sessionVersion,
+                createdAt: created.createdAt.toISOString(),
+              },
+            });
+          } catch (err) {
+            return sendJson(res, 400, {
+              ok: false,
+              errorCode: 'BAD_REQUEST',
+              detail: err instanceof Error ? err.message : String(err),
+              message: 'Không thể tạo tài khoản nhân sự.',
+            });
+          }
+        }
+
+        // PATCH /api/v1/console/accounts/:id (Admin updates role, permissions, buildingScopes, status, or password -> bumps sessionVersion!)
+        if (
+          req.method === 'PATCH' &&
+          pathname.startsWith('/api/v1/console/accounts/')
+        ) {
+          const targetId = decodeURIComponent(
+            pathname.slice('/api/v1/console/accounts/'.length)
+          ).trim();
+
+          if (!targetId || DEV_SAMPLE_ACTOR_IDS.has(targetId)) {
+            return sendJson(res, 404, {
+              ok: false,
+              errorCode: 'ACCOUNT_NOT_FOUND',
+              message: 'Không tìm thấy tài khoản nhân sự.',
+            });
+          }
+
+          const existing = await prisma.consoleActor.findUnique({
+            where: { id: targetId },
+          });
+          if (!existing || existing.orgId !== actor.orgId) {
+            return sendJson(res, 404, {
+              ok: false,
+              errorCode: 'ACCOUNT_NOT_FOUND',
+              message: 'Không tìm thấy tài khoản nhân sự thuộc tổ chức này.',
+            });
+          }
+
+          try {
+            const body = await readJsonBody(req);
+
+            if (targetId === actor.id) {
+              if (body.isActive === false || (body.role && body.role !== 'ADMIN')) {
+                return sendJson(res, 422, {
+                  ok: false,
+                  errorCode: 'SELF_LOCKOUT_PREVENTED',
+                  message:
+                    'Không thể tự khóa hoặc tự hạ quyền tài khoản Quản trị viên đang đăng nhập.',
+                });
+              }
+            }
+
+            const nextRole: ConsoleRole =
+              body.role === 'ADMIN' || body.role === 'MANAGER'
+                ? body.role
+                : (existing.role as ConsoleRole);
+
+            const nextDisplayName =
+              typeof body.displayName === 'string' && body.displayName.trim()
+                ? body.displayName.trim().slice(0, 120)
+                : existing.displayName;
+
+            const nextIsActive =
+              typeof body.isActive === 'boolean'
+                ? body.isActive
+                : existing.isActive;
+
+            const allowedPermSet = new Set<string>(ALL_CONSOLE_PERMISSIONS);
+            const existingPerms = Array.isArray(existing.permissions)
+              ? (existing.permissions as ConsolePermission[])
+              : [];
+
+            let nextPermissions: ConsolePermission[];
+            if (nextRole === 'ADMIN') {
+              nextPermissions = [...ALL_CONSOLE_PERMISSIONS];
+            } else if (Array.isArray(body.permissions)) {
+              nextPermissions = Array.from(
+                new Set(
+                  body.permissions
+                    .map((p) => String(p))
+                    .filter((p): p is ConsolePermission => allowedPermSet.has(p))
+                )
+              ).filter((p) => p !== 'accounts.manage' && p !== 'system.admin');
+            } else {
+              nextPermissions = existingPerms.filter(
+                (p) => p !== 'accounts.manage' && p !== 'system.admin'
+              );
+            }
+
+            const orgBuildings = await prisma.building.findMany({
+              where: { orgId: actor.orgId, isActive: true },
+              select: { id: true },
+            });
+            const validBuildingIds = new Set(
+              orgBuildings.map((b) => b.id.toLowerCase())
+            );
+
+            let nextScopes: string[];
+            if (nextRole === 'ADMIN') {
+              nextScopes = ['*'];
+            } else if (Array.isArray(body.buildingScopes)) {
+              const normalized = normalizeBuildingScopes(body.buildingScopes).filter(
+                (s) => s !== '*' && validBuildingIds.has(s)
+              );
+              if (normalized.length === 0) {
+                return sendJson(res, 422, {
+                  ok: false,
+                  errorCode: 'BUILDING_SCOPE_REQUIRED',
+                  message:
+                    'Tài khoản Quản lý tòa nhà (MANAGER) bắt buộc phải có ít nhất 1 tòa nhà được gán.',
+                });
+              }
+              nextScopes = normalized;
+            } else {
+              nextScopes = normalizeBuildingScopes(existing.buildingScopes).filter(
+                (s) => s !== '*' && validBuildingIds.has(s)
+              );
+            }
+
+            let nextPasswordHash: string | undefined;
+            if (typeof body.newPassword === 'string' && body.newPassword.length > 0) {
+              const pwCheck = validatePasswordPolicy(body.newPassword);
+              if (!pwCheck.ok) {
+                return sendJson(res, 422, {
+                  ok: false,
+                  errorCode: 'WEAK_PASSWORD',
+                  message: `Mật khẩu mới không đạt chuẩn: ${pwCheck.reason}`,
+                });
+              }
+              nextPasswordHash = await hashPassword(body.newPassword);
+            }
+
+            const prevScopes = normalizeBuildingScopes(existing.buildingScopes);
+            const securitySensitiveChanged =
+              nextRole !== existing.role ||
+              nextIsActive !== existing.isActive ||
+              Boolean(nextPasswordHash) ||
+              body.invalidateSessions === true ||
+              JSON.stringify([...nextPermissions].sort()) !==
+                JSON.stringify([...existingPerms].sort()) ||
+              JSON.stringify([...nextScopes].sort()) !==
+                JSON.stringify([...prevScopes].sort());
+
+            const updated = await prisma.consoleActor.update({
+              where: { id: targetId },
+              data: {
+                displayName: nextDisplayName,
+                role: nextRole,
+                permissions: nextPermissions as Prisma.InputJsonValue,
+                buildingScopes: nextScopes as Prisma.InputJsonValue,
+                isActive: nextIsActive,
+                ...(nextPasswordHash
+                  ? {
+                      passwordHash: nextPasswordHash,
+                      passwordUpdatedAt: new Date(),
+                    }
+                  : {}),
+                ...(securitySensitiveChanged
+                  ? { sessionVersion: { increment: 1 } }
+                  : {}),
+              },
+            });
+
+            await writeLoginAudit(prisma, {
+              actorId: updated.id,
+              email: updated.email,
+              outcome: securitySensitiveChanged
+                ? `ADMIN_PERMISSIONS_UPDATED_SV${updated.sessionVersion}`
+                : 'ADMIN_PROFILE_UPDATED',
+              clientIp,
+            });
+
+            return sendJson(res, 200, {
+              ok: true,
+              sessionsInvalidated: securitySensitiveChanged,
+              account: {
+                id: updated.id,
+                email: updated.email,
+                displayName: updated.displayName,
+                orgId: updated.orgId,
+                role: updated.role,
+                permissions: nextPermissions,
+                buildingScopes: nextScopes,
+                capabilities: resolveConsoleCapabilities(nextRole, nextPermissions),
+                isActive: updated.isActive,
+                hasPassword: Boolean(updated.passwordHash),
+                sessionVersion: updated.sessionVersion,
+                updatedAt: updated.updatedAt.toISOString(),
+              },
+            });
+          } catch (err) {
+            return sendJson(res, 400, {
+              ok: false,
+              errorCode: 'BAD_REQUEST',
+              detail: err instanceof Error ? err.message : String(err),
+              message: 'Không thể cập nhật phân quyền tài khoản.',
+            });
+          }
+        }
+      }
+
+      // 0g. GET /api/v1/console/portfolio (PostgreSQL Buildings & Rooms strictly scoped to Actor's Building Scopes)
+      if (req.method === 'GET' && pathname === '/api/v1/console/portfolio') {
+        if (
+          !actorHasPermission(actor, 'overview.read') &&
+          !actorHasPermission(actor, 'rooms.read')
+        ) {
+          return sendJson(res, 403, {
+            ok: false,
+            errorCode: 'INSUFFICIENT_PERMISSION',
+            message: 'Tài khoản không có quyền xem dữ liệu danh mục tòa nhà.',
+          });
+        }
+
+        const [org, allOrgBuildings, allOrgRooms] = await Promise.all([
+          prisma.organization.findUnique({ where: { id: actor.orgId } }),
+          prisma.building.findMany({
+            where: { orgId: actor.orgId, isActive: true },
+            orderBy: { displayOrder: 'asc' },
+          }),
+          prisma.publicRoomListing.findMany({
+            where: { orgId: actor.orgId },
+            orderBy: { displayOrder: 'asc' },
+          }),
+        ]);
+
+        const scopedBuildings = allOrgBuildings.filter((b) =>
+          isBuildingAllowedForActor(actor, b.id, b.code)
+        );
+        const scopedRooms = allOrgRooms.filter((r) =>
+          isBuildingAllowedForActor(actor, r.buildingId, r.buildingCode)
+        );
+
+        return sendJson(res, 200, {
+          ok: true,
+          organization: org
+            ? {
+                id: org.id,
+                slug: org.slug,
+                name: org.name,
+                addressSummary: org.addressSummary,
+                catalogVersion: org.catalogVersion,
+              }
+            : null,
+          actorScope: {
+            role: actor.role,
+            buildingScopes: actor.buildingScopes,
+          },
+          summary: {
+            buildingsCount: scopedBuildings.length,
+            roomsCount: scopedRooms.length,
+            availableCount: scopedRooms.filter((r) => r.status === 'AVAILABLE')
+              .length,
+            comingSoonCount: scopedRooms.filter(
+              (r) => r.status === 'COMING_SOON'
+            ).length,
+          },
+          buildings: scopedBuildings.map((b) => ({
+            id: b.id,
+            code: b.code,
+            name: b.name,
+            address: b.streetAddress,
+            ward: b.ward,
+            province: b.province,
+          })),
+          rooms: scopedRooms.map((r) => ({
+            id: r.id,
+            slug: r.slug,
+            roomCode: r.roomCode,
+            shortTitle: r.shortTitle,
+            roomType: r.roomType,
+            buildingId: r.buildingId,
+            buildingCode: r.buildingCode,
+            buildingName: r.buildingName,
+            floorNumber: r.floorNumber,
+            area: r.area,
+            price: r.price,
+            status: r.status,
+            isPublic: r.isPublic,
+            availableFrom: r.availableFrom,
+          })),
+        });
+      }
+
+      // 0h. GET /api/v1/console/finance/summary (Protected Finance & Cashbook Ledger API)
+      if (req.method === 'GET' && pathname === '/api/v1/console/finance/summary') {
+        if (!actorHasPermission(actor, 'finance.read')) {
+          return sendJson(res, 403, {
+            ok: false,
+            errorCode: 'INSUFFICIENT_PERMISSION',
+            message:
+              'Tài khoản không được cấp quyền truy cập Sổ quỹ & Tài chính tổng hợp (finance.read).',
+          });
+        }
+
+        const allOrgRooms = await prisma.publicRoomListing.findMany({
+          where: { orgId: actor.orgId },
+        });
+        const scopedRooms = allOrgRooms.filter((r) =>
+          isBuildingAllowedForActor(actor, r.buildingId, r.buildingCode)
+        );
+        const contractedMonthlyVnd = scopedRooms
+          .filter((r) => r.status === 'OCCUPIED' || r.status === 'COMING_SOON')
+          .reduce((sum, r) => sum + r.price, 0);
+
+        return sendJson(res, 200, {
+          ok: true,
+          orgId: actor.orgId,
+          scopedRoomsCount: scopedRooms.length,
+          contractedMonthlyVnd,
+        });
       }
 
       // 1. PATCH /api/v1/console/rooms/:slug
@@ -1909,11 +2659,11 @@ function createApiAndDynamicSeoMiddleware() {
         }
       }
 
-      // 2. GET /api/v1/console/inquiries (Authenticated Lead List scoped by orgId)
+      // 2. GET /api/v1/console/inquiries (Authenticated Lead List scoped by orgId AND buildingScopes)
       if (req.method === 'GET' && pathname === '/api/v1/console/inquiries') {
         if (
-          !actor.permissions.includes('leads.read') &&
-          !actor.permissions.includes('rooms.publish.write')
+          !actorHasPermission(actor, 'leads.read') &&
+          !actorHasPermission(actor, 'rooms.publish.write')
         ) {
           return sendJson(res, 403, {
             ok: false,
@@ -1922,11 +2672,34 @@ function createApiAndDynamicSeoMiddleware() {
           });
         }
 
-        const inquiries = await prisma.leadInquiry.findMany({
+        const rawInquiries = await prisma.leadInquiry.findMany({
           where: { orgId: actor.orgId },
           orderBy: { createdAt: 'desc' },
           take: 100,
         });
+
+        let inquiries = rawInquiries;
+        if (actor.role !== 'ADMIN' && !actor.buildingScopes.includes('*')) {
+          const allowedRooms = await prisma.publicRoomListing.findMany({
+            where: { orgId: actor.orgId },
+            select: { id: true, roomCode: true, buildingId: true, buildingCode: true },
+          });
+          const allowedRoomIds = new Set(
+            allowedRooms
+              .filter((r) => isBuildingAllowedForActor(actor, r.buildingId, r.buildingCode))
+              .map((r) => r.id)
+          );
+          const allowedRoomCodes = new Set(
+            allowedRooms
+              .filter((r) => isBuildingAllowedForActor(actor, r.buildingId, r.buildingCode))
+              .map((r) => r.roomCode)
+          );
+          inquiries = rawInquiries.filter(
+            (inq) =>
+              (inq.roomId && allowedRoomIds.has(inq.roomId)) ||
+              (inq.roomCode && allowedRoomCodes.has(inq.roomCode))
+          );
+        }
 
         return sendJson(res, 200, {
           ok: true,
@@ -1935,7 +2708,7 @@ function createApiAndDynamicSeoMiddleware() {
         });
       }
 
-      // 3. GET /api/v1/console/audit-logs (Authenticated Audit Log scoped by orgId)
+      // 3. GET /api/v1/console/audit-logs (Authenticated Audit Log scoped by orgId & buildingScopes)
       if (req.method === 'GET' && pathname === '/api/v1/console/audit-logs') {
         if (actor.role !== 'ADMIN' && actor.role !== 'MANAGER') {
           return sendJson(res, 403, {
@@ -1945,11 +2718,18 @@ function createApiAndDynamicSeoMiddleware() {
           });
         }
 
-        const logs = await prisma.roomAuditLog.findMany({
+        const rawLogs = await prisma.roomAuditLog.findMany({
           where: { orgId: actor.orgId },
           orderBy: { createdAt: 'desc' },
           take: 50,
         });
+
+        const logs =
+          actor.role === 'ADMIN'
+            ? rawLogs
+            : rawLogs.filter((l) =>
+                isBuildingAllowedForActor(actor, l.buildingId, null)
+              );
 
         return sendJson(res, 200, {
           ok: true,
@@ -1958,11 +2738,19 @@ function createApiAndDynamicSeoMiddleware() {
         });
       }
 
-      // 4. GET /api/v1/console/seo-sync-jobs (Outbox Queue Inspection)
+      // 4. GET /api/v1/console/seo-sync-jobs (Outbox Queue Inspection - ADMIN Only)
       if (
         req.method === 'GET' &&
         pathname === '/api/v1/console/seo-sync-jobs'
       ) {
+        if (actor.role !== 'ADMIN') {
+          return sendJson(res, 403, {
+            ok: false,
+            errorCode: 'INSUFFICIENT_PERMISSION',
+            message: 'Chỉ quản trị viên hệ thống (ADMIN) mới có quyền kiểm tra hàng đợi SEO Outbox.',
+          });
+        }
+
         const jobs = await prisma.seoSyncJob.findMany({
           where: { orgId: actor.orgId },
           orderBy: { createdAt: 'desc' },

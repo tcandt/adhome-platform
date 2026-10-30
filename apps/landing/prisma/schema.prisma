@@ -164,6 +164,7 @@ model RoomAuditLog {
 model ConsoleActor {
   id             String   @id
   email          String   @unique
+  displayName    String?  @map("display_name")
   orgId          String   @map("org_id")
   role           String
   permissions    Json

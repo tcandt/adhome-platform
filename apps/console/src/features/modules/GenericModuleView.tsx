@@ -20,7 +20,14 @@ import { EXPIRING_CONTRACTS_MOCK, PENDING_INVOICES_MOCK } from '@/shared/data/bu
 
 export const GenericModuleView: React.FC<{ moduleId: NavModuleId }> = ({ moduleId }) => {
   const { currentNavConfig } = useNavigation();
-  const { user } = useAuth();
+  const { user, isBuildingAllowed } = useAuth();
+
+  const scopedContracts = EXPIRING_CONTRACTS_MOCK.filter(c =>
+    isBuildingAllowed(c.buildingCode)
+  );
+  const scopedInvoices = PENDING_INVOICES_MOCK.filter(inv =>
+    isBuildingAllowed(inv.buildingCode)
+  );
 
   return (
     <div className="space-y-6">
@@ -54,7 +61,7 @@ export const GenericModuleView: React.FC<{ moduleId: NavModuleId }> = ({ moduleI
       {moduleId === 'contracts' && (
         <div className="p-5 bg-surface dark:bg-surface-dark border border-appBorder-light dark:border-appBorder-dark rounded-card shadow-soft">
           <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-3">
-            Danh sách Hợp đồng thuê đang theo dõi ({EXPIRING_CONTRACTS_MOCK.length} hồ sơ)
+            Danh sách Hợp đồng thuê đang theo dõi ({scopedContracts.length} hồ sơ)
           </h3>
           <div className="overflow-x-auto">
             <table className="w-full text-xs text-left">
@@ -70,7 +77,7 @@ export const GenericModuleView: React.FC<{ moduleId: NavModuleId }> = ({ moduleI
                 </tr>
               </thead>
               <tbody className="divide-y divide-appBorder-light dark:divide-appBorder-dark">
-                {EXPIRING_CONTRACTS_MOCK.map(c => (
+                {scopedContracts.map(c => (
                   <tr key={c.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
                     <td className="py-3 font-mono font-bold text-brand-primary">{c.contractCode}</td>
                     <td className="py-3 font-medium text-slate-800 dark:text-slate-200">
@@ -124,7 +131,7 @@ export const GenericModuleView: React.FC<{ moduleId: NavModuleId }> = ({ moduleI
       {moduleId === 'invoices' && (
         <div className="p-5 bg-surface dark:bg-surface-dark border border-appBorder-light dark:border-appBorder-dark rounded-card shadow-soft">
           <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-3">
-            Hóa đơn chu kỳ & Vòng đời FSM ({PENDING_INVOICES_MOCK.length} hóa đơn)
+            Hóa đơn chu kỳ & Vòng đời FSM ({scopedInvoices.length} hóa đơn)
           </h3>
           <div className="overflow-x-auto">
             <table className="w-full text-xs text-left">
@@ -140,7 +147,7 @@ export const GenericModuleView: React.FC<{ moduleId: NavModuleId }> = ({ moduleI
                 </tr>
               </thead>
               <tbody className="divide-y divide-appBorder-light dark:divide-appBorder-dark">
-                {PENDING_INVOICES_MOCK.map(inv => (
+                {scopedInvoices.map(inv => (
                   <tr key={inv.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
                     <td className="py-3 font-mono font-bold text-slate-800 dark:text-slate-100">{inv.invoiceCode}</td>
                     <td className="py-3 font-medium">{inv.roomCode} - {inv.tenantName}</td>

@@ -41,7 +41,8 @@ import { CreateRoomModal } from './modals/CreateRoomModal';
 import { SafeDeleteModal } from './modals/SafeDeleteModal';
 
 export const UnifiedBuildingCanvas: React.FC = () => {
-  const { user, activeBuildingId, setActiveBuildingId } = useAuth();
+  const { user, activeBuildingId, setActiveBuildingId, isBuildingAllowed, hasCapability } = useAuth();
+  const canManageBuildings = hasCapability('canManageBuildings');
   const {
     currentOrg,
     buildings,
@@ -109,7 +110,7 @@ export const UnifiedBuildingCanvas: React.FC = () => {
   const scopedBuildings = buildings.filter(b => {
     if (activeBuildingId !== 'ALL' && b.id !== activeBuildingId) return false;
     if (user?.assignedBuildingIds !== 'ALL') {
-      return user?.assignedBuildingIds?.includes(b.id);
+      return isBuildingAllowed(b.id) || isBuildingAllowed(b.code);
     }
     return true;
   });
@@ -409,13 +410,15 @@ export const UnifiedBuildingCanvas: React.FC = () => {
             </button>
           </div>
 
-          {/* Action: Add Building */}
-          <button
-            onClick={() => setIsCreateBuildingOpen(true)}
-            className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold bg-brand-primary text-white rounded-lg hover:bg-brand-hover shadow-sm transition-colors"
-          >
-            <Plus className="w-3.5 h-3.5" /> Thêm tòa nhà
-          </button>
+          {/* Action: Add Building (Admin / buildings.manage only) */}
+          {canManageBuildings && (
+            <button
+              onClick={() => setIsCreateBuildingOpen(true)}
+              className="flex items-center gap-1 px-3 py-1.5 text-xs font-semibold bg-brand-primary text-white rounded-lg hover:bg-brand-hover shadow-sm transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" /> Thêm tòa nhà
+            </button>
+          )}
 
           {/* Action: Add Room (if buildings exist) */}
           {scopedBuildings.length > 0 && (
@@ -438,18 +441,20 @@ export const UnifiedBuildingCanvas: React.FC = () => {
             </button>
           )}
 
-          {/* Reset / Demo Data Utilities Dropdown */}
-          <button
-            onClick={() => {
-              if (confirm('Khôi phục lại dữ liệu mẫu demo Homeland (4 tòa, 34 phòng) cho tổ chức này?')) {
-                resetToDemoData();
-              }
-            }}
-            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-slate-800 rounded-lg transition-colors"
-            title="Nạp lại dữ liệu mẫu Homeland"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-          </button>
+          {/* Reset / Demo Data Utilities Dropdown (Admin / buildings.manage only) */}
+          {canManageBuildings && (
+            <button
+              onClick={() => {
+                if (confirm('Khôi phục lại dữ liệu mẫu demo Homeland (4 tòa, 34 phòng) cho tổ chức này?')) {
+                  resetToDemoData();
+                }
+              }}
+              className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-slate-800 rounded-lg transition-colors"
+              title="Nạp lại dữ liệu mẫu Homeland"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -548,27 +553,31 @@ export const UnifiedBuildingCanvas: React.FC = () => {
                       >
                         <Layers className="w-3.5 h-3.5" />
                       </button>
-                      <button
-                        onClick={() => setEditingBuilding(bld)}
-                        className="p-1.5 text-slate-400 hover:text-brand-primary hover:bg-blue-50 dark:hover:bg-slate-800 rounded-lg transition-colors"
-                        title="Chỉnh sửa thông tin tòa nhà"
-                      >
-                        <Edit className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() =>
-                          setDeleteTarget({
-                            type: 'building',
-                            id: bld.id,
-                            code: bld.code,
-                            name: bld.name,
-                          })
-                        }
-                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors"
-                        title="Xóa an toàn hoặc lưu trữ tòa nhà"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {canManageBuildings && (
+                        <>
+                          <button
+                            onClick={() => setEditingBuilding(bld)}
+                            className="p-1.5 text-slate-400 hover:text-brand-primary hover:bg-blue-50 dark:hover:bg-slate-800 rounded-lg transition-colors"
+                            title="Chỉnh sửa thông tin tòa nhà"
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() =>
+                              setDeleteTarget({
+                                type: 'building',
+                                id: bld.id,
+                                code: bld.code,
+                                name: bld.name,
+                              })
+                            }
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors"
+                            title="Xóa an toàn hoặc lưu trữ tòa nhà"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
 

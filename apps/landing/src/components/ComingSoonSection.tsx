@@ -4,6 +4,7 @@ import { formatVndPrice } from '../services/roomService';
 
 interface ComingSoonSectionProps {
   rooms: RoomListing[];
+  isLoading?: boolean;
   sourceVerified?: boolean;
   onSelectRoom: (room: RoomListing) => void;
   onNotifyRoom: (room: RoomListing) => void;
@@ -11,11 +12,12 @@ interface ComingSoonSectionProps {
 
 export const ComingSoonSection: React.FC<ComingSoonSectionProps> = ({
   rooms,
+  isLoading = false,
   sourceVerified = true,
   onSelectRoom,
   onNotifyRoom,
 }) => {
-  if (rooms.length === 0) return null;
+  if (!isLoading && rooms.length === 0) return null;
 
   return (
     <section
@@ -38,7 +40,24 @@ export const ComingSoonSection: React.FC<ComingSoonSectionProps> = ({
 
         {/* Compact 2-Column Horizontal Cards (Zero truncated room titles) */}
         <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {rooms.map((room) => {
+          {isLoading && rooms.length === 0
+            ? [1, 2, 3, 4].map((n) => (
+                <div
+                  key={n}
+                  className="bg-canvas-pure rounded-card border border-line p-4 flex items-center gap-4 shadow-subtle animate-pulse"
+                >
+                  <div className="w-24 h-24 sm:w-32 sm:h-24 rounded-lg bg-canvas-muted shrink-0" />
+                  <div className="flex-1 space-y-2.5">
+                    <div className="h-4 bg-canvas-muted rounded w-1/3" />
+                    <div className="h-5 bg-canvas-muted rounded w-2/3" />
+                    <div className="pt-2 border-t border-line flex justify-between items-center">
+                      <div className="h-4 bg-canvas-muted rounded w-28" />
+                      <div className="h-9 bg-canvas-muted rounded w-36" />
+                    </div>
+                  </div>
+                </div>
+              ))
+            : rooms.map((room) => {
             const primaryImg = room.images[0] || {
               url: '/images/rooms/studio-standard-01.webp',
               srcSet:

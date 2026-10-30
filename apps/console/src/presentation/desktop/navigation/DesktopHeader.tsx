@@ -64,26 +64,29 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
         <div className="h-5 w-px bg-slate-200 dark:bg-slate-700 mx-0.5" />
 
         {/* Breadcrumb & Current Title */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+        <div className="flex items-center gap-2 whitespace-nowrap shrink-0">
+          <span className="hidden 2xl:inline text-xs font-semibold uppercase tracking-wider text-slate-400">
             AdHome Console
           </span>
-          <span className="text-slate-300 dark:text-slate-600">/</span>
-          <h1 className="text-sm md:text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+          <span className="hidden 2xl:inline text-slate-300 dark:text-slate-600">/</span>
+          <h1 className="text-sm md:text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2 whitespace-nowrap">
             {currentNavConfig.label}
           </h1>
         </div>
 
         {/* Unified Dynamic Building Selector dropdown */}
-        <div className="hidden lg:flex items-center ml-3 pl-3 border-l border-appBorder-light dark:border-appBorder-dark">
+        <div className="hidden lg:flex items-center ml-2 pl-2.5 border-l border-appBorder-light dark:border-appBorder-dark shrink-0">
           <div className="relative flex items-center">
-            <Building2 className="w-4 h-4 text-brand-primary mr-2" />
+            <Building2 className="w-4 h-4 text-brand-primary mr-1.5 shrink-0" />
             <select
+              data-testid="console-building-filter"
               value={selectedBuildingFilter}
               onChange={e => setSelectedBuildingFilter(e.target.value)}
-              className="bg-slate-100/90 dark:bg-slate-800 text-xs font-semibold text-slate-800 dark:text-slate-200 py-1.5 pl-2.5 pr-8 rounded-lg border border-transparent hover:border-slate-300 dark:hover:border-slate-700 cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-primary transition-colors"
+              className="bg-slate-100/90 dark:bg-slate-800 text-xs font-semibold text-slate-800 dark:text-slate-200 py-1.5 pl-2.5 pr-7 rounded-lg border border-transparent hover:border-slate-300 dark:hover:border-slate-700 cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-primary transition-colors whitespace-nowrap"
             >
-              <option value="ALL">🏢 Toàn bộ ({buildings.length} tòa · {rooms.length} phòng)</option>
+              <option value="ALL">
+                🏢 {user?.assignedBuildingIds === 'ALL' ? 'Toàn bộ' : 'Phạm vi quản lý'} ({buildings.length} tòa · {rooms.length} phòng)
+              </option>
               {buildings.map(bld => {
                 const bldRooms = rooms.filter(r => r.buildingId === bld.id);
                 const bldOccupied = bldRooms.filter(r => r.status === 'OCCUPIED').length;
@@ -99,28 +102,28 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
       </div>
 
       {/* Right: Global Search, Period, Notifications, Theme, User */}
-      <div className="flex items-center gap-2.5">
+      <div className="flex items-center gap-2 shrink-0 whitespace-nowrap">
         {/* Global Search trigger */}
         <button
           onClick={() => setIsSearchOpen(true)}
-          className="flex items-center gap-2 px-3 py-1.5 text-xs text-slate-400 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200/80 dark:hover:bg-slate-700 rounded-lg transition-colors border border-transparent hover:border-slate-300"
+          className="flex items-center gap-2 px-3 py-1.5 text-xs text-slate-400 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200/80 dark:hover:bg-slate-700 rounded-lg transition-colors border border-transparent hover:border-slate-300 whitespace-nowrap shrink-0"
           title="Tìm kiếm nhanh phòng, khách thuê, hợp đồng (Ctrl + K)"
         >
-          <Search className="w-3.5 h-3.5" />
-          <span className="hidden xl:inline">Tìm phòng, khách, hợp đồng...</span>
+          <Search className="w-3.5 h-3.5 shrink-0" />
+          <span className="hidden xl:inline whitespace-nowrap">Tìm kiếm nhanh...</span>
           <kbd className="hidden xl:inline-block px-1.5 py-0.5 text-[10px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded text-slate-500 font-mono">
             ⌘K
           </kbd>
         </button>
 
         {/* Time period filter */}
-        <div className="hidden md:flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 px-2.5 py-1.5 bg-slate-100/70 dark:bg-slate-800/70 rounded-lg">
-          <Calendar className="w-3.5 h-3.5 text-slate-400" />
+        <div className="hidden md:flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 px-2.5 py-1.5 bg-slate-100/70 dark:bg-slate-800/70 rounded-lg whitespace-nowrap shrink-0">
+          <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
           <span>Kỳ T10/2026</span>
         </div>
 
         {/* Notifications toggle */}
-        <div className="relative">
+        <div className="relative shrink-0">
           <button
             onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
             className="relative p-2 rounded-lg text-slate-500 hover:text-brand-primary hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
@@ -135,7 +138,7 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
         {/* Theme mode toggle */}
         <button
           onClick={toggleTheme}
-          className="p-2 rounded-lg text-slate-500 hover:text-amber-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          className="p-2 rounded-lg text-slate-500 hover:text-amber-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0"
           title={theme === 'dark' ? 'Chuyển sang Giao diện Sáng' : 'Chuyển sang Giao diện Tối'}
           aria-label="Chuyển chế độ giao diện"
         >
@@ -145,27 +148,33 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
         {/* Mobile Viewport Preview Toggle (Rule D-06) */}
         <button
           onClick={() => setOverride('mobile')}
-          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-brand-primary bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-brand-primary bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors whitespace-nowrap shrink-0"
           title="Xem bố cục Mobile Shell độc lập (Rule D-06)"
         >
-          <Smartphone className="w-3.5 h-3.5" />
-          <span className="hidden xl:inline">Bản Mobile</span>
+          <Smartphone className="w-3.5 h-3.5 shrink-0" />
+          <span className="hidden xl:inline whitespace-nowrap">Bản Mobile</span>
         </button>
 
-        {/* Multi-Tenant Organization Switcher */}
+        {/* Multi-Tenant Organization Display / Admin Switcher */}
         <div className="hidden lg:flex items-center gap-1.5 pl-2 border-l border-appBorder-light dark:border-appBorder-dark">
-          <select
-            value={currentOrg.id}
-            onChange={e => setCurrentOrgId(e.target.value)}
-            className="bg-transparent text-xs font-semibold text-slate-700 dark:text-slate-300 border-0 focus:ring-0 cursor-pointer max-w-[160px] truncate"
-            title="Chuyển đổi Tổ chức / Tenant"
-          >
-            {organizations.map(org => (
-              <option key={org.id} value={org.id} className="dark:bg-slate-800">
-                🏢 {org.name}
-              </option>
-            ))}
-          </select>
+          {user?.role === 'ORG_ADMIN' ? (
+            <select
+              value={currentOrg.id}
+              onChange={e => setCurrentOrgId(e.target.value)}
+              className="bg-transparent text-xs font-semibold text-slate-700 dark:text-slate-300 border-0 focus:ring-0 cursor-pointer max-w-[160px] truncate"
+              title="Chuyển đổi Tổ chức / Tenant"
+            >
+              {organizations.map(org => (
+                <option key={org.id} value={org.id} className="dark:bg-slate-800">
+                  🏢 {org.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 max-w-[160px] truncate">
+              🏢 {currentOrg.name}
+            </span>
+          )}
           <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
             {currentOrg.plan}
           </span>

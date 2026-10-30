@@ -130,6 +130,9 @@ export async function auditAndSanitizeProductionDb(options = {}) {
       ),
       allSampleActorsHaveNoPassword: sampleActors.every((a) => !a.passwordHash),
       genuineAdminHasPassword: genuineActors.some((a) => a.id === 'usr-admin-prod' && Boolean(a.passwordHash)),
+      allActiveGenuineActorsHavePassword: genuineActors
+        .filter((a) => a.isActive)
+        .every((a) => Boolean(a.passwordHash)),
     },
     loginAudits: {
       totalLogged: totalAudits,

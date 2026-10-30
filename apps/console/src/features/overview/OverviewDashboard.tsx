@@ -25,7 +25,7 @@ import {
 } from '@/shared/data/businessMetrics';
 
 export const OverviewDashboard: React.FC = () => {
-  const { user, activeBuildingId } = useAuth();
+  const { user, activeBuildingId, isBuildingAllowed, hasCapability } = useAuth();
   const { setActiveModule } = useNavigation();
   const { currentOrg, buildings, rooms } = usePortfolio();
 
@@ -33,25 +33,39 @@ export const OverviewDashboard: React.FC = () => {
   const scopedBuildings = buildings.filter(b => {
     if (activeBuildingId !== 'ALL' && b.id !== activeBuildingId) return false;
     if (user?.assignedBuildingIds !== 'ALL') {
-      return user?.assignedBuildingIds?.includes(b.id);
+      return isBuildingAllowed(b.id) || isBuildingAllowed(b.code);
     }
     return true;
   });
 
+  const allowedBuildingCodes = new Set(scopedBuildings.map(b => b.code.toUpperCase()));
+
   // Calculate metrics dynamically from dynamic portfolio rooms
   const scopedRooms = rooms.filter(r => {
     if (activeBuildingId !== 'ALL' && r.buildingId !== activeBuildingId) return false;
-    return true;
+    return isBuildingAllowed(r.buildingId) || isBuildingAllowed(r.buildingCode);
   });
+
+  const scopedExpiringContracts = EXPIRING_CONTRACTS_MOCK.filter(c =>
+    allowedBuildingCodes.has(c.buildingCode.toUpperCase())
+  );
+  const scopedPendingInvoices = PENDING_INVOICES_MOCK.filter(inv =>
+    allowedBuildingCodes.has(inv.buildingCode.toUpperCase())
+  );
+  const scopedRecentTransactions = RECENT_TRANSACTIONS_MOCK.filter(tx =>
+    allowedBuildingCodes.has(tx.buildingCode.toUpperCase())
+  );
 
   const totalRooms = scopedRooms.length;
   const occupiedRooms = scopedRooms.filter(r => r.status === 'OCCUPIED').length;
   const availableRooms = scopedRooms.filter(r => r.status === 'AVAILABLE').length;
   const heldRooms = scopedRooms.filter(r => r.status === 'HELD').length;
-  const maintenanceRooms = scopedRooms.filter(r => r.status === 'MAINTENANCE').length;
   const monthlyRevenue = scopedRooms.filter(r => r.status === 'OCCUPIED').reduce((acc, r) => acc + r.price, 0);
   const occupancyRate = totalRooms > 0 ? Math.round((occupiedRooms / totalRooms) * 100) : 0;
   const hunonicOnlineCount = scopedRooms.filter(r => r.meterStatus.hunonicOnline).length;
+  const hunonicOfflineRooms = scopedRooms.filter(r => !r.meterStatus.hunonicOnline);
+  const overdueInvoices = scopedPendingInvoices.filter(inv => inv.status === 'OVERDUE');
+  const totalReceivableAmount = scopedPendingInvoices.reduce((acc, inv) => acc + inv.amount, 0);
 
   return (
     <div className="space-y-6">
@@ -69,7 +83,10 @@ export const OverviewDashboard: React.FC = () => {
           <h2 className="text-xl md:text-2xl font-bold tracking-tight">
             Vận hành căn hộ dịch vụ AdHome
           </h2>
-          <p className="text-xs text-blue-100/90 mt-1 max-w-xl">
+          <p
+            data-testid="console-overview-portfolio-summary"
+            className="text-xs text-blue-100/90 mt-1 max-w-xl"
+          >
             Portfolio Workspace: {scopedBuildings.length} tòa nhà, {totalRooms} căn hộ, quản lý hợp đồng, hóa đơn FSM và đối soát tự động.
           </p>
         </div>
@@ -146,7 +163,7 @@ export const OverviewDashboard: React.FC = () => {
           </div>
           <div className="mt-3 flex items-center justify-between text-xs">
             <span className="text-emerald-600 font-semibold flex items-center gap-0.5">
-              <ArrowUpRight className="w-3.5 h-3.5" /> 6 căn đang phát sinh dòng tiền
+              <ArrowUpRight className="w-3.5 h-3.5" /> {occupiedRooms} căn đang phát sinh dòng tiền
             </span>
             <span className="text-slate-400">Đã thu: 92%</span>
           </div>
@@ -164,12 +181,16 @@ export const OverviewDashboard: React.FC = () => {
           </div>
           <div className="mt-3 flex items-baseline gap-1.5">
             <span className="text-2xl font-bold text-rose-600">
-              5.520.000₫
+              {totalReceivableAmount.toLocaleString('vi-VN')}₫
             </span>
-            <span className="text-xs text-slate-500">(1 phòng 31-05)</span>
+            <span className="text-xs text-slate-500">({scopedPendingInvoices.length} hóa đơn)</span>
           </div>
           <div className="mt-3 flex items-center justify-between text-xs">
-            <span className="text-rose-500 font-medium">Quá hạn 3 ngày</span>
+            <span className="text-rose-500 font-medium">
+              {overdueInvoices.length > 0
+                ? `${overdueInvoices.length} hóa đơn quá hạn`
+                : 'Trong hạn thanh toán'}
+            </span>
             <button
               onClick={() => setActiveModule('invoices')}
               className="text-brand-primary hover:underline font-semibold"
@@ -194,12 +215,19 @@ export const OverviewDashboard: React.FC = () => {
               {hunonicOnlineCount}/{totalRooms}
             </span>
             <span className="text-xs text-emerald-600 font-semibold">
-              Online ({Math.round((hunonicOnlineCount / totalRooms) * 100)}%)
+              Online ({totalRooms > 0 ? Math.round((hunonicOnlineCount / totalRooms) * 100) : 0}%)
             </span>
           </div>
           <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
             <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-rose-500"></span> 1 công tơ 24-06 bảo trì
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  hunonicOfflineRooms.length > 0 ? 'bg-rose-500' : 'bg-emerald-500'
+                }`}
+              ></span>{' '}
+              {hunonicOfflineRooms.length > 0
+                ? `${hunonicOfflineRooms.length} công tơ (${hunonicOfflineRooms[0].code}) bảo trì`
+                : '100% công tơ trực tuyến'}
             </span>
             <button
               onClick={() => setActiveModule('settlements')}
@@ -215,11 +243,14 @@ export const OverviewDashboard: React.FC = () => {
       <div className="p-5 bg-surface dark:bg-surface-dark border border-appBorder-light dark:border-appBorder-dark rounded-card shadow-soft">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-              <Building2 className="w-4 h-4 text-brand-primary" /> Danh mục 4 tòa nhà tập trung
+            <h3
+              data-testid="console-overview-buildings-heading"
+              className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2"
+            >
+              <Building2 className="w-4 h-4 text-brand-primary" /> Danh mục {scopedBuildings.length} tòa nhà phụ trách
             </h3>
             <p className="text-xs text-slate-500">
-              Khu đô thị Ân Phú, phường Tân An, TP. Buôn Ma Thuột, Đắk Lắk (34 căn hộ dịch vụ)
+              Khu đô thị Ân Phú, phường Tân An, Đắk Lắk ({totalRooms} căn hộ dịch vụ)
             </p>
           </div>
           <button
@@ -303,7 +334,7 @@ export const OverviewDashboard: React.FC = () => {
           </div>
 
           <div className="divide-y divide-appBorder-light dark:divide-appBorder-dark">
-            {EXPIRING_CONTRACTS_MOCK.map(contract => (
+            {scopedExpiringContracts.map(contract => (
               <div key={contract.id} className="py-3 flex items-center justify-between">
                 <div>
                   <div className="flex items-center gap-2">
@@ -362,7 +393,7 @@ export const OverviewDashboard: React.FC = () => {
           </div>
 
           <div className="divide-y divide-appBorder-light dark:divide-appBorder-dark">
-            {PENDING_INVOICES_MOCK.map(inv => (
+            {scopedPendingInvoices.map(inv => (
               <div key={inv.id} className="py-3 flex items-center justify-between">
                 <div>
                   <div className="flex items-center gap-2">
@@ -406,73 +437,80 @@ export const OverviewDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Recent Transactions & Payment Ledger */}
-      <div className="p-5 bg-surface dark:bg-surface-dark border border-appBorder-light dark:border-appBorder-dark rounded-card shadow-soft">
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-              <CreditCard className="w-4 h-4 text-emerald-500" /> Sổ quỹ & Giao dịch ngân hàng gần đây
-            </h3>
-            <p className="text-xs text-slate-400">
-              Đối soát tự động qua SePay Webhook và sao kê tài khoản ngân hàng VCB
-            </p>
+      {/* Recent Transactions & Payment Ledger (Restricted to finance.read / canAccessFinance) */}
+      {hasCapability('canAccessFinance') && (
+        <div
+          data-testid="console-overview-finance-ledger"
+          className="p-5 bg-surface dark:bg-surface-dark border border-appBorder-light dark:border-appBorder-dark rounded-card shadow-soft"
+        >
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <CreditCard className="w-4 h-4 text-emerald-500" /> Sổ quỹ & Giao dịch ngân hàng gần đây
+              </h3>
+              <p className="text-xs text-slate-400">
+                Đối soát tự động qua SePay Webhook và sao kê tài khoản ngân hàng VCB
+              </p>
+            </div>
+            <button
+              onClick={() => setActiveModule('payments')}
+              className="text-xs font-medium text-brand-primary hover:underline"
+            >
+              Lịch sử đối soát ➔
+            </button>
           </div>
-          <button
-            onClick={() => setActiveModule('payments')}
-            className="text-xs font-medium text-brand-primary hover:underline"
-          >
-            Lịch sử đối soát ➔
-          </button>
-        </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="border-b border-appBorder-light dark:border-appBorder-dark text-slate-400 font-semibold">
-                <th className="pb-2.5">Mã GD</th>
-                <th className="pb-2.5">Thời gian</th>
-                <th className="pb-2.5">Phòng / Khách</th>
-                <th className="pb-2.5">Kênh thanh toán</th>
-                <th className="pb-2.5">Nội dung đối soát</th>
-                <th className="pb-2.5 text-right">Số tiền</th>
-                <th className="pb-2.5 text-right">Trạng thái</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-appBorder-light dark:divide-appBorder-dark">
-              {RECENT_TRANSACTIONS_MOCK.map(tx => (
-                <tr key={tx.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                  <td className="py-2.5 font-mono text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                    {tx.code}
-                  </td>
-                  <td className="py-2.5 text-slate-400 text-[11px]">{tx.timestamp}</td>
-                  <td className="py-2.5 font-medium text-slate-800 dark:text-slate-200">
-                    {tx.roomCode} • {tx.payerName}
-                  </td>
-                  <td className="py-2.5">
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300 border border-blue-200 dark:border-blue-900">
-                      {tx.method}
-                    </span>
-                  </td>
-                  <td className="py-2.5 text-slate-500 font-mono text-[11px] truncate max-w-xs">
-                    {tx.reference}
-                  </td>
-                  <td className={`py-2.5 text-right font-bold ${
-                    tx.type === 'EXPENSE_MAINTENANCE' ? 'text-rose-600' : 'text-emerald-600'
-                  }`}>
-                    {tx.type === 'EXPENSE_MAINTENANCE' ? '-' : '+'}
-                    {tx.amount.toLocaleString('vi-VN')}₫
-                  </td>
-                  <td className="py-2.5 text-right">
-                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600">
-                      <CheckCircle2 className="w-3.5 h-3.5" /> Đã ghi sổ
-                    </span>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-appBorder-light dark:border-appBorder-dark text-slate-400 font-semibold">
+                  <th className="pb-2.5">Mã GD</th>
+                  <th className="pb-2.5">Thời gian</th>
+                  <th className="pb-2.5">Phòng / Khách</th>
+                  <th className="pb-2.5">Kênh thanh toán</th>
+                  <th className="pb-2.5">Nội dung đối soát</th>
+                  <th className="pb-2.5 text-right">Số tiền</th>
+                  <th className="pb-2.5 text-right">Trạng thái</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-appBorder-light dark:divide-appBorder-dark">
+                {scopedRecentTransactions.map(tx => (
+                  <tr key={tx.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                    <td className="py-2.5 font-mono text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                      {tx.code}
+                    </td>
+                    <td className="py-2.5 text-slate-400 text-[11px]">{tx.timestamp}</td>
+                    <td className="py-2.5 font-medium text-slate-800 dark:text-slate-200">
+                      {tx.roomCode} • {tx.payerName}
+                    </td>
+                    <td className="py-2.5">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300 border border-blue-200 dark:border-blue-900">
+                        {tx.method}
+                      </span>
+                    </td>
+                    <td className="py-2.5 text-slate-500 font-mono text-[11px] truncate max-w-xs">
+                      {tx.reference}
+                    </td>
+                    <td
+                      className={`py-2.5 text-right font-bold ${
+                        tx.type === 'EXPENSE_MAINTENANCE' ? 'text-rose-600' : 'text-emerald-600'
+                      }`}
+                    >
+                      {tx.type === 'EXPENSE_MAINTENANCE' ? '-' : '+'}
+                      {tx.amount.toLocaleString('vi-VN')}₫
+                    </td>
+                    <td className="py-2.5 text-right">
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Đã ghi sổ
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

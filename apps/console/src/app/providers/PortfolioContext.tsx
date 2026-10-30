@@ -13,6 +13,7 @@ import {
   DeleteSafetyReport,
 } from '@/shared/types/portfolio';
 import { BUILDINGS_HOMELAND_MOCK, ROOMS_HOMELAND_MOCK } from '@/shared/data/buildingsData';
+import { useAuth } from '@/app/providers/AuthContext';
 
 const DEFAULT_ORGS: Organization[] = [
   {
@@ -87,6 +88,14 @@ interface PortfolioContextType {
 const PortfolioContext = createContext<PortfolioContextType | undefined>(undefined);
 
 export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const {
+    user,
+    activeBuildingId,
+    setActiveBuildingId,
+    isBuildingAllowed,
+    hasCapability,
+  } = useAuth();
+
   const [organizations, setOrganizations] = useState<Organization[]>(() => {
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem('adhome_v2_organizations');
@@ -105,7 +114,17 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return DEFAULT_ORGS[0].id;
   });
 
-  const [selectedBuildingFilter, setSelectedBuildingFilter] = useState<string>('ALL');
+  const selectedBuildingFilter = activeBuildingId;
+  const setSelectedBuildingFilter = (bldId: string) => {
+    setActiveBuildingId(bldId);
+  };
+
+  // Ensure non-Admin staff are always pinned to the primary organization
+  useEffect(() => {
+    if (user && user.role !== 'ORG_ADMIN' && currentOrgId !== DEFAULT_ORGS[0].id) {
+      setCurrentOrgIdState(DEFAULT_ORGS[0].id);
+    }
+  }, [user, currentOrgId]);
 
   // Load buildings & rooms per organization
   const [allBuildings, setAllBuildings] = useState<Building[]>(() => {
@@ -159,18 +178,33 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const currentOrg = organizations.find(o => o.id === currentOrgId) || organizations[0];
 
   const setCurrentOrgId = (orgId: string) => {
+    if (user && user.role !== 'ORG_ADMIN') {
+      return;
+    }
     setCurrentOrgIdState(orgId);
     setSelectedBuildingFilter('ALL');
   };
 
-  // Buildings and Rooms scoped strictly to current organization
+  // Buildings and Rooms scoped strictly to current organization AND staff buildingScopes
   const orgBuildings = useMemo(() => {
-    return allBuildings.filter(b => b.organizationId === currentOrg.id);
-  }, [allBuildings, currentOrg.id]);
+    return allBuildings.filter(b => {
+      if (b.organizationId !== currentOrg.id) return false;
+      if (user && user.assignedBuildingIds !== 'ALL') {
+        return isBuildingAllowed(b.id) || isBuildingAllowed(b.code);
+      }
+      return true;
+    });
+  }, [allBuildings, currentOrg.id, user, isBuildingAllowed]);
 
   const orgRooms = useMemo(() => {
-    return allRooms.filter(r => r.organizationId === currentOrg.id);
-  }, [allRooms, currentOrg.id]);
+    return allRooms.filter(r => {
+      if (r.organizationId !== currentOrg.id) return false;
+      if (user && user.assignedBuildingIds !== 'ALL') {
+        return isBuildingAllowed(r.buildingId) || isBuildingAllowed(r.buildingCode);
+      }
+      return true;
+    });
+  }, [allRooms, currentOrg.id, user, isBuildingAllowed]);
 
   // Dynamic Portfolio Metrics calculated across active org rooms
   const totalBuildingsCount = orgBuildings.filter(b => b.status === 'ACTIVE').length;
@@ -190,6 +224,9 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // --- ACTIONS ---
 
   const createOrganization = (name: string, plan: Organization['plan'] = 'PRO'): Organization => {
+    if (!hasCapability('canManageBuildings')) {
+      throw new Error('Tài khoản không có quyền tạo tổ chức mới.');
+    }
     const newOrg: Organization = {
       id: `org-${Date.now()}`,
       name,
@@ -205,6 +242,9 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const addBuilding = (dto: CreateBuildingDto): Building => {
+    if (!hasCapability('canManageBuildings')) {
+      throw new Error('Tài khoản không có quyền thêm tòa nhà mới.');
+    }
     const bldId = `bld-${Date.now()}`;
     const floorsCount = dto.initialFloorsCount && dto.initialFloorsCount > 0 ? dto.initialFloorsCount : 3;
 
@@ -315,6 +355,9 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const deleteBuilding = (id: string): { success: boolean; message: string } => {
+    if (!hasCapability('canManageBuildings')) {
+      return { success: false, message: 'Tài khoản không có quyền xóa tòa nhà.' };
+    }
     const safety = checkBuildingDeleteSafety(id);
     if (!safety.canDeletePermanently) {
       return { success: false, message: safety.blockReason || 'Không thể xóa tòa nhà đã có giao dịch.' };
@@ -585,6 +628,9 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const resetToDemoData = () => {
+    if (!hasCapability('canManageBuildings')) {
+      return;
+    }
     const defaultBlds: Building[] = BUILDINGS_HOMELAND_MOCK.map(b => ({
       ...b,
       buildingType: 'SERVICED_APARTMENT',
@@ -605,6 +651,9 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const clearAllAssets = () => {
+    if (!hasCapability('canManageBuildings')) {
+      return;
+    }
     setAllBuildings(prev => prev.filter(b => b.organizationId !== currentOrg.id));
     setAllRooms(prev => prev.filter(r => r.organizationId !== currentOrg.id));
   };

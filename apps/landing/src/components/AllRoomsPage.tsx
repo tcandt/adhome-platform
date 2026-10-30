@@ -113,7 +113,7 @@ export const AllRoomsPage: React.FC<AllRoomsPageProps> = ({
   const isVerifiedSource = sourceVerified && dataMode === 'LIVE';
 
   return (
-    <section className="py-10 sm:py-16 bg-canvas min-h-[75vh]">
+    <section className="py-10 sm:py-16 bg-canvas min-h-[115vh]">
       <div className="max-w-[1220px] mx-auto px-4 sm:px-6 lg:px-8">
         {/* Back Breadcrumb & Page Title */}
         <div className="pb-6 border-b border-line">

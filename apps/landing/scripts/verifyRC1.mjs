@@ -1,5 +1,7 @@
 import crypto from 'node:crypto';
+import dns from 'node:dns/promises';
 import fs from 'node:fs';
+import http from 'node:http';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { PrismaClient } from '@prisma/client';
@@ -15,8 +17,9 @@ import { evaluateQualityGate } from './qualityGateCore.mjs';
 loadAdhomeEnv();
 
 const BASE_URL = process.env.RC1_BASE_URL || 'http://127.0.0.1:8081';
-const CANONICAL_ORIGIN = 'https://adhome.ductinh.one';
-const CONSOLE_ORIGIN = 'https://console-adhome.ductinh.one';
+const CANONICAL_ORIGIN = 'https://adhome.vn';
+const CONSOLE_ORIGIN = 'https://console.adhome.vn';
+const CONSOLE_LOGIN_URL = 'https://console.adhome.vn/login';
 const ARTIFACT_DIR =
   'C:\\Users\\TINH-NGUYEN\\.gemini\\antigravity\\brain\\28c40a83-4f86-4432-98db-0577f31a9633';
 const RC1_OUTPUT_DIR = path.join(process.cwd(), 'docs', 'evidence', 'rc1');
@@ -41,13 +44,20 @@ export function getBaselinePassReportFixture() {
       mobileNavigation: { pass: true },
       leadInquiryModal: { pass: true },
     },
-    rc02_canonicalDomain: { pass: true },
+    rc02_canonicalDomain: {
+      pass: true,
+      legacyDomain301RedirectLanding: true,
+      legacyDomain301RedirectConsole: true,
+    },
     rc03_backendSecurityAndRbac: {
       pass: true,
       productionAdminLoginApi: true,
       missingPasswordBlocked400: true,
       wrongPasswordBlocked401: true,
       inactiveSampleActorLoginBlocked401: true,
+      unauthenticatedRumResetBlocked401: true,
+      managerRumResetForbidden403: true,
+      consoleDualRoleUiE2ePass: true,
     },
     rc04_sustainedLoadTesting: { pass: true },
     rc05_databaseAndSeo: { pass: true },
@@ -58,7 +68,7 @@ export function getBaselinePassReportFixture() {
       pass: true,
       serverRumSummary: {
         metrics: {
-          CLS: { count: 10, p75: 0.0 },
+          CLS: { count: 10, p50: 0.0, p75: 0.0, p95: 0.0, max: 0.0 },
         },
       },
     },
@@ -86,11 +96,19 @@ if (process.argv.includes('--dry-run-gate-only')) {
   } else if (failureType === 'wrong-password-pass') {
     fixture.rc03_backendSecurityAndRbac.wrongPasswordBlocked401 = false;
   } else if (failureType === 'seo') {
+    fixture.rc02_canonicalDomain.legacyDomain301RedirectLanding = false;
     fixture.rc02_canonicalDomain.pass = false;
   } else if (failureType === 'lead') {
     fixture.rc01_uiPolish.leadInquiryModal.pass = false;
   } else if (failureType === 'server-rum-cls') {
     fixture.rc06_coreWebVitals.serverRumSummary.metrics.CLS.p75 = 0.18;
+  } else if (failureType === 'server-rum-cls-max') {
+    fixture.rc06_coreWebVitals.serverRumSummary.metrics.CLS.p75 = 0.0;
+    fixture.rc06_coreWebVitals.serverRumSummary.metrics.CLS.max = 0.1137;
+  } else if (failureType === 'rum-reset-unprotected') {
+    fixture.rc03_backendSecurityAndRbac.unauthenticatedRumResetBlocked401 = false;
+  } else if (failureType === 'console-dual-role') {
+    fixture.rc03_backendSecurityAndRbac.consoleDualRoleUiE2ePass = false;
   }
 
   const evaluation = evaluateQualityGate(fixture);
@@ -277,6 +295,7 @@ async function launchHeadlessBrowser(port = 9348) {
   await cdp.send('Page.enable');
   await cdp.send('Runtime.enable');
   await cdp.send('DOM.enable');
+  await cdp.send('Network.enable');
 
   return {
     cdp,
@@ -430,21 +449,134 @@ async function nativeTypeAndMeasureInp(cdp, selector, text, label) {
   };
 }
 
+async function setViewportClean(cdp, metrics) {
+  // Always navigate to about:blank BEFORE changing device metrics so CDP viewport
+  // morphing never triggers synthetic layout-shift entries on a live page.
+  await cdp.send('Page.navigate', { url: 'about:blank' });
+  await new Promise((r) => setTimeout(r, 150));
+  await cdp.send('Emulation.setDeviceMetricsOverride', metrics);
+  await new Promise((r) => setTimeout(r, 100));
+}
+
+async function probeLivePublicDomains() {
+  const targets = [
+    { name: 'landing', hostname: 'adhome.vn', url: 'https://adhome.vn/' },
+    { name: 'consoleLogin', hostname: 'console.adhome.vn', url: 'https://console.adhome.vn/login' },
+  ];
+  const results = {};
+
+  for (const t of targets) {
+    const entry = {
+      url: t.url,
+      hostname: t.hostname,
+      dnsResolved: false,
+      ipv4Addresses: [],
+      cnameRecords: [],
+      dnsError: null,
+      httpsReachable: false,
+      httpStatus: null,
+      httpsError: null,
+    };
+
+    try {
+      entry.ipv4Addresses = await dns.resolve4(t.hostname);
+      entry.dnsResolved = entry.ipv4Addresses.length > 0;
+    } catch (err) {
+      entry.dnsError = err?.code || err?.message || String(err);
+    }
+
+    try {
+      entry.cnameRecords = await dns.resolveCname(t.hostname);
+      if (entry.cnameRecords.length > 0) entry.dnsResolved = true;
+    } catch {
+      // CNAME optional when A record or NXDOMAIN
+    }
+
+    if (entry.dnsResolved) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 4500);
+      try {
+        const res = await fetch(t.url, {
+          method: 'GET',
+          redirect: 'manual',
+          signal: ctrl.signal,
+        });
+        entry.httpsReachable = true;
+        entry.httpStatus = res.status;
+      } catch (err) {
+        entry.httpsError = err?.cause?.code || err?.message || String(err);
+      } finally {
+        clearTimeout(timer);
+      }
+    } else {
+      entry.httpsError = 'SKIPPED_DNS_NOT_PROVISIONED_YET';
+    }
+
+    results[t.name] = entry;
+  }
+
+  return {
+    checkedAt: new Date().toISOString(),
+    environmentNote:
+      results.landing?.httpsReachable && results.consoleLogin?.httpsReachable
+        ? 'PUBLIC_PRODUCTION_DNS_AND_HTTPS_LIVE'
+        : 'LOCAL_WORKSTATION_VERIFIED_PENDING_EXTERNAL_DNS_CUTOVER',
+    targets: results,
+  };
+}
+
+function rawHttpGetWithHost(baseUrl, requestPath, hostHeader) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(baseUrl);
+    const req = http.request(
+      {
+        hostname: parsed.hostname,
+        port: Number(parsed.port) || 80,
+        path: requestPath,
+        method: 'GET',
+        headers: {
+          Host: hostHeader,
+        },
+      },
+      (res) => {
+        res.resume();
+        resolve({
+          status: res.statusCode || 0,
+          location: res.headers.location || null,
+        });
+      }
+    );
+    req.on('error', reject);
+    req.end();
+  });
+}
+
 async function runSecuritySeoAndDomainAudit() {
   console.log('\n--- Running Backend Security, RBAC, Domain & SEO Audits ---');
 
-  // 1. Canonical Domain & Links Audits
-  console.log('Auditing canonical links, robots.txt, sitemaps and headers...');
+  // 1. Canonical Domain & Links Audits + Legacy Domain 301 Redirect Checks
+  console.log('Auditing canonical links, robots.txt, sitemaps, and legacy 301 redirects...');
   const robotsRes = await fetch(`${BASE_URL}/robots.txt`);
   const robotsText = await robotsRes.text();
   const sitemapRes = await fetch(`${BASE_URL}/sitemap.xml`);
   const sitemapXml = await sitemapRes.text();
 
+  const legacyLandingRedirectRes = await rawHttpGetWithHost(
+    BASE_URL,
+    '/phong-trong',
+    'adhome.ductinh.one'
+  );
+  const legacyConsoleRedirectOnApiHostRes = await rawHttpGetWithHost(
+    BASE_URL,
+    '/login',
+    'console-adhome.ductinh.one'
+  );
+
   const domainAudit = {
     robotsSitemapLine: robotsText.includes(
       `Sitemap: ${CANONICAL_ORIGIN}/sitemap.xml`
     ),
-    sitemapHasZeroOldDomains: !sitemapXml.includes('https://adhome.vn'),
+    sitemapHasZeroOldDomains: !sitemapXml.includes('ductinh.one'),
     sitemapHasCanonicalOrigin: sitemapXml.includes(
       `<loc>${CANONICAL_ORIGIN}/</loc>`
     ),
@@ -454,6 +586,14 @@ async function runSecuritySeoAndDomainAudit() {
     sitemapHasRoomOrigin: sitemapXml.includes(
       `<loc>${CANONICAL_ORIGIN}/phong/studio-ban-cong-31-06-lk01-31-an-phu</loc>`
     ),
+    legacyLanding301Status: legacyLandingRedirectRes.status,
+    legacyLanding301Location: legacyLandingRedirectRes.location,
+    legacyLanding301Pass:
+      legacyLandingRedirectRes.status === 301 &&
+      legacyLandingRedirectRes.location === 'https://adhome.vn/phong-trong',
+    legacyConsole301OnApiHostPass:
+      legacyConsoleRedirectOnApiHostRes.status === 301 &&
+      legacyConsoleRedirectOnApiHostRes.location === 'https://console.adhome.vn/login',
   };
 
   // 1b. Boot Security Assertion Verification
@@ -481,28 +621,25 @@ async function runSecuritySeoAndDomainAudit() {
     process.env.ADHOME_CONSOLE_JWT_SECRET = originalSecret;
   }
 
-  // 1c. Security Context Protection & Strict Anti-Spoofing Verification
-  // Check that public unauthenticated /api/v1/public/security/context is BLOCKED (404/401)
+  // 1c. Security Context Protection & Unauthenticated RUM Reset Protection
   const publicContextRes = await fetch(`${BASE_URL}/api/v1/public/security/context`);
   const publicSecurityContextBlocked =
     publicContextRes.status === 404 || publicContextRes.status === 401;
 
-  // Check that unauthenticated /api/v1/console/security/context is REJECTED (401)
   const unauthConsoleRes = await fetch(`${BASE_URL}/api/v1/console/security/context`);
   const unauthConsoleBlocked = unauthConsoleRes.status === 401;
 
-  // 1d-0. Reset server RUM buffer to ensure pristine telemetry for the current run
-  try {
-    await fetch(`${BASE_URL}/api/v1/public/rum/reset`, { method: 'POST' });
-  } catch {
-    // ignore
-  }
+  // Verify unauthenticated POST /api/v1/public/rum/reset is strictly rejected with 401
+  const unauthRumResetRes = await fetch(`${BASE_URL}/api/v1/public/rum/reset`, {
+    method: 'POST',
+  });
+  const unauthenticatedRumResetBlocked401 = unauthRumResetRes.status === 401;
 
-  // 1d-1. Enable Console Login and Provision authentic admin with secure scrypt password
+  // 1d-1. Enable Console Login and Provision authentic admin (admin@adhome.vn) with secure scrypt password
   process.env.ADHOME_CONSOLE_LOGIN_ENABLED = 'true';
   const TEST_ADMIN_PASSWORD = 'AdHome@SuperAdmin2026!#Scrypt';
   await provisionProductionAdmin({
-    email: 'admin@adhome.ductinh.one',
+    email: 'admin@adhome.vn',
     newPassword: TEST_ADMIN_PASSWORD,
     forceActivate: true,
   });
@@ -510,7 +647,7 @@ async function runSecuritySeoAndDomainAudit() {
   // Invalidate any dangling sessions from previous runs
   await auditAndSanitizeProductionDb({ deactivateSampleActors: true, invalidateAllSessions: true });
 
-  // Authenticate using authentic production admin: usr-admin-prod (admin@adhome.ductinh.one)
+  // Authenticate using authentic production admin: usr-admin-prod (admin@adhome.vn)
   const prodAdminActor = await prisma.consoleActor.findUnique({
     where: { id: 'usr-admin-prod' },
   });
@@ -518,9 +655,16 @@ async function runSecuritySeoAndDomainAudit() {
     sub: 'usr-admin-prod',
     role: 'ADMIN',
     orgId: 'org-adhome-anphu',
-    email: 'admin@adhome.ductinh.one',
+    email: 'admin@adhome.vn',
     sessionVersion: prodAdminActor?.sessionVersion ?? 1,
   });
+
+  // Authenticated Admin RUM reset succeeds (200)
+  const adminRumResetRes = await fetch(`${BASE_URL}/api/v1/public/rum/reset`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${prodAdminToken}` },
+  });
+  const adminRumResetAuthorized200 = adminRumResetRes.status === 200;
 
   const contextRes = await fetch(`${BASE_URL}/api/v1/console/security/context`, {
     headers: {
@@ -542,7 +686,7 @@ async function runSecuritySeoAndDomainAudit() {
   const missingPwRes = await fetch(`${BASE_URL}/api/v1/console/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: 'admin@adhome.ductinh.one' }),
+    body: JSON.stringify({ email: 'admin@adhome.vn' }),
   });
   const missingPasswordBlocked400 = missingPwRes.status === 400;
 
@@ -550,7 +694,7 @@ async function runSecuritySeoAndDomainAudit() {
   const nullPwRes = await fetch(`${BASE_URL}/api/v1/console/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: 'admin@adhome.ductinh.one', password: null }),
+    body: JSON.stringify({ email: 'admin@adhome.vn', password: null }),
   });
   const nullPasswordBlocked400 = nullPwRes.status === 400;
 
@@ -558,7 +702,7 @@ async function runSecuritySeoAndDomainAudit() {
   const emptyPwRes = await fetch(`${BASE_URL}/api/v1/console/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: 'admin@adhome.ductinh.one', password: '' }),
+    body: JSON.stringify({ email: 'admin@adhome.vn', password: '' }),
   });
   const emptyPasswordBlocked400 = emptyPwRes.status === 400;
 
@@ -566,7 +710,7 @@ async function runSecuritySeoAndDomainAudit() {
   const wrongPwRes = await fetch(`${BASE_URL}/api/v1/console/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: 'admin@adhome.ductinh.one', password: 'WrongPassword999!' }),
+    body: JSON.stringify({ email: 'admin@adhome.vn', password: 'WrongPassword999!' }),
   });
   const wrongPasswordBlocked401 = wrongPwRes.status === 401;
 
@@ -574,25 +718,27 @@ async function runSecuritySeoAndDomainAudit() {
   const sampleLoginRes = await fetch(`${BASE_URL}/api/v1/console/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: 'admin@adhome.vn', password: 'SomePassword123!' }),
+    body: JSON.stringify({ email: 'dev.sample.admin@adhome.internal', password: 'SomePassword123!' }),
   });
-  const sampleLoginBody = await sampleLoginRes.json();
   const inactiveSampleActorLoginBlocked401 = sampleLoginRes.status === 401;
 
-  // 1d-7. Authentic Production Admin Login API with scrypt credentials
+  // 1d-7. Authentic Production Admin Login API with scrypt credentials + HttpOnly Set-Cookie
   const prodLoginRes = await fetch(`${BASE_URL}/api/v1/console/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      email: 'admin@adhome.ductinh.one',
+      email: 'admin@adhome.vn',
       password: TEST_ADMIN_PASSWORD,
     }),
   });
+  const prodLoginSetCookie = prodLoginRes.headers.get('set-cookie') || '';
   const prodLoginBody = await prodLoginRes.json();
   const productionAdminLoginApi =
     prodLoginRes.status === 200 &&
     prodLoginBody.ok === true &&
     typeof prodLoginBody.token === 'string' &&
+    prodLoginSetCookie.includes('adhome_console_session=') &&
+    prodLoginSetCookie.toLowerCase().includes('httponly') &&
     prodLoginBody.actor?.id === 'usr-admin-prod' &&
     prodLoginBody.actor?.role === 'ADMIN';
 
@@ -608,7 +754,7 @@ async function runSecuritySeoAndDomainAudit() {
     sub: 'usr-admin-01',
     role: 'ADMIN',
     orgId: 'org-adhome-anphu',
-    email: 'admin@adhome.vn',
+    email: 'dev.sample.admin@adhome.internal',
     sessionVersion: 1,
   });
   const inactiveSampleRes = await fetch(`${BASE_URL}/api/v1/console/security/context`, {
@@ -621,7 +767,9 @@ async function runSecuritySeoAndDomainAudit() {
   const sampleActorsAudited =
     auditReport.actors.sampleDevActorsCount === 4 &&
     auditReport.actors.allSampleActorsDeactivated === true &&
-    auditReport.actors.genuineActorsCount === 1;
+    auditReport.actors.genuineActorsCount >= 1 &&
+    auditReport.actors.genuineAdminHasPassword === true &&
+    auditReport.actors.allActiveGenuineActorsHavePassword === true;
 
   // 2. Public Write Method Rejection (405 Method Not Allowed)
   const roomWriteStatuses = {};
@@ -693,7 +841,7 @@ async function runSecuritySeoAndDomainAudit() {
     sub: 'usr-admin-prod',
     role: 'ADMIN',
     orgId: 'org-adhome-anphu',
-    email: 'admin@adhome.ductinh.one',
+    email: 'admin@adhome.vn',
     sessionVersion: adminActor?.sessionVersion ?? 1,
   });
 
@@ -729,15 +877,21 @@ async function runSecuritySeoAndDomainAudit() {
   );
   const viewerBody = await viewerRes.json();
 
-  // 5. Building Scope Authorization: Manager LK01 forbidden on LK08 (403)
+  // 5. Building Scope Authorization: Manager LK01 forbidden on LK08 (403) & forbidden on RUM reset (403)
   const { token: mgrLk01Token } = signToken({
     sub: 'usr-mgr-lk01',
     role: 'BUILDING_MANAGER',
     orgId: 'org-adhome-anphu',
     buildingIds: ['bld-lk01-31', 'bld-lk01-32'],
-    email: 'manager.lk01@adhome.vn',
+    email: 'dev.sample.mgr.lk01@adhome.internal',
     sessionVersion: mgrActor?.sessionVersion ?? 1,
   });
+  const mgrRumResetRes = await fetch(`${BASE_URL}/api/v1/public/rum/reset`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${mgrLk01Token}` },
+  });
+  const managerRumResetForbidden403 = mgrRumResetRes.status === 403;
+
   const wrongBuildingRes = await fetch(
     `${BASE_URL}/api/v1/console/rooms/can-2pn-mini-25-05-lk08-25-an-phu`,
     {
@@ -755,7 +909,7 @@ async function runSecuritySeoAndDomainAudit() {
   const { token: rotatedPrevKeyToken } = signToken(
     {
       sub: 'usr-admin-prod',
-      email: 'admin@adhome.ductinh.one',
+      email: 'admin@adhome.vn',
       sessionVersion: adminActor?.sessionVersion ?? 1,
     },
     { secret: PREVIOUS_SECRET, kid: PREVIOUS_KEY_ID }
@@ -777,7 +931,7 @@ async function runSecuritySeoAndDomainAudit() {
   const { token: burnedOldKeyToken } = signToken(
     {
       sub: 'usr-admin-prod',
-      email: 'admin@adhome.ductinh.one',
+      email: 'admin@adhome.vn',
       sessionVersion: adminActor?.sessionVersion ?? 1,
     },
     { secret: BURNED_OLD_SECRET, kid: BURNED_OLD_KEY_ID }
@@ -798,7 +952,7 @@ async function runSecuritySeoAndDomainAudit() {
   // 7. Token Revocation by JTI
   const { token: revocableToken, jti: revocableJti } = signToken({
     sub: 'usr-admin-prod',
-    email: 'admin@adhome.ductinh.one',
+    email: 'admin@adhome.vn',
     sessionVersion: adminActor?.sessionVersion ?? 1,
   });
   const revokeCallRes = await fetch(`${BASE_URL}/api/v1/console/auth/revoke`, {
@@ -846,7 +1000,7 @@ async function runSecuritySeoAndDomainAudit() {
     sub: 'usr-admin-prod',
     role: 'ADMIN',
     orgId: 'org-adhome-anphu',
-    email: 'admin@adhome.ductinh.one',
+    email: 'admin@adhome.vn',
     sessionVersion: adminActor?.sessionVersion ?? 1,
   });
 
@@ -962,12 +1116,16 @@ async function runSecuritySeoAndDomainAudit() {
 
   return {
     domainAudit,
+    adminToken,
     bootSecurityPass,
     missingSecretThrowsFatal,
     trustProxyConfigValid,
     sampleActorsAudited,
     inactiveSampleActorBlocked401,
     inactiveSampleActorLoginBlocked401,
+    unauthenticatedRumResetBlocked401,
+    managerRumResetForbidden403,
+    adminRumResetAuthorized200,
     productionAdminTokenAuthorized,
     productionAdminLoginApi,
     productionAdminLoginE2E: productionAdminLoginApi,
@@ -1076,18 +1234,24 @@ export async function runFullRC1Verification() {
   };
 
   try {
-    // 0. Console UI Login E2E on http://127.0.0.1:5174
-    console.log('\n--- Launching Console Preview Server on port 5174 for Console UI E2E ---');
+    // 0. Unified /login & Dual-Role (Admin + Manager) Console E2E on http://127.0.0.1:5174
+    console.log('\n--- Launching Console Preview Server on port 5174 for Dual-Role Console E2E ---');
+
+    // Clean any pre-existing test manager row so Admin provisions it fresh via real UI
+    await prisma.consoleActor.deleteMany({
+      where: { email: 'manager.lk01@adhome.vn' },
+    });
+
     const consoleProc = spawn('pnpm', ['--filter', 'console', 'preview', '--port', '5174'], {
       shell: true,
       stdio: 'ignore',
     });
 
     let consoleReady = false;
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 35; i++) {
       await new Promise((r) => setTimeout(r, 200));
       try {
-        const cRes = await fetch('http://127.0.0.1:5174/');
+        const cRes = await fetch('http://127.0.0.1:5174/login');
         if (cRes.status === 200) {
           consoleReady = true;
           break;
@@ -1097,135 +1261,518 @@ export async function runFullRC1Verification() {
       }
     }
 
+    let legacyConsoleHost301OnPort5174 = false;
     const consoleUiReport = {
+      legacyConsoleHost301OnPort5174: false,
+      unauthenticatedRedirectedToLoginRoute: false,
       loginScreenRendered: false,
+      emptyEmailByDefault: false,
+      zeroRoleSelectorTabsOnLogin: false,
+      loginHeadingMatchesSpec: false,
+      serverDerivedRbacNoticeVisible: false,
       wrongPasswordFeedbackDisplayed: false,
-      authenticatedDashboardReached: false,
-      sessionTokenStoredInLocalStorage: false,
-      logoutReturnedToLoginScreen: false,
-      sessionTokenClearedOnLogout: false,
+      adminLogin: {
+        authenticatedDashboardReached: false,
+        pathnameIsRoot: false,
+        zeroRawJwtInLocalStorage: false,
+        httpOnlySessionCookieSet: false,
+        roleBadgeIsAdmin: false,
+        scopeSummaryIsAll4Buildings: false,
+        overviewShows4Buildings34Rooms: false,
+        financeAndSettingsUnlocked: false,
+        financeLedgerVisible: false,
+        zeroRoleSwitcherInShell: false,
+        createdManagerViaSettingsUi: false,
+        pass: false,
+      },
+      logoutFlow: {
+        logoutReturnedToLoginRoute: false,
+        httpOnlySessionCookieCleared: false,
+        pass: false,
+      },
+      managerLogin: {
+        authenticatedDashboardReached: false,
+        zeroRawJwtInLocalStorage: false,
+        httpOnlySessionCookieSet: false,
+        roleBadgeIsManager: false,
+        scopeSummaryIs2Buildings: false,
+        overviewShows2Buildings14Rooms: false,
+        financeAndSettingsLocked: false,
+        financeLedgerHidden: false,
+        onlyAssignedBuildingsRenderedInDom: false,
+        zeroRoleSwitcherInShell: false,
+        apiPortfolioScopedTo2Buildings: false,
+        apiAllowedBuildingMutation200: false,
+        apiUnassignedBuildingMutation403: false,
+        apiAccountsEndpointForbidden403: false,
+        apiFinanceEndpointForbidden403: false,
+        instantLogoutOnAdminScopeChange: false,
+        pass: false,
+      },
       pass: false,
     };
 
-    if (consoleReady) {
-      console.log('Console preview server ready on 5174. Navigating CDP to Console UI...');
-      await cdp.send('Emulation.setDeviceMetricsOverride', {
-        width: 1440,
-        height: 900,
-        deviceScaleFactor: 1,
-        mobile: false,
-      });
+    try {
+      if (consoleReady) {
+        console.log('Console preview server ready on 5174. Auditing legacy 301 & Dual-Role UI...');
 
-      await cdp.send('Page.navigate', { url: 'http://127.0.0.1:5174/' });
-      await new Promise((r) => setTimeout(r, 600));
+        const legacyConsole5174 = await rawHttpGetWithHost(
+          'http://127.0.0.1:5174',
+          '/login',
+          'console-adhome.ductinh.one'
+        );
+        legacyConsoleHost301OnPort5174 =
+          legacyConsole5174.status === 301 &&
+          legacyConsole5174.location === 'https://console.adhome.vn/login';
+        consoleUiReport.legacyConsoleHost301OnPort5174 = legacyConsoleHost301OnPort5174;
 
-      // Clear localStorage to guarantee fresh login screen
-      await cdp.eval('localStorage.clear()');
-      await cdp.send('Page.navigate', { url: 'http://127.0.0.1:5174/' });
-      await new Promise((r) => setTimeout(r, 800));
+        await cdp.send('Network.clearBrowserCookies');
+        await setViewportClean(cdp, {
+          width: 1440,
+          height: 900,
+          deviceScaleFactor: 1,
+          mobile: false,
+        });
 
-      const setControlledInput = async (selector, value) => {
-        await cdp.eval(`(() => {
-          const el = document.querySelector(${JSON.stringify(selector)});
-          if (!el) return;
-          el.focus();
-          const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-          if (setter) {
-            setter.call(el, ${JSON.stringify(value)});
-          } else {
-            el.value = ${JSON.stringify(value)};
-          }
-          el.dispatchEvent(new Event('input', { bubbles: true }));
-          el.dispatchEvent(new Event('change', { bubbles: true }));
+        await cdp.send('Page.navigate', { url: 'http://127.0.0.1:5174/' });
+        await new Promise((r) => setTimeout(r, 600));
+        await cdp.eval('localStorage.clear(); sessionStorage.clear();');
+        await cdp.send('Network.clearBrowserCookies');
+        await cdp.send('Page.navigate', { url: 'http://127.0.0.1:5174/' });
+        await new Promise((r) => setTimeout(r, 900));
+
+        const setControlledInput = async (selector, value) => {
+          await cdp.eval(`(() => {
+            const el = document.querySelector(${JSON.stringify(selector)});
+            if (!el) return;
+            el.focus();
+            const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+            if (setter) {
+              setter.call(el, ${JSON.stringify(value)});
+            } else {
+              el.value = ${JSON.stringify(value)};
+            }
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+          })()`);
+        };
+
+        // Phase A: Audit Unified /login screen
+        const loginScreenAudit = await cdp.eval(`(() => {
+          const emailEl = document.querySelector('[data-testid="console-login-email"]');
+          const headingText = document.querySelector('[data-testid="console-login-heading"]')?.textContent?.trim() || '';
+          const rbacNoteText = document.querySelector('[data-testid="console-login-rbac-note"]')?.textContent?.trim() || '';
+          const bodyText = document.body.innerText || '';
+          return {
+            pathname: window.location.pathname,
+            hasEmailInput: Boolean(emailEl),
+            emailDefaultValue: emailEl ? emailEl.value : null,
+            headingText,
+            rbacNoteText,
+            hasRoleTabs:
+              bodyText.includes('Admin (Toàn quyền)') ||
+              bodyText.includes('Manager (Quản lý tòa)'),
+          };
         })()`);
-      };
 
-      const hasEmailInput = await cdp.eval(
-        `Boolean(document.querySelector('[data-testid="console-login-email"]'))`
-      );
-      consoleUiReport.loginScreenRendered = Boolean(hasEmailInput);
-      await saveShot('rc1_console_login_screen.png');
-
-      // 1. Submit wrong password
-      await setControlledInput('[data-testid="console-login-email"]', 'admin@adhome.ductinh.one');
-      await setControlledInput('[data-testid="console-login-password"]', 'IncorrectPassword999!');
-      await cdp.eval(
-        `document.querySelector('[data-testid="console-login-submit"]')?.click()`
-      );
-
-      let hasErrorMsg = false;
-      for (let p = 0; p < 25; p++) {
-        hasErrorMsg = await cdp.eval(
-          `Boolean(document.querySelector('[data-testid="console-login-error"]'))`
+        consoleUiReport.unauthenticatedRedirectedToLoginRoute =
+          loginScreenAudit.pathname === '/login';
+        consoleUiReport.loginScreenRendered = Boolean(loginScreenAudit.hasEmailInput);
+        consoleUiReport.emptyEmailByDefault = loginScreenAudit.emailDefaultValue === '';
+        consoleUiReport.zeroRoleSelectorTabsOnLogin = !loginScreenAudit.hasRoleTabs;
+        consoleUiReport.loginHeadingMatchesSpec =
+          loginScreenAudit.headingText === 'Đăng nhập hệ thống quản lý AdHome';
+        consoleUiReport.serverDerivedRbacNoticeVisible = loginScreenAudit.rbacNoteText.includes(
+          'Quyền truy cập được xác định tự động sau khi xác thực'
         );
-        if (hasErrorMsg) break;
-        await new Promise((r) => setTimeout(r, 100));
-      }
-      consoleUiReport.wrongPasswordFeedbackDisplayed = Boolean(hasErrorMsg);
-      await saveShot('rc1_console_login_invalid.png');
+        await saveShot('rc1_console_login_screen.png');
 
-      // 2. Submit correct authentic scrypt password
-      await setControlledInput(
-        '[data-testid="console-login-password"]',
-        securityAndSeoReport.testAdminPassword
-      );
-      await cdp.eval(
-        `document.querySelector('[data-testid="console-login-submit"]')?.click()`
-      );
+        // Phase B: Submit wrong password
+        await setControlledInput('[data-testid="console-login-email"]', 'admin@adhome.vn');
+        await setControlledInput('[data-testid="console-login-password"]', 'IncorrectPassword999!');
+        await cdp.eval(
+          `document.querySelector('[data-testid="console-login-submit"]')?.click()`
+        );
 
-      let hasLogoutButton = false;
-      let storedToken = null;
-      for (let p = 0; p < 35; p++) {
-        hasLogoutButton = await cdp.eval(
-          `Boolean(document.querySelector('[data-testid="console-logout-button"]'))`
+        let hasErrorMsg = false;
+        for (let p = 0; p < 25; p++) {
+          hasErrorMsg = await cdp.eval(
+            `Boolean(document.querySelector('[data-testid="console-login-error"]'))`
+          );
+          if (hasErrorMsg) break;
+          await new Promise((r) => setTimeout(r, 100));
+        }
+        consoleUiReport.wrongPasswordFeedbackDisplayed = Boolean(hasErrorMsg);
+        await saveShot('rc1_console_login_invalid.png');
+
+        // Phase C: Authentic Admin Login (admin@adhome.vn)
+        await setControlledInput(
+          '[data-testid="console-login-password"]',
+          securityAndSeoReport.testAdminPassword
         );
-        storedToken = await cdp.eval(
-          `localStorage.getItem('adhome_console_token')`
+        await cdp.eval(
+          `document.querySelector('[data-testid="console-login-submit"]')?.click()`
         );
-        if (hasLogoutButton && storedToken && storedToken.length > 20) break;
+
+        let adminDashboardReady = false;
+        for (let p = 0; p < 35; p++) {
+          adminDashboardReady = await cdp.eval(
+            `Boolean(document.querySelector('[data-testid="console-logout-button"]'))`
+          );
+          if (adminDashboardReady) break;
+          await new Promise((r) => setTimeout(r, 150));
+        }
+
+        const adminCookiesResult = await cdp.send('Network.getCookies');
+        const adminSessionCookie = (adminCookiesResult.cookies || []).find(
+          (c) => c.name === 'adhome_console_session'
+        );
+
+        const adminDomAudit = await cdp.eval(`(() => {
+          const roleBadge = document.querySelector('[data-testid="console-actor-role-badge"]')?.textContent?.trim() || '';
+          const scopeSummary = document.querySelector('[data-testid="console-actor-scope-summary"]')?.textContent?.trim() || '';
+          const portfolioSummary = document.querySelector('[data-testid="console-overview-portfolio-summary"]')?.textContent?.trim() || '';
+          const financeLocked = document.querySelector('[data-testid="nav-item-finance"]')?.getAttribute('data-locked');
+          const settingsLocked = document.querySelector('[data-testid="nav-item-settings"]')?.getAttribute('data-locked');
+          const hasFinanceLedger = Boolean(document.querySelector('[data-testid="console-overview-finance-ledger"]'));
+          const rawJwtInLocalStorage = localStorage.getItem('adhome_console_token');
+          const bodyText = document.body.innerText || '';
+          return {
+            pathname: window.location.pathname,
+            roleBadge,
+            scopeSummary,
+            portfolioSummary,
+            financeLocked,
+            settingsLocked,
+            hasFinanceLedger,
+            rawJwtInLocalStorage,
+            hasRoleSwitcher: bodyText.includes('Đổi vai trò') || bodyText.includes('Đổi ⇄'),
+          };
+        })()`);
+
+        consoleUiReport.adminLogin.authenticatedDashboardReached = Boolean(adminDashboardReady);
+        consoleUiReport.adminLogin.pathnameIsRoot = adminDomAudit.pathname === '/';
+        consoleUiReport.adminLogin.zeroRawJwtInLocalStorage =
+          adminDomAudit.rawJwtInLocalStorage === null;
+        consoleUiReport.adminLogin.httpOnlySessionCookieSet = Boolean(
+          adminSessionCookie && adminSessionCookie.httpOnly === true
+        );
+        consoleUiReport.adminLogin.roleBadgeIsAdmin = adminDomAudit.roleBadge === 'ADMIN';
+        consoleUiReport.adminLogin.scopeSummaryIsAll4Buildings =
+          adminDomAudit.scopeSummary === 'Toàn quyền 4 tòa';
+        consoleUiReport.adminLogin.overviewShows4Buildings34Rooms =
+          adminDomAudit.portfolioSummary.includes('4 tòa nhà, 34 căn hộ');
+        consoleUiReport.adminLogin.financeAndSettingsUnlocked =
+          adminDomAudit.financeLocked === 'false' && adminDomAudit.settingsLocked === 'false';
+        consoleUiReport.adminLogin.financeLedgerVisible = adminDomAudit.hasFinanceLedger;
+        consoleUiReport.adminLogin.zeroRoleSwitcherInShell = !adminDomAudit.hasRoleSwitcher;
+        await saveShot('rc1_console_dashboard_authenticated.png');
+
+        // Navigate to Settings & RBAC Account Management and create Manager account via UI
+        await cdp.eval(`document.querySelector('[data-testid="nav-item-settings"]')?.click()`);
+        for (let p = 0; p < 30; p++) {
+          const tableReady = await cdp.eval(
+            `Boolean(document.querySelector('[data-testid="console-accounts-table"]'))`
+          );
+          if (tableReady) break;
+          await new Promise((r) => setTimeout(r, 150));
+        }
+
+        await cdp.eval(
+          `document.querySelector('[data-testid="console-open-create-account"]')?.click()`
+        );
+        await new Promise((r) => setTimeout(r, 250));
+
+        const TEST_MANAGER_EMAIL = 'manager.lk01@adhome.vn';
+        const TEST_MANAGER_PASSWORD = 'AdHome@ManagerLK01!2026';
+
+        await setControlledInput('[data-testid="account-form-name"]', 'Nguyễn Văn Minh');
+        await setControlledInput('[data-testid="account-form-email"]', TEST_MANAGER_EMAIL);
+        await setControlledInput('[data-testid="account-form-password"]', TEST_MANAGER_PASSWORD);
+
+        for (const bldId of ['bld-lk01-31', 'bld-lk01-32', 'bld-lk08-24', 'bld-lk08-25']) {
+          const wantChecked = bldId === 'bld-lk01-31' || bldId === 'bld-lk01-32';
+          await cdp.eval(`(() => {
+            const cb = document.querySelector(${JSON.stringify(`[data-testid="scope-checkbox-${bldId}"]`)});
+            if (cb && cb.checked !== ${wantChecked}) {
+              cb.click();
+            }
+          })()`);
+        }
         await new Promise((r) => setTimeout(r, 150));
-      }
-      consoleUiReport.authenticatedDashboardReached = Boolean(hasLogoutButton);
-      consoleUiReport.sessionTokenStoredInLocalStorage = Boolean(
-        storedToken && storedToken.length > 20
-      );
-      await saveShot('rc1_console_dashboard_authenticated.png');
 
-      // 3. Test Logout
-      await cdp.eval(
-        `document.querySelector('[data-testid="console-logout-button"]')?.click()`
-      );
+        await cdp.eval(`document.querySelector('[data-testid="account-form-submit"]')?.click()`);
 
-      let backToLogin = false;
-      let clearedToken = null;
-      for (let p = 0; p < 25; p++) {
-        backToLogin = await cdp.eval(
-          `Boolean(document.querySelector('[data-testid="console-login-email"]'))`
+        let managerRowRendered = false;
+        for (let p = 0; p < 35; p++) {
+          managerRowRendered = await cdp.eval(
+            `Boolean(document.querySelector('[data-testid="account-row-manager.lk01@adhome.vn"]'))`
+          );
+          if (managerRowRendered) break;
+          await new Promise((r) => setTimeout(r, 150));
+        }
+        consoleUiReport.adminLogin.createdManagerViaSettingsUi = Boolean(managerRowRendered);
+        await saveShot('rc1_console_admin_accounts.png');
+
+        consoleUiReport.adminLogin.pass = Boolean(
+          consoleUiReport.adminLogin.authenticatedDashboardReached &&
+            consoleUiReport.adminLogin.pathnameIsRoot &&
+            consoleUiReport.adminLogin.zeroRawJwtInLocalStorage &&
+            consoleUiReport.adminLogin.httpOnlySessionCookieSet &&
+            consoleUiReport.adminLogin.roleBadgeIsAdmin &&
+            consoleUiReport.adminLogin.scopeSummaryIsAll4Buildings &&
+            consoleUiReport.adminLogin.overviewShows4Buildings34Rooms &&
+            consoleUiReport.adminLogin.financeAndSettingsUnlocked &&
+            consoleUiReport.adminLogin.financeLedgerVisible &&
+            consoleUiReport.adminLogin.zeroRoleSwitcherInShell &&
+            consoleUiReport.adminLogin.createdManagerViaSettingsUi
         );
-        clearedToken = await cdp.eval(
-          `localStorage.getItem('adhome_console_token')`
+
+        // Logout Admin
+        await cdp.eval(`document.querySelector('[data-testid="console-logout-button"]')?.click()`);
+        let backToLogin = false;
+        for (let p = 0; p < 25; p++) {
+          backToLogin = await cdp.eval(
+            `window.location.pathname === '/login' && Boolean(document.querySelector('[data-testid="console-login-email"]'))`
+          );
+          if (backToLogin) break;
+          await new Promise((r) => setTimeout(r, 120));
+        }
+        const postLogoutCookies = await cdp.send('Network.getCookies');
+        const lingeringCookie = (postLogoutCookies.cookies || []).find(
+          (c) => c.name === 'adhome_console_session' && c.value
         );
-        if (backToLogin && !clearedToken) break;
-        await new Promise((r) => setTimeout(r, 100));
+        consoleUiReport.logoutFlow.logoutReturnedToLoginRoute = Boolean(backToLogin);
+        consoleUiReport.logoutFlow.httpOnlySessionCookieCleared = !lingeringCookie;
+        consoleUiReport.logoutFlow.pass =
+          consoleUiReport.logoutFlow.logoutReturnedToLoginRoute &&
+          consoleUiReport.logoutFlow.httpOnlySessionCookieCleared;
+        await saveShot('rc1_console_logout_returned.png');
+
+        // Phase D: Authentic Manager Login (manager.lk01@adhome.vn) via Unified /login
+        await setControlledInput('[data-testid="console-login-email"]', TEST_MANAGER_EMAIL);
+        await setControlledInput('[data-testid="console-login-password"]', TEST_MANAGER_PASSWORD);
+        await cdp.eval(
+          `document.querySelector('[data-testid="console-login-submit"]')?.click()`
+        );
+
+        let managerDashboardReady = false;
+        for (let p = 0; p < 35; p++) {
+          managerDashboardReady = await cdp.eval(
+            `Boolean(document.querySelector('[data-testid="console-logout-button"]'))`
+          );
+          if (managerDashboardReady) break;
+          await new Promise((r) => setTimeout(r, 150));
+        }
+        await new Promise((r) => setTimeout(r, 300));
+
+        const mgrCookiesResult = await cdp.send('Network.getCookies');
+        const mgrSessionCookie = (mgrCookiesResult.cookies || []).find(
+          (c) => c.name === 'adhome_console_session'
+        );
+
+        const managerDomAudit = await cdp.eval(`(() => {
+          const roleBadge = document.querySelector('[data-testid="console-actor-role-badge"]')?.textContent?.trim() || '';
+          const scopeSummary = document.querySelector('[data-testid="console-actor-scope-summary"]')?.textContent?.trim() || '';
+          const portfolioSummary = document.querySelector('[data-testid="console-overview-portfolio-summary"]')?.textContent?.trim() || '';
+          const financeLocked = document.querySelector('[data-testid="nav-item-finance"]')?.getAttribute('data-locked');
+          const settingsLocked = document.querySelector('[data-testid="nav-item-settings"]')?.getAttribute('data-locked');
+          const hasFinanceLedger = Boolean(document.querySelector('[data-testid="console-overview-finance-ledger"]'));
+          const rawJwtInLocalStorage = localStorage.getItem('adhome_console_token');
+          const bodyText = document.body.innerText || '';
+          return {
+            roleBadge,
+            scopeSummary,
+            portfolioSummary,
+            financeLocked,
+            settingsLocked,
+            hasFinanceLedger,
+            rawJwtInLocalStorage,
+            hasLk0131: bodyText.includes('LK01-31'),
+            hasLk0132: bodyText.includes('LK01-32'),
+            hasLk0824: bodyText.includes('LK08-24'),
+            hasLk0825: bodyText.includes('LK08-25'),
+            hasRoleSwitcher: bodyText.includes('Đổi vai trò') || bodyText.includes('Đổi ⇄'),
+          };
+        })()`);
+
+        consoleUiReport.managerLogin.authenticatedDashboardReached = Boolean(managerDashboardReady);
+        consoleUiReport.managerLogin.zeroRawJwtInLocalStorage =
+          managerDomAudit.rawJwtInLocalStorage === null;
+        consoleUiReport.managerLogin.httpOnlySessionCookieSet = Boolean(
+          mgrSessionCookie && mgrSessionCookie.httpOnly === true
+        );
+        consoleUiReport.managerLogin.roleBadgeIsManager = managerDomAudit.roleBadge === 'MANAGER';
+        consoleUiReport.managerLogin.scopeSummaryIs2Buildings =
+          managerDomAudit.scopeSummary === '2 tòa phân công';
+        consoleUiReport.managerLogin.overviewShows2Buildings14Rooms =
+          managerDomAudit.portfolioSummary.includes('2 tòa nhà, 14 căn hộ');
+        consoleUiReport.managerLogin.financeAndSettingsLocked =
+          managerDomAudit.financeLocked === 'true' && managerDomAudit.settingsLocked === 'true';
+        consoleUiReport.managerLogin.financeLedgerHidden = !managerDomAudit.hasFinanceLedger;
+        consoleUiReport.managerLogin.onlyAssignedBuildingsRenderedInDom =
+          managerDomAudit.hasLk0131 &&
+          managerDomAudit.hasLk0132 &&
+          !managerDomAudit.hasLk0824 &&
+          !managerDomAudit.hasLk0825;
+        consoleUiReport.managerLogin.zeroRoleSwitcherInShell = !managerDomAudit.hasRoleSwitcher;
+        await saveShot('rc1_console_manager_dashboard_scoped.png');
+
+        // Direct API authorization & scoping verification for real Manager account
+        const mgrApiLoginRes = await fetch(`${BASE_URL}/api/v1/console/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: TEST_MANAGER_EMAIL,
+            password: TEST_MANAGER_PASSWORD,
+          }),
+        });
+        const mgrApiLoginBody = await mgrApiLoginRes.json();
+        const mgrToken = mgrApiLoginBody.token;
+        const mgrActorId = mgrApiLoginBody.actor?.id;
+
+        const mgrPortfolioRes = await fetch(`${BASE_URL}/api/v1/console/portfolio`, {
+          headers: { Authorization: `Bearer ${mgrToken}` },
+        });
+        const mgrPortfolioBody = await mgrPortfolioRes.json();
+        const allowedSet = new Set(['bld-lk01-31', 'bld-lk01-32']);
+        consoleUiReport.managerLogin.apiPortfolioScopedTo2Buildings =
+          mgrPortfolioRes.status === 200 &&
+          Array.isArray(mgrPortfolioBody.buildings) &&
+          mgrPortfolioBody.buildings.length === 2 &&
+          mgrPortfolioBody.buildings.every((b) => allowedSet.has(b.id)) &&
+          Array.isArray(mgrPortfolioBody.rooms) &&
+          mgrPortfolioBody.rooms.every((r) => allowedSet.has(r.buildingId));
+
+        const mgrAllowedRoomPatch = await fetch(
+          `${BASE_URL}/api/v1/console/rooms/studio-ban-cong-31-06-lk01-31-an-phu`,
+          {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${mgrToken}`,
+            },
+            body: JSON.stringify({ price: 5000000 }),
+          }
+        );
+        consoleUiReport.managerLogin.apiAllowedBuildingMutation200 =
+          mgrAllowedRoomPatch.status === 200;
+
+        const mgrForbiddenRoomPatch = await fetch(
+          `${BASE_URL}/api/v1/console/rooms/can-2pn-mini-25-05-lk08-25-an-phu`,
+          {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${mgrToken}`,
+            },
+            body: JSON.stringify({ price: 5600000 }),
+          }
+        );
+        consoleUiReport.managerLogin.apiUnassignedBuildingMutation403 =
+          mgrForbiddenRoomPatch.status === 403;
+
+        const mgrAccountsRes = await fetch(`${BASE_URL}/api/v1/console/accounts`, {
+          headers: { Authorization: `Bearer ${mgrToken}` },
+        });
+        consoleUiReport.managerLogin.apiAccountsEndpointForbidden403 =
+          mgrAccountsRes.status === 403;
+
+        const mgrFinanceRes = await fetch(`${BASE_URL}/api/v1/console/finance/summary`, {
+          headers: { Authorization: `Bearer ${mgrToken}` },
+        });
+        consoleUiReport.managerLogin.apiFinanceEndpointForbidden403 =
+          mgrFinanceRes.status === 403;
+
+        // Phase E: Instant Session Invalidation on Admin Scope Change (sessionVersion increment)
+        if (mgrActorId) {
+          const scopeNarrowRes = await fetch(
+            `${BASE_URL}/api/v1/console/accounts/${encodeURIComponent(mgrActorId)}`,
+            {
+              method: 'PATCH',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${securityAndSeoReport.adminToken}`,
+              },
+              body: JSON.stringify({
+                buildingScopes: ['bld-lk01-31'],
+              }),
+            }
+          );
+          const scopeNarrowBody = await scopeNarrowRes.json();
+
+          // Reload Manager's active browser tab — must immediately bounce to /login
+          await cdp.send('Page.reload');
+          let invalidatedToLogin = false;
+          for (let p = 0; p < 30; p++) {
+            await new Promise((r) => setTimeout(r, 120));
+            invalidatedToLogin = await cdp.eval(
+              `window.location.pathname === '/login' && Boolean(document.querySelector('[data-testid="console-login-email"]'))`
+            );
+            if (invalidatedToLogin) break;
+          }
+
+          consoleUiReport.managerLogin.instantLogoutOnAdminScopeChange = Boolean(
+            scopeNarrowRes.status === 200 &&
+              scopeNarrowBody.sessionsInvalidated === true &&
+              invalidatedToLogin
+          );
+
+          // Restore Manager scope cleanly to ['bld-lk01-31', 'bld-lk01-32']
+          await fetch(
+            `${BASE_URL}/api/v1/console/accounts/${encodeURIComponent(mgrActorId)}`,
+            {
+              method: 'PATCH',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${securityAndSeoReport.adminToken}`,
+              },
+              body: JSON.stringify({
+                buildingScopes: ['bld-lk01-31', 'bld-lk01-32'],
+              }),
+            }
+          );
+        }
+
+        consoleUiReport.managerLogin.pass = Boolean(
+          consoleUiReport.managerLogin.authenticatedDashboardReached &&
+            consoleUiReport.managerLogin.zeroRawJwtInLocalStorage &&
+            consoleUiReport.managerLogin.httpOnlySessionCookieSet &&
+            consoleUiReport.managerLogin.roleBadgeIsManager &&
+            consoleUiReport.managerLogin.scopeSummaryIs2Buildings &&
+            consoleUiReport.managerLogin.overviewShows2Buildings14Rooms &&
+            consoleUiReport.managerLogin.financeAndSettingsLocked &&
+            consoleUiReport.managerLogin.financeLedgerHidden &&
+            consoleUiReport.managerLogin.onlyAssignedBuildingsRenderedInDom &&
+            consoleUiReport.managerLogin.zeroRoleSwitcherInShell &&
+            consoleUiReport.managerLogin.apiPortfolioScopedTo2Buildings &&
+            consoleUiReport.managerLogin.apiAllowedBuildingMutation200 &&
+            consoleUiReport.managerLogin.apiUnassignedBuildingMutation403 &&
+            consoleUiReport.managerLogin.apiAccountsEndpointForbidden403 &&
+            consoleUiReport.managerLogin.apiFinanceEndpointForbidden403 &&
+            consoleUiReport.managerLogin.instantLogoutOnAdminScopeChange
+        );
+
+        consoleUiReport.pass = Boolean(
+          consoleUiReport.legacyConsoleHost301OnPort5174 &&
+            consoleUiReport.unauthenticatedRedirectedToLoginRoute &&
+            consoleUiReport.loginScreenRendered &&
+            consoleUiReport.emptyEmailByDefault &&
+            consoleUiReport.zeroRoleSelectorTabsOnLogin &&
+            consoleUiReport.loginHeadingMatchesSpec &&
+            consoleUiReport.serverDerivedRbacNoticeVisible &&
+            consoleUiReport.wrongPasswordFeedbackDisplayed &&
+            consoleUiReport.adminLogin.pass &&
+            consoleUiReport.logoutFlow.pass &&
+            consoleUiReport.managerLogin.pass
+        );
+
+        console.log(
+          'Dual-Role Console UI & RBAC E2E completed:',
+          consoleUiReport.pass ? 'PASS' : 'FAIL'
+        );
       }
-      consoleUiReport.logoutReturnedToLoginScreen = Boolean(backToLogin);
-      consoleUiReport.sessionTokenClearedOnLogout = !clearedToken;
-      await saveShot('rc1_console_logout_returned.png');
-
-      consoleUiReport.pass = Boolean(
-        consoleUiReport.loginScreenRendered &&
-        consoleUiReport.wrongPasswordFeedbackDisplayed &&
-        consoleUiReport.authenticatedDashboardReached &&
-        consoleUiReport.sessionTokenStoredInLocalStorage &&
-        consoleUiReport.logoutReturnedToLoginScreen &&
-        consoleUiReport.sessionTokenClearedOnLogout
-      );
-
-      console.log(
-        'Console UI Login E2E completed:',
-        consoleUiReport.pass ? 'PASS' : 'FAIL'
-      );
-
+    } finally {
       try {
         consoleProc.kill();
       } catch {
@@ -1233,8 +1780,14 @@ export async function runFullRC1Verification() {
       }
     }
 
-    // 1. Desktop 1920x1080 Viewport
-    await cdp.send('Emulation.setDeviceMetricsOverride', {
+    // Reset Server RUM telemetry buffer cleanly via authenticated Admin call right before Landing CWV
+    await fetch(`${BASE_URL}/api/v1/public/rum/reset`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${securityAndSeoReport.adminToken}` },
+    });
+
+    // 1. Desktop 1920x1080 Viewport (using setViewportClean to avoid synthetic viewport-resize layout shifts)
+    await setViewportClean(cdp, {
       width: 1920,
       height: 1080,
       deviceScaleFactor: 1,
@@ -1245,7 +1798,7 @@ export async function runFullRC1Verification() {
     await saveShot('rc1_1920_home.png');
 
     // 2. Desktop 1440x900 Viewport
-    await cdp.send('Emulation.setDeviceMetricsOverride', {
+    await setViewportClean(cdp, {
       width: 1440,
       height: 900,
       deviceScaleFactor: 1,
@@ -1255,13 +1808,13 @@ export async function runFullRC1Verification() {
     await new Promise((r) => setTimeout(r, 800));
     await saveShot('rc1_1440_home.png');
 
-    // Verify Canonical & OpenGraph on Home
+    // Verify Canonical & OpenGraph & Console /login Links on Home
     const homeHeadAudit = await cdp.eval(`(() => {
       const canonical = document.querySelector('link[rel="canonical"]')?.getAttribute('href');
       const ogUrl = document.querySelector('meta[property="og:url"]')?.getAttribute('content');
       const ogImage = document.querySelector('meta[property="og:image"]')?.getAttribute('content');
-      const footerConsoleLink = document.querySelector('footer a[href*="console-adhome"]')?.getAttribute('href');
-      const introConsoleLink = document.querySelector('section#ve-adhome a[href*="console-adhome"]')?.getAttribute('href');
+      const footerConsoleLink = document.querySelector('footer a[href*="console.adhome.vn"]')?.getAttribute('href');
+      const introConsoleLink = document.querySelector('section#ve-adhome a[href*="console.adhome.vn"]')?.getAttribute('href');
       return { canonical, ogUrl, ogImage, footerConsoleLink, introConsoleLink };
     })()`);
 
@@ -1295,7 +1848,7 @@ export async function runFullRC1Verification() {
     })()`);
 
     // 3. Mobile iPhone 12/13/14 Pro (390x844) Viewport
-    await cdp.send('Emulation.setDeviceMetricsOverride', {
+    await setViewportClean(cdp, {
       width: 390,
       height: 844,
       deviceScaleFactor: 2,
@@ -1517,7 +2070,7 @@ export async function runFullRC1Verification() {
     })()`);
 
     // 4. Viewport 430x932 (iPhone 14 Pro Max)
-    await cdp.send('Emulation.setDeviceMetricsOverride', {
+    await setViewportClean(cdp, {
       width: 430,
       height: 932,
       deviceScaleFactor: 3,
@@ -1534,7 +2087,7 @@ export async function runFullRC1Verification() {
     await saveShot('rc1_430x932_room_detail.png');
 
     // 5. Dedicated Catalog Viewport: 390x844
-    await cdp.send('Emulation.setDeviceMetricsOverride', {
+    await setViewportClean(cdp, {
       width: 390,
       height: 844,
       deviceScaleFactor: 2,
@@ -1544,17 +2097,34 @@ export async function runFullRC1Verification() {
     await new Promise((r) => setTimeout(r, 700));
     await saveShot('rc1_390x844_catalog.png');
 
+    // Navigate cleanly to about:blank to flush final sendBeacon RUM metrics cleanly
+    await cdp.send('Page.navigate', { url: 'about:blank' });
+    await new Promise((r) => setTimeout(r, 450));
+
     // Retrieve Server-side RUM Summary across all sessions
-    await new Promise((r) => setTimeout(r, 400));
     const serverRumRes = await fetch(`${BASE_URL}/api/v1/public/rum/summary`);
     const serverRumSummary = await serverRumRes.json();
 
+    // Probe live public DNS & HTTPS reachability transparently
+    const liveDomainDeploymentProbe = await probeLivePublicDomains();
+
+    const legacyDomain301RedirectLanding = Boolean(
+      securityAndSeoReport.domainAudit.legacyLanding301Pass
+    );
+    const legacyDomain301RedirectConsole = Boolean(
+      securityAndSeoReport.domainAudit.legacyConsole301OnApiHostPass &&
+        legacyConsoleHost301OnPort5174
+    );
+
     const finalReport = {
-      verificationTitle: 'ADHOME LANDING — RELEASE CANDIDATE 1 (RC1) COMPREHENSIVE VERIFICATION',
+      verificationTitle:
+        'ADHOME LANDING & CONSOLE — RELEASE CANDIDATE 1 (RC1) COMPREHENSIVE VERIFICATION',
       timestamp: new Date().toISOString(),
       canonicalDomain: CANONICAL_ORIGIN,
       consoleDomain: CONSOLE_ORIGIN,
+      consoleLoginUrl: CONSOLE_LOGIN_URL,
       baseUrl: BASE_URL,
+      liveDomainDeploymentProbe,
       rc01_uiPolish: {
         mobileNavigation: {
           backdropOverlayRendered: mobileNavAudit.hasBackdrop,
@@ -1593,34 +2163,46 @@ export async function runFullRC1Verification() {
           `${CANONICAL_ORIGIN}/phong/studio-ban-cong-31-06-lk01-31-an-phu`,
         ogUrlCanonical: homeHeadAudit.ogUrl === `${CANONICAL_ORIGIN}/`,
         ogImageCanonical: Boolean(homeHeadAudit.ogImage?.startsWith(CANONICAL_ORIGIN)),
-        footerConsoleLink: homeHeadAudit.footerConsoleLink === CONSOLE_ORIGIN,
-        introConsoleLink: homeHeadAudit.introConsoleLink === CONSOLE_ORIGIN,
+        footerConsoleLink: homeHeadAudit.footerConsoleLink === CONSOLE_LOGIN_URL,
+        introConsoleLink: homeHeadAudit.introConsoleLink === CONSOLE_LOGIN_URL,
         robotsTxtCanonicalSitemap: Boolean(securityAndSeoReport.domainAudit.robotsSitemapLine),
         sitemapCanonicalUrls: Boolean(securityAndSeoReport.domainAudit.sitemapHasCanonicalOrigin),
-        sitemapZeroOldDomainOccurrences: Boolean(securityAndSeoReport.domainAudit.sitemapHasZeroOldDomains),
+        sitemapZeroOldDomainOccurrences: Boolean(
+          securityAndSeoReport.domainAudit.sitemapHasZeroOldDomains
+        ),
+        legacyDomain301RedirectLanding,
+        legacyDomain301RedirectConsole,
         pass:
           homeHeadAudit.canonical === `${CANONICAL_ORIGIN}/` &&
           roomDetailHeadAudit.canonical ===
             `${CANONICAL_ORIGIN}/phong/studio-ban-cong-31-06-lk01-31-an-phu` &&
           homeHeadAudit.ogUrl === `${CANONICAL_ORIGIN}/` &&
           Boolean(homeHeadAudit.ogImage?.startsWith(CANONICAL_ORIGIN)) &&
-          homeHeadAudit.footerConsoleLink === CONSOLE_ORIGIN &&
-          homeHeadAudit.introConsoleLink === CONSOLE_ORIGIN &&
+          homeHeadAudit.footerConsoleLink === CONSOLE_LOGIN_URL &&
+          homeHeadAudit.introConsoleLink === CONSOLE_LOGIN_URL &&
           Boolean(securityAndSeoReport.domainAudit.robotsSitemapLine) &&
           Boolean(securityAndSeoReport.domainAudit.sitemapHasCanonicalOrigin) &&
-          Boolean(securityAndSeoReport.domainAudit.sitemapHasZeroOldDomains),
+          Boolean(securityAndSeoReport.domainAudit.sitemapHasZeroOldDomains) &&
+          legacyDomain301RedirectLanding &&
+          legacyDomain301RedirectConsole,
       },
       rc03_backendSecurityAndRbac: {
         bootSecurityAssertPass: securityAndSeoReport.bootSecurityPass,
         missingSecretThrowsFatal: securityAndSeoReport.missingSecretThrowsFatal,
         trustProxyConfigValid: securityAndSeoReport.trustProxyConfigValid,
         publicSecurityContextBlocked: securityAndSeoReport.publicSecurityContextBlocked,
+        unauthenticatedRumResetBlocked401:
+          securityAndSeoReport.unauthenticatedRumResetBlocked401,
+        managerRumResetForbidden403: securityAndSeoReport.managerRumResetForbidden403,
+        adminRumResetAuthorized200: securityAndSeoReport.adminRumResetAuthorized200,
         sampleActorsAudited: securityAndSeoReport.sampleActorsAudited,
         inactiveSampleActorBlocked401: securityAndSeoReport.inactiveSampleActorBlocked401,
-        inactiveSampleActorLoginBlocked401: securityAndSeoReport.inactiveSampleActorLoginBlocked401,
+        inactiveSampleActorLoginBlocked401:
+          securityAndSeoReport.inactiveSampleActorLoginBlocked401,
         productionAdminTokenAuthorized: securityAndSeoReport.productionAdminTokenAuthorized,
         productionAdminLoginApi: securityAndSeoReport.productionAdminLoginApi,
-        productionAdminLoginUi: consoleUiReport.pass,
+        productionAdminLoginUi: consoleUiReport.adminLogin.pass,
+        consoleDualRoleUiE2ePass: consoleUiReport.pass,
         consoleUiE2eReport: consoleUiReport,
         missingPasswordBlocked400: securityAndSeoReport.missingPasswordBlocked400,
         nullPasswordBlocked400: securityAndSeoReport.nullPasswordBlocked400,
@@ -1628,7 +2210,8 @@ export async function runFullRC1Verification() {
         wrongPasswordBlocked401: securityAndSeoReport.wrongPasswordBlocked401,
         publicRoomsWriteBlocked405: securityAndSeoReport.publicRoomsWriteBlocked,
         rateLimitingEnforced429: securityAndSeoReport.rateLimitingEnforced429,
-        unauthenticatedConsoleBlocked401: securityAndSeoReport.unauthenticatedConsoleAccessBlocked,
+        unauthenticatedConsoleBlocked401:
+          securityAndSeoReport.unauthenticatedConsoleAccessBlocked,
         viewerRoleMutationForbidden403: securityAndSeoReport.viewerRoleMutationBlocked,
         buildingManagerScopingForbidden403: securityAndSeoReport.buildingScopeEnforced,
         secretRotationDualKeyAccepted: securityAndSeoReport.secretRotationDualKeyAccepted,
@@ -1641,11 +2224,15 @@ export async function runFullRC1Verification() {
           securityAndSeoReport.missingSecretThrowsFatal &&
           securityAndSeoReport.trustProxyConfigValid &&
           securityAndSeoReport.publicSecurityContextBlocked &&
+          securityAndSeoReport.unauthenticatedRumResetBlocked401 &&
+          securityAndSeoReport.managerRumResetForbidden403 &&
+          securityAndSeoReport.adminRumResetAuthorized200 &&
           securityAndSeoReport.sampleActorsAudited &&
           securityAndSeoReport.inactiveSampleActorBlocked401 &&
           securityAndSeoReport.inactiveSampleActorLoginBlocked401 &&
           securityAndSeoReport.productionAdminTokenAuthorized &&
           securityAndSeoReport.productionAdminLoginApi &&
+          consoleUiReport.pass &&
           securityAndSeoReport.missingPasswordBlocked400 &&
           securityAndSeoReport.nullPasswordBlocked400 &&
           securityAndSeoReport.emptyPasswordBlocked400 &&
@@ -1703,6 +2290,9 @@ export async function runFullRC1Verification() {
         serverRumClsGood:
           !serverRumSummary?.metrics?.CLS?.count ||
           serverRumSummary?.metrics?.CLS?.p75 <= 0.1,
+        serverRumClsMaxGood:
+          !serverRumSummary?.metrics?.CLS?.count ||
+          serverRumSummary?.metrics?.CLS?.max <= 0.1,
         roomDetailRum,
         serverRumSummary,
         realInteractions,
@@ -1715,7 +2305,9 @@ export async function runFullRC1Verification() {
           roomDetailRum.clsScore <= 0.1 &&
           roomDetailRum.maxInpMs > 0 &&
           roomDetailRum.maxInpMs <= 200 &&
-          (!serverRumSummary?.metrics?.CLS?.count || serverRumSummary?.metrics?.CLS?.p75 <= 0.1) &&
+          (!serverRumSummary?.metrics?.CLS?.count ||
+            (serverRumSummary?.metrics?.CLS?.p75 <= 0.1 &&
+              serverRumSummary?.metrics?.CLS?.max <= 0.1)) &&
           realInteractions.every((i) => i.passUnder200ms && i.recordedEvents > 0) &&
           roomDetailRum.totalInpEvents > 0,
       },

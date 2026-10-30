@@ -1,4 +1,6 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { UserCapabilities } from '@/shared/types/auth';
+import { useAuth } from '@/app/providers/AuthContext';
 
 export type NavModuleId =
   | 'overview'
@@ -19,7 +21,7 @@ export interface NavItemConfig {
   badge?: string | number;
   badgeColor?: 'warning' | 'danger' | 'brand';
   category: 'core' | 'operations' | 'finance' | 'system';
-  requiredCapability?: string;
+  requiredCapability?: keyof UserCapabilities;
   description: string;
 }
 
@@ -28,36 +30,37 @@ export const NAV_ITEMS_CONFIG: NavItemConfig[] = [
     id: 'overview',
     label: 'Tổng quan',
     category: 'core',
-    description: 'Bảng điều khiển KPI, occupancy và tình trạng hoạt động toàn hệ thống',
+    requiredCapability: 'canViewOverview',
+    description: 'Bảng điều khiển KPI, tỷ lệ lấp đầy và tình trạng hoạt động theo phạm vi tòa nhà được phân công',
   },
   {
     id: 'buildings',
     label: 'Tòa nhà & Phòng',
     category: 'core',
-    badge: '34',
-    description: 'Unified Workspace quản lý toàn bộ 4 tòa nhà và 34 phòng tập trung',
+    requiredCapability: 'canManageRooms',
+    description: 'Unified Workspace quản lý các tòa nhà và căn hộ thuộc phạm vi được cấp quyền',
   },
   {
     id: 'tenants',
     label: 'Khách thuê',
     category: 'operations',
-    badge: '6',
+    requiredCapability: 'canManageTenants',
     description: 'Hồ sơ người thuê, CCCD, thông tin liên lạc và lịch sử lưu trú',
   },
   {
     id: 'deposits',
     label: 'Đặt cọc & Giữ chỗ',
     category: 'operations',
-    badge: '3',
     badgeColor: 'warning',
+    requiredCapability: 'canManageDeposits',
     description: 'Quản lý tiền cọc giữ phòng, thời hạn cọc và hoàn/chuyển cọc',
   },
   {
     id: 'contracts',
     label: 'Hợp đồng',
     category: 'operations',
-    badge: '3',
     badgeColor: 'danger',
+    requiredCapability: 'canManageContracts',
     description: 'Hợp đồng thuê, phụ lục, thời hạn và cảnh báo gia hạn tự động',
   },
   {
@@ -66,20 +69,22 @@ export const NAV_ITEMS_CONFIG: NavItemConfig[] = [
     category: 'finance',
     badge: 'Hunonic',
     badgeColor: 'brand',
+    requiredCapability: 'canManageSettlements',
     description: 'Đồng bộ công tơ điện nước Hunonic, chốt chỉ số và sinh hóa đơn chu kỳ',
   },
   {
     id: 'invoices',
     label: 'Hóa đơn',
     category: 'finance',
-    badge: '3',
     badgeColor: 'warning',
+    requiredCapability: 'canManageInvoices',
     description: 'Quản lý vòng đời hóa đơn tiền phòng, phí dịch vụ và nhắc nợ đa kênh',
   },
   {
     id: 'payments',
     label: 'Thanh toán & Đối soát',
     category: 'finance',
+    requiredCapability: 'canManagePayments',
     description: 'Tự động đối soát chuyển khoản ngân hàng, mã SePay QR và tiền mặt',
   },
   {
@@ -93,14 +98,15 @@ export const NAV_ITEMS_CONFIG: NavItemConfig[] = [
     id: 'reports',
     label: 'Báo cáo & Phân tích',
     category: 'system',
+    requiredCapability: 'canViewReports',
     description: 'Báo cáo công suất phòng, doanh thu thực thu và công nợ quá hạn',
   },
   {
     id: 'settings',
-    label: 'Cài đặt hệ thống',
+    label: 'Cài đặt & Phân quyền',
     category: 'system',
     requiredCapability: 'canManageSettings',
-    description: 'Cấu hình tổ chức, phân quyền Admin/Manager, cổng Hunonic và bảo mật',
+    description: 'Quản lý tài khoản nhân sự, gán phạm vi tòa nhà, phân quyền Admin/Manager và bảo mật',
   },
 ];
 
@@ -117,10 +123,14 @@ interface NavigationContextType {
 const NavigationContext = createContext<NavigationContextType | undefined>(undefined);
 
 export function NavigationProvider({ children }: { children: React.ReactNode }) {
+  const { user, isAuthenticated, hasCapability, refreshSession } = useAuth();
+
   const [activeModule, setActiveModuleState] = useState<NavModuleId>(() => {
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem('adhome_active_module');
-      if (stored) return stored as NavModuleId;
+      if (stored && NAV_ITEMS_CONFIG.some(item => item.id === stored)) {
+        return stored as NavModuleId;
+      }
     }
     return 'overview';
   });
@@ -128,9 +138,32 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
+  // Reset activeModule to 'overview' on logout or if current user lacks required capability
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setActiveModuleState('overview');
+      return;
+    }
+    const targetConfig = NAV_ITEMS_CONFIG.find(item => item.id === activeModule);
+    if (targetConfig?.requiredCapability && !hasCapability(targetConfig.requiredCapability)) {
+      setActiveModuleState('overview');
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('adhome_active_module', 'overview');
+      }
+    }
+  }, [isAuthenticated, user, activeModule, hasCapability]);
+
   const setActiveModule = (module: NavModuleId) => {
+    const targetConfig = NAV_ITEMS_CONFIG.find(item => item.id === module);
+    if (targetConfig?.requiredCapability && !hasCapability(targetConfig.requiredCapability)) {
+      return;
+    }
     setActiveModuleState(module);
-    localStorage.setItem('adhome_active_module', module);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('adhome_active_module', module);
+    }
+    // Background session re-validation so Admin permission edits take effect immediately
+    void refreshSession();
   };
 
   const currentNavConfig =

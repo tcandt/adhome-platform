@@ -49,7 +49,7 @@ export const PlatformIntroSection: React.FC = () => {
 
               <div className="mt-5 pt-4 border-t border-line">
                 <a
-                  href="https://console-adhome.ductinh.one"
+                  href="https://console.adhome.vn/login"
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-medium text-ink-secondary hover:text-brand-700 transition-colors"

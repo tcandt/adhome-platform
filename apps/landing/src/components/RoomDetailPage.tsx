@@ -100,13 +100,17 @@ export const RoomDetailPage: React.FC<RoomDetailPageProps> = ({
 
   if (isLoading) {
     return (
-      <section className="py-10 sm:py-16 bg-canvas min-h-[75vh]">
+      <section className="py-10 sm:py-16 bg-canvas min-h-[120vh]">
         <div className="max-w-[1220px] mx-auto px-4 sm:px-6 lg:px-8 space-y-6 animate-pulse">
           <div className="h-5 w-48 bg-canvas-muted rounded" />
           <div className="h-9 w-2/3 bg-canvas-muted rounded" />
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            <div className="lg:col-span-8 aspect-[16/10] bg-canvas-muted rounded-section" />
-            <div className="lg:col-span-4 h-80 bg-canvas-muted rounded-section" />
+            <div className="lg:col-span-8 space-y-6">
+              <div className="aspect-[16/10] bg-canvas-muted rounded-section" />
+              <div className="h-64 bg-canvas-muted rounded-section" />
+              <div className="h-56 bg-canvas-muted rounded-section" />
+            </div>
+            <div className="lg:col-span-4 h-96 bg-canvas-muted rounded-section" />
           </div>
         </div>
       </section>

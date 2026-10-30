@@ -1,8 +1,8 @@
 {
   "testName": "ADHOME Landing RC1 Sustained Load Test",
-  "timestamp": "2026-10-30T03:13:30.385Z",
+  "timestamp": "2026-10-30T04:54:14.261Z",
   "baseUrl": "http://127.0.0.1:8081",
-  "canonicalDomain": "https://adhome.ductinh.one",
+  "canonicalDomain": "https://adhome.vn",
   "databaseEngine": "PostgreSQL 18.0.4 (x64 Windows)",
   "runtime": "Node v24.15.0",
   "operatingSystem": "Windows_NT 10.0.26200 (x64)",
@@ -19,61 +19,61 @@
         "totalDurationSec": 19.1
       },
       "requests": {
-        "total": 15492,
-        "status2xx": 15492,
+        "total": 18045,
+        "status2xx": 18045,
         "status4xx": 0,
         "status5xxOrNetErr": 0,
-        "throughputReqSec": 811.55,
+        "throughputReqSec": 946.98,
         "infrastructureErrorRatePct": 0
       },
       "latencyMs": {
-        "min": 1.95,
-        "avg": 58.73,
-        "p50": 62.37,
-        "p90": 71.3,
-        "p95": 77.11,
-        "p99": 92.84,
-        "max": 149.48
+        "min": 1.94,
+        "avg": 43.35,
+        "p50": 45.66,
+        "p90": 52.45,
+        "p95": 59.48,
+        "p99": 91,
+        "max": 155.5
       },
       "resourceUsage": {
-        "cpuUsagePct": 30.1,
-        "heapInitialMb": 21.65,
-        "heapPeakMb": 37.48,
-        "heapFinalMb": 17.55,
-        "memoryGrowthMb": -4.1,
-        "memoryGrowthPct": -18.93,
-        "rssPeakMb": 160.24
+        "cpuUsagePct": 33.23,
+        "heapInitialMb": 21.11,
+        "heapPeakMb": 38.06,
+        "heapFinalMb": 16.07,
+        "memoryGrowthMb": -5.04,
+        "memoryGrowthPct": -23.88,
+        "rssPeakMb": 162.04
       },
       "postgresqlConnectionPool": {
         "peakTotalConnections": 22,
-        "peakActiveConnections": 4,
+        "peakActiveConnections": 5,
         "peakIdleConnections": 21,
         "poolExhaustionOccurred": false
       },
       "scenarioBreakdown": [
         {
           "scenario": "PUBLIC_ROOMS_API",
-          "requests": 8524,
+          "requests": 9927,
           "successRatePct": 100,
-          "p95Ms": 77.09,
-          "p99Ms": 92.21,
-          "avgMs": 58.56
+          "p95Ms": 58.85,
+          "p99Ms": 91.81,
+          "avgMs": 43.04
         },
         {
           "scenario": "SSR_ROOM_DETAIL",
-          "requests": 5420,
+          "requests": 6314,
           "successRatePct": 100,
-          "p95Ms": 77.06,
-          "p99Ms": 94.15,
-          "avgMs": 58.65
+          "p95Ms": 59.78,
+          "p99Ms": 89.95,
+          "avgMs": 43.48
         },
         {
           "scenario": "CATALOG_PAGE",
-          "requests": 1548,
+          "requests": 1804,
           "successRatePct": 100,
-          "p95Ms": 77.27,
-          "p99Ms": 93.22,
-          "avgMs": 59.93
+          "p95Ms": 60.94,
+          "p99Ms": 92.08,
+          "avgMs": 44.55
         }
       ],
       "slaPass": true
@@ -88,61 +88,61 @@
         "totalDurationSec": 19.1
       },
       "requests": {
-        "total": 16008,
-        "status2xx": 16008,
+        "total": 14981,
+        "status2xx": 14981,
         "status4xx": 0,
         "status5xxOrNetErr": 0,
-        "throughputReqSec": 836.65,
+        "throughputReqSec": 782.75,
         "infrastructureErrorRatePct": 0
       },
       "latencyMs": {
-        "min": 16.69,
-        "avg": 483.28,
-        "p50": 521.04,
-        "p90": 542.01,
-        "p95": 546.27,
-        "p99": 552.44,
-        "max": 560.98
+        "min": 6.37,
+        "avg": 520.87,
+        "p50": 589.35,
+        "p90": 613.74,
+        "p95": 618.29,
+        "p99": 624.86,
+        "max": 632.67
       },
       "resourceUsage": {
-        "cpuUsagePct": 32.35,
-        "heapInitialMb": 24.66,
-        "heapPeakMb": 66.59,
-        "heapFinalMb": 25.29,
-        "memoryGrowthMb": 0.62,
-        "memoryGrowthPct": 2.52,
-        "rssPeakMb": 239.09
+        "cpuUsagePct": 29.77,
+        "heapInitialMb": 24.36,
+        "heapPeakMb": 66.76,
+        "heapFinalMb": 35.88,
+        "memoryGrowthMb": 11.52,
+        "memoryGrowthPct": 47.29,
+        "rssPeakMb": 239.73
       },
       "postgresqlConnectionPool": {
-        "peakTotalConnections": 23,
-        "peakActiveConnections": 6,
+        "peakTotalConnections": 22,
+        "peakActiveConnections": 4,
         "peakIdleConnections": 21,
         "poolExhaustionOccurred": false
       },
       "scenarioBreakdown": [
         {
           "scenario": "PUBLIC_ROOMS_API",
-          "requests": 8808,
+          "requests": 8240,
           "successRatePct": 100,
-          "p95Ms": 544.82,
-          "p99Ms": 550.64,
-          "avgMs": 482.02
+          "p95Ms": 617.64,
+          "p99Ms": 623.99,
+          "avgMs": 519.92
         },
         {
           "scenario": "SSR_ROOM_DETAIL",
-          "requests": 5600,
+          "requests": 5243,
           "successRatePct": 100,
-          "p95Ms": 547.51,
-          "p99Ms": 553.53,
-          "avgMs": 484.65
+          "p95Ms": 618.7,
+          "p99Ms": 625.52,
+          "avgMs": 521.75
         },
         {
           "scenario": "CATALOG_PAGE",
-          "requests": 1600,
+          "requests": 1498,
           "successRatePct": 100,
-          "p95Ms": 547.88,
-          "p99Ms": 554.25,
-          "avgMs": 485.45
+          "p95Ms": 619.93,
+          "p99Ms": 625.98,
+          "avgMs": 523.02
         }
       ],
       "slaPass": true
@@ -157,61 +157,61 @@
         "totalDurationSec": 20.3
       },
       "requests": {
-        "total": 17195,
-        "status2xx": 17195,
+        "total": 16012,
+        "status2xx": 16012,
         "status4xx": 0,
         "status5xxOrNetErr": 0,
-        "throughputReqSec": 848.23,
+        "throughputReqSec": 788.39,
         "infrastructureErrorRatePct": 0
       },
       "latencyMs": {
-        "min": 26.83,
-        "avg": 994.06,
-        "p50": 1098.28,
-        "p90": 1129.27,
-        "p95": 1187.5,
-        "p99": 1256.6,
-        "max": 1272.93
+        "min": 27.17,
+        "avg": 1072.54,
+        "p50": 1214.06,
+        "p90": 1236.42,
+        "p95": 1244.23,
+        "p99": 1257.48,
+        "max": 1266.26
       },
       "resourceUsage": {
-        "cpuUsagePct": 31.15,
-        "heapInitialMb": 32.41,
-        "heapPeakMb": 65.64,
-        "heapFinalMb": 13.96,
-        "memoryGrowthMb": -18.46,
-        "memoryGrowthPct": -56.94,
-        "rssPeakMb": 232.58
+        "cpuUsagePct": 29.91,
+        "heapInitialMb": 11.81,
+        "heapPeakMb": 65.31,
+        "heapFinalMb": 14.39,
+        "memoryGrowthMb": 2.58,
+        "memoryGrowthPct": 21.87,
+        "rssPeakMb": 232.85
       },
       "postgresqlConnectionPool": {
-        "peakTotalConnections": 22,
-        "peakActiveConnections": 5,
+        "peakTotalConnections": 23,
+        "peakActiveConnections": 4,
         "peakIdleConnections": 21,
         "poolExhaustionOccurred": false
       },
       "scenarioBreakdown": [
         {
           "scenario": "PUBLIC_ROOMS_API",
-          "requests": 9459,
+          "requests": 8810,
           "successRatePct": 100,
-          "p95Ms": 1185.75,
-          "p99Ms": 1256.19,
-          "avgMs": 992.9
+          "p95Ms": 1242.86,
+          "p99Ms": 1256.37,
+          "avgMs": 1070.78
         },
         {
           "scenario": "SSR_ROOM_DETAIL",
-          "requests": 6018,
+          "requests": 5602,
           "successRatePct": 100,
-          "p95Ms": 1191.85,
-          "p99Ms": 1259.42,
-          "avgMs": 995.21
+          "p95Ms": 1245.87,
+          "p99Ms": 1257.48,
+          "avgMs": 1074.4
         },
         {
           "scenario": "CATALOG_PAGE",
-          "requests": 1718,
+          "requests": 1600,
           "successRatePct": 100,
-          "p95Ms": 1191,
-          "p99Ms": 1255.15,
-          "avgMs": 996.43
+          "p95Ms": 1246.97,
+          "p99Ms": 1259.29,
+          "avgMs": 1075.73
         }
       ],
       "slaPass": true
@@ -224,14 +224,14 @@
     "rejectedNon2xx": 0,
     "businessSuccessRatePct": 100,
     "durationSec": 0.04,
-    "throughputReqSec": 1187.15,
+    "throughputReqSec": 1300.4,
     "dbRowsVerifiedMatch": true,
     "latencyMs": {
-      "min": 34.01,
-      "avg": 38.65,
-      "p50": 38.59,
-      "p95": 42.37,
-      "max": 42.52
+      "min": 22.28,
+      "avg": 33.03,
+      "p50": 34.02,
+      "p95": 38.43,
+      "max": 38.54
     },
     "slaPass": true
   },
@@ -244,10 +244,10 @@
     "allAbuseVectorsBlocked": true
   },
   "summary": {
-    "totalSustainedRequests": 48695,
-    "maxThroughputReqSec": 848.23,
-    "worstP95Ms": 1187.5,
-    "worstP99Ms": 1256.6,
+    "totalSustainedRequests": 49038,
+    "maxThroughputReqSec": 946.98,
+    "worstP95Ms": 1244.23,
+    "worstP99Ms": 1257.48,
     "infrastructureZeroErrors": true,
     "leadAcceptancePass": true,
     "antiSpamProtectionPass": true,

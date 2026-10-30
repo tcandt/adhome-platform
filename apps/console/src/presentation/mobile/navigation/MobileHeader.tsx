@@ -13,14 +13,14 @@ interface MobileHeaderProps {
 
 export const MobileHeader: React.FC<MobileHeaderProps> = ({ onOpenDrawer }) => {
   const { currentNavConfig, setIsSearchOpen } = useNavigation();
-  const { user, activeBuildingId, setActiveBuildingId } = useAuth();
+  const { user, activeBuildingId, setActiveBuildingId, isBuildingAllowed } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const { setOverride } = usePresentationMode();
   const { buildings } = usePortfolio();
 
   const availableBuildings = buildings.filter(b => {
     if (!user || user.assignedBuildingIds === 'ALL') return true;
-    return user.assignedBuildingIds.includes(b.id);
+    return isBuildingAllowed(b.id) || isBuildingAllowed(b.code);
   });
 
   return (
@@ -50,7 +50,11 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({ onOpenDrawer }) => {
           onChange={e => setActiveBuildingId(e.target.value)}
           className="bg-slate-100 dark:bg-slate-800 text-[11px] font-semibold text-slate-700 dark:text-slate-300 py-1 px-2 rounded-lg border-0 max-w-[130px] truncate"
         >
-          {user?.assignedBuildingIds === 'ALL' && <option value="ALL">Tất cả tòa</option>}
+          <option value="ALL">
+            {user?.assignedBuildingIds === 'ALL'
+              ? `Tất cả (${availableBuildings.length} tòa)`
+              : `Phạm vi (${availableBuildings.length} tòa)`}
+          </option>
           {availableBuildings.map(b => (
             <option key={b.id} value={b.id}>
               {b.shortCode}

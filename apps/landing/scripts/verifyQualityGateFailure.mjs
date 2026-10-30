@@ -108,9 +108,9 @@ async function runQualityGateFailureSuite() {
     },
     {
       id: 'UNIT-FAIL-08',
-      name: 'SEO Canonical URL mismatch or robots.txt line missing',
+      name: 'SEO Canonical URL mismatch or legacy domain 301 redirect broken',
       mutate: (r) => {
-        r.rc02_canonicalDomain.pass = false;
+        r.rc02_canonicalDomain.legacyDomain301RedirectLanding = false;
       },
       expectedVerdict: 'RC1_VERIFICATION_FAILED',
     },
@@ -131,7 +131,32 @@ async function runQualityGateFailureSuite() {
       expectedVerdict: 'RC1_VERIFICATION_FAILED',
     },
     {
-      id: 'UNIT-PASS-11',
+      id: 'UNIT-FAIL-11',
+      name: 'Server-side aggregated RUM CLS max outlier exceeds 0.1 (e.g. 0.1137 while p75=0)',
+      mutate: (r) => {
+        r.rc06_coreWebVitals.serverRumSummary.metrics.CLS.p75 = 0.0;
+        r.rc06_coreWebVitals.serverRumSummary.metrics.CLS.max = 0.1137;
+      },
+      expectedVerdict: 'RC1_VERIFICATION_FAILED',
+    },
+    {
+      id: 'UNIT-FAIL-12',
+      name: 'Unauthenticated POST /api/v1/public/rum/reset not blocked with 401',
+      mutate: (r) => {
+        r.rc03_backendSecurityAndRbac.unauthenticatedRumResetBlocked401 = false;
+      },
+      expectedVerdict: 'RC1_VERIFICATION_FAILED',
+    },
+    {
+      id: 'UNIT-FAIL-13',
+      name: 'Dual-Role (Admin + Manager) Console UI E2E fails',
+      mutate: (r) => {
+        r.rc03_backendSecurityAndRbac.consoleDualRoleUiE2ePass = false;
+      },
+      expectedVerdict: 'RC1_VERIFICATION_FAILED',
+    },
+    {
+      id: 'UNIT-PASS-14',
       name: 'All SLA and Gate criteria satisfied',
       mutate: () => {},
       expectedVerdict: 'RC1_PRODUCTION_READY',
@@ -174,7 +199,7 @@ async function runQualityGateFailureSuite() {
     },
     {
       id: 'PROC-FAIL-03',
-      name: 'verifyRC1.mjs --simulate-failure=lcp-zero (rejecting 0ms uncollected LCP)',
+      name: 'verifyRC1.mjs --simulate-failure=lcp-zero',
       args: ['--dry-run-gate-only', '--simulate-failure=lcp-zero'],
       expectedExitCode: 1,
     },
@@ -198,12 +223,24 @@ async function runQualityGateFailureSuite() {
     },
     {
       id: 'PROC-FAIL-07',
-      name: 'verifyRC1.mjs --simulate-failure=server-rum-cls',
-      args: ['--dry-run-gate-only', '--simulate-failure=server-rum-cls'],
+      name: 'verifyRC1.mjs --simulate-failure=server-rum-cls-max',
+      args: ['--dry-run-gate-only', '--simulate-failure=server-rum-cls-max'],
       expectedExitCode: 1,
     },
     {
-      id: 'PROC-PASS-08',
+      id: 'PROC-FAIL-08',
+      name: 'verifyRC1.mjs --simulate-failure=rum-reset-unprotected',
+      args: ['--dry-run-gate-only', '--simulate-failure=rum-reset-unprotected'],
+      expectedExitCode: 1,
+    },
+    {
+      id: 'PROC-FAIL-09',
+      name: 'verifyRC1.mjs --simulate-failure=console-dual-role',
+      args: ['--dry-run-gate-only', '--simulate-failure=console-dual-role'],
+      expectedExitCode: 1,
+    },
+    {
+      id: 'PROC-PASS-10',
       name: 'verifyRC1.mjs (normal pass with all criteria satisfied)',
       args: ['--dry-run-gate-only'],
       expectedExitCode: 0,
@@ -228,7 +265,7 @@ async function runQualityGateFailureSuite() {
   }
 
   console.log('=================================================================');
-  console.log('   ALL 11 UNIT TESTS & 8 PROCESS-LEVEL TESTS PASSED (100%)       ');
+  console.log('   ALL 14 UNIT TESTS & 10 PROCESS-LEVEL TESTS PASSED (100%)      ');
   console.log('   Gate proves genuine OS exit code 1 on failure & 0 on pass.    ');
   console.log('=================================================================\n');
 }

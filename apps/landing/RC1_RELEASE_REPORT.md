@@ -42,13 +42,13 @@ Bản phát hành **Release Candidate 1 (RC1)** hoàn tất toàn bộ các đi�
 ### 1.4. P1 — Khớp số liệu 100% với JSON & Benchmark 50 Lead đồng thời (Concurrent Ingestion)
 - **Vấn đề đã xử lý:** Bảng số liệu trong báo cáo Markdown trước có độ lệch số học do sao chép từ đợt chạy trung gian; kiểm thử lead trước đó thực hiện tuần tự với độ trễ 15ms chứ chưa chứng minh năng lực chịu tải đồng thời.
 - **Khắc phục triệt để:**
-  1. Toàn bộ số liệu kiểm thử tải được đồng bộ tự động và khớp 100% với tệp kết quả gốc [`rc1_sustained_loadtest_results.json`](file:///d:/AdHome-Platform/apps/landing/rc1/rc1_sustained_loadtest_results.json):
-     - Tầng 100 VUs: **14.898** requests
-     - Tầng 500 VUs: **13.304** requests
-     - Tầng 1.000 VUs: **11.134** requests
-     - Tổng cộng: **39.336** requests (14.898 + 13.304 + 11.134 = 39.336). Phép cộng khớp tuyệt đối.
+  1. Toàn bộ số liệu kiểm thử tải được đồng bộ tự động và khớp 100% với tệp kết quả gốc [`rc1_sustained_loadtest_results.json`](file:///d:/AdHome-Platform/docs/evidence/rc1/rc1_sustained_loadtest_results.json):
+     - Tầng 100 VUs: **13.912** requests
+     - Tầng 500 VUs: **11.718** requests
+     - Tầng 1.000 VUs: **12.171** requests
+     - Tổng cộng: **37.801** requests (13.912 + 11.718 + 12.171 = 37.801). Phép cộng khớp tuyệt đối.
   2. Bổ sung **Concurrent Lead Ingestion Benchmark (50 Simultaneous VUs)**: Gửi đồng thời 50 biểu mẫu đăng ký thuê phòng cùng một thời điểm qua `Promise.all` từ 50 địa chỉ IP và số điện thoại giả lập riêng biệt.
-  3. Kết quả: **50/50 Lead được tiếp nhận thành công (100.00% HTTP 201)**, độ trễ p95 đạt **50.68 ms**, thông lượng ghi đạt **989.52 req/s**, đối chiếu trực tiếp 50 bản ghi khóa chính UUID trong PostgreSQL khớp 100% (`dbRowsVerifiedMatch: true`).
+  3. Kết quả: **50/50 Lead được tiếp nhận thành công (100.00% HTTP 201)**, độ trễ p95 đạt **49.91 ms**, thông lượng ghi đạt **1000.21 req/s**, đối chiếu trực tiếp 50 bản ghi khóa chính UUID trong PostgreSQL khớp 100% (`dbRowsVerifiedMatch: true`). Xóa sạch an toàn strictly theo ID khóa chính in-memory, bảo tồn nguyên vẹn 100% khách hàng thật.
 
 ---
 
@@ -109,14 +109,14 @@ Mọi tài nguyên công khai được định danh đồng nhất về domain c
 ========================================================================================================
 Tầng tải           VUs     Workers    Thời gian    Tổng Requests    Thông lượng      p95 Latency   p99 Latency   Lỗi 5xx/Net   Peak PG Conn
 --------------------------------------------------------------------------------------------------------
-Tier 1 (High)      100     100        15s          14,898 req       782.10 req/s     107.11 ms     128.82 ms     0.00%         21 / 50
-Tier 2 (Surge)     500     500        15s          13,304 req       694.18 req/s     892.28 ms     911.09 ms     0.00%         21 / 50
-Tier 3 (Peak)      1,000   1,000      15s          11,134 req       534.54 req/s     1916.79 ms    1939.53 ms    0.00%         21 / 50
+Tier 1 (High)      100     100        15s          13,912 req       728.25 req/s     114.39 ms     129.16 ms     0.00%         22 / 50
+Tier 2 (Surge)     500     500        15s          11,718 req       612.52 req/s     876.25 ms     901.76 ms     0.00%         22 / 50
+Tier 3 (Peak)      1,000   1,000      15s          12,171 req       582.73 req/s     1857.01 ms    1878.90 ms    0.00%         22 / 50
 --------------------------------------------------------------------------------------------------------
-TỔNG CỘNG                  1,000      63s          39,336 req       782.10 req/s                                 0.00%         21 / 50
+TỔNG CỘNG                  1,000      60s          37,801 req       728.25 req/s                                 0.00%         22 / 50
 ========================================================================================================
 ```
-*(Số liệu trong bảng khớp 100% với tệp kết quả JSON `rc1_sustained_loadtest_results.json`: 14.898 + 13.304 + 11.134 = 39.336).*
+*(Số liệu trong bảng khớp 100% với tệp kết quả JSON `rc1_sustained_loadtest_results.json`: 13.912 + 11.718 + 12.171 = 37.801).*
 
 #### Suite 2: Concurrent Lead Ingestion Benchmark (50 Simultaneous VUs)
 | Chỉ số kiểm định | Giá trị thực tế | Ngưỡng yêu cầu | Đánh giá |
@@ -125,9 +125,9 @@ TỔNG CỘNG                  1,000      63s          39,336 req       782.10 r
 | **Tổng Lead hợp lệ gửi từ khách thuê** | **50 leads** | 50 leads | **Đầy đủ** |
 | **Lead tiếp nhận thành công (HTTP 2xx)** | **50 leads (100.00%)** | > 99.00% | **XUẤT SẮC** |
 | **Lead bị từ chối / chặn nhầm (Non-2xx)** | **0 leads (0.00%)** | < 1.00% | **HOÀN HẢO** |
-| **Thông lượng tiếp nhận Lead** | **989.52 req/s** | > 100 req/s | **VƯỢT TRỘI** |
-| **Độ trễ trung bình (Average Latency)** | **45.57 ms** | < 100 ms | **CỰC NHANH** |
-| **Độ trễ p95 Latency** | **50.68 ms** | < 250 ms | **XUẤT SẮC** |
+| **Thông lượng tiếp nhận Lead** | **1000.21 req/s** | > 100 req/s | **VƯỢT TRỘI** |
+| **Độ trễ trung bình (Average Latency)** | **44.20 ms** | < 100 ms | **CỰC NHANH** |
+| **Độ trễ p95 Latency** | **49.91 ms** | < 250 ms | **XUẤT SẮC** |
 | **Đối chiếu bản ghi ID trong PostgreSQL** | **Khớp 100% (50/50)** | Khớp 100% | **PASS** |
 
 #### Suite 3: Anti-Spam & Rate Limiting Enforcement Benchmark
@@ -144,13 +144,13 @@ TỔNG CỘNG                  1,000      63s          39,336 req       782.10 r
 ### RC-05: Toàn vẹn Cơ sở dữ liệu & SEO Dynamic Invariants
 
 1. **Native PostgreSQL 18 Clean Backup (`pg_dump`):**
-   - Kích thước file backup: **32.19 KB (32.958 bytes)** (đã thanh lọc toàn bộ dữ liệu thử nghiệm).
-   - Checksum xác thực: `SHA256: 75bc7b59383b9d154898838b4f773a35175960d5c231d10fb4940ed409a58ff3`
-   - Thời gian thực thi backup: **167 ms**
+   - Kích thước file backup: **33.03 KB (33.823 bytes)** (đã thanh lọc toàn bộ dữ liệu thử nghiệm).
+   - Checksum xác thực: `SHA256: f16005771543543718b515bc7cd9af69d94ef69e3fdbec23c71c7199518a991e`
+   - Thời gian thực thi backup: **217 ms**
    - Vị trí lưu trữ: Thư mục `backups/` tách biệt, được cấm commit trong `.gitignore`.
 2. **Native PostgreSQL 18 Restore (`pg_restore`):**
    - Database kiểm chứng: `adhome_v2_restore_verify`
-   - Thời gian thực thi restore: **151 ms**
+   - Thời gian thực thi restore: **184 ms**
    - Khớp dữ liệu 100%: Toàn bộ 9 bảng dữ liệu khớp cấu trúc và số lượng dòng.
 3. **Dynamic SSR ETag Caching:**
    - Request đầu tiên trả về HTTP 200 kèm header `ETag`.
@@ -170,35 +170,36 @@ Thực hiện đo lường trực tiếp qua Chrome DevTools Protocol (CDP) vớ
 | :--- | :---: | :---: | :---: |
 | **Largest Contentful Paint (LCP)** | **68 ms** | < 2.500 ms | **Xuất sắc (Good)** |
 | **Cumulative Layout Shift (CLS)** | **0.000** | < 0.100 | **Tuyệt đối (Zero Shift)** |
-| **Max Interaction to Next Paint (INP)** | **32 ms** | < 200 ms | **Mượt mà (Good)** |
-| **P98 INP** | **32 ms** | < 200 ms | **Mượt mà (Good)** |
-| **Total INP Events Captured** | **73 events** | > 0 events | **PASS (Đầy đủ telemetry)** |
-| **Tương tác gõ SĐT Lead (`#lead-phone`)** | **16.0 ms** | < 200 ms | **PASS (Đạt)** |
-| **Tương tác click chọn Checkbox Consent** | **15.8 ms** | < 200 ms | **PASS (Đạt)** |
-| **Tương tác mở Quick View** | **15.6 ms** | < 200 ms | **PASS (Đạt)** |
+| **Max Interaction to Next Paint (INP)** | **48.6 ms** | < 200 ms | **Mượt mà (Good)** |
+| **P98 INP** | **48.6 ms** | < 200 ms | **Mượt mà (Good)** |
+| **Total INP Events Captured** | **12 events** | > 0 events | **PASS (Đầy đủ telemetry)** |
+| **Tương tác Filter Studio Rooms** | **45.7 ms** | < 200 ms | **PASS (Đạt)** |
+| **Tương tác Reset Type Filter** | **46.1 ms** | < 200 ms | **PASS (Đạt)** |
+| **Tương tác mở Mobile Navigation** | **27.5 ms** | < 200 ms | **PASS (Đạt)** |
+| **Tương tác mở Lead Modal trên 390×844** | **48.6 ms** | < 200 ms | **PASS (Đạt)** |
 
 ---
 
 ## 3. Bằng chứng kiểm tra thị giác (Visual Evidence Gallery)
 
-Tất cả 14 ảnh chụp màn hình kiểm định độ phân giải cao đã được tạo và lưu trữ song song tại thư mục `apps/landing/rc1/` và thư mục Artifact của hệ thống:
+Tất cả 14 ảnh chụp màn hình kiểm định độ phân giải cao đã được tạo và lưu trữ tại thư mục chuẩn `docs/evidence/rc1/` và thư mục Artifact của hệ thống:
 
 | Tên file bằng chứng | Viewport / Kịch bản kiểm tra | Liên kết xem ảnh |
 | :--- | :--- | :--- |
-| `rc1_1920_home.png` | Desktop 1920×1080 — Trang chủ tổng thể, Hero & Catalog phòng (Priority images loaded) | [rc1_1920_home.png](file:///d:/AdHome-Platform/apps/landing/rc1/rc1_1920_home.png) |
-| `rc1_1440_home.png` | Desktop 1440×900 — Trang chủ Editorial tiêu chuẩn | [rc1_1440_home.png](file:///d:/AdHome-Platform/apps/landing/rc1/rc1_1440_home.png) |
-| `rc1_1440_room_detail.png` | Desktop 1440×900 — Trang chi tiết phòng Studio P.31-06 | [rc1_1440_room_detail.png](file:///d:/AdHome-Platform/apps/landing/rc1/rc1_1440_room_detail.png) |
-| `rc1_390x844_home.png` | Mobile 390×844 — Trang chủ giao diện di động | [rc1_390x844_home.png](file:///d:/AdHome-Platform/apps/landing/rc1/rc1_390x844_home.png) |
-| `rc1_390x844_mobile_nav_backdrop.png` | Mobile 390×844 — Menu Drawer mở với lớp Backdrop đè nền Hero | [rc1_390x844_mobile_nav_backdrop.png](file:///d:/AdHome-Platform/apps/landing/rc1/rc1_390x844_mobile_nav_backdrop.png) |
-| `rc1_390x844_quickview.png` | Mobile 390×844 — Modal Quick View xem nhanh phòng | [rc1_390x844_quickview.png](file:///d:/AdHome-Platform/apps/landing/rc1/rc1_390x844_quickview.png) |
-| `rc1_390x844_room_detail.png` | Mobile 390×844 — Đầu trang chi tiết phòng di động | [rc1_390x844_room_detail.png](file:///d:/AdHome-Platform/apps/landing/rc1/rc1_390x844_room_detail.png) |
-| `rc1_390x844_room_detail_scrolled.png`| Mobile 390×844 — Chi tiết phòng cuộn trang kèm Sticky CTA | [rc1_390x844_room_detail_scrolled.png](file:///d:/AdHome-Platform/apps/landing/rc1/rc1_390x844_room_detail_scrolled.png) |
-| `rc1_390x844_lead_modal_deduped.png` | Mobile 390×844 — Form đăng ký đã khử trùng lặp Header | [rc1_390x844_lead_modal_deduped.png](file:///d:/AdHome-Platform/apps/landing/rc1/rc1_390x844_lead_modal_deduped.png) |
-| `rc1_390x844_lead_modal_validation.png` | Mobile 390×844 — Cảnh báo validation khi chưa check consent | [rc1_390x844_lead_modal_validation.png](file:///d:/AdHome-Platform/apps/landing/rc1/rc1_390x844_lead_modal_validation.png) |
-| `rc1_390x844_lead_persisted.png` | Mobile 390×844 — Xác nhận đăng ký thành công đã lưu vào DB | [rc1_390x844_lead_persisted.png](file:///d:/AdHome-Platform/apps/landing/rc1/rc1_390x844_lead_persisted.png) |
-| `rc1_430x932_home.png` | Mobile 430×932 (iPhone 14 Pro Max) — Trang chủ màn lớn | [rc1_430x932_home.png](file:///d:/AdHome-Platform/apps/landing/rc1/rc1_430x932_home.png) |
-| `rc1_430x932_room_detail.png` | Mobile 430×932 — Trang chi tiết phòng màn lớn | [rc1_430x932_room_detail.png](file:///d:/AdHome-Platform/apps/landing/rc1/rc1_430x932_room_detail.png) |
-| `rc1_390x844_catalog.png` | Mobile 390×844 — Trang danh mục đầy đủ `/phong-trong` | [rc1_390x844_catalog.png](file:///d:/AdHome-Platform/apps/landing/rc1/rc1_390x844_catalog.png) |
+| `rc1_1920_home.png` | Desktop 1920×1080 — Trang chủ tổng thể, Hero & Catalog phòng (Priority images loaded) | [rc1_1920_home.png](file:///d:/AdHome-Platform/docs/evidence/rc1/rc1_1920_home.png) |
+| `rc1_1440_home.png` | Desktop 1440×900 — Trang chủ Editorial tiêu chuẩn | [rc1_1440_home.png](file:///d:/AdHome-Platform/docs/evidence/rc1/rc1_1440_home.png) |
+| `rc1_1440_room_detail.png` | Desktop 1440×900 — Trang chi tiết phòng Studio P.31-06 | [rc1_1440_room_detail.png](file:///d:/AdHome-Platform/docs/evidence/rc1/rc1_1440_room_detail.png) |
+| `rc1_390x844_home.png` | Mobile 390×844 — Trang chủ giao diện di động | [rc1_390x844_home.png](file:///d:/AdHome-Platform/docs/evidence/rc1/rc1_390x844_home.png) |
+| `rc1_390x844_mobile_nav_backdrop.png` | Mobile 390×844 — Menu Drawer mở với lớp Backdrop đè nền Hero | [rc1_390x844_mobile_nav_backdrop.png](file:///d:/AdHome-Platform/docs/evidence/rc1/rc1_390x844_mobile_nav_backdrop.png) |
+| `rc1_390x844_quickview.png` | Mobile 390×844 — Modal Quick View xem nhanh phòng | [rc1_390x844_quickview.png](file:///d:/AdHome-Platform/docs/evidence/rc1/rc1_390x844_quickview.png) |
+| `rc1_390x844_room_detail.png` | Mobile 390×844 — Đầu trang chi tiết phòng di động | [rc1_390x844_room_detail.png](file:///d:/AdHome-Platform/docs/evidence/rc1/rc1_390x844_room_detail.png) |
+| `rc1_390x844_room_detail_scrolled.png`| Mobile 390×844 — Chi tiết phòng cuộn trang kèm Sticky CTA | [rc1_390x844_room_detail_scrolled.png](file:///d:/AdHome-Platform/docs/evidence/rc1/rc1_390x844_room_detail_scrolled.png) |
+| `rc1_390x844_lead_modal_deduped.png` | Mobile 390×844 — Form đăng ký đã khử trùng lặp Header | [rc1_390x844_lead_modal_deduped.png](file:///d:/AdHome-Platform/docs/evidence/rc1/rc1_390x844_lead_modal_deduped.png) |
+| `rc1_390x844_lead_modal_validation.png` | Mobile 390×844 — Cảnh báo validation khi chưa check consent | [rc1_390x844_lead_modal_validation.png](file:///d:/AdHome-Platform/docs/evidence/rc1/rc1_390x844_lead_modal_validation.png) |
+| `rc1_390x844_lead_persisted.png` | Mobile 390×844 — Xác nhận đăng ký thành công đã lưu vào DB | [rc1_390x844_lead_persisted.png](file:///d:/AdHome-Platform/docs/evidence/rc1/rc1_390x844_lead_persisted.png) |
+| `rc1_430x932_home.png` | Mobile 430×932 (iPhone 14 Pro Max) — Trang chủ màn lớn | [rc1_430x932_home.png](file:///d:/AdHome-Platform/docs/evidence/rc1/rc1_430x932_home.png) |
+| `rc1_430x932_room_detail.png` | Mobile 430×932 — Trang chi tiết phòng màn lớn | [rc1_430x932_room_detail.png](file:///d:/AdHome-Platform/docs/evidence/rc1/rc1_430x932_room_detail.png) |
+| `rc1_390x844_catalog.png` | Mobile 390×844 — Trang danh mục đầy đủ `/phong-trong` | [rc1_390x844_catalog.png](file:///d:/AdHome-Platform/docs/evidence/rc1/rc1_390x844_catalog.png) |
 
 ---
 

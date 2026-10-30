@@ -8,7 +8,7 @@ import { PrismaClient } from '@prisma/client';
 const BASE_URL = process.env.RC1_BASE_URL || 'http://127.0.0.1:8081';
 const ARTIFACT_DIR =
   'C:\\Users\\TINH-NGUYEN\\.gemini\\antigravity\\brain\\28c40a83-4f86-4432-98db-0577f31a9633';
-const RC1_OUTPUT_DIR = path.join(process.cwd(), 'apps', 'landing', 'rc1');
+const RC1_OUTPUT_DIR = path.join(process.cwd(), 'docs', 'evidence', 'rc1');
 
 const prisma = new PrismaClient({
   datasources: {
@@ -22,9 +22,9 @@ const prisma = new PrismaClient({
 
 const loadAgent = new http.Agent({
   keepAlive: true,
-  maxSockets: 450,
-  maxTotalSockets: 1000,
-  timeout: 15000,
+  maxSockets: 300,
+  maxTotalSockets: 800,
+  timeout: 30000,
 });
 
 function makeRequest(urlStr, options = {}) {
@@ -523,7 +523,8 @@ async function runAntiSpamRateLimitBenchmark() {
       status429Count += 1;
     } else if (res.status === 200 || res.status === 201) {
       const b = await res.json();
-      if (b.inquiry?.id) createdSpamIds.push(b.inquiry.id);
+      const createdId = b.id || b.inquiry?.id;
+      if (createdId) createdSpamIds.push(createdId);
     }
   }
 

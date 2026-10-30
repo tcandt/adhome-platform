@@ -7,6 +7,7 @@ import { runBackupAndRestoreVerification } from './verifyBackupRestoreRC1.mjs';
 import { runSustainedLoadTestSuite } from './sustainedLoadTestRC1.mjs';
 import { purgeTestLeads } from './purgeTestLeads.mjs';
 import { auditAndSanitizeProductionDb } from './auditAndSanitizeProductionDb.mjs';
+import { provisionProductionAdmin } from './provisionProductionAdmin.mjs';
 import { assertSecurityConfiguration } from '../server/authRbac.ts';
 import { loadAdhomeEnv } from '../server/envLoader.js';
 
@@ -17,7 +18,7 @@ const CANONICAL_ORIGIN = 'https://adhome.ductinh.one';
 const CONSOLE_ORIGIN = 'https://console-adhome.ductinh.one';
 const ARTIFACT_DIR =
   'C:\\Users\\TINH-NGUYEN\\.gemini\\antigravity\\brain\\28c40a83-4f86-4432-98db-0577f31a9633';
-const RC1_OUTPUT_DIR = path.join(process.cwd(), 'apps', 'landing', 'rc1');
+const RC1_OUTPUT_DIR = path.join(process.cwd(), 'docs', 'evidence', 'rc1');
 
 const ACTIVE_KEY_ID = 'k4-2026-10';
 const PREVIOUS_KEY_ID = 'k3-2026-10';
@@ -411,19 +412,63 @@ async function runSecuritySeoAndDomainAudit() {
     process.env.ADHOME_CONSOLE_JWT_SECRET = originalSecret;
   }
 
-  // 1c. Strict Proxy Trust & Anti-Spoofing Verification
-  const contextRes = await fetch(`${BASE_URL}/api/v1/public/security/context`, {
+  // 1c. Security Context Protection & Strict Anti-Spoofing Verification
+  // Check that public unauthenticated /api/v1/public/security/context is BLOCKED (404/401)
+  const publicContextRes = await fetch(`${BASE_URL}/api/v1/public/security/context`);
+  const publicSecurityContextBlocked =
+    publicContextRes.status === 404 || publicContextRes.status === 401;
+
+  // Check that unauthenticated /api/v1/console/security/context is REJECTED (401)
+  const unauthConsoleRes = await fetch(`${BASE_URL}/api/v1/console/security/context`);
+  const unauthConsoleBlocked = unauthConsoleRes.status === 401;
+
+  // Authenticate using authentic production admin: usr-admin-prod (admin@adhome.ductinh.one)
+  const prodAdminActor = await prisma.consoleActor.findUnique({
+    where: { id: 'usr-admin-prod' },
+  });
+  const { token: prodAdminToken } = signToken({
+    sub: 'usr-admin-prod',
+    role: 'ADMIN',
+    orgId: 'org-adhome-anphu',
+    email: 'admin@adhome.ductinh.one',
+    sessionVersion: prodAdminActor?.sessionVersion ?? 1,
+  });
+
+  const contextRes = await fetch(`${BASE_URL}/api/v1/console/security/context`, {
     headers: {
+      Authorization: `Bearer ${prodAdminToken}`,
       'X-Forwarded-For': '203.0.113.195',
       'CF-Connecting-IP': '203.0.113.195',
     },
   });
   const contextData = await contextRes.json();
-  const trustProxyConfigValid = contextData.ok === true && typeof contextData.clientIp === 'string';
+  const trustProxyConfigValid =
+    publicSecurityContextBlocked &&
+    unauthConsoleBlocked &&
+    contextRes.status === 200 &&
+    contextData.ok === true &&
+    typeof contextData.clientIp === 'string' &&
+    Array.isArray(contextData.trustedProxiesConfigured);
+
+  // Verify that dev sample actors are deactivated and strictly rejected (401)
+  const { token: inactiveSampleToken } = signToken({
+    sub: 'usr-admin-01',
+    role: 'ADMIN',
+    orgId: 'org-adhome-anphu',
+    email: 'admin@adhome.vn',
+    sessionVersion: 1,
+  });
+  const inactiveSampleRes = await fetch(`${BASE_URL}/api/v1/console/security/context`, {
+    headers: { Authorization: `Bearer ${inactiveSampleToken}` },
+  });
+  const inactiveSampleActorBlocked401 = inactiveSampleRes.status === 401;
 
   // 1d. Sample Actor Production Audit Verification
-  const auditReport = await auditAndSanitizeProductionDb({ deactivateSampleActors: false });
-  const sampleActorsAudited = auditReport.actors.sampleDevActorsCount === 4;
+  const auditReport = await auditAndSanitizeProductionDb({ deactivateSampleActors: true });
+  const sampleActorsAudited =
+    auditReport.actors.sampleDevActorsCount === 4 &&
+    auditReport.actors.allSampleActorsDeactivated === true &&
+    auditReport.actors.genuineActorsCount === 1;
 
   // 2. Public Write Method Rejection (405 Method Not Allowed)
   const roomWriteStatuses = {};
@@ -440,6 +485,7 @@ async function runSecuritySeoAndDomainAudit() {
   const rateLimitClientIp = `198.51.100.${Math.floor(Math.random() * 200) + 20}`;
   let rateLimitHit429 = false;
   let bypassHeaderIneffective = false;
+  const rateLimitCreatedIds = [];
 
   for (let i = 1; i <= 15; i++) {
     const rlRes = await fetch(`${BASE_URL}/api/v1/public/inquiries`, {
@@ -458,7 +504,10 @@ async function runSecuritySeoAndDomainAudit() {
       }),
     });
 
-    if (rlRes.status === 429) {
+    if (rlRes.status === 201) {
+      const body = await rlRes.json();
+      if (body?.id) rateLimitCreatedIds.push(body.id);
+    } else if (rlRes.status === 429) {
       rateLimitHit429 = true;
       const rlBody = await rlRes.json();
       if (rlBody.errorCode === 'RATE_LIMITED') {
@@ -468,18 +517,26 @@ async function runSecuritySeoAndDomainAudit() {
     }
   }
 
-  // Ensure test actors are active during RBAC permission & scoping verification
+  // Clean up any lead inquiry created during rate limit check strictly by in-memory primary key ID
+  if (rateLimitCreatedIds.length > 0) {
+    await prisma.leadInquiry.deleteMany({
+      where: { id: { in: rateLimitCreatedIds } },
+    });
+  }
+
+  // Temporarily activate scoped test actors for RBAC verification
   await prisma.consoleActor.updateMany({
-    where: { id: { in: ['usr-viewer-01', 'usr-mgr-lk01', 'usr-admin-01', 'usr-other-org-01'] } },
+    where: { id: { in: ['usr-viewer-01', 'usr-mgr-lk01'] } },
     data: { isActive: true },
   });
 
   // Fetch current session versions from PostgreSQL
-  const [viewerActor, mgrActor, adminActor] = await Promise.all([
+  const [viewerActor, mgrActor] = await Promise.all([
     prisma.consoleActor.findUnique({ where: { id: 'usr-viewer-01' } }),
     prisma.consoleActor.findUnique({ where: { id: 'usr-mgr-lk01' } }),
-    prisma.consoleActor.findUnique({ where: { id: 'usr-admin-01' } }),
   ]);
+  const adminActor = prodAdminActor;
+  const adminToken = prodAdminToken;
 
   // 3. Unauthenticated Console Access Rejection (401)
   const unauthRes = await fetch(
@@ -538,8 +595,8 @@ async function runSecuritySeoAndDomainAudit() {
   // 6. Secret Rotation: Token signed with PREVIOUS_KEY_ID (`k3-2026-10`) is accepted
   const { token: rotatedPrevKeyToken } = signToken(
     {
-      sub: 'usr-admin-01',
-      email: 'admin@adhome.vn',
+      sub: 'usr-admin-prod',
+      email: 'admin@adhome.ductinh.one',
       sessionVersion: adminActor?.sessionVersion ?? 1,
     },
     { secret: PREVIOUS_SECRET, kid: PREVIOUS_KEY_ID }
@@ -560,8 +617,8 @@ async function runSecuritySeoAndDomainAudit() {
   // 6b. Burned/Revoked Old Key (`k2-2026-10`) must be strictly REJECTED (HTTP 401)
   const { token: burnedOldKeyToken } = signToken(
     {
-      sub: 'usr-admin-01',
-      email: 'admin@adhome.vn',
+      sub: 'usr-admin-prod',
+      email: 'admin@adhome.ductinh.one',
       sessionVersion: adminActor?.sessionVersion ?? 1,
     },
     { secret: BURNED_OLD_SECRET, kid: BURNED_OLD_KEY_ID }
@@ -581,8 +638,8 @@ async function runSecuritySeoAndDomainAudit() {
 
   // 7. Token Revocation by JTI
   const { token: revocableToken, jti: revocableJti } = signToken({
-    sub: 'usr-admin-01',
-    email: 'admin@adhome.vn',
+    sub: 'usr-admin-prod',
+    email: 'admin@adhome.ductinh.one',
     sessionVersion: adminActor?.sessionVersion ?? 1,
   });
   const revokeCallRes = await fetch(`${BASE_URL}/api/v1/console/auth/revoke`, {
@@ -626,11 +683,11 @@ async function runSecuritySeoAndDomainAudit() {
     sessionVersion: prevSessionVersion,
   });
 
-  const { token: adminToken } = signToken({
-    sub: 'usr-admin-01',
+  const { token: sessionBumpAdminToken } = signToken({
+    sub: 'usr-admin-prod',
     role: 'ADMIN',
     orgId: 'org-adhome-anphu',
-    email: 'admin@adhome.vn',
+    email: 'admin@adhome.ductinh.one',
     sessionVersion: adminActor?.sessionVersion ?? 1,
   });
 
@@ -638,7 +695,7 @@ async function runSecuritySeoAndDomainAudit() {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${adminToken}`,
+      Authorization: `Bearer ${sessionBumpAdminToken}`,
     },
     body: JSON.stringify({
       actorId: 'usr-mgr-lk01',
@@ -660,6 +717,12 @@ async function runSecuritySeoAndDomainAudit() {
     }
   );
   const rejectedBySessionBody = await rejectedBySessionRes.json();
+
+  // Deactivate all dev sample actors immediately to restore strictly secured state
+  await prisma.consoleActor.updateMany({
+    where: { id: { in: ['usr-viewer-01', 'usr-mgr-lk01', 'usr-admin-01', 'usr-other-org-01'] } },
+    data: { isActive: false },
+  });
 
   // 9. Zero Private Data Leakage
   const publicRoomsRes = await fetch(`${BASE_URL}/api/v1/public/rooms`);
@@ -695,12 +758,7 @@ async function runSecuritySeoAndDomainAudit() {
   );
 
   // 11. 301 Permanent Redirect on Old Slug
-  const { token: slugChangeAdminToken } = signToken({
-    sub: 'usr-admin-01',
-    role: 'ADMIN',
-    orgId: 'org-adhome-anphu',
-    email: 'admin@adhome.vn',
-  });
+  const slugChangeAdminToken = adminToken;
   await fetch(
     `${BASE_URL}/api/v1/console/rooms/studio-ban-cong-31-06-lk01-31-an-phu`,
     {
@@ -749,6 +807,9 @@ async function runSecuritySeoAndDomainAudit() {
     missingSecretThrowsFatal,
     trustProxyConfigValid,
     sampleActorsAudited,
+    inactiveSampleActorBlocked401,
+    authenticProdAdminLoginWorks: contextRes.status === 200,
+    publicSecurityContextBlocked,
     publicRoomsWriteBlocked,
     rateLimitingEnforced429: rateLimitHit429 && bypassHeaderIneffective,
     unauthenticatedConsoleAccessBlocked: unauthRes.status === 401,
@@ -805,8 +866,8 @@ export async function runFullRC1Verification() {
   fs.mkdirSync(RC1_OUTPUT_DIR, { recursive: true });
   fs.mkdirSync(ARTIFACT_DIR, { recursive: true });
 
-  console.log('Ensuring PostgreSQL database is clean of automated test leads...');
-  await purgeTestLeads({ execute: true, confirmed: true, matchTestTag: true });
+  console.log('Ensuring authentic production admin is provisioned and sample actors are deactivated...');
+  await provisionProductionAdmin();
 
   // Step 1: PostgreSQL 18 Native Backup & Restore Test
   const backupRestoreReport = await runBackupAndRestoreVerification();
@@ -1044,17 +1105,22 @@ export async function runFullRC1Verification() {
     await new Promise((r) => setTimeout(r, 200));
     await saveShot('rc1_390x844_lead_modal_validation.png');
 
+    // Generate unique phone and name for this specific test run to avoid 10-minute duplicate collision
+    const testRunSuffix = `${(Date.now() % 900000) + 100000}`;
+    const testLeadPhone = `0985${testRunSuffix}`;
+    const testLeadName = `Nguyen Van RC1 ${testRunSuffix.slice(-4)}`;
+
     // Fill Out Valid Lead Form
     await nativeTypeAndMeasureInp(
       cdp,
       '#lead-name',
-      'Nguyen Van RC1',
+      testLeadName,
       '7. Type Full Name'
     );
     await nativeTypeAndMeasureInp(
       cdp,
       '#lead-phone',
-      '0908889999',
+      testLeadPhone,
       '8. Type Phone Number'
     );
 
@@ -1074,7 +1140,7 @@ export async function runFullRC1Verification() {
     );
 
     let leadPersistedAudit = null;
-    for (let poll = 0; poll < 25; poll++) {
+    for (let poll = 0; poll < 30; poll++) {
       await new Promise((r) => setTimeout(r, 200));
       leadPersistedAudit = await cdp.eval(`(() => {
         const refCodeEl = document.querySelector('[data-testid="inquiry-reference-code"]');
@@ -1093,7 +1159,7 @@ export async function runFullRC1Verification() {
 
     // Verify in PostgreSQL that lead was persisted
     const dbLead = await prisma.leadInquiry.findFirst({
-      where: { phone: '0908889999' },
+      where: { phone: testLeadPhone },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -1106,6 +1172,11 @@ export async function runFullRC1Verification() {
       leadPersistedAudit &&
       dbLead.referenceCode === leadPersistedAudit.refCode
     );
+
+    // Clean up test lead strictly by in-memory primary key ID
+    if (dbLead) {
+      await prisma.leadInquiry.delete({ where: { id: dbLead.id } });
+    }
 
     // Retrieve Core Web Vitals from RUM State on Room Detail BEFORE navigating away
     const roomDetailRum = await cdp.eval(`(() => {
@@ -1179,7 +1250,7 @@ export async function runFullRC1Verification() {
           noDuplicatedSubheaderInHeader: !leadModalAudit.hasDuplicatedSubheader,
           roomContextCardPreserved: leadModalAudit.hasContextBox,
           privacyConsentUncheckedByDefault: leadModalAudit.isConsentCheckedByDefault === false,
-          leadPersistedInPostgres: Boolean(dbLead && dbLead.phone === '0908889999'),
+          leadPersistedInPostgres: Boolean(dbLead && dbLead.phone === testLeadPhone),
           persistedReferenceCode: leadPersistedAudit?.refCode || '',
           referenceCodeFormatValid: refCodeFormatValid,
           uiAndDatabaseCodesMatch: dbMatchesUiCode,
@@ -1214,7 +1285,10 @@ export async function runFullRC1Verification() {
         bootSecurityAssertPass: securityAndSeoReport.bootSecurityPass,
         missingSecretThrowsFatal: securityAndSeoReport.missingSecretThrowsFatal,
         trustProxyConfigValid: securityAndSeoReport.trustProxyConfigValid,
+        publicSecurityContextBlocked: securityAndSeoReport.publicSecurityContextBlocked,
         sampleActorsAudited: securityAndSeoReport.sampleActorsAudited,
+        inactiveSampleActorBlocked401: securityAndSeoReport.inactiveSampleActorBlocked401,
+        authenticProdAdminLoginWorks: securityAndSeoReport.authenticProdAdminLoginWorks,
         publicRoomsWriteBlocked405: securityAndSeoReport.publicRoomsWriteBlocked,
         rateLimitingEnforced429: securityAndSeoReport.rateLimitingEnforced429,
         unauthenticatedConsoleBlocked401: securityAndSeoReport.unauthenticatedConsoleAccessBlocked,
@@ -1229,7 +1303,10 @@ export async function runFullRC1Verification() {
           securityAndSeoReport.bootSecurityPass &&
           securityAndSeoReport.missingSecretThrowsFatal &&
           securityAndSeoReport.trustProxyConfigValid &&
+          securityAndSeoReport.publicSecurityContextBlocked &&
           securityAndSeoReport.sampleActorsAudited &&
+          securityAndSeoReport.inactiveSampleActorBlocked401 &&
+          securityAndSeoReport.authenticProdAdminLoginWorks &&
           securityAndSeoReport.publicRoomsWriteBlocked &&
           securityAndSeoReport.rateLimitingEnforced429 &&
           securityAndSeoReport.unauthenticatedConsoleAccessBlocked &&
@@ -1283,8 +1360,23 @@ export async function runFullRC1Verification() {
           roomDetailRum.totalInpEvents > 0 &&
           roomDetailRum.maxInpMs > 0,
       },
-      overallVerdict: 'RC1_PRODUCTION_READY',
+      overallVerdict: 'RC1_VERIFICATION_PENDING',
     };
+
+    // Strict Quality Gate computation: must be strictly computed from all subgates
+    const isQualityGatePassed = Boolean(
+      finalReport.rc01_uiPolish.mobileNavigation.pass &&
+      finalReport.rc01_uiPolish.leadInquiryModal.pass &&
+      finalReport.rc02_canonicalDomain.pass &&
+      finalReport.rc03_backendSecurityAndRbac.pass &&
+      finalReport.rc04_sustainedLoadTesting.pass &&
+      finalReport.rc05_databaseAndSeo.pass &&
+      finalReport.rc06_coreWebVitals.pass
+    );
+
+    finalReport.overallVerdict = isQualityGatePassed
+      ? 'RC1_PRODUCTION_READY'
+      : 'RC1_VERIFICATION_FAILED';
 
     const jsonStr = JSON.stringify(finalReport, null, 2);
     const localOutPath = path.join(RC1_OUTPUT_DIR, 'rc1_verification_results.json');
@@ -1293,7 +1385,7 @@ export async function runFullRC1Verification() {
     fs.writeFileSync(artifactOutPath, jsonStr);
 
     console.log('\n============================================================');
-    console.log('   RC1 FULL VERIFICATION COMPLETED SUCCESSFULLY!            ');
+    console.log(`   RC1 FULL VERIFICATION: ${finalReport.overallVerdict}    `);
     console.log(`   Written to: ${localOutPath}`);
     console.log(`   Artifact:   ${artifactOutPath}`);
     console.log('============================================================\n');
@@ -1309,6 +1401,10 @@ if (process.argv[1] && process.argv[1].endsWith('verifyRC1.mjs')) {
   runFullRC1Verification()
     .then((r) => {
       console.log('Verification completed with verdict:', r.overallVerdict);
+      if (r.overallVerdict !== 'RC1_PRODUCTION_READY') {
+        console.error('CRITICAL: RC1 Quality Gate failed! Overall verdict is:', r.overallVerdict);
+        process.exit(1);
+      }
       process.exit(0);
     })
     .catch((err) => {

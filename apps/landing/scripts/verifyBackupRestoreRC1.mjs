@@ -6,7 +6,7 @@ import { PrismaClient } from '@prisma/client';
 
 const ARTIFACT_DIR =
   'C:\\Users\\TINH-NGUYEN\\.gemini\\antigravity\\brain\\28c40a83-4f86-4432-98db-0577f31a9633';
-const RC1_OUTPUT_DIR = path.join(process.cwd(), 'apps', 'landing', 'rc1');
+const RC1_OUTPUT_DIR = path.join(process.cwd(), 'docs', 'evidence', 'rc1');
 const SECURE_BACKUPS_DIR = path.join(process.cwd(), 'backups');
 fs.mkdirSync(SECURE_BACKUPS_DIR, { recursive: true });
 const BACKUP_PATH = path.join(SECURE_BACKUPS_DIR, 'adhome_v2_rc1_backup.dump');

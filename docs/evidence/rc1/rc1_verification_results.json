@@ -1,6 +1,6 @@
 {
   "verificationTitle": "ADHOME LANDING — RELEASE CANDIDATE 1 (RC1) COMPREHENSIVE VERIFICATION",
-  "timestamp": "2026-10-29T14:18:32.152Z",
+  "timestamp": "2026-10-30T00:11:43.559Z",
   "canonicalDomain": "https://adhome.ductinh.one",
   "consoleDomain": "https://console-adhome.ductinh.one",
   "baseUrl": "http://127.0.0.1:8081",
@@ -21,10 +21,10 @@
       "roomContextCardPreserved": true,
       "privacyConsentUncheckedByDefault": true,
       "leadPersistedInPostgres": true,
-      "persistedReferenceCode": "",
-      "referenceCodeFormatValid": false,
-      "uiAndDatabaseCodesMatch": false,
-      "pass": false
+      "persistedReferenceCode": "ADH-5171-AB9E96",
+      "referenceCodeFormatValid": true,
+      "uiAndDatabaseCodesMatch": true,
+      "pass": true
     }
   },
   "rc02_canonicalDomain": {
@@ -43,7 +43,10 @@
     "bootSecurityAssertPass": true,
     "missingSecretThrowsFatal": true,
     "trustProxyConfigValid": true,
+    "publicSecurityContextBlocked": true,
     "sampleActorsAudited": true,
+    "inactiveSampleActorBlocked401": true,
+    "authenticProdAdminLoginWorks": true,
     "publicRoomsWriteBlocked405": true,
     "rateLimitingEnforced429": true,
     "unauthenticatedConsoleBlocked401": true,
@@ -58,10 +61,10 @@
   },
   "rc04_sustainedLoadTesting": {
     "summary": {
-      "totalSustainedRequests": 39336,
-      "maxThroughputReqSec": 782.1,
-      "worstP95Ms": 1916.79,
-      "worstP99Ms": 1939.53,
+      "totalSustainedRequests": 37801,
+      "maxThroughputReqSec": 728.25,
+      "worstP95Ms": 1857.01,
+      "worstP99Ms": 1878.9,
       "infrastructureZeroErrors": true,
       "leadAcceptancePass": true,
       "antiSpamProtectionPass": true,
@@ -71,34 +74,34 @@
       {
         "vuCount": 100,
         "activeWorkers": 100,
-        "throughputReqSec": 782.1,
-        "p95Ms": 107.11,
-        "p99Ms": 128.82,
+        "throughputReqSec": 728.25,
+        "p95Ms": 114.39,
+        "p99Ms": 129.16,
         "infrastructureErrorRatePct": 0,
-        "peakPostgresConnections": 21,
-        "memoryGrowthPct": -1.03,
+        "peakPostgresConnections": 22,
+        "memoryGrowthPct": -19.67,
         "slaPass": true
       },
       {
         "vuCount": 500,
         "activeWorkers": 500,
-        "throughputReqSec": 694.18,
-        "p95Ms": 892.28,
-        "p99Ms": 911.09,
+        "throughputReqSec": 612.52,
+        "p95Ms": 876.25,
+        "p99Ms": 901.76,
         "infrastructureErrorRatePct": 0,
-        "peakPostgresConnections": 21,
-        "memoryGrowthPct": 48.11,
+        "peakPostgresConnections": 22,
+        "memoryGrowthPct": 31.12,
         "slaPass": true
       },
       {
         "vuCount": 1000,
         "activeWorkers": 1000,
-        "throughputReqSec": 534.54,
-        "p95Ms": 1916.79,
-        "p99Ms": 1939.53,
+        "throughputReqSec": 582.73,
+        "p95Ms": 1857.01,
+        "p99Ms": 1878.9,
         "infrastructureErrorRatePct": 0,
-        "peakPostgresConnections": 21,
-        "memoryGrowthPct": 85.36,
+        "peakPostgresConnections": 22,
+        "memoryGrowthPct": 22.17,
         "slaPass": true
       }
     ],
@@ -109,14 +112,14 @@
       "rejectedNon2xx": 0,
       "businessSuccessRatePct": 100,
       "durationSec": 0.05,
-      "throughputReqSec": 989.52,
+      "throughputReqSec": 1000.21,
       "dbRowsVerifiedMatch": true,
       "latencyMs": {
-        "min": 40.39,
-        "avg": 45.57,
-        "p50": 45.52,
-        "p95": 50.68,
-        "max": 51.02
+        "min": 35.69,
+        "avg": 44.2,
+        "p50": 44.55,
+        "p95": 49.91,
+        "max": 50
       },
       "slaPass": true
     },
@@ -132,9 +135,9 @@
   },
   "rc05_databaseAndSeo": {
     "backupAndRestorePass": true,
-    "backupDurationMs": 167,
-    "restoreDurationMs": 151,
-    "backupSha256": "75bc7b59383b9d154898838b4f773a35175960d5c231d10fb4940ed409a58ff3",
+    "backupDurationMs": 217,
+    "restoreDurationMs": 184,
+    "backupSha256": "f16005771543543718b515bc7cd9af69d94ef69e3fdbec23c71c7199518a991e",
     "dynamicSsrEtag304Works": true,
     "oldSlug301RedirectWorks": true,
     "unpublishedRoom404AndNoindex": true,
@@ -142,49 +145,49 @@
   },
   "rc06_coreWebVitals": {
     "roomDetailRum": {
-      "lcpMs": 64,
-      "clsScore": 0,
-      "maxInpMs": 32,
-      "p98InpMs": 32,
+      "lcpMs": 76,
+      "clsScore": 0.2641,
+      "maxInpMs": 40,
+      "p98InpMs": 40,
       "tbtMs": 0,
-      "totalInpEvents": 75,
+      "totalInpEvents": 84,
       "events": [
         {
           "name": "keyup",
           "duration": 16,
-          "processingStart": 2996.8,
-          "processingEnd": 2996.8,
-          "startTime": 2996.7,
-          "interactionId": 540,
+          "processingStart": 3050.2,
+          "processingEnd": 3050.2,
+          "startTime": 3050,
+          "interactionId": 8195,
           "target": "input#lead-phone",
           "route": "/phong/studio-ban-cong-31-06-lk01-31-an-phu"
         },
         {
           "name": "keydown",
           "duration": 16,
-          "processingStart": 2997.4,
-          "processingEnd": 2997.4,
-          "startTime": 2997.3,
-          "interactionId": 547,
+          "processingStart": 3050.7,
+          "processingEnd": 3050.8,
+          "startTime": 3050.5,
+          "interactionId": 8202,
           "target": "input#lead-phone",
           "route": "/phong/studio-ban-cong-31-06-lk01-31-an-phu"
         },
         {
           "name": "keypress",
           "duration": 16,
-          "processingStart": 2997.5,
-          "processingEnd": 2998.3,
-          "startTime": 2997.3,
-          "interactionId": 547,
+          "processingStart": 3050.8,
+          "processingEnd": 3051.7,
+          "startTime": 3050.5,
+          "interactionId": 8202,
           "target": "input#lead-phone",
           "route": "/phong/studio-ban-cong-31-06-lk01-31-an-phu"
         },
         {
           "name": "input",
           "duration": 16,
-          "processingStart": 2997.7,
-          "processingEnd": 2998.2,
-          "startTime": 2997.7,
+          "processingStart": 3051.1,
+          "processingEnd": 3051.7,
+          "startTime": 3051,
           "interactionId": 0,
           "target": "input#lead-phone",
           "route": "/phong/studio-ban-cong-31-06-lk01-31-an-phu"
@@ -192,60 +195,60 @@
         {
           "name": "pointerdown",
           "duration": 16,
-          "processingStart": 3132.5,
-          "processingEnd": 3132.7,
-          "startTime": 3131.9,
-          "interactionId": 554,
+          "processingStart": 3195.1,
+          "processingEnd": 3195.1,
+          "startTime": 3194.8,
+          "interactionId": 8237,
           "target": "[data-testid=\"lead-privacy-checkbox\"]",
           "route": "/phong/studio-ban-cong-31-06-lk01-31-an-phu"
         },
         {
           "name": "pointerup",
           "duration": 16,
-          "processingStart": 3136.6,
-          "processingEnd": 3136.7,
-          "startTime": 3136.1,
-          "interactionId": 554,
+          "processingStart": 3196.4,
+          "processingEnd": 3196.5,
+          "startTime": 3196.3,
+          "interactionId": 8237,
           "target": "[data-testid=\"lead-privacy-checkbox\"]",
           "route": "/phong/studio-ban-cong-31-06-lk01-31-an-phu"
         },
         {
           "name": "click",
           "duration": 16,
-          "processingStart": 3136.8,
-          "processingEnd": 3138.7,
-          "startTime": 3136.1,
-          "interactionId": 554,
+          "processingStart": 3196.5,
+          "processingEnd": 3197.2,
+          "startTime": 3196.3,
+          "interactionId": 8237,
           "target": "[data-testid=\"lead-privacy-checkbox\"]",
           "route": "/phong/studio-ban-cong-31-06-lk01-31-an-phu"
         },
         {
           "name": "pointerdown",
           "duration": 16,
-          "processingStart": 3301.1,
-          "processingEnd": 3301.1,
-          "startTime": 3300.5,
-          "interactionId": 561,
+          "processingStart": 3355.6,
+          "processingEnd": 3355.8,
+          "startTime": 3355.1,
+          "interactionId": 8244,
           "target": "button",
           "route": "/phong/studio-ban-cong-31-06-lk01-31-an-phu"
         },
         {
           "name": "pointerup",
           "duration": 16,
-          "processingStart": 3304.4,
-          "processingEnd": 3304.5,
-          "startTime": 3303.8,
-          "interactionId": 561,
+          "processingStart": 3358.7,
+          "processingEnd": 3358.9,
+          "startTime": 3358.2,
+          "interactionId": 8244,
           "target": "button",
           "route": "/phong/studio-ban-cong-31-06-lk01-31-an-phu"
         },
         {
           "name": "click",
           "duration": 16,
-          "processingStart": 3304.6,
-          "processingEnd": 3311,
-          "startTime": 3303.8,
-          "interactionId": 561,
+          "processingStart": 3358.9,
+          "processingEnd": 3366.5,
+          "startTime": 3358.2,
+          "interactionId": 8244,
           "target": "button",
           "route": "/phong/studio-ban-cong-31-06-lk01-31-an-phu"
         }
@@ -253,21 +256,21 @@
     },
     "serverRumSummary": {
       "ok": true,
-      "totalSamples": 146,
+      "totalSamples": 52,
       "metrics": {
         "INP": {
-          "count": 119,
-          "p50": 24,
+          "count": 42,
+          "p50": 16,
           "p75": 24,
           "p95": 40,
           "max": 40
         },
         "LCP": {
-          "count": 24,
-          "p50": 52,
-          "p75": 60,
-          "p95": 444,
-          "max": 452
+          "count": 8,
+          "p50": 56,
+          "p75": 80,
+          "p95": 1492,
+          "max": 1492
         },
         "CLS": {
           "count": 0,
@@ -277,11 +280,11 @@
           "max": 0
         },
         "LONG_TASK": {
-          "count": 3,
-          "p50": 81,
-          "p75": 165,
-          "p95": 165,
-          "max": 165
+          "count": 2,
+          "p50": 53,
+          "p75": 177,
+          "p95": 177,
+          "max": 177
         },
         "TBT": {
           "count": 0,
@@ -293,251 +296,251 @@
       },
       "recentSamples": [
         {
-          "id": "rum-1914aaa6-3e11-4628-8849-c37ecd942545",
+          "id": "rum-e3ce74cf-451a-486c-acd5-e4102a6a0f34",
           "metricName": "INP",
           "value": 16,
           "rating": "good",
           "route": "/phong/studio-ban-cong-31-06-lk01-31-an-phu",
           "interactionTarget": "keydown:input#lead-name",
           "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
-          "recordedAt": "2026-10-29T14:18:19.657Z"
+          "recordedAt": "2026-10-30T00:11:33.135Z"
         },
         {
-          "id": "rum-b02400a9-175a-4a12-9227-bf98284515aa",
+          "id": "rum-bdd32749-1beb-4e8a-a97b-bfb15236d8f9",
           "metricName": "INP",
           "value": 16,
           "rating": "good",
           "route": "/phong/studio-ban-cong-31-06-lk01-31-an-phu",
           "interactionTarget": "keydown:input#lead-name",
           "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
-          "recordedAt": "2026-10-29T14:18:19.657Z"
+          "recordedAt": "2026-10-30T00:11:35.165Z"
         },
         {
-          "id": "rum-2a8bce23-f8af-4232-87c2-9b3e52209dc1",
+          "id": "rum-37a0b430-a00f-4986-8f14-81bce8e512ba",
           "metricName": "INP",
           "value": 16,
           "rating": "good",
           "route": "/phong/studio-ban-cong-31-06-lk01-31-an-phu",
           "interactionTarget": "keydown:input#lead-name",
           "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
-          "recordedAt": "2026-10-29T14:18:19.658Z"
+          "recordedAt": "2026-10-30T00:11:35.166Z"
         },
         {
-          "id": "rum-7278a5d5-97f6-4d78-b75b-49c9065f4c5d",
+          "id": "rum-bac7cdba-4f36-4ea2-9619-1d3f6340c370",
           "metricName": "INP",
           "value": 16,
           "rating": "good",
           "route": "/phong/studio-ban-cong-31-06-lk01-31-an-phu",
           "interactionTarget": "keydown:input#lead-name",
           "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
-          "recordedAt": "2026-10-29T14:18:19.658Z"
+          "recordedAt": "2026-10-30T00:11:35.166Z"
         },
         {
-          "id": "rum-86d04ffe-2c22-4489-8a30-833a0332aa0a",
+          "id": "rum-1b765ec3-ae9a-421b-bf57-1dce1dee214b",
           "metricName": "INP",
           "value": 16,
           "rating": "good",
           "route": "/phong/studio-ban-cong-31-06-lk01-31-an-phu",
           "interactionTarget": "keydown:input#lead-name",
           "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
-          "recordedAt": "2026-10-29T14:18:19.674Z"
+          "recordedAt": "2026-10-30T00:11:35.166Z"
         },
         {
-          "id": "rum-ae2014f2-7251-4d6e-9ecb-6dd382290408",
+          "id": "rum-b06a9412-c144-4df6-87ba-96f3c293a087",
+          "metricName": "INP",
+          "value": 24,
+          "rating": "good",
+          "route": "/phong/studio-ban-cong-31-06-lk01-31-an-phu",
+          "interactionTarget": "keydown:input#lead-name",
+          "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+          "recordedAt": "2026-10-30T00:11:35.166Z"
+        },
+        {
+          "id": "rum-a04640e3-f94d-410e-bd9a-ec44844eca3d",
           "metricName": "INP",
           "value": 16,
           "rating": "good",
           "route": "/phong/studio-ban-cong-31-06-lk01-31-an-phu",
           "interactionTarget": "keydown:input#lead-name",
           "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
-          "recordedAt": "2026-10-29T14:18:19.675Z"
+          "recordedAt": "2026-10-30T00:11:35.168Z"
         },
         {
-          "id": "rum-b378f5c6-3429-42d7-a2b9-8bed07112537",
+          "id": "rum-fef24f91-0b04-4f24-a7de-f405ac5bc839",
           "metricName": "INP",
           "value": 16,
           "rating": "good",
           "route": "/phong/studio-ban-cong-31-06-lk01-31-an-phu",
           "interactionTarget": "keydown:input#lead-name",
           "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
-          "recordedAt": "2026-10-29T14:18:19.675Z"
+          "recordedAt": "2026-10-30T00:11:35.169Z"
         },
         {
-          "id": "rum-b084134d-37b6-4d02-9258-94ae75a5b843",
+          "id": "rum-fb001d1a-b564-41c0-bfc2-d5dafc3eb38d",
+          "metricName": "INP",
+          "value": 24,
+          "rating": "good",
+          "route": "/phong/studio-ban-cong-31-06-lk01-31-an-phu",
+          "interactionTarget": "keydown:input#lead-name",
+          "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+          "recordedAt": "2026-10-30T00:11:35.169Z"
+        },
+        {
+          "id": "rum-fa325f8c-85fa-4ecc-a0b5-1d229fe11e50",
           "metricName": "INP",
           "value": 16,
           "rating": "good",
           "route": "/phong/studio-ban-cong-31-06-lk01-31-an-phu",
           "interactionTarget": "keydown:input#lead-name",
           "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
-          "recordedAt": "2026-10-29T14:18:19.676Z"
+          "recordedAt": "2026-10-30T00:11:35.169Z"
         },
         {
-          "id": "rum-12e7659b-4fe3-4455-9e9f-015be9620d19",
+          "id": "rum-378ad7a0-5766-4be4-9914-5c6414ba0a22",
+          "metricName": "INP",
+          "value": 16,
+          "rating": "good",
+          "route": "/phong/studio-ban-cong-31-06-lk01-31-an-phu",
+          "interactionTarget": "keydown:input#lead-name",
+          "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+          "recordedAt": "2026-10-30T00:11:35.169Z"
+        },
+        {
+          "id": "rum-d3b79b83-3a7a-487f-ad1e-a0f4b7bf3f15",
           "metricName": "INP",
           "value": 16,
           "rating": "good",
           "route": "/phong/studio-ban-cong-31-06-lk01-31-an-phu",
           "interactionTarget": "pointerup:input#lead-phone",
           "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
-          "recordedAt": "2026-10-29T14:18:19.814Z"
+          "recordedAt": "2026-10-30T00:11:35.171Z"
         },
         {
-          "id": "rum-5d2bf8c3-4ff1-4298-9f9d-3965ace9154b",
+          "id": "rum-5214a8da-efb5-46e0-ba26-9304db641eec",
           "metricName": "INP",
           "value": 16,
           "rating": "good",
           "route": "/phong/studio-ban-cong-31-06-lk01-31-an-phu",
           "interactionTarget": "click:input#lead-phone",
           "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
-          "recordedAt": "2026-10-29T14:18:19.814Z"
+          "recordedAt": "2026-10-30T00:11:35.172Z"
         },
         {
-          "id": "rum-3e4b6255-103e-46ab-9070-f0bbf42eee41",
+          "id": "rum-815e87e0-87a8-410d-b943-71a189e72041",
+          "metricName": "INP",
+          "value": 16,
+          "rating": "good",
+          "route": "/phong/studio-ban-cong-31-06-lk01-31-an-phu",
+          "interactionTarget": "keydown:input#lead-phone",
+          "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+          "recordedAt": "2026-10-30T00:11:35.172Z"
+        },
+        {
+          "id": "rum-4d3d10d5-4ec0-42b5-a583-6f16757ccd68",
           "metricName": "INP",
           "value": 24,
           "rating": "good",
           "route": "/phong/studio-ban-cong-31-06-lk01-31-an-phu",
           "interactionTarget": "keydown:input#lead-phone",
           "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
-          "recordedAt": "2026-10-29T14:18:19.875Z"
+          "recordedAt": "2026-10-30T00:11:35.172Z"
         },
         {
-          "id": "rum-17bbb60f-6ed0-4532-95c1-6c3ce06a44d6",
+          "id": "rum-855c26c0-f46d-424f-a7fb-3bcc2aca7a9b",
           "metricName": "INP",
           "value": 16,
           "rating": "good",
           "route": "/phong/studio-ban-cong-31-06-lk01-31-an-phu",
           "interactionTarget": "keydown:input#lead-phone",
           "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
-          "recordedAt": "2026-10-29T14:18:19.876Z"
+          "recordedAt": "2026-10-30T00:11:35.173Z"
         },
         {
-          "id": "rum-d9b6bb3f-accc-49b2-a3c0-c5fb3822963d",
+          "id": "rum-30ac6caa-3630-4acf-ab99-b6843591406c",
           "metricName": "INP",
           "value": 16,
           "rating": "good",
           "route": "/phong/studio-ban-cong-31-06-lk01-31-an-phu",
           "interactionTarget": "keydown:input#lead-phone",
           "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
-          "recordedAt": "2026-10-29T14:18:19.876Z"
+          "recordedAt": "2026-10-30T00:11:35.174Z"
         },
         {
-          "id": "rum-ac9a4758-2ad1-470b-8d9b-c67108b140a0",
+          "id": "rum-2a231e3d-d26e-4ea7-9010-c94302ade02a",
           "metricName": "INP",
           "value": 16,
           "rating": "good",
           "route": "/phong/studio-ban-cong-31-06-lk01-31-an-phu",
           "interactionTarget": "keydown:input#lead-phone",
           "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
-          "recordedAt": "2026-10-29T14:18:19.890Z"
+          "recordedAt": "2026-10-30T00:11:35.175Z"
         },
         {
-          "id": "rum-e01a108f-4c72-4b1f-b37a-19b19caac4c1",
-          "metricName": "INP",
-          "value": 16,
-          "rating": "good",
-          "route": "/phong/studio-ban-cong-31-06-lk01-31-an-phu",
-          "interactionTarget": "keydown:input#lead-phone",
-          "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
-          "recordedAt": "2026-10-29T14:18:19.891Z"
-        },
-        {
-          "id": "rum-233e7055-ff2d-40aa-8493-7450f1a7403e",
-          "metricName": "INP",
-          "value": 16,
-          "rating": "good",
-          "route": "/phong/studio-ban-cong-31-06-lk01-31-an-phu",
-          "interactionTarget": "keydown:input#lead-phone",
-          "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
-          "recordedAt": "2026-10-29T14:18:19.909Z"
-        },
-        {
-          "id": "rum-e68d4116-0b82-428c-88bc-b46f147f4ede",
-          "metricName": "INP",
-          "value": 16,
-          "rating": "good",
-          "route": "/phong/studio-ban-cong-31-06-lk01-31-an-phu",
-          "interactionTarget": "keydown:input#lead-phone",
-          "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
-          "recordedAt": "2026-10-29T14:18:19.911Z"
-        },
-        {
-          "id": "rum-b8948fdf-cefc-41f4-84cc-97d083407cdc",
-          "metricName": "INP",
-          "value": 16,
-          "rating": "good",
-          "route": "/phong/studio-ban-cong-31-06-lk01-31-an-phu",
-          "interactionTarget": "keydown:input#lead-phone",
-          "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
-          "recordedAt": "2026-10-29T14:18:19.911Z"
-        },
-        {
-          "id": "rum-d167abc8-85b7-47ea-9c36-a54c97a3aa23",
+          "id": "rum-75ea8d9e-4296-4c1c-ac8b-fb2f67ab9fce",
           "metricName": "INP",
           "value": 16,
           "rating": "good",
           "route": "/phong/studio-ban-cong-31-06-lk01-31-an-phu",
           "interactionTarget": "pointerup:[data-testid=\"lead-privacy-checkbox\"]",
           "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
-          "recordedAt": "2026-10-29T14:18:20.045Z"
+          "recordedAt": "2026-10-30T00:11:35.175Z"
         },
         {
-          "id": "rum-57379d9f-b7f4-4a77-8e42-a6b0b475e630",
+          "id": "rum-42680b7f-46e8-43e9-aced-55f2a70d1e43",
           "metricName": "INP",
           "value": 16,
           "rating": "good",
           "route": "/phong/studio-ban-cong-31-06-lk01-31-an-phu",
           "interactionTarget": "click:[data-testid=\"lead-privacy-checkbox\"]",
           "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
-          "recordedAt": "2026-10-29T14:18:20.046Z"
+          "recordedAt": "2026-10-30T00:11:35.175Z"
         },
         {
-          "id": "rum-895b8b7c-645c-41db-8714-7d3fcafc695b",
+          "id": "rum-99bf1826-1fe3-4f5f-aa24-bc2f7e7b0a59",
           "metricName": "INP",
           "value": 16,
           "rating": "good",
           "route": "/phong/studio-ban-cong-31-06-lk01-31-an-phu",
           "interactionTarget": "pointerup:button",
           "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
-          "recordedAt": "2026-10-29T14:18:20.208Z"
+          "recordedAt": "2026-10-30T00:11:35.176Z"
         },
         {
-          "id": "rum-60602812-e36b-4f4f-a0b9-8c81ad5d0675",
+          "id": "rum-610486db-4020-4ecc-894c-039cb5202516",
           "metricName": "INP",
           "value": 16,
           "rating": "good",
           "route": "/phong/studio-ban-cong-31-06-lk01-31-an-phu",
           "interactionTarget": "click:button",
           "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
-          "recordedAt": "2026-10-29T14:18:20.209Z"
+          "recordedAt": "2026-10-30T00:11:35.176Z"
         },
         {
-          "id": "rum-508bfa25-ae3c-436b-89d4-f9dd280a9310",
+          "id": "rum-baa961c9-069b-4d69-a9e5-6f4fb1dfaa82",
           "metricName": "LCP",
-          "value": 52,
+          "value": 56,
           "rating": "good",
           "route": "/",
           "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
-          "recordedAt": "2026-10-29T14:18:25.674Z"
+          "recordedAt": "2026-10-30T00:11:35.608Z"
         },
         {
-          "id": "rum-d7df2add-175b-4b65-87f2-e35ed5912e9a",
+          "id": "rum-03d233e2-fc1c-4a4d-a2ce-570dab093c7f",
           "metricName": "LCP",
-          "value": 60,
+          "value": 1492,
           "rating": "good",
           "route": "/phong/studio-ban-cong-31-06-lk01-31-an-phu",
           "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
-          "recordedAt": "2026-10-29T14:18:29.806Z"
+          "recordedAt": "2026-10-30T00:11:41.223Z"
         },
         {
-          "id": "rum-9184e9ab-4d88-4936-9944-bd182badc952",
+          "id": "rum-fcce5183-68ec-49f0-b0c5-fc78bb4ac22a",
           "metricName": "LCP",
-          "value": 48,
+          "value": 56,
           "rating": "good",
           "route": "/phong-trong",
           "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
-          "recordedAt": "2026-10-29T14:18:30.893Z"
+          "recordedAt": "2026-10-30T00:11:42.317Z"
         }
       ]
     },
@@ -550,8 +553,8 @@
           "y": 450
         },
         "eventTimingMs": 24,
-        "rafPresentationMs": 39.2,
-        "effectiveInpMs": 39.2,
+        "rafPresentationMs": 45.7,
+        "effectiveInpMs": 45.7,
         "recordedEvents": 3,
         "passUnder200ms": true
       },
@@ -563,8 +566,8 @@
           "y": 450
         },
         "eventTimingMs": 24,
-        "rafPresentationMs": 35.6,
-        "effectiveInpMs": 35.6,
+        "rafPresentationMs": 46.1,
+        "effectiveInpMs": 46.1,
         "recordedEvents": 3,
         "passUnder200ms": true
       },
@@ -575,9 +578,9 @@
           "x": 354,
           "y": 32
         },
-        "eventTimingMs": 16,
-        "rafPresentationMs": 23.6,
-        "effectiveInpMs": 23.6,
+        "eventTimingMs": 24,
+        "rafPresentationMs": 27.5,
+        "effectiveInpMs": 27.5,
         "recordedEvents": 3,
         "passUnder200ms": true
       },
@@ -588,9 +591,9 @@
           "x": 195,
           "y": 422
         },
-        "eventTimingMs": 32,
-        "rafPresentationMs": 36.3,
-        "effectiveInpMs": 36.3,
+        "eventTimingMs": 40,
+        "rafPresentationMs": 48.6,
+        "effectiveInpMs": 48.6,
         "recordedEvents": 3,
         "passUnder200ms": true
       }

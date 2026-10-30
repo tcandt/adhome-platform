@@ -179,92 +179,93 @@ export async function ensurePostgreSqlSeeded(): Promise<void> {
       },
     });
 
-    // 2. Seed Authoritative Console Actors in PostgreSQL (Only in non-production development environments)
-    const isProduction = process.env.NODE_ENV === 'production';
-    if (isProduction) {
-      // Production Safeguard: Deactivate any sample development actors if present in DB
-      await prisma.consoleActor.updateMany({
-        where: {
-          id: {
-            in: [
-              'usr-admin-01',
-              'usr-mgr-lk01',
-              'usr-viewer-01',
-              'usr-other-org-01',
-            ],
-          },
-          isActive: true,
+    // 2. Provision Authentic Production Administrator
+    await prisma.consoleActor.upsert({
+      where: { id: 'usr-admin-prod' },
+      update: {
+        email: 'admin@adhome.ductinh.one',
+        role: 'ADMIN',
+        permissions: ['rooms.publish.write', 'rooms.read', 'leads.read', 'system.admin'],
+        buildingScopes: ['*'],
+        isActive: true,
+      },
+      create: {
+        id: 'usr-admin-prod',
+        email: 'admin@adhome.ductinh.one',
+        orgId: DEFAULT_ORG_ID,
+        role: 'ADMIN',
+        permissions: ['rooms.publish.write', 'rooms.read', 'leads.read', 'system.admin'],
+        buildingScopes: ['*'],
+        sessionVersion: 1,
+        isActive: true,
+      },
+    });
+
+    // 2b. Maintain Dev Sample Actors as Deactivated in PostgreSQL
+    const sampleActorsToSeed = [
+      {
+        id: 'usr-admin-01',
+        email: 'admin@adhome.vn',
+        orgId: DEFAULT_ORG_ID,
+        role: 'ADMIN',
+        permissions: ['rooms.publish.write', 'rooms.read', 'leads.read'],
+        buildingScopes: ['*'],
+        sessionVersion: 1,
+        isActive: false,
+      },
+      {
+        id: 'usr-mgr-lk01',
+        email: 'manager.lk01@adhome.vn',
+        orgId: DEFAULT_ORG_ID,
+        role: 'MANAGER',
+        permissions: ['rooms.publish.write', 'rooms.read', 'leads.read'],
+        buildingScopes: ['BLD-LK01-31', 'BLD-LK01-32'],
+        sessionVersion: 1,
+        isActive: false,
+      },
+      {
+        id: 'usr-viewer-01',
+        email: 'viewer@adhome.vn',
+        orgId: DEFAULT_ORG_ID,
+        role: 'VIEWER',
+        permissions: ['rooms.read'],
+        buildingScopes: ['*'],
+        sessionVersion: 1,
+        isActive: false,
+      },
+      {
+        id: 'usr-other-org-01',
+        email: 'admin@other-tenant.vn',
+        orgId: EMPTY_SAAS_ORG_ID,
+        role: 'ADMIN',
+        permissions: ['rooms.publish.write', 'rooms.read', 'leads.read'],
+        buildingScopes: ['*'],
+        sessionVersion: 1,
+        isActive: false,
+      },
+    ];
+
+    for (const actor of sampleActorsToSeed) {
+      await prisma.consoleActor.upsert({
+        where: { id: actor.id },
+        update: {
+          orgId: actor.orgId,
+          role: actor.role,
+          permissions: actor.permissions as Prisma.InputJsonValue,
+          buildingScopes: actor.buildingScopes as Prisma.InputJsonValue,
+          isActive: false, // strictly deactivated for production safety
         },
-        data: {
+        create: {
+          id: actor.id,
+          email: actor.email,
+          orgId: actor.orgId,
+          role: actor.role,
+          permissions: actor.permissions as Prisma.InputJsonValue,
+          buildingScopes: actor.buildingScopes as Prisma.InputJsonValue,
+          sessionVersion: actor.sessionVersion,
           isActive: false,
         },
       });
-    } else if (process.env.ALLOW_SAMPLE_ACTORS !== 'false') {
-      const actorsToSeed = [
-        {
-          id: 'usr-admin-01',
-          email: 'admin@adhome.vn',
-          orgId: DEFAULT_ORG_ID,
-          role: 'ADMIN',
-          permissions: ['rooms.publish.write', 'rooms.read', 'leads.read'],
-          buildingScopes: ['*'],
-          sessionVersion: 1,
-          isActive: true,
-        },
-        {
-          id: 'usr-mgr-lk01',
-          email: 'manager.lk01@adhome.vn',
-          orgId: DEFAULT_ORG_ID,
-          role: 'MANAGER',
-          permissions: ['rooms.publish.write', 'rooms.read', 'leads.read'],
-          buildingScopes: ['BLD-LK01-31', 'BLD-LK01-32'],
-          sessionVersion: 1,
-          isActive: true,
-        },
-        {
-          id: 'usr-viewer-01',
-          email: 'viewer@adhome.vn',
-          orgId: DEFAULT_ORG_ID,
-          role: 'VIEWER',
-          permissions: ['rooms.read'],
-          buildingScopes: ['*'],
-          sessionVersion: 1,
-          isActive: true,
-        },
-        {
-          id: 'usr-other-org-01',
-          email: 'admin@other-tenant.vn',
-          orgId: EMPTY_SAAS_ORG_ID,
-          role: 'ADMIN',
-          permissions: ['rooms.publish.write', 'rooms.read', 'leads.read'],
-          buildingScopes: ['*'],
-          sessionVersion: 1,
-          isActive: true,
-        },
-      ];
-
-      for (const actor of actorsToSeed) {
-        await prisma.consoleActor.upsert({
-          where: { id: actor.id },
-          update: {
-            orgId: actor.orgId,
-            role: actor.role,
-            permissions: actor.permissions as Prisma.InputJsonValue,
-            buildingScopes: actor.buildingScopes as Prisma.InputJsonValue,
-            isActive: actor.isActive,
-          },
-          create: {
-            id: actor.id,
-            email: actor.email,
-            orgId: actor.orgId,
-            role: actor.role,
-            permissions: actor.permissions as Prisma.InputJsonValue,
-            buildingScopes: actor.buildingScopes as Prisma.InputJsonValue,
-            sessionVersion: actor.sessionVersion,
-            isActive: actor.isActive,
-          },
-        });
-      }
     }
 
     const roomCount = await prisma.publicRoomListing.count();
@@ -1061,17 +1062,6 @@ function createApiAndDynamicSeoMiddleware() {
       });
     }
 
-    // =========================================================================
-    // A2. SECURITY & CLIENT CONTEXT INSPECTION (/api/v1/public/security/context)
-    // =========================================================================
-    if (pathname === '/api/v1/public/security/context' && req.method === 'GET') {
-      return sendJson(res, 200, {
-        ok: true,
-        clientIp: getClientIp(req),
-        trustProxyEnabled: isTrustProxyEnabled(),
-        trustedProxiesConfigured: Array.from(getTrustedProxies()),
-      });
-    }
 
     // =========================================================================
     // B. PUBLIC LEAD INQUIRY SUBMISSION (POST /api/v1/public/inquiries)
@@ -1748,6 +1738,26 @@ function createApiAndDynamicSeoMiddleware() {
           ok: true,
           count: jobs.length,
           jobs,
+        });
+      }
+
+      // 5. GET /api/v1/console/security/context (Authenticated Security Context Inspection - ADMIN Only)
+      if (req.method === 'GET' && pathname === '/api/v1/console/security/context') {
+        if (actor.role !== 'ADMIN') {
+          return sendJson(res, 403, {
+            ok: false,
+            errorCode: 'INSUFFICIENT_PERMISSION',
+            message: 'Chỉ quản trị viên hệ thống (ADMIN) mới có quyền kiểm tra security context.',
+          });
+        }
+
+        return sendJson(res, 200, {
+          ok: true,
+          clientIp,
+          trustProxyEnabled: isTrustProxyEnabled(),
+          trustedProxiesConfigured: Array.from(getTrustedProxies()),
+          callerActorId: actor.id,
+          callerRole: actor.role,
         });
       }
 

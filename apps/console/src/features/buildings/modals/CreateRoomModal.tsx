@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Globe, Home, Loader2, Plus, Sparkles, X } from 'lucide-react';
+import { MoneyInput } from '@/shared/ui/MoneyInput';
 import { useAuth } from '@/app/providers/AuthContext';
 import { usePortfolio } from '@/app/providers/PortfolioContext';
 import type { CreateRoomInput } from '@/shared/types/portfolio';
@@ -333,17 +334,11 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                     Giá thuê niêm yết (VND/tháng) *
                   </label>
-                  <input
+                  <MoneyInput
                     data-testid="input-room-price"
-                    type="number"
-                    min={500000}
-                    step={100000}
                     value={listPriceVnd}
-                    onChange={(e) =>
-                      setListPriceVnd(parseInt(e.target.value, 10) || 0)
-                    }
-                    className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl font-bold"
-                    required
+                    onChange={(v) => setListPriceVnd(v)}
+                    placeholder="4.500.000"
                   />
                 </div>
               </div>
@@ -559,16 +554,10 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                     Giá thuê chung (VND/tháng) *
                   </label>
-                  <input
-                    type="number"
-                    min={500000}
-                    step={100000}
+                  <MoneyInput
                     value={batchPriceVnd}
-                    onChange={(e) =>
-                      setBatchPriceVnd(parseInt(e.target.value, 10) || 0)
-                    }
-                    className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl font-bold"
-                    required
+                    onChange={(v) => setBatchPriceVnd(v)}
+                    placeholder="4.500.000"
                   />
                 </div>
                 <div>

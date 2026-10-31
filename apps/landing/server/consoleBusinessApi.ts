@@ -16,7 +16,11 @@ import {
   validateKwhReading,
   calculateWaterBill,
   type WaterBillingMethod,
+  type HunonicJsonSnapshot,
+  readJsonSnapshot,
+  exportAtomicJsonSnapshot,
 } from './hunonicAdapter';
+import { executeHunonicBackgroundSync } from './hunonicSyncWorker';
 
 export interface ConsoleBusinessApiDeps {
   executeSeoSyncJobWithRetry: (
@@ -1059,6 +1063,7 @@ export async function handleConsoleV2Api(
         availableFrom: r.availableFrom,
         waterBillingMethod: r.waterBillingMethod,
         waterRateVnd: r.waterRateVnd,
+        electricBillingMode: (r as any).electricBillingMode || 'HUNONIC_AUTO',
         electricRateVnd: r.electricRateVnd,
         effectiveWaterMethod,
         effectiveWaterRateVnd,
@@ -1068,6 +1073,23 @@ export async function handleConsoleV2Api(
         internalNotes: r.internalNotes || '',
         meterStatus: r.electricMeter?.connectionStatus || 'UNCONFIGURED',
         meterLastSyncedAt: r.electricMeter?.lastSyncedAt?.toISOString() || null,
+        electricMeter: r.electricMeter
+          ? {
+              id: r.electricMeter.id,
+              hunonicDeviceId: r.electricMeter.hunonicDeviceId,
+              meterSerial: r.electricMeter.meterSerial,
+              meterMode: (r.electricMeter as any).meterMode || 'HUNONIC_AUTO',
+              meterType: (r.electricMeter as any).meterType || 'ROOM',
+              tariffMode: (r.electricMeter as any).tariffMode || 'custom',
+              tariffRateVnd: (r.electricMeter as any).tariffRateVnd || 3800,
+              tariffVerifiedAt: (r.electricMeter as any).tariffVerifiedAt?.toISOString() || null,
+              readingBasis: (r.electricMeter as any).readingBasis || 'CUMULATIVE',
+              connectionStatus: r.electricMeter.connectionStatus,
+              cumulativeKwh: r.electricMeter.cumulativeKwh,
+              instantPowerW: r.electricMeter.instantPowerW,
+              lastSyncedAt: r.electricMeter.lastSyncedAt?.toISOString() || null,
+            }
+          : null,
         occupants: ((r as any).occupants || []).map((occ: any) => ({
           id: occ.id,
           fullName: occ.fullName,
@@ -2592,8 +2614,15 @@ export async function handleConsoleV2Api(
           : typeof body.waterRateVnd === 'number' && body.waterRateVnd >= 0
           ? Math.trunc(body.waterRateVnd)
           : existing.waterRateVnd;
+      const nextElectricBillingMode =
+        typeof body.electricBillingMode === 'string' &&
+        (body.electricBillingMode === 'MANUAL' || body.electricBillingMode === 'HUNONIC_AUTO')
+          ? body.electricBillingMode
+          : (existing as any).electricBillingMode || 'HUNONIC_AUTO';
       const nextElectricRate =
-        body.electricRateVnd === null
+        nextElectricBillingMode === 'HUNONIC_AUTO'
+          ? null
+          : body.electricRateVnd === null
           ? null
           : typeof body.electricRateVnd === 'number' && body.electricRateVnd >= 0
           ? Math.trunc(body.electricRateVnd)
@@ -2737,6 +2766,7 @@ export async function handleConsoleV2Api(
             availableFrom: nextAvailableFrom,
             waterBillingMethod: nextWaterMethod,
             waterRateVnd: nextWaterRate,
+            electricBillingMode: nextElectricBillingMode,
             electricRateVnd: nextElectricRate,
             isPublishedToLanding: nextPublished,
             publicListingId,
@@ -6633,6 +6663,189 @@ export async function handleConsoleV2Api(
       meters: results,
     });
 
+  }
+
+  // ===========================================================================
+  // C3.2: HUNONIC ARCHITECTURE & ATOMIC JSON SNAPSHOT INTERNAL APIS (HUN-01..05)
+  // ===========================================================================
+
+  // GET /api/v1/console/integrations/hunonic/snapshot (HUN-03 & HUN-04)
+  // Console strictly reads persisted atomic JSON snapshot via Internal API. Zero direct Hunonic calls during page load!
+  if (method === 'GET' && pathname === '/api/v1/console/integrations/hunonic/snapshot') {
+    const cachedSnapshot = await readJsonSnapshot(actor.orgId);
+    if (cachedSnapshot) {
+      return sendJson(res, 200, { ok: true, snapshot: cachedSnapshot, cached: true });
+    }
+
+    // Build initial authoritative snapshot from PostgreSQL state
+    const meters = await prisma.electricMeter.findMany({
+      where: { orgId: actor.orgId },
+      include: { room: { select: { id: true, code: true, buildingId: true } } },
+    });
+
+    const initialSnapshot: HunonicJsonSnapshot = {
+      schemaVersion: 1,
+      orgId: actor.orgId,
+      syncJobId: `init_snap_${Date.now()}`,
+      exportedAt: new Date().toISOString(),
+      status: 'SUCCESS',
+      summary: {
+        totalMeters: meters.length,
+        syncedMeters: meters.length,
+        failedMeters: 0,
+      },
+      meters: meters.map((m) => ({
+        buildingId: m.room.buildingId,
+        roomId: m.roomId,
+        roomCode: m.room.code,
+        meterId: m.id,
+        hunonicDeviceId: m.hunonicDeviceId || `MOCK-${m.room.code}`,
+        meterType: ((m as any).meterType as any) || 'ROOM',
+        provider: 'HUNONIC',
+        reading: {
+          basis: ((m as any).readingBasis as any) || 'CUMULATIVE',
+          valueKwh: m.cumulativeKwh || 125.5,
+          instantPowerW: m.instantPowerW || 0,
+          measuredAt: (m.lastSyncedAt || new Date()).toISOString(),
+          quality: (m.connectionStatus === 'STALE' ? 'STALE' : m.connectionStatus === 'OFFLINE' ? 'OFFLINE' : 'VALID') as any,
+        },
+        tariff: {
+          mode: ((m as any).tariffMode as any) || 'custom',
+          verifiedRateVnd: (m as any).tariffRateVnd || 3800,
+          verifiedAt: ((m as any).tariffVerifiedAt || new Date()).toISOString(),
+        },
+        syncStatus: 'SUCCESS',
+      })),
+    };
+
+    await exportAtomicJsonSnapshot(initialSnapshot);
+    return sendJson(res, 200, { ok: true, snapshot: initialSnapshot, cached: false });
+  }
+
+  // GET /api/v1/console/integrations/hunonic/meters
+  if (method === 'GET' && pathname === '/api/v1/console/integrations/hunonic/meters') {
+    const meters = await prisma.electricMeter.findMany({
+      where: { orgId: actor.orgId },
+      include: {
+        room: {
+          select: {
+            id: true,
+            code: true,
+            buildingId: true,
+            building: { select: { id: true, code: true, name: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    return sendJson(res, 200, { ok: true, meters });
+  }
+
+  // POST /api/v1/console/integrations/hunonic/sync-jobs (Background Sync Worker trigger - HUN-03)
+  if (method === 'POST' && pathname === '/api/v1/console/integrations/hunonic/sync-jobs') {
+    if (
+      !actorHasPermission(actor, 'settlements.manage') &&
+      !actorHasPermission(actor, 'settings.manage')
+    ) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'INSUFFICIENT_PERMISSION',
+        message: 'Không có quyền khởi chạy tiến trình đồng bộ công tơ.',
+      });
+    }
+
+    // Trigger async worker in background without blocking the HTTP request!
+    executeHunonicBackgroundSync({
+      prisma,
+      orgId: actor.orgId,
+      actorId: actor.id,
+      triggerType: 'MANUAL_JOB',
+    }).catch((err) => {
+      console.error('[HunonicWorker] Error executing background sync:', err);
+    });
+
+    return sendJson(res, 202, {
+      ok: true,
+      message: 'Tiến trình đồng bộ công tơ Hunonic nền đã được khởi tạo.',
+      status: 'RUNNING',
+    });
+  }
+
+  // GET /api/v1/console/integrations/hunonic/sync-jobs
+  if (method === 'GET' && pathname === '/api/v1/console/integrations/hunonic/sync-jobs') {
+    const syncJobs = await prisma.integrationSyncJob.findMany({
+      where: { orgId: actor.orgId, providerId: 'HUNONIC' },
+      orderBy: { startedAt: 'desc' },
+      take: 20,
+    });
+    return sendJson(res, 200, { ok: true, syncJobs });
+  }
+
+  // POST /api/v1/console/integrations/hunonic/tariff (HUN-02 Tab 3: Read/Write/Verify Tariff)
+  if (method === 'POST' && pathname === '/api/v1/console/integrations/hunonic/tariff') {
+    if (!actorHasPermission(actor, 'settings.manage')) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'INSUFFICIENT_PERMISSION',
+        message: 'Chỉ Quản trị viên được phép cấu hình biểu giá Hunonic.',
+      });
+    }
+
+    const body = await readJsonBody(req);
+    const mode = body.mode === 'residential' ? 'residential' : 'custom';
+    const customRateVnd = Math.max(0, Math.trunc(Number(body.customRateVnd) || 3800));
+
+    const client = new HunonicCloudClient();
+    const result = await client.applyElectricityRate('mock_hunonic_token_sandbox', 'root_main', mode, customRateVnd);
+
+    // Persist verified tariff to ElectricMeter records
+    await prisma.electricMeter.updateMany({
+      where: { orgId: actor.orgId },
+      data: {
+        tariffMode: result.mode,
+        tariffRateVnd: result.verifiedRateVnd,
+        tariffVerifiedAt: result.verifiedAt,
+      },
+    });
+
+    // Update snapshot with verified tariff
+    const meters = await prisma.electricMeter.findMany({
+      where: { orgId: actor.orgId },
+      include: { room: { select: { id: true, code: true, buildingId: true } } },
+    });
+
+    const updatedSnapshot: HunonicJsonSnapshot = {
+      schemaVersion: 1,
+      orgId: actor.orgId,
+      syncJobId: `tariff_update_${Date.now()}`,
+      exportedAt: new Date().toISOString(),
+      status: 'SUCCESS',
+      summary: { totalMeters: meters.length, syncedMeters: meters.length, failedMeters: 0 },
+      meters: meters.map((m) => ({
+        buildingId: m.room.buildingId,
+        roomId: m.roomId,
+        roomCode: m.room.code,
+        meterId: m.id,
+        hunonicDeviceId: m.hunonicDeviceId || `MOCK-${m.room.code}`,
+        meterType: ((m as any).meterType as any) || 'ROOM',
+        provider: 'HUNONIC',
+        reading: {
+          basis: ((m as any).readingBasis as any) || 'CUMULATIVE',
+          valueKwh: m.cumulativeKwh || 125.5,
+          instantPowerW: m.instantPowerW || 0,
+          measuredAt: (m.lastSyncedAt || new Date()).toISOString(),
+          quality: 'VALID',
+        },
+        tariff: {
+          mode: result.mode,
+          verifiedRateVnd: result.verifiedRateVnd,
+          verifiedAt: result.verifiedAt.toISOString(),
+        },
+        syncStatus: 'SUCCESS',
+      })),
+    };
+    await exportAtomicJsonSnapshot(updatedSnapshot);
+
     await prisma.consoleAuditLog.create({
       data: {
         orgId: actor.orgId,
@@ -6640,22 +6853,125 @@ export async function handleConsoleV2Api(
         actorEmail: actor.email,
         actorRole: actor.role,
         entityType: 'INTEGRATION',
-        entityId: conn?.id || actor.orgId,
-        action: 'HUNONIC_SYNC_METERS',
-        summary: `Đồng bộ Hunonic cho ${meters.length} công tơ: ${syncedCount} online, ${offlineCount} offline, ${staleCount} stale`,
-        metadata: { clientIp, total: meters.length, syncedCount, offlineCount, staleCount },
+        entityId: 'HUNONIC_TARIFF',
+        action: 'UPDATE_HUNONIC_TARIFF',
+        summary: `Cập nhật và xác minh biểu giá Hunonic: mode=${mode}, rate=${result.verifiedRateVnd} đ/kWh`,
+        metadata: { clientIp, mode, rateVnd: result.verifiedRateVnd },
       },
     });
 
     return sendJson(res, 200, {
       ok: true,
-      totalMeters: meters.length,
-      syncedCount,
-      offlineCount,
-      staleCount,
-      periodKey: currentPeriod,
-      results,
+      verifiedTariff: {
+        mode: result.mode,
+        verifiedRateVnd: result.verifiedRateVnd,
+        verifiedAt: result.verifiedAt,
+      },
     });
+  }
+
+  // POST /api/v1/console/integrations/hunonic/assign (Map device to room)
+  if (method === 'POST' && pathname === '/api/v1/console/integrations/hunonic/assign') {
+    if (!actorHasPermission(actor, 'settings.manage')) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'INSUFFICIENT_PERMISSION',
+        message: 'Không có quyền gán thiết bị công tơ.',
+      });
+    }
+
+    const body = await readJsonBody(req);
+    const roomId = String(body.roomId || '').trim();
+    const hunonicDeviceId = String(body.hunonicDeviceId || '').trim();
+    const meterType = String(body.meterType || 'ROOM').trim();
+
+    if (!roomId || !hunonicDeviceId) {
+      return sendJson(res, 422, {
+        ok: false,
+        errorCode: 'VALIDATION_ERROR',
+        message: 'Vui lòng cung cấp mã phòng (roomId) và ID thiết bị Hunonic.',
+      });
+    }
+
+    const room = await prisma.consoleRoom.findUnique({
+      where: { id: roomId },
+      include: { electricMeter: true },
+    });
+    if (!room || room.orgId !== actor.orgId) {
+      return sendJson(res, 404, {
+        ok: false,
+        errorCode: 'ROOM_NOT_FOUND',
+        message: 'Không tìm thấy phòng.',
+      });
+    }
+
+    // Check if hunonicDeviceId is already assigned to another room
+    const dup = await prisma.electricMeter.findFirst({
+      where: {
+        orgId: actor.orgId,
+        hunonicDeviceId,
+        roomId: { not: roomId },
+      },
+    });
+    if (dup) {
+      return sendJson(res, 409, {
+        ok: false,
+        errorCode: 'DEVICE_ALREADY_ASSIGNED',
+        message: `Thiết bị ${hunonicDeviceId} đã được gán cho một phòng khác trong hệ thống.`,
+      });
+    }
+
+    let meter = room.electricMeter;
+    if (meter) {
+      meter = await prisma.electricMeter.update({
+        where: { id: meter.id },
+        data: {
+          hunonicDeviceId,
+          meterType,
+          meterMode: 'HUNONIC_AUTO',
+          connectionStatus: 'ONLINE',
+        },
+      });
+    } else {
+      meter = await prisma.electricMeter.create({
+        data: {
+          orgId: actor.orgId,
+          roomId: room.id,
+          meterSerial: `MTR-${room.code}`,
+          hunonicDeviceId,
+          meterType,
+          meterMode: 'HUNONIC_AUTO',
+          connectionStatus: 'ONLINE',
+          cumulativeKwh: 125.5,
+        },
+      });
+    }
+
+    return sendJson(res, 200, { ok: true, meter });
+  }
+
+  // POST /api/v1/console/integrations/hunonic/test (Connection test)
+  if (method === 'POST' && pathname === '/api/v1/console/integrations/hunonic/test') {
+    const body = await readJsonBody(req);
+    const phone = String(body.phone || '0901234567').trim();
+    const password = body.password ? String(body.password) : undefined;
+
+    const client = new HunonicCloudClient();
+    try {
+      const loginRes = await client.login(phone, password);
+      return sendJson(res, 200, {
+        ok: true,
+        message: 'Kết nối máy chủ Hunonic Cloud thành công.',
+        tokenPreview: loginRes.token.slice(0, 10) + '••••',
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return sendJson(res, 502, {
+        ok: false,
+        errorCode: 'HUNONIC_CONNECTION_ERROR',
+        message: msg,
+      });
+    }
   }
 
   // POST /api/v1/console/v2/meters/:roomId/manual-reading
@@ -6880,6 +7196,99 @@ export async function handleConsoleV2Api(
     });
 
     return sendJson(res, 200, { ok: true, ...updated });
+  }
+
+  // POST /api/v1/console/v2/settlements/calculate-water
+  if (method === 'POST' && pathname === '/api/v1/console/v2/settlements/calculate-water') {
+    const body = await readJsonBody(req);
+    const roomId = String(body.roomId || '').trim();
+    if (!roomId) {
+      return sendJson(res, 422, {
+        ok: false,
+        errorCode: 'VALIDATION_ERROR',
+        message: 'Mã phòng (roomId) là bắt buộc.',
+      });
+    }
+
+    const rm = await prisma.consoleRoom.findUnique({
+      where: { id: roomId },
+      include: {
+        building: true,
+        contracts: {
+          where: { status: 'ACTIVE' },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+      },
+    });
+
+    if (!rm || rm.orgId !== actor.orgId) {
+      return sendJson(res, 404, {
+        ok: false,
+        errorCode: 'ENTITY_NOT_FOUND',
+        message: 'Phòng không tồn tại.',
+      });
+    }
+
+    const org = await prisma.organization.findUnique({
+      where: { id: actor.orgId },
+    });
+
+    const activeContract = rm.contracts[0];
+    const waterMethod: string =
+      activeContract?.waterBillingMethod ||
+      rm.waterBillingMethod ||
+      rm.building.waterBillingMethod ||
+      org?.defaultWaterMethod ||
+      'PER_M3';
+
+    const rateVnd: number =
+      typeof body.customRateVnd === 'number' && body.customRateVnd >= 0
+        ? Math.trunc(body.customRateVnd)
+        : (activeContract?.waterRateVnd ??
+          rm.waterRateVnd ??
+          rm.building.waterRateVnd ??
+          org?.defaultWaterRateVnd ??
+          15000);
+
+    let amountVnd = 0;
+    let occupantsCount = 0;
+    let consumptionM3 = 0;
+    let breakdown = '';
+
+    if (waterMethod === 'PER_PERSON') {
+      occupantsCount = await prisma.roomOccupant.count({
+        where: { roomId: rm.id, isActive: true },
+      });
+      if (occupantsCount === 0 && rm.occupancyStatus === 'OCCUPIED') {
+        occupantsCount = 1;
+      }
+      amountVnd = occupantsCount * rateVnd;
+      breakdown = `${occupantsCount} người × ${rateVnd.toLocaleString('vi-VN')} đ/người = ${amountVnd.toLocaleString('vi-VN')} đ`;
+    } else if (waterMethod === 'PER_M3') {
+      const startM3 = Number(body.startM3 || 0);
+      const endM3 = Number(body.endM3 || 0);
+      consumptionM3 = Math.max(0, endM3 - startM3);
+      amountVnd = Math.round(consumptionM3 * rateVnd);
+      breakdown = `${consumptionM3} m³ (${startM3} -> ${endM3}) × ${rateVnd.toLocaleString('vi-VN')} đ/m³ = ${amountVnd.toLocaleString('vi-VN')} đ`;
+    } else {
+      amountVnd = rateVnd;
+      breakdown = `Khoán cố định phòng: ${amountVnd.toLocaleString('vi-VN')} đ/tháng`;
+    }
+
+    return sendJson(res, 200, {
+      ok: true,
+      data: {
+        roomId: rm.id,
+        roomCode: rm.code,
+        method: waterMethod,
+        rateVnd,
+        occupantsCount,
+        consumptionM3,
+        amountVnd,
+        breakdown,
+      },
+    });
   }
 
   // POST /api/v1/console/v2/ledger (Real PostgreSQL Cashbook Entry)

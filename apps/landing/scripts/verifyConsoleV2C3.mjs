@@ -93,6 +93,12 @@ async function cleanTestFixtures(prismaClient) {
     });
   }
 
+  try {
+    await prismaClient.integrationSyncJob.deleteMany({
+      where: { triggerSource: { contains: 'TEST' } },
+    });
+  } catch {}
+
   // Find test tenants
   const testTenants = await prismaClient.tenant.findMany({
     where: {
@@ -2431,6 +2437,263 @@ async function main() {
     console.log(
       `-> C3B Hunonic & Water: ${testResults.checks.c3bHunonicAndWater.pass ? 'PASS' : 'FAIL'
       } (Fail-closed: ${failClosedPass ? 'PASS' : 'FAIL'}, MockSource: ${mockReadingSourcePass ? 'PASS' : 'FAIL'}, ManualApproved: ${manualPass ? 'PASS' : 'FAIL'}, Water: ${waterCalcPass ? 'PASS' : 'FAIL'})`
+    );
+
+    // 9.2 CHECK: C3.2 MODULAR SAAS, HUNONIC ATOMIC SNAPSHOT, BACKGROUND WORKER & WATER CALCULATION
+    console.log('[Step 9.2] Verifying C3.2 Modular SaaS, Hunonic Decoupled Worker & Dynamic Water API...');
+
+    // A. Snapshot API (HUN-04, HUN-03)
+    const snapStart = Date.now();
+    const snapResp = await fetchHttp(
+      `${LANDING_URL}/api/v1/console/integrations/hunonic/snapshot`,
+      { headers: { Cookie: adminCookie } }
+    );
+    const snapElapsedMs = Date.now() - snapStart;
+    const snapPass =
+      snapResp.status === 200 &&
+      snapResp.json?.ok === true &&
+      snapResp.json?.snapshot?.schemaVersion === 1 &&
+      snapResp.json?.snapshot?.orgId === orgId &&
+      Array.isArray(snapResp.json?.snapshot?.meters) &&
+      snapResp.json?.snapshot?.meters?.length > 0 &&
+      snapElapsedMs < 2000;
+
+    // B. Background Sync Worker (HUN-03)
+    const jobResp = await fetchHttp(
+      `${LANDING_URL}/api/v1/console/integrations/hunonic/sync-jobs`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'AdHome-Console',
+          Cookie: adminCookie,
+        },
+        body: JSON.stringify({ triggerSource: 'TEST_C32_VERIFICATION' }),
+      }
+    );
+    const jobAcceptedPass =
+      jobResp.status === 202 &&
+      jobResp.json?.ok === true &&
+      (jobResp.json?.status === 'ACCEPTED' || jobResp.json?.status === 'RUNNING');
+
+    await new Promise((r) => setTimeout(r, 600));
+    const jobsListResp = await fetchHttp(
+      `${LANDING_URL}/api/v1/console/integrations/hunonic/sync-jobs`,
+      { headers: { Cookie: adminCookie } }
+    );
+    const jobsListPass =
+      jobsListResp.status === 200 &&
+      jobsListResp.json?.ok === true &&
+      Array.isArray(jobsListResp.json?.syncJobs);
+
+    // C. Tariff Configuration Read/Write/Verify (HUN-02)
+    const tariffResp = await fetchHttp(
+      `${LANDING_URL}/api/v1/console/integrations/hunonic/tariff`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'AdHome-Console',
+          Cookie: adminCookie,
+        },
+        body: JSON.stringify({ mode: 'custom', customRateVnd: 4100 }),
+      }
+    );
+    const tariffPass =
+      tariffResp.status === 200 &&
+      tariffResp.json?.ok === true &&
+      tariffResp.json?.verifiedTariff?.mode === 'custom' &&
+      tariffResp.json?.verifiedTariff?.verifiedRateVnd === 4100;
+
+    // D. Room Electric Mode Separation (HUN-01)
+    const bldC32 = await prisma.building.findFirst({
+      where: { orgId },
+      include: { floors: true },
+    });
+    const floorC32 = bldC32?.floors[0];
+    const testRoomC32 = await prisma.consoleRoom.create({
+      data: {
+        orgId,
+        buildingId: bldC32.id,
+        floorId: floorC32.id,
+        code: 'C3A-999',
+        title: 'C3.2 Test Room',
+        roomType: 'STUDIO',
+        area: 25,
+        listPriceVnd: 5000000,
+        electricBillingMode: 'HUNONIC_AUTO',
+        electricRateVnd: null,
+        occupancyStatus: 'AVAILABLE',
+      },
+    });
+
+    const roomUpdateAutoResp = await fetchHttp(
+      `${LANDING_URL}/api/v1/console/v2/rooms/${testRoomC32.id}`,
+      {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'AdHome-Console',
+          Cookie: adminCookie,
+        },
+        body: JSON.stringify({ electricBillingMode: 'HUNONIC_AUTO', electricRateVnd: 4500 }),
+      }
+    );
+    const autoModePass =
+      roomUpdateAutoResp.status === 200 &&
+      roomUpdateAutoResp.json?.room?.electricBillingMode === 'HUNONIC_AUTO' &&
+      roomUpdateAutoResp.json?.room?.electricRateVnd === null;
+
+    const roomUpdateManualResp = await fetchHttp(
+      `${LANDING_URL}/api/v1/console/v2/rooms/${testRoomC32.id}`,
+      {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'AdHome-Console',
+          Cookie: adminCookie,
+        },
+        body: JSON.stringify({ electricBillingMode: 'MANUAL', electricRateVnd: 3900 }),
+      }
+    );
+    const manualModePass =
+      roomUpdateManualResp.status === 200 &&
+      roomUpdateManualResp.json?.room?.electricBillingMode === 'MANUAL' &&
+      roomUpdateManualResp.json?.room?.electricRateVnd === 3900;
+
+    // E. Dynamic Water Billing Calculations (WATER-01..04)
+    await prisma.roomOccupant.createMany({
+      data: [
+        {
+          orgId,
+          roomId: testRoomC32.id,
+          fullName: 'Khách Thuê 1',
+          residenceRegStatus: 'REGISTERED',
+          relationToPrimary: 'PRIMARY',
+          moveInDate: '2026-11-01',
+          isActive: true,
+        },
+        {
+          orgId,
+          roomId: testRoomC32.id,
+          fullName: 'Khách Thuê 2',
+          residenceRegStatus: 'REGISTERED',
+          relationToPrimary: 'ROOMMATE',
+          moveInDate: '2026-11-01',
+          isActive: true,
+        },
+      ],
+    });
+
+    await prisma.consoleRoom.update({
+      where: { id: testRoomC32.id },
+      data: { waterBillingMethod: 'PER_PERSON', waterRateVnd: 120000 },
+    });
+
+    const waterPersonResp = await fetchHttp(
+      `${LANDING_URL}/api/v1/console/v2/settlements/calculate-water`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'AdHome-Console',
+          Cookie: adminCookie,
+        },
+        body: JSON.stringify({ roomId: testRoomC32.id }),
+      }
+    );
+    const waterPersonPass =
+      waterPersonResp.status === 200 &&
+      waterPersonResp.json?.ok === true &&
+      waterPersonResp.json?.data?.method === 'PER_PERSON' &&
+      waterPersonResp.json?.data?.occupantsCount === 2 &&
+      waterPersonResp.json?.data?.amountVnd === 240000;
+
+    await prisma.consoleRoom.update({
+      where: { id: testRoomC32.id },
+      data: { waterBillingMethod: 'PER_M3', waterRateVnd: 18000 },
+    });
+    const waterM3Resp = await fetchHttp(
+      `${LANDING_URL}/api/v1/console/v2/settlements/calculate-water`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'AdHome-Console',
+          Cookie: adminCookie,
+        },
+        body: JSON.stringify({ roomId: testRoomC32.id, startM3: 50, endM3: 65 }),
+      }
+    );
+    const waterM3Pass =
+      waterM3Resp.status === 200 &&
+      waterM3Resp.json?.ok === true &&
+      waterM3Resp.json?.data?.consumptionM3 === 15 &&
+      waterM3Resp.json?.data?.amountVnd === 270000;
+
+    await prisma.consoleRoom.update({
+      where: { id: testRoomC32.id },
+      data: { waterBillingMethod: 'FIXED_PER_ROOM', waterRateVnd: 150000 },
+    });
+    const waterFixedResp = await fetchHttp(
+      `${LANDING_URL}/api/v1/console/v2/settlements/calculate-water`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'AdHome-Console',
+          Cookie: adminCookie,
+        },
+        body: JSON.stringify({ roomId: testRoomC32.id }),
+      }
+    );
+    const waterFixedPass =
+      waterFixedResp.status === 200 &&
+      waterFixedResp.json?.ok === true &&
+      waterFixedResp.json?.data?.amountVnd === 150000;
+
+    // F. SaaS Multi-tenant Plan & Entitlements Models
+    const plansCount = await prisma.subscriptionPlan.count();
+    const syncJobsCount = await prisma.integrationSyncJob.count();
+    const saasModelsPass = typeof plansCount === 'number' && typeof syncJobsCount === 'number';
+
+    if (!snapPass) console.log('  [DEBUG snapFail]:', snapResp.status, snapResp.json, snapElapsedMs);
+    if (!jobAcceptedPass) console.log('  [DEBUG jobFail]:', jobResp.status, jobResp.json);
+    if (!tariffPass) console.log('  [DEBUG tariffFail]:', tariffResp.status, tariffResp.json);
+    if (!autoModePass) console.log('  [DEBUG autoModeFail]:', roomUpdateAutoResp.status, roomUpdateAutoResp.json);
+    if (!manualModePass) console.log('  [DEBUG manualModeFail]:', roomUpdateManualResp.status, roomUpdateManualResp.json);
+    if (!waterPersonPass) console.log('  [DEBUG waterPersonFail]:', waterPersonResp.status, waterPersonResp.json);
+    if (!waterM3Pass) console.log('  [DEBUG waterM3Fail]:', waterM3Resp.status, waterM3Resp.json);
+    if (!waterFixedPass) console.log('  [DEBUG waterFixedFail]:', waterFixedResp.status, waterFixedResp.json);
+
+    testResults.checks.c32ModularSaaSAndHunonic = {
+      pass:
+        snapPass &&
+        jobAcceptedPass &&
+        jobsListPass &&
+        tariffPass &&
+        autoModePass &&
+        manualModePass &&
+        waterPersonPass &&
+        waterM3Pass &&
+        waterFixedPass &&
+        saasModelsPass,
+      snapshotContract: snapPass,
+      backgroundSyncJobAccepted: jobAcceptedPass,
+      backgroundSyncJobList: jobsListPass,
+      tariffReadWriteVerify: tariffPass,
+      roomAutoModeRateNullified: autoModePass,
+      roomManualModeRateConfigured: manualModePass,
+      dynamicWaterPerPerson: waterPersonPass,
+      waterPerM3: waterM3Pass,
+      waterFixedPerRoom: waterFixedPass,
+      saasMultiTenantModels: saasModelsPass,
+    };
+
+    console.log(
+      `-> C3.2 Modular SaaS & Hunonic: ${
+        testResults.checks.c32ModularSaaSAndHunonic.pass ? 'PASS' : 'FAIL'
+      } (Snapshot: ${snapPass ? 'PASS' : 'FAIL'}, Worker: ${jobAcceptedPass ? 'PASS' : 'FAIL'}, Tariff: ${tariffPass ? 'PASS' : 'FAIL'}, AutoModeNull: ${autoModePass ? 'PASS' : 'FAIL'}, DynamicWater: ${waterPersonPass ? 'PASS' : 'FAIL'})`
     );
 
     // 10. CHECK 8: BROWSER CDP SCREENSHOTS & UI VERIFICATION

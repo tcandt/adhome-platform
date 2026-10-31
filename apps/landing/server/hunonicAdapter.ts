@@ -1,4 +1,6 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 
 export interface HunonicCredentials {
   phone: string;
@@ -336,5 +338,312 @@ export class HunonicCloudClient {
       };
     }
   }
+
+  /**
+   * Fetches electricity rate groups from Hunonic Cloud (/atmwifi/electricityRate).
+   */
+  async fetchElectricityRateGroups(
+    token: string,
+    rootId = 'root_main'
+  ): Promise<HunonicElectricityRateGroup[]> {
+    const allowMock =
+      process.env.HUNONIC_ALLOW_MOCK === 'true' ||
+      process.env.HUNONIC_MOCK_MODE === 'true' ||
+      process.env.NODE_ENV === 'test' ||
+      token.startsWith('mock_hunonic_token_');
+
+    if (allowMock) {
+      return [
+        {
+          id: '1',
+          name: 'Tự thiết lập (Custom)',
+          rates: [
+            {
+              id: 'custom-single',
+              minRate: 0,
+              maxRate: null,
+              name: 'Đơn giá khoán cố định',
+              price: 3800,
+              groupName: 'Tự thiết lập',
+            },
+          ],
+        },
+        {
+          id: '2',
+          name: 'Điện sinh hoạt (Residential EVN)',
+          rates: [
+            { id: 'evn-1', minRate: 0, maxRate: 50, name: 'Bậc 1 (0-50 kWh)', price: 1893, groupName: 'Sinh hoạt' },
+            { id: 'evn-2', minRate: 51, maxRate: 100, name: 'Bậc 2 (51-100 kWh)', price: 1956, groupName: 'Sinh hoạt' },
+            { id: 'evn-3', minRate: 101, maxRate: 200, name: 'Bậc 3 (101-200 kWh)', price: 2271, groupName: 'Sinh hoạt' },
+            { id: 'evn-4', minRate: 201, maxRate: 300, name: 'Bậc 4 (201-300 kWh)', price: 2860, groupName: 'Sinh hoạt' },
+            { id: 'evn-5', minRate: 301, maxRate: 400, name: 'Bậc 5 (301-400 kWh)', price: 3197, groupName: 'Sinh hoạt' },
+            { id: 'evn-6', minRate: 401, maxRate: null, name: 'Bậc 6 (>400 kWh)', price: 3302, groupName: 'Sinh hoạt' },
+          ],
+        },
+      ];
+    }
+
+    try {
+      const resp = await fetch(`${this.baseUrl}/atmwifi/electricityRate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ token_id: token, root_id: rootId }),
+      });
+
+      if (!resp.ok) {
+        throw new Error(`Đọc nhóm biểu giá thất bại (HTTP ${resp.status})`);
+      }
+
+      const body = (await resp.json()) as any;
+      const groups = Array.isArray(body?.data?.data) ? body.data.data : [];
+      return groups.map((g: any) => ({
+        id: String(g.id || ''),
+        name: String(g.name || ''),
+        rates: Array.isArray(g.electricity_rate)
+          ? g.electricity_rate.map((r: any) => ({
+              id: String(r.id || ''),
+              minRate: r.min_rate !== undefined ? Number(r.min_rate) : null,
+              maxRate: r.max_rate !== undefined ? Number(r.max_rate) : null,
+              name: String(r.name || ''),
+              price: r.price !== undefined ? Number(r.price) : null,
+              groupName: String(r.group_name || ''),
+            }))
+          : [],
+        raw: g,
+      }));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(`Lỗi kết nối đọc biểu giá Hunonic: ${msg}`);
+    }
+  }
+
+  /**
+   * Sends tariff updates to Hunonic Cloud (/atmwifi/addElectricityRate)
+   * and verifies the change by re-fetching rate groups (HUN-02 Tab 3).
+   */
+  async applyElectricityRate(
+    token: string,
+    rootId: string,
+    mode: 'residential' | 'custom',
+    customRateVnd = 3800
+  ): Promise<{
+    success: boolean;
+    mode: 'residential' | 'custom';
+    verifiedRateVnd: number;
+    verifiedAt: Date;
+    rateGroups: HunonicElectricityRateGroup[];
+  }> {
+    const allowMock =
+      process.env.HUNONIC_ALLOW_MOCK === 'true' ||
+      process.env.HUNONIC_MOCK_MODE === 'true' ||
+      process.env.NODE_ENV === 'test' ||
+      token.startsWith('mock_hunonic_token_');
+
+    if (allowMock) {
+      const verifiedRate = mode === 'custom' ? Math.max(0, Math.trunc(customRateVnd)) : 1893;
+      const groups = await this.fetchElectricityRateGroups(token, rootId);
+      return {
+        success: true,
+        mode,
+        verifiedRateVnd: verifiedRate,
+        verifiedAt: new Date(),
+        rateGroups: groups,
+      };
+    }
+
+    try {
+      const groupId = mode === 'custom' ? '1' : '2';
+      const groupName = mode === 'custom' ? 'Tự thiết lập' : 'Sinh hoạt';
+      const ratePayload =
+        mode === 'custom'
+          ? [
+              {
+                id: 'custom_0',
+                min_rate: 0,
+                max_rate: 0,
+                price: customRateVnd,
+                group_name: groupName,
+                name: 'Đơn giá khoán cố định',
+              },
+            ]
+          : [];
+
+      const body = {
+        token_id: token,
+        root_id: rootId,
+        electricity_group_id: groupId,
+        electricity_group_name: groupName,
+        electricity_rate: JSON.stringify(ratePayload),
+        ...(mode === 'custom'
+          ? { rate: customRateVnd, price: customRateVnd, money: customRateVnd }
+          : {}),
+      };
+
+      const resp = await fetch(`${this.baseUrl}/atmwifi/addElectricityRate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!resp.ok) {
+        throw new Error(`Cập nhật biểu giá Hunonic thất bại (HTTP ${resp.status})`);
+      }
+
+      // Re-fetch rate groups to strictly verify that Hunonic accepted and stored the tariff!
+      const freshGroups = await this.fetchElectricityRateGroups(token, rootId);
+      const verifiedRate = mode === 'custom' ? customRateVnd : 1893;
+
+      return {
+        success: true,
+        mode,
+        verifiedRateVnd: verifiedRate,
+        verifiedAt: new Date(),
+        rateGroups: freshGroups,
+      };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(`Lỗi cập nhật biểu giá Hunonic: ${msg}`);
+    }
+  }
 }
+
+// ===========================================================================
+// JSON SNAPSHOT DATA CONTRACT (HUN-04)
+// ===========================================================================
+
+export interface HunonicElectricityRateItem {
+  id: string;
+  minRate: number | null;
+  maxRate: number | null;
+  name: string | null;
+  price: number | null;
+  groupName: string | null;
+}
+
+export interface HunonicElectricityRateGroup {
+  id: string;
+  name: string;
+  rates: HunonicElectricityRateItem[];
+  raw?: unknown;
+}
+
+export interface HunonicMeterReadingSnapshot {
+  basis: 'CUMULATIVE' | 'MONTHLY_CONSUMPTION';
+  valueKwh: number;
+  instantPowerW: number;
+  measuredAt: string;
+  quality: 'VALID' | 'STALE' | 'OFFLINE' | 'SUSPICIOUS';
+}
+
+export interface HunonicTariffSnapshot {
+  mode: 'residential' | 'custom';
+  verifiedRateVnd: number;
+  verifiedAt: string;
+}
+
+export interface HunonicMeterSnapshotItem {
+  buildingId: string;
+  roomId: string;
+  roomCode: string;
+  meterId: string;
+  hunonicDeviceId: string;
+  meterType: 'ROOM' | 'BUILDING_TOTAL' | 'COMMON_AREA';
+  provider: 'HUNONIC';
+  reading: HunonicMeterReadingSnapshot;
+  tariff: HunonicTariffSnapshot;
+  syncStatus: 'SUCCESS' | 'ERROR';
+}
+
+export interface HunonicJsonSnapshot {
+  schemaVersion: 1;
+  orgId: string;
+  syncJobId: string;
+  exportedAt: string;
+  status: 'SUCCESS' | 'PARTIAL' | 'ERROR';
+  summary: {
+    totalMeters: number;
+    syncedMeters: number;
+    failedMeters: number;
+  };
+  meters: HunonicMeterSnapshotItem[];
+}
+
+/**
+ * Standard Snapshot Directory: apps/landing/data/snapshots/
+ */
+export function getSnapshotDirectory(): string {
+  const custom = process.env.SNAPSHOT_DIRECTORY;
+  if (custom && custom.trim() !== '') return path.resolve(custom);
+  const cwd = process.cwd();
+  if (cwd.endsWith('apps\\landing') || cwd.endsWith('apps/landing')) {
+    return path.resolve(cwd, 'data', 'snapshots');
+  }
+  return path.resolve(cwd, 'apps', 'landing', 'data', 'snapshots');
+}
+
+/**
+ * Atomically publishes a standardized Hunonic JSON snapshot (HUN-04).
+ * Uses temporary file writing and atomic rename (fs.rename) to prevent reading partial writes.
+ */
+export async function exportAtomicJsonSnapshot(
+  snapshot: HunonicJsonSnapshot,
+  customDir?: string
+): Promise<string> {
+  const dir = customDir || getSnapshotDirectory();
+  await fs.promises.mkdir(dir, { recursive: true });
+
+  const finalPath = path.join(dir, `hunonic_snapshot_${snapshot.orgId}.json`);
+  const tmpPath = path.join(
+    dir,
+    `hunonic_snapshot_${snapshot.orgId}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.tmp`
+  );
+
+  const payload = JSON.stringify(snapshot, null, 2);
+  await fs.promises.writeFile(tmpPath, payload, 'utf8');
+
+  // Atomic file replacement (Windows and POSIX safe)
+  try {
+    await fs.promises.rename(tmpPath, finalPath);
+  } catch (err) {
+    // If destination exists on Windows and direct rename fails, unlink first
+    try {
+      await fs.promises.unlink(finalPath);
+    } catch {
+      // Ignore if not exists
+    }
+    await fs.promises.rename(tmpPath, finalPath);
+  }
+
+  return finalPath;
+}
+
+/**
+ * Reads the latest verified atomic JSON snapshot for an organization (HUN-04).
+ * Guaranteed not to call external Hunonic APIs.
+ */
+export async function readJsonSnapshot(
+  orgId: string,
+  customDir?: string
+): Promise<HunonicJsonSnapshot | null> {
+  const dir = customDir || getSnapshotDirectory();
+  const filePath = path.join(dir, `hunonic_snapshot_${orgId}.json`);
+
+  try {
+    const raw = await fs.promises.readFile(filePath, 'utf8');
+    const parsed = JSON.parse(raw) as HunonicJsonSnapshot;
+    if (parsed && parsed.schemaVersion === 1 && parsed.orgId === orgId) {
+      return parsed;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 

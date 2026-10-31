@@ -1,7 +1,7 @@
-# BÁO CÁO NGHIỆM THU TOÀN DIỆN ADHOME CONSOLE V2 — GIAI ĐOẠN C3.1 (FINANCIAL, CONCURRENCY & UI REMEDIATION)
+# BÁO CÁO NGHIỆM THU TOÀN DIỆN ADHOME CONSOLE V2 — GIAI ĐOẠN C3.2 (MODULAR SAAS, HUNONIC 5-TAB MODAL & DYNAMIC WATER BILLING)
 
 **Ngày đánh giá:** 31/10/2026  
-**Dự án:** AdHome Platform — Console V2 (Property Management SaaS)  
+**Dự án:** AdHome Platform — Console V2 (Property Management Multi-tenant SaaS)  
 **Repository:** [tcandt/adhome-platform](https://github.com/tcandt/adhome-platform)  
 **Môi trường thử nghiệm:** Windows 11 Workstation · Native PostgreSQL 18 (`127.0.0.1:5432/adhome_v2`) · Zero Docker  
 **Cấp độ nghiệm thu:** `LOCAL_GATE_PASSED` *(Tuân thủ nghiêm ngặt nguyên tắc trung thực kỹ thuật: không tuyên bố `PRODUCTION_READY` khi kiểm thử trên máy trạm workstation)*  
@@ -9,143 +9,117 @@
 
 ---
 
-## 1. TỔNG QUAN KẾT QUẢ NGHIỆM THU C3.1 FINAL REMEDIATION
+## 1. TỔNG QUAN KẾT QUẢ NGHIỆM THU C3.2
 
-Bộ kiểm thử tự động hóa độc lập [`verifyConsoleV2C3.mjs`](file:///d:/AdHome-Platform/apps/landing/scripts/verifyConsoleV2C3.mjs) đã được nâng cấp toàn diện để đối soát và khắc phục triệt để các vấn đề P0, P1 và UI/UX được chỉ ra trong đợt thẩm định đối chiếu mã nguồn ngày 31/10/2026.
+Theo đúng bản đặc tả kỹ thuật **ADHOME CONSOLE V2 — ĐẶC TẢ C3.2 MỞ RỘNG SAAS & HUNONIC** (31/10/2026) và đối chiếu với logic chuẩn trong [HomeLand-SaaS](https://github.com/tcandt/homeland-saas), hệ thống đã được tái cấu trúc thành công từ một giải pháp phần mềm đơn lẻ thành một **nền tảng SaaS đa khách hàng (Multi-tenant Modular Architecture)** với 4 trụ cột kỹ thuật then chốt:
 
-Kết quả thực thi đạt **100% PASS trên tất cả 14 nhóm kiểm thử độc lập (với hơn 38 sub-checks)** và ghi nhận bộ bằng chứng **6 ảnh chụp màn hình UI độc lập có mã băm SHA-256 hoàn toàn phân biệt (6/6 unique hashes)**.
+1. **Chuẩn hóa Design System & Nhập liệu Tài chính (UI-01..05):**
+   - Triển khai toàn diện `MoneyInput` (giữ caret stability tuyệt đối, định dạng dấu chấm phân tách hàng nghìn `vi-VN`, số nguyên VND, hàm parse/validate độc lập).
+   - `DecimalInput` cho chỉ số điện kWh và thể tích nước m³.
+   - `DataTable` thống nhất: không wrap text, số liệu căn phải `font-mono tabular-nums`, trạng thái loading/error/empty đầy đủ.
+   - `ActionMenu`: 3 chấm tùy biến dropdown cho Desktop và Bottom Sheet trên Mobile.
+2. **Tái cấu trúc Phân hệ Hunonic IoT (HUN-01..05):**
+   - **Tách biệt 2 chế độ tính tiền điện:** `MANUAL` (nhập đơn giá) và `HUNONIC_AUTO` (công tơ thông minh).
+   - **Triệt tiêu hoàn toàn ô nhập đơn giá điện** trong cấu hình phòng khi chọn `HUNONIC_AUTO`. Thay vào đó, giao diện hiển thị công tơ gán, nhóm biểu giá hiện tại, trạng thái kết nối, lần đồng bộ cuối, chỉ số chốt và nút bấm "Cấu hình Hunonic" mở modal chi tiết.
+   - **Hunonic Settings Modal 5 Tabs chuyên biệt:**
+     - *Tab 1: Kết nối API* (server-side AES-256-GCM encryption, không bao giờ lộ password ở client).
+     - *Tab 2: Danh sách công tơ & Gán phòng* (phân biệt công tơ phòng, tổng tòa, khu công cộng; chống gán trùng).
+     - *Tab 3: Cấu hình biểu giá* (đọc nhóm biểu giá EVN bậc thang `residential` hoặc giá cố định `custom`, gửi cấu hình và tái xác minh tức thì qua API).
+     - *Tab 4: Lịch đồng bộ & Worker nền* (cấu hình chu kỳ, nút bấm "Đồng bộ nền ngay" chạy bất đồng bộ).
+     - *Tab 5: Lịch sử & Chẩn đoán* (nhật ký sync, chênh lệch bất thường, trạng thái gateway).
+   - **Decoupled Background Sync Worker & JSON Snapshot Contract (HUN-03 & HUN-04):**
+     - Độc lập hoàn toàn cuộc gọi API Hunonic Cloud ra khỏi chu kỳ render/load trang.
+     - Worker nền `executeHunonicBackgroundSync` thu thập chỉ số, thẩm định với `validateKwhReading`, ghi vào PostgreSQL và xuất atomic snapshot file `apps/landing/data/snapshots/hunonic_snapshot_<orgId>.json` (phiên bản schema: 1).
+     - Console chỉ đọc snapshot nội bộ qua API `GET /api/v1/console/integrations/hunonic/snapshot` trong thời gian dưới 10ms mà không gây nghẽn giao diện.
+3. **Tính tiền nước động theo người lưu trú thực tế (WATER-01..04):**
+   - Chế độ `PER_PERSON`: Cài đặt phòng/tòa/tổ chức chỉ cấu hình đơn giá (VNĐ/người/tháng). Số người được tự động đếm động từ các bản ghi `RoomOccupant` đang kích hoạt (`isActive: true`).
+   - Chế độ `PER_M3`: Cài đặt chỉ cấu hình đơn giá (VNĐ/m³), chỉ số đầu/cuối chỉ nhập khi lập hóa đơn/chốt sổ.
+   - Chế độ `FIXED_PER_ROOM`: Cố định theo tháng.
+   - Kế thừa chính sách 4 cấp: Hợp đồng -> Phòng -> Tòa nhà -> Tổ chức.
+4. **Nền tảng Modular SaaS & Multi-tenant Admin (MOD-01..05, PLATFORM-01..05):**
+   - Bổ sung schema `SubscriptionPlan`, `Subscription`, `IntegrationSyncJob`.
+   - Cách ly dữ liệu nhiều tổ chức (multi-tenant isolation) trên cùng một cơ sở dữ liệu PostgreSQL.
+
+---
+
+## 2. KẾT QUẢ ĐỐI SOÁT VÀ THỰC THI BỘ KIỂM THỬ
+
+Toàn bộ 15 nhóm kiểm thử đã được chạy và đạt kết quả **100% PASS**:
 
 ```mermaid
 flowchart TD
-    A["Yêu cầu cọc / Giữ phòng (RoomReservation)"] -->|"Xác nhận đóng tiền (Status Guard)"| B["paidAmountVnd > 0 (PAID / PARTIALLY_PAID)"]
-    B --> C{"Vòng đời kết thúc"}
-    C -->|"Hủy giữ phòng (Cancel)"| D["Waterfall Allocation qua nhiều cọc"]
-    D -->|"Hoàn tiền targetRefund"| E["Trừ cọc thực tế + Ghi nhận Ledger EXPENSE"]
-    D -->|"Tịch thu targetForfeit"| F["Ghi nhận forfeitedAmountVnd + Ledger INCOME"]
-    C -->|"Chuyển hợp đồng (Convert)"| G["Toán chuyển cọc an toàn & Khóa dòng FOR UPDATE"]
-    G --> H["Cọc giữ chỗ: transferredAmountVnd & Số dư khả dụng = 0đ"]
-    H --> I["Cọc hợp đồng đích liên kết (transferredToDepositId)"]
-    I --> J["Tạo HĐ DRAFT + Occupant SCHEDULED"]
-    J --> K["Bàn giao chính thức: Kiểm tra công tơ điện bắt buộc"]
-    K --> L["HĐ ACTIVE + Occupant ACTIVE"]
+    subgraph SaaS_Architecture["Kiến trúc Multi-tenant SaaS & Hunonic Decoupled"]
+        A["Hunonic Cloud API"] -.->|"Background Sync (Worker nền)"| B["executeHunonicBackgroundSync"]
+        B -->|"Ghi nhận DB & Xuất file nguyên tử"| C["JSON Snapshot (schemaVersion: 1)"]
+        C -->|"GET /snapshot (Nội bộ <10ms)"| D["Console V2 settlements Workspace"]
+        D --> E["HunonicSettingsModal (5 Tabs)"]
+    end
+    subgraph Water_Dynamic["Tính tiền nước động"]
+        F["RoomOccupant (isActive=true)"] -->|"Đếm động số người thực tế"| G["POST /settlements/calculate-water"]
+        H["Hợp đồng / Phòng / Tòa"] -->|"Kế thừa đơn giá"| G
+        G --> I["Hóa đơn chốt tháng (amountVnd)"]
+    end
 ```
 
-| Nhóm kiểm thử / Tiêu chí | Trạng thái | Cơ chế kỹ thuật và bằng chứng kiểm thử thực tế |
+| Nhóm kiểm thử / Tiêu chí | Kết quả | Chi tiết kỹ thuật đã xác minh |
 | :--- | :---: | :--- |
-| **P0-01. Phân bổ hủy cọc Waterfall (Multi-deposit Waterfall Allocation)** | **PASS** | `POST /reservations/:id/cancel` phân bổ tuần tự qua từng bản ghi cọc theo thuật toán waterfall: $\text{availDep} = \max(0, \text{paid} - \text{refund} - \text{deduct} - \text{forfeit} - \text{transferred})$. Số tiền tịch thu được lưu vào `Deposit.forfeitedAmountVnd`. Ghi nhận 1 bút toán `EXPENSE` cho tổng hoàn và 1 bút toán `INCOME` cho tổng phạt vào sổ cái `LedgerEntry`. |
-| **P0-02 & P0-08. Idempotency nguyên tử & Chống xung đột đồng thời** | **PASS** | Bảng `IdempotencyRecord` ghi nhận khóa với trạng thái ban đầu `PROCESSING` và mã băm SHA-256 payload (`requestHash`). Chặn mismatch payload với HTTP 422 `IDEMPOTENCY_KEY_PAYLOAD_MISMATCH`. Khi có 10 luồng đồng thời (concurrent race condition), các luồng thứ cấp chờ và nhận kết quả chuẩn qua replay hoặc trả HTTP 409 `CONCURRENT_REQUEST_IN_PROGRESS`. |
-| **P0-03. Chốt chặn trạng thái khi thu tiền cọc (Confirm-payment Status Guard)** | **PASS** | `POST /reservations/:id/confirm-payment` chặn ngay các yêu cầu giữ chỗ đã ở trạng thái kết thúc (`CANCELLED`, `CONVERTED`, `EXPIRED`) với HTTP 422 `INVALID_RESERVATION_STATUS` cả ở lớp kiểm tra sớm và dưới khóa dòng giao dịch. |
-| **P0-04. Số dư cọc đã chuyển hợp đồng (Transferred Deposit Remaining Balance)** | **PASS** | Cọc giữ chỗ khi đã chuyển đổi (`APPLIED_TO_CONTRACT` hoặc `TRANSFERRED`) được quy định strictly `availableBalanceVnd = 0đ` và `remainingDueVnd = 0đ`. Giao diện hiển thị badge `Đã chuyển HĐ (ID: xxx)` kèm liên kết tới bản ghi cọc đích. |
-| **P0-05. Tái xác minh trạng thái và số dư dưới khóa dòng (Row Locks)** | **PASS** | Cả `POST /reservations/:id/cancel` và `convert-to-contract` đều thực hiện `SELECT ... FOR UPDATE` trên `room_reservations`, `console_rooms`, và `deposits`. Tái kiểm tra trạng thái và số dư ngay dưới khóa dòng trước khi thực hiện đột biến dữ liệu. |
-| **P0-06. Theo dõi tiền cọc tịch thu & đã chuyển trong Database** | **PASS** | Bổ sung 2 trường `forfeitedAmountVnd BigInt @default(0)` và `transferredAmountVnd BigInt @default(0)` vào model `Deposit` trong `schema.prisma`. |
-| **P0-07. Kiểm soát quyền tài chính & Hủy kích hoạt người lưu trú** | **PASS** | `POST /contracts/:id/terminate` kiểm tra chặt chẽ `isBuildingAllowedForActor`. Khi chấm dứt hợp đồng, tất cả người lưu trú (`RoomOccupant`) liên kết được cập nhật `isActive: false` và `occupancyStatus: 'MOVED_OUT'`. |
-| **LOG-01 & LOG-11. Khử trùng lặp Tenant & Phân loại huy hiệu cọc đầy đủ** | **PASS** | Loại bỏ hoàn toàn khối tra cứu/tạo Tenant dư thừa ngoài transaction trong `convert-to-contract`. Hoàn thiện bảng ánh xạ huy hiệu trạng thái cọc: `PAID`, `PARTIALLY_PAID`, `TRANSFERRED`, `REFUNDED`, `FORFEITED`, `PENDING`. |
-| **UI-M01..M04. Tinh chỉnh giao diện Console & Mobile Shell** | **PASS** | Khắc phục khoảng đệm trống 64px của `MobileShell` (`pt-3 pb-20` thay vì `pt-16`). Bổ sung chỉ báo cuộn ngang mờ bên phải cho thanh lọc trạng thái hợp đồng mobile. Hiển thị rõ ràng 3 chỉ số cọc (Phải thu / Đã thu / Còn thiếu) trên bảng desktop và thẻ mobile. |
-| **Bằng chứng hình ảnh UI (6/6 Hashes)** | **PASS** | 6 ảnh chụp màn hình UI độc lập thu thập qua Chromium CDP đạt **6 mã SHA-256 hoàn toàn khác biệt** (kích thước từ 151KB đến 623KB). |
-
----
-
-## 2. CHI TIẾT SỬA ĐỔI MÃ NGUỒN VÀ CƠ SỞ DỮ LIỆU
-
-### 2.1. Lược đồ Cơ sở dữ liệu ([`apps/landing/prisma/schema.prisma`](file:///d:/AdHome-Platform/apps/landing/prisma/schema.prisma))
-
-1. **Bổ sung cột `forfeited_amount_vnd` và `transferred_amount_vnd` trên `Deposit`:**
-   ```prisma
-   model Deposit {
-     id                     String    @id @default(uuid())
-     orgId                  String    @map("org_id")
-     amountVnd              BigInt    @map("amount_vnd")
-     paidAmountVnd          BigInt    @default(0) @map("paid_amount_vnd")
-     refundedVnd            BigInt    @default(0) @map("refunded_vnd")
-     deductedAmountVnd      BigInt    @default(0) @map("deducted_amount_vnd")
-     forfeitedAmountVnd     BigInt    @default(0) @map("forfeited_amount_vnd")
-     transferredAmountVnd   BigInt    @default(0) @map("transferred_amount_vnd")
-     paymentStatus          String    @default("PENDING") @map("payment_status")
-     transferredToDepositId String?   @map("transferred_to_deposit_id")
-     ...
-   }
-   ```
-2. **Cập nhật model `IdempotencyRecord` cho xử lý đồng thời và kiểm tra sai lệch payload:**
-   ```prisma
-   model IdempotencyRecord {
-     id             String   @id @default(uuid())
-     orgId          String   @map("org_id")
-     action         String
-     idempotencyKey String   @map("idempotency_key")
-     requestHash    String   @default("") @map("request_hash")
-     status         String   @default("PROCESSING")
-     responseStatus Int?     @map("response_status")
-     responseBody   Json?    @map("response_body")
-     createdAt      DateTime @default(now()) @map("created_at")
-     updatedAt      DateTime @default(now()) @updatedAt @map("updated_at")
-
-     organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-
-     @@unique([orgId, action, idempotencyKey])
-     @@index([orgId, action])
-     @@map("idempotency_records")
-   }
-   ```
-
----
-
-### 2.2. Backend API ([`apps/landing/server/consoleBusinessApi.ts`](file:///d:/AdHome-Platform/apps/landing/server/consoleBusinessApi.ts))
-
-1. **Bộ xử lý Idempotency nguyên tử (`handleWithIdempotency`):**
-   - Xác thực `requestHash` (SHA-256 từ payload). Trả về HTTP 422 `IDEMPOTENCY_KEY_PAYLOAD_MISMATCH` nếu gửi cùng key nhưng payload khác.
-   - Cơ chế atomic claim qua `prisma.idempotencyRecord.create({ data: { status: 'PROCESSING', requestHash } })`.
-   - Cơ chế polling replay đối với các luồng đồng thời đang `PROCESSING` với timeout và fallback HTTP 409 `CONCURRENT_REQUEST_IN_PROGRESS`.
-   - Lưu trữ phản hồi và tái phát (replay) với header `x-idempotent-replay: true` khi trạng thái là `SUCCEEDED`.
-
-2. **Chốt chặn trạng thái xác nhận thanh toán (`POST /reservations/:id/confirm-payment`):**
-   - Kiểm tra sớm và kiểm tra lại dưới khóa dòng: nếu yêu cầu đặt cọc giữ chỗ đã `CANCELLED`, `CONVERTED` hoặc `EXPIRED`, trả về ngay HTTP 422 `INVALID_RESERVATION_STATUS`.
-
-3. **Thuật toán Waterfall khi hủy giữ phòng (`POST /reservations/:id/cancel`):**
-   - Duyệt qua danh sách các bản ghi cọc, phân bổ lần lượt từng khoản hoàn (`targetRefund`) và tịch thu (`targetForfeit`) vào số dư khả dụng của từng cọc.
-   - Cập nhật chính xác `forfeitedAmountVnd` và `refundedVnd`.
-   - Ghi nhận 2 bút toán tổng hợp rõ ràng: 1 bút toán `EXPENSE` cho khoản tiền hoàn trả khách và 1 bút toán `INCOME` cho khoản tiền phạt vi phạm hợp đồng/giữ chỗ.
-
-4. **Chuyển cọc an toàn & Khử trùng lặp Tenant (`POST /reservations/:id/convert-to-contract`):**
-   - Khóa dòng toàn bộ `room_reservations`, `console_rooms`, và `deposits`.
-   - Xóa bỏ khối logic thừa bên ngoài transaction. Tra cứu và tái sử dụng `Tenant` duy nhất bên trong transaction.
-   - Ghi nhận `transferredAmountVnd` vào cọc giữ chỗ và gắn cọc đích `transferredToDepositId`.
-
-5. **Chấm dứt hợp đồng (`POST /contracts/:id/terminate`):**
-   - Kiểm tra phạm vi tòa nhà `isBuildingAllowedForActor`.
-   - Tự động hủy kích hoạt tất cả người lưu trú: `isActive: false`, `occupancyStatus: 'MOVED_OUT'`.
-
----
-
-### 2.3. Frontend Console ([`apps/console/src`](file:///d:/AdHome-Platform/apps/console/src))
-
-1. **`MobileShell.tsx`:** Điều chỉnh lớp CSS của `<main>` từ `pt-16 pb-20 px-3.5` sang `pt-3 pb-20 px-3.5`, loại bỏ hoàn toàn khoảng trống thừa 64px bên dưới sticky header.
-2. **`OperationalModuleWorkspace.tsx`:**
-   - Cập nhật giao diện sổ cọc: số dư khả dụng (`availableBalance`) và số tiền còn phải thu (`remainingDue`) quy định nghiêm ngặt bằng 0đ đối với các cọc đã chuyển hợp đồng hoặc ở trạng thái kết thúc (`REFUNDED`, `FORFEITED`).
-   - Bổ sung huy hiệu phân loại đầy đủ: `Đã thu đủ`, `Thu một phần`, `Đã chuyển HĐ (ID: xxx)`, `Đã hoàn cọc`, `Bị tịch thu`, `Chờ thu tiền`.
-   - Bổ sung hiệu ứng chuyển màu (gradient fade) ở mép phải thanh tab lọc trạng thái hợp đồng trên mobile.
-   - Hiển thị rõ ràng 3 đại lượng: Tiền cọc thỏa thuận / Thực thu / Còn thiếu trên cả bảng desktop và thẻ mobile.
+| **01. Cách ly Login Audit đa tổ chức** | **PASS** | Kiểm tra rò rỉ dữ liệu giữa `org-adhome-anphu` và tổ chức thứ hai. Không rò rỉ. |
+| **02. Mã hóa Credentials AES-256-GCM** | **PASS** | Mật khẩu và token tích hợp được mã hóa đối xứng AES-256-GCM với IV ngẫu nhiên và auth tag. Client chỉ nhận hint masked. |
+| **03. Phân tách quyền `finance.write`** | **PASS** | Manager bị chặn với HTTP 403 `INSUFFICIENT_PERMISSION`, Admin được cấp phép tạo bút toán sổ quỹ. |
+| **04. Khóa dòng chống xung đột đồng thời** | **PASS** | Kiểm thử 2 luồng tạo hợp đồng song song trên cùng 1 phòng: ReqA đạt 201, ReqB bị từ chối 409 `ROOM_ALREADY_HAS_CONTRACT`. DB chỉ tồn tại 1 hợp đồng. |
+| **05. Xóa mềm người lưu trú (Soft Delete)** | **PASS** | `DELETE /occupants/:id` cập nhật `isActive: false`, `moveOutDate` và ghi audit log `DEACTIVATE_OCCUPANT`. |
+| **06. Tạo hợp đồng trực tiếp yêu cầu chứng từ cọc** | **PASS** | Không cho phép kích hoạt hợp đồng trực tiếp nếu chưa nộp cọc. Tạo hợp đồng ở trạng thái DRAFT, cọc PENDING. |
+| **07. Xác nhận thanh toán lũy biến nguyên tử** | **PASS** | Xác nhận thanh toán nhiều lần không sinh trùng bút toán sổ cái hoặc bản ghi cọc trùng. |
+| **08. Thuật toán Waterfall phân bổ cọc** | **PASS** | Phân bổ chính xác qua nhiều lần cọc khi hủy giữ chỗ, ghi nhận 1 bút toán EXPENSE cho tiền hoàn và 1 bút toán INCOME cho tiền phạt. |
+| **09. Cách ly tổ chức khi chuyển cọc sang HĐ** | **PASS** | Chặn chuyển cọc chéo giữa các tổ chức khác nhau với HTTP 403. |
+| **10. Theo dõi số dư cọc chính xác (P0)** | **PASS** | Số dư khả dụng của cọc đã chuyển đổi (`TRANSFERRED`) được quy định strictly bằng 0đ. |
+| **11. Bộ khắc phục tài chính C3.1** | **PASS** | P0-01 Waterfall, P0-02 Idempotency, P0-03 Status Guard, P0-04 Transferred Balance, P0-08 Handover Meter, P1-01 Occupants đều PASS. |
+| **12. Máy trạng thái C3A Lifecycle** | **PASS** | Quy trình Hợp đồng DRAFT -> Bàn giao phòng (kiểm tra chỉ số công tơ) -> ACTIVE -> Thanh lý. |
+| **13. Hunonic Cloud & Bộ tính nước C3B** | **PASS** | Kiểm tra Fail-closed, Mock Reading, Thay công tơ và thẩm định sai lệch `validateKwhReading`. |
+| **14. C3.2 Modular SaaS & Hunonic Worker & Nước động** | **PASS** | **Mới:** Snapshot API JSON schema v1, Background sync job worker 202 Accepted, Cấu hình biểu giá đọc/ghi/xác minh, Triệt tiêu giá điện ở chế độ HUNONIC_AUTO, Đếm động số người thuê tính tiền nước `PER_PERSON`. |
+| **15. Tính phân biệt của bộ ảnh bằng chứng (6/6 Unique Hashes)** | **PASS** | 6 ảnh chụp màn hình UI độc lập qua Chromium CDP đạt 6 mã băm SHA-256 hoàn toàn phân biệt, dung lượng từ 151KB đến 624KB. |
 
 ---
 
 ## 3. BẢNG MÃ BĂM BẰNG CHỨNG HÌNH ẢNH (CDP SCREENSHOTS SHA-256)
 
-Toàn bộ 6 ảnh chụp màn hình UI được tự động thu thập thông qua Chromium CDP, lưu đồng thời tại repository `docs/evidence/console-v2/` và thư mục Artifact của hệ thống:
+Toàn bộ 6 ảnh chụp màn hình giao diện được chụp tự động bằng Chromium CDP trên Windows 11 Workstation, lưu tại `docs/evidence/console-v2/` và thư mục Artifact:
 
-| Tên tệp ảnh | Độ phân giải | Kích thước | Mã băm SHA-256 (Phân biệt 100%) | Phân hệ hiển thị |
+| Tên tệp ảnh | Độ phân giải | Kích thước | Mã băm SHA-256 (100% Unique) | Màn hình nghiệp vụ được ghi nhận |
 | :--- | :---: | :---: | :--- | :--- |
-| **`console_v2_1440_contracts_workspace.png`** | 1440x900 | 446 KB | `a206bdbd1630638aee49b4e9172cce1c3011d4fbbacf8a98946aace5fbc2b9b5` | Phân hệ Quản lý Hợp đồng với thanh lọc trạng thái, badge trạng thái cọc (Đã thu đủ/Còn thiếu), và nút "Bàn giao phòng" |
-| **`console_v2_1440_contract_handover_modal.png`** | 1440x900 | 623 KB | `d6b77c6a3ec0691e3179d28552b7c891b1ddbaded4c7d8414a6b6ecad4508181` | Modal Bàn giao phòng với trường Người giao, Người nhận, Chỉ số công tơ điện/nước và banner xác nhận |
-| **`console_v2_1440_contract_modal_dynamic_dates.png`** | 1440x900 | 471 KB | `3e1e3eef2d86c7d032be6b87429740d48053967f3ec62a76b42e612af0707433` | Wizard tạo hợp đồng 6 bước (bước tài chính và tổng hợp thanh toán) |
-| **`console_v2_1440_deposits_workspace.png`** | 1440x900 | 376 KB | `fa3127dc773d30e363b7475a11cc9d7402bf80a2c0ef66fd1636ba3d5e490820` | Sổ theo dõi tiền cọc với cột Số dư khả dụng, trạng thái Đã chuyển HĐ, Hoàn cọc, Tịch thu |
-| **`console_v2_1440_settlements_hunonic.png`** | 1440x900 | 427 KB | `c726dd8f408037c39e08008a7ef993ed5cfad50f56f4e6fdcbf166dd2e496607` | Phân hệ Quyết toán & Quản lý công tơ Hunonic Cloud |
-| **`console_v2_390x844_contracts_mobile.png`** | 390x844 | 151 KB | `75a52b30573849a4e1457066b872dfec563de30c5418ab167d6d259f75df0483` | Giao diện di động dạng thẻ (Mobile Cards) kèm khoảng đệm header chuẩn và thanh điều hướng nhanh |
-
-> [!NOTE]
-> Tất cả 6 ảnh chụp màn hình đều có mã SHA-256 hoàn toàn độc lập (`uniqueShaSet.size === 6`), dung lượng đều vượt ngưỡng 150KB, minh chứng 100% cho 6 màn hình nghiệp vụ thực tế.
+| **[`console_v2_1440_contracts_workspace.png`](file:///d:/AdHome-Platform/docs/evidence/console-v2/console_v2_1440_contracts_workspace.png)** | 1440x900 | 446 KB | `02bef27fcc642d1f5d55d121a927a26fd878002abd27727c3bdb21b4225fcd73` | Không gian làm việc Hợp đồng: bộ lọc trạng thái, huy hiệu cọc và nút Bàn giao phòng |
+| **[`console_v2_1440_contract_handover_modal.png`](file:///d:/AdHome-Platform/docs/evidence/console-v2/console_v2_1440_contract_handover_modal.png)** | 1440x900 | 624 KB | `22012a674507c96d7173d4dac34e038d9c0b88974f56fa7c00c1d7c006dc6f53` | Modal Bàn giao phòng: Người giao, Người nhận, Chỉ số công tơ điện/nước cơ sở |
+| **[`console_v2_1440_contract_modal_dynamic_dates.png`](file:///d:/AdHome-Platform/docs/evidence/console-v2/console_v2_1440_contract_modal_dynamic_dates.png)** | 1440x900 | 463 KB | `bbe1c66a45190626adbd7e7dfda495ccee6f727277b3842000c9b0944d503059` | Wizard tạo hợp đồng 6 bước với tính ngày động và tổng hợp điều khoản tài chính |
+| **[`console_v2_1440_deposits_workspace.png`](file:///d:/AdHome-Platform/docs/evidence/console-v2/console_v2_1440_deposits_workspace.png)** | 1440x900 | 387 KB | `5085c3b2cd6fa9004cff16312d8c40561940e72c393a8c6d5fe08ba3da1b047a` | Sổ theo dõi cọc: số dư khả dụng, cọc đã chuyển HĐ, hoàn cọc, tịch thu |
+| **[`console_v2_1440_settlements_hunonic.png`](file:///d:/AdHome-Platform/docs/evidence/console-v2/console_v2_1440_settlements_hunonic.png)** | 1440x900 | 419 KB | `e04e96e46654cc4a682c1b894d59bb236b53a68733e8f3785852624cb3e23225` | Phân hệ Quyết toán & Quản lý công tơ Hunonic Cloud kèm nút "Cấu hình Hunonic" và "Đồng bộ nền" |
+| **[`console_v2_390x844_contracts_mobile.png`](file:///d:/AdHome-Platform/docs/evidence/console-v2/console_v2_390x844_contracts_mobile.png)** | 390x844 | 151 KB | `fffb2e476079483d4a610e2e2d5aefeb29942d4cf996695776ecc7a8efea0337` | Giao diện di động dạng thẻ (Mobile Cards) trên viewport chuẩn iPhone 390x844 |
 
 ---
 
-## 4. KẾT LUẬN VÀ TRẠNG THÁI NGHIỆM THU
+## 4. CHI TIẾT CÁC THÀNH PHẦN MỚI TRIỂN KHAI
 
-* **Kết luận kỹ thuật:** Console V2 đã giải quyết trọn vẹn toàn bộ các điểm nghẽn nghiệp vụ và kỹ thuật: phân bổ hoàn tiền/phạt cọc chuẩn xác qua nhiều lần đặt cọc, bảo đảm tính lũy biến nguyên tử và kiểm tra sai lệch payload, chốt chặn trạng thái thanh toán sau khi hủy giữ phòng, bảo toàn trạng thái số dư cọc đã chuyển hợp đồng, khóa dòng chống tranh chấp dữ liệu, và tinh chỉnh trải nghiệm giao diện di động.
-* **Xếp hạng nghiệm thu:** `LOCAL_GATE_PASSED`. Toàn bộ dữ liệu kiểm thử được thực thi trên môi trường thật Windows PostgreSQL 18 và lưu vết đầy đủ trong tệp [`console_v2_c3_verification.json`](file:///d:/AdHome-Platform/docs/evidence/console-v2/console_v2_c3_verification.json).
+### 4.1. UI Design System Primitives
+- [`MoneyInput.tsx`](file:///d:/AdHome-Platform/apps/console/src/shared/ui/MoneyInput.tsx): Thành phần nhập tiền tệ VND số nguyên chuẩn hóa toàn hệ thống. Sử dụng thuật toán đếm chữ số trước con trỏ để duy trì vị trí con trỏ khi chèn dấu chấm phân cách hàng nghìn. Hỗ trợ các hàm tiện ích: `formatVnd`, `formatCurrency`, `parseVnd`, `validateVnd`.
+- [`DecimalInput.tsx`](file:///d:/AdHome-Platform/apps/console/src/shared/ui/DecimalInput.tsx): Thành phần nhập số thập phân chính xác cho kWh điện và m³ nước.
+- [`ActionMenu.tsx`](file:///d:/AdHome-Platform/apps/console/src/shared/ui/ActionMenu.tsx): Menu hành động 3 chấm gọn gàng, tự động chuyển đổi giữa Desktop Popover và Mobile Bottom Sheet.
+- [`DataTable.tsx`](file:///d:/AdHome-Platform/apps/console/src/shared/ui/DataTable.tsx): Khung hiển thị bảng dữ liệu đồng nhất, chiều cao hàng chuẩn 48px, các cột số liệu căn phải với `font-mono tabular-nums`, trạng thái tải/rỗng/lỗi toàn diện.
+
+### 4.2. Phân hệ Hunonic IoT & Decoupled Worker
+- [`HunonicSettingsModal.tsx`](file:///d:/AdHome-Platform/apps/console/src/features/modules/modals/HunonicSettingsModal.tsx): Popup 5 tab quản trị Hunonic toàn diện.
+- [`hunonicSyncWorker.ts`](file:///d:/AdHome-Platform/apps/landing/server/hunonicSyncWorker.ts): Worker đồng bộ chạy nền độc lập với luồng xử lý HTTP request. Thu thập dữ liệu từ Hunonic Cloud, cập nhật cơ sở dữ liệu và lưu vết snapshot nguyên tử (atomic rename).
+- [`hunonicAdapter.ts`](file:///d:/AdHome-Platform/apps/landing/server/hunonicAdapter.ts): Bổ sung `fetchElectricityRateGroups`, `applyElectricityRate` (với kiểm tra xác minh lại ngay lập tức), `exportAtomicJsonSnapshot` và `readJsonSnapshot`.
+- **Triệt tiêu ô nhập giá ở chế độ tự động:** Trong [`EditRoomModal.tsx`](file:///d:/AdHome-Platform/apps/console/src/features/buildings/modals/EditRoomModal.tsx), khi chọn `HUNONIC_AUTO`, ô nhập giá điện biến mất hoàn toàn, thay bằng thông tin công tơ gán và nút cấu hình Hunonic. Khi lưu, `electricRateVnd` được đặt thành `null`.
+
+### 4.3. Tính tiền nước động
+- **Endpoint:** `POST /api/v1/console/v2/settlements/calculate-water`.
+- Đối với `PER_PERSON`, truy vấn động số lượng `RoomOccupant` đang kích hoạt (`isActive: true`), nhân với đơn giá nước có hiệu lực và trả về chi tiết công thức (`breakdown`).
+- Đối với `PER_M3`, tính theo chỉ số thực tế tiêu thụ (`endM3 - startM3`).
+- Đối với `FIXED_PER_ROOM`, áp dụng định mức khoán cố định.
+
+---
+
+## 5. KẾT LUẬN VÀ TRẠNG THÁI NGHIỆM THU
+
+- **Trạng thái nghiệm thu:** `LOCAL_GATE_PASSED`.
+- **Toàn vẹn hệ thống:** Cơ sở dữ liệu native PostgreSQL 18 đồng bộ hoàn hảo với `@prisma/client`. Bộ kiểm thử hồi quy 14 nhóm từ C3.1 và nhóm kiểm thử mới C3.2 đều đạt 100% PASS. Bộ ảnh chứng cứ UI 6/6 có mã băm hoàn toàn riêng biệt.
+- **Dữ liệu kiểm thử:** Được lưu đầy đủ tại [`docs/evidence/console-v2/console_v2_c3_verification.json`](file:///d:/AdHome-Platform/docs/evidence/console-v2/console_v2_c3_verification.json).

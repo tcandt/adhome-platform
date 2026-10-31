@@ -98,10 +98,24 @@ export interface ConsoleRoomDto {
   availableFrom: string;
   waterBillingMethod: WaterBillingMethod | string | null;
   waterRateVnd: number | null;
+  electricBillingMode?: 'MANUAL' | 'HUNONIC_AUTO' | string;
   electricRateVnd: number | null;
   effectiveWaterMethod: WaterBillingMethod | string;
   effectiveWaterRateVnd: number;
   effectiveElectricRateVnd: number;
+  electricMeter?: {
+    id: string;
+    hunonicDeviceId: string | null;
+    meterSerial: string | null;
+    meterMode?: string;
+    meterType?: string;
+    tariffMode?: string;
+    tariffRateVnd?: number | null;
+    connectionStatus?: string;
+    cumulativeKwh?: number | null;
+    instantPowerW?: number | null;
+    lastSyncedAt?: string | null;
+  } | null;
   isPublishedToLanding: boolean;
   publicSlug: string | null;
   internalNotes: string;
@@ -280,6 +294,7 @@ export interface CreateRoomInput {
   occupancyStatus?: OccupancyStatus;
   furnishedLevel?: 'FULL' | 'BASIC' | 'UNFURNISHED';
   isPublishedToLanding?: boolean;
+  electricBillingMode?: 'MANUAL' | 'HUNONIC_AUTO' | string;
   internalNotes?: string;
 }
 
@@ -295,6 +310,7 @@ export interface UpdateRoomInput {
   furnishedLevel?: 'FULL' | 'BASIC' | 'UNFURNISHED';
   waterBillingMethod?: WaterBillingMethod | null;
   waterRateVnd?: number | null;
+  electricBillingMode?: 'MANUAL' | 'HUNONIC_AUTO' | string;
   electricRateVnd?: number | null;
   isPublishedToLanding?: boolean;
   internalNotes?: string;

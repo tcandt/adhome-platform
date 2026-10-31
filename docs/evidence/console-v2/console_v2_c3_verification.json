@@ -1,5 +1,5 @@
 {
-  "evaluatedAt": "2026-10-31T07:55:00.348Z",
+  "evaluatedAt": "2026-10-31T09:24:02.945Z",
   "verdict": "LOCAL_GATE_PASSED",
   "reportingTier": "LOCAL_GATE_PASSED",
   "checks": {
@@ -23,8 +23,8 @@
     },
     "concurrencyRowLevelLock": {
       "pass": true,
-      "statusA": 409,
-      "statusB": 201,
+      "statusA": 201,
+      "statusB": 409,
       "errorCode409": "ROOM_ALREADY_HAS_CONTRACT",
       "activeContractsInDb": 1
     },
@@ -129,6 +129,19 @@
       "kwhValidation": true,
       "water3Methods": true
     },
+    "c32ModularSaaSAndHunonic": {
+      "pass": true,
+      "snapshotContract": true,
+      "backgroundSyncJobAccepted": true,
+      "backgroundSyncJobList": true,
+      "tariffReadWriteVerify": true,
+      "roomAutoModeRateNullified": true,
+      "roomManualModeRateConfigured": true,
+      "dynamicWaterPerPerson": true,
+      "waterPerM3": true,
+      "waterFixedPerRoom": true,
+      "saasMultiTenantModels": true
+    },
     "evidenceScreenshotsValid": {
       "pass": true,
       "totalScreenshots": 6,
@@ -138,33 +151,33 @@
       "hashes": [
         {
           "filename": "console_v2_1440_contracts_workspace.png",
-          "sizeBytes": 446175,
-          "sha256": "a206bdbd1630638aee49b4e9172cce1c3011d4fbbacf8a98946aace5fbc2b9b5"
+          "sizeBytes": 446612,
+          "sha256": "02bef27fcc642d1f5d55d121a927a26fd878002abd27727c3bdb21b4225fcd73"
         },
         {
           "filename": "console_v2_1440_contract_handover_modal.png",
-          "sizeBytes": 623276,
-          "sha256": "d6b77c6a3ec0691e3179d28552b7c891b1ddbaded4c7d8414a6b6ecad4508181"
+          "sizeBytes": 624567,
+          "sha256": "22012a674507c96d7173d4dac34e038d9c0b88974f56fa7c00c1d7c006dc6f53"
         },
         {
           "filename": "console_v2_1440_contract_modal_dynamic_dates.png",
-          "sizeBytes": 471342,
-          "sha256": "3e1e3eef2d86c7d032be6b87429740d48053967f3ec62a76b42e612af0707433"
+          "sizeBytes": 463661,
+          "sha256": "bbe1c66a45190626adbd7e7dfda495ccee6f727277b3842000c9b0944d503059"
         },
         {
           "filename": "console_v2_1440_deposits_workspace.png",
-          "sizeBytes": 376667,
-          "sha256": "fa3127dc773d30e363b7475a11cc9d7402bf80a2c0ef66fd1636ba3d5e490820"
+          "sizeBytes": 387763,
+          "sha256": "dce33bdd16c1e6f04bc8881cdfa8e8ea7415bfa37afa91148b83fe4b0047c309"
         },
         {
           "filename": "console_v2_1440_settlements_hunonic.png",
-          "sizeBytes": 427726,
-          "sha256": "c726dd8f408037c39e08008a7ef993ed5cfad50f56f4e6fdcbf166dd2e496607"
+          "sizeBytes": 419339,
+          "sha256": "e04e96e46654cc4a682c1b894d59bb236b53a68733e8f3785852624cb3e23225"
         },
         {
           "filename": "console_v2_390x844_contracts_mobile.png",
-          "sizeBytes": 151166,
-          "sha256": "75a52b30573849a4e1457066b872dfec563de30c5418ab167d6d259f75df0483"
+          "sizeBytes": 151529,
+          "sha256": "fffb2e476079483d4a610e2e2d5aefeb29942d4cf996695776ecc7a8efea0337"
         }
       ]
     }
@@ -177,5 +190,5 @@
     "console_v2_1440_settlements_hunonic.png",
     "console_v2_390x844_contracts_mobile.png"
   ],
-  "finishedAt": "2026-10-31T07:55:14.401Z"
+  "finishedAt": "2026-10-31T09:24:17.369Z"
 }

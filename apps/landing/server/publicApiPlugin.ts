@@ -1780,8 +1780,11 @@ function createApiAndDynamicSeoMiddleware() {
 
       const { actor } = resolved;
 
-      // 0a-v2. CONSOLE V2 POSTGRESQL BUSINESS API (/api/v1/console/v2/*)
-      if (pathname.startsWith('/api/v1/console/v2/')) {
+      // 0a-v2. CONSOLE V2 POSTGRESQL BUSINESS API (/api/v1/console/v2/* and /api/v1/console/integrations/*)
+      if (
+        pathname.startsWith('/api/v1/console/v2/') ||
+        pathname.startsWith('/api/v1/console/integrations/')
+      ) {
         return handleConsoleV2Api(
           req,
           res,

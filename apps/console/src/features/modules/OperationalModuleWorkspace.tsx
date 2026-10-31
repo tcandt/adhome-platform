@@ -36,6 +36,8 @@ import { CONSOLE_CSRF_HEADER, useAuth } from '@/app/providers/AuthContext';
 import { useNavigation } from '@/app/providers/NavigationContext';
 import { usePortfolio } from '@/app/providers/PortfolioContext';
 import { ContractCreationWizardModal } from './modals/ContractCreationWizardModal';
+import { HunonicSettingsModal } from './modals/HunonicSettingsModal';
+import { ActionMenu } from '@/shared/ui/ActionMenu';
 
 function shiftPeriodKey(periodKey: string, deltaMonths: number): string {
   const match = periodKey.match(/^(\d{4})-(\d{2})$/);
@@ -186,6 +188,7 @@ export const OperationalModuleWorkspace: React.FC<
   const [handoverError, setHandoverError] = useState<string | null>(null);
 
   // Hunonic Sync & Manual Index Modal state
+  const [isHunonicModalOpen, setIsHunonicModalOpen] = useState(false);
   const [isSyncingHunonic, setIsSyncingHunonic] = useState(false);
   const [hunonicFeedback, setHunonicFeedback] = useState<string | null>(null);
   const [isManualReadingModalOpen, setIsManualReadingModalOpen] =
@@ -1635,6 +1638,61 @@ export const OperationalModuleWorkspace: React.FC<
                                   </button>
                                 </>
                               ) : null}
+
+                              {/* Standard Three-Dot Action Menu (UI-03) */}
+                              <ActionMenu
+                                items={[
+                                  ...(c.status === 'DRAFT'
+                                    ? [
+                                        {
+                                          label: 'Bàn giao phòng',
+                                          variant: 'primary' as const,
+                                          onClick: () => openHandoverModal(c),
+                                        },
+                                      ]
+                                    : []),
+                                  ...(c.status === 'ACTIVE' ||
+                                  c.status === 'EXTENDED' ||
+                                  c.status === 'EXPIRING'
+                                    ? [
+                                        {
+                                          label: 'Gia hạn hợp đồng',
+                                          onClick: () => {
+                                            setSelectedContract(c);
+                                            setExtNewEndDate(
+                                              computeEndDateIsoVn(c.endDate, 6)
+                                            );
+                                            setExtNewRentVnd(c.monthlyRentVnd);
+                                            setExtNotes('');
+                                            setLifecycleError(null);
+                                            setIsExtendModalOpen(true);
+                                          },
+                                        },
+                                        {
+                                          label: 'Đổi phòng',
+                                          onClick: () => {
+                                            setSelectedContract(c);
+                                            setTransferTargetRoomId('');
+                                            setTransferNewRentVnd(c.monthlyRentVnd);
+                                            setLifecycleError(null);
+                                            setIsTransferModalOpen(true);
+                                          },
+                                        },
+                                        {
+                                          label: 'Thanh lý hợp đồng',
+                                          variant: 'danger' as const,
+                                          onClick: () => {
+                                            setSelectedContract(c);
+                                            setTermReason('Hết hạn hợp đồng');
+                                            setTermRoomNextStatus('AVAILABLE');
+                                            setLifecycleError(null);
+                                            setIsTerminateModalOpen(true);
+                                          },
+                                        },
+                                      ]
+                                    : []),
+                                ]}
+                              />
                             </div>
                           </td>
                         </tr>
@@ -1736,15 +1794,36 @@ export const OperationalModuleWorkspace: React.FC<
 
               {/* Electric Meters & Telemetry */}
               <div className="bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                    <Gauge className="w-4 h-4 text-amber-500" />
-                    Đồng hồ điện thông minh Hunonic Cloud &amp; Chỉ số phòng
-                  </h3>
-                  <span className="text-xs text-slate-500">
-                    Nước: Áp dụng linh hoạt theo 3 phương thức (M³, Đầu người,
-                    Khoán)
-                  </span>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                      <Gauge className="w-4 h-4 text-amber-500" />
+                      Đồng hồ điện thông minh Hunonic Cloud &amp; Chỉ số phòng
+                    </h3>
+                    <span className="text-xs text-slate-500">
+                      Nước: Áp dụng linh hoạt theo 3 phương thức (M³, Đầu người, Khoán)
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsHunonicModalOpen(true)}
+                      data-testid="btn-open-hunonic-settings"
+                      className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-semibold text-xs flex items-center gap-1.5 shadow-sm transition-colors"
+                    >
+                      <Zap className="w-3.5 h-3.5" /> Cấu hình Hunonic
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isSyncingHunonic}
+                      onClick={handleSyncHunonic}
+                      data-testid="btn-sync-hunonic-now"
+                      className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center gap-1.5 shadow-sm transition-colors"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isSyncingHunonic ? 'animate-spin' : ''}`} />
+                      Đồng bộ nền
+                    </button>
+                  </div>
                 </div>
 
                 {meters.length === 0 ? (
@@ -3037,6 +3116,13 @@ export const OperationalModuleWorkspace: React.FC<
           </div>
         </div>
       )}
+
+      {/* 5-Tab Hunonic Cloud Configuration Modal (HUN-02) */}
+      <HunonicSettingsModal
+        isOpen={isHunonicModalOpen}
+        onClose={() => setIsHunonicModalOpen(false)}
+        onSyncTriggered={() => loadModuleData()}
+      />
     </div>
   );
 };

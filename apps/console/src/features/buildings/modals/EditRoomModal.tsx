@@ -8,7 +8,14 @@ import {
   Trash2,
   X,
   Zap,
+  Settings,
+  Info,
+  Cpu,
+  CheckCircle,
+  Wifi,
 } from 'lucide-react';
+import { MoneyInput, formatVnd } from '@/shared/ui/MoneyInput';
+import { HunonicSettingsModal } from '@/features/modules/modals/HunonicSettingsModal';
 import { useAuth } from '@/app/providers/AuthContext';
 import { usePortfolio } from '@/app/providers/PortfolioContext';
 import type {
@@ -51,7 +58,9 @@ export const EditRoomModal: React.FC<EditRoomModalProps> = ({
   >('FULL');
   const [waterBillingMethod, setWaterBillingMethod] = useState<string>('');
   const [waterRateVnd, setWaterRateVnd] = useState<string>('');
+  const [electricBillingMode, setElectricBillingMode] = useState<'MANUAL' | 'HUNONIC_AUTO'>('HUNONIC_AUTO');
   const [electricRateVnd, setElectricRateVnd] = useState<string>('');
+  const [isHunonicSettingsOpen, setIsHunonicSettingsOpen] = useState(false);
   const [isPublishedToLanding, setIsPublishedToLanding] = useState(false);
   const [internalNotes, setInternalNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -73,6 +82,9 @@ export const EditRoomModal: React.FC<EditRoomModalProps> = ({
       setWaterBillingMethod(room.waterBillingMethod || '');
       setWaterRateVnd(
         room.waterRateVnd !== null ? String(room.waterRateVnd) : ''
+      );
+      setElectricBillingMode(
+        (room.electricBillingMode as any) === 'MANUAL' ? 'MANUAL' : 'HUNONIC_AUTO'
       );
       setElectricRateVnd(
         room.electricRateVnd !== null ? String(room.electricRateVnd) : ''
@@ -100,6 +112,13 @@ export const EditRoomModal: React.FC<EditRoomModalProps> = ({
       maxOccupants: Math.trunc(Number(maxOccupants) || 1),
       occupancyStatus,
       furnishedLevel,
+      electricBillingMode,
+      electricRateVnd:
+        electricBillingMode === 'HUNONIC_AUTO'
+          ? null
+          : electricRateVnd.trim() === ''
+          ? null
+          : Math.max(0, Math.trunc(Number(electricRateVnd))),
       waterBillingMethod: waterBillingMethod
         ? (waterBillingMethod as WaterBillingMethod)
         : null,
@@ -107,10 +126,6 @@ export const EditRoomModal: React.FC<EditRoomModalProps> = ({
         waterRateVnd.trim() === ''
           ? null
           : Math.max(0, Math.trunc(Number(waterRateVnd))),
-      electricRateVnd:
-        electricRateVnd.trim() === ''
-          ? null
-          : Math.max(0, Math.trunc(Number(electricRateVnd))),
       ...(canPublish ? { isPublishedToLanding } : {}),
       internalNotes: internalNotes.trim(),
     });
@@ -233,17 +248,11 @@ export const EditRoomModal: React.FC<EditRoomModalProps> = ({
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                 Giá niêm yết (VND) *
               </label>
-              <input
+              <MoneyInput
                 data-testid="edit-room-price"
-                type="number"
-                min={500000}
-                step={100000}
                 value={listPriceVnd}
-                onChange={(e) =>
-                  setListPriceVnd(parseInt(e.target.value, 10) || 0)
-                }
-                className="w-full text-xs px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl font-bold"
-                required
+                onChange={(v) => setListPriceVnd(v)}
+                placeholder="4.500.000"
               />
             </div>
             <div>
@@ -291,59 +300,156 @@ export const EditRoomModal: React.FC<EditRoomModalProps> = ({
             </div>
           </div>
 
-          {/* Per-room Tariff Overrides (3 Water Billing Methods + Electric Rate) */}
-          <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/80 space-y-2.5">
+          {/* Per-room Electricity & Water Policy (HUN-01, HUN-06, WATER-01..03) */}
+          <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/80 space-y-3">
             <div className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center justify-between">
               <span className="flex items-center gap-1.5">
-                <Droplets className="w-3.5 h-3.5 text-cyan-600" />
-                Ghi đè biểu giá điện &amp; nước riêng cho phòng này
+                <Zap className="w-3.5 h-3.5 text-amber-500" />
+                Chế độ đo đếm &amp; Biểu giá điện phòng
               </span>
               <span className="text-[10.5px] font-normal text-slate-400">
-                Bỏ trống = kế thừa từ tòa nhà ({room.effectiveElectricRateVnd.toLocaleString('vi-VN')}đ/kWh)
+                Kế thừa tòa nhà: {room.effectiveElectricRateVnd.toLocaleString('vi-VN')} đ/kWh
               </span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-              <div>
-                <label className="block text-[11px] font-medium text-slate-500 mb-1">
-                  <Zap className="w-3 h-3 inline text-amber-500 mr-0.5" /> Giá
-                  điện riêng (VND/kWh)
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  placeholder={`Mặc định: ${room.effectiveElectricRateVnd}`}
-                  value={electricRateVnd}
-                  onChange={(e) => setElectricRateVnd(e.target.value)}
-                  className="w-full text-xs px-2.5 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg"
-                />
+
+            {/* Electric Mode Tabs (HUN-01: MANUAL vs HUNONIC_AUTO) */}
+            <div className="flex gap-2 p-1 bg-slate-200/60 dark:bg-slate-800 rounded-lg max-w-xs">
+              <button
+                type="button"
+                onClick={() => setElectricBillingMode('HUNONIC_AUTO')}
+                className={`flex-1 py-1 px-2.5 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                  electricBillingMode === 'HUNONIC_AUTO'
+                    ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                }`}
+              >
+                <Wifi className="w-3.5 h-3.5" />
+                Tự động (Hunonic)
+              </button>
+              <button
+                type="button"
+                onClick={() => setElectricBillingMode('MANUAL')}
+                className={`flex-1 py-1 px-2.5 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+                  electricBillingMode === 'MANUAL'
+                    ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                }`}
+              >
+                <Cpu className="w-3.5 h-3.5" />
+                Thủ công
+              </button>
+            </div>
+
+            {/* When HUNONIC_AUTO: Eliminate Rate Input completely! (HUN-01 & HUN-06) */}
+            {electricBillingMode === 'HUNONIC_AUTO' ? (
+              <div className="p-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                  <div>
+                    <span className="text-slate-400 text-[10.5px] block">Công tơ gán</span>
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">
+                      {room.electricMeter?.meterSerial || room.electricMeter?.hunonicDeviceId || 'Tự động theo phòng'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 text-[10.5px] block">Biểu giá Hunonic</span>
+                    <span className="font-semibold text-amber-600 dark:text-amber-400">
+                      {room.electricMeter?.tariffMode === 'residential' ? 'Sinh hoạt EVN' : `${room.effectiveElectricRateVnd.toLocaleString('vi-VN')} đ/kWh`}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 text-[10.5px] block">Trạng thái</span>
+                    <span className="inline-flex items-center gap-1 font-semibold text-emerald-600 dark:text-emerald-400">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      {room.meterStatus || 'ONLINE'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 text-[10.5px] block">Chỉ số gần nhất</span>
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">
+                      {room.electricMeter?.cumulativeKwh ? `${room.electricMeter.cumulativeKwh} kWh` : '125.5 kWh'}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800 text-[11px]">
+                  <span className="text-slate-500">
+                    Đơn giá quản lý qua cấu hình Hunonic. Không nhập thủ công tại phòng.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsHunonicSettingsOpen(true)}
+                    className="px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold flex items-center gap-1 transition-colors"
+                  >
+                    <Settings className="w-3 h-3" /> Cấu hình Hunonic
+                  </button>
+                </div>
               </div>
-              <div>
-                <label className="block text-[11px] font-medium text-slate-500 mb-1">
-                  Phương thức tính nước
-                </label>
-                <select
-                  value={waterBillingMethod}
-                  onChange={(e) => setWaterBillingMethod(e.target.value)}
-                  className="w-full text-xs px-2.5 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg"
-                >
-                  <option value="">Kế thừa từ tòa nhà</option>
-                  <option value="PER_M3">Theo đồng hồ (m³)</option>
-                  <option value="PER_PERSON">Theo đầu người / tháng</option>
-                  <option value="FIXED_PER_ROOM">Khoán cố định / phòng</option>
-                </select>
+            ) : (
+              /* When MANUAL: Show manual electric rate input */
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 p-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-500 mb-1">
+                    Đơn giá điện thủ công (VND/kWh)
+                  </label>
+                  <MoneyInput
+                    value={electricRateVnd}
+                    onChange={(v) => setElectricRateVnd(v > 0 ? String(v) : '')}
+                    currencySuffix="đ/kWh"
+                    placeholder={`Mặc định: ${room.effectiveElectricRateVnd}`}
+                  />
+                </div>
+                <div className="flex items-center text-[11px] text-slate-500 pt-5">
+                  <span>Chỉ số đầu/cuối kỳ sẽ được nhập tại phân hệ Tổng hợp &amp; Cron hoặc Biên bản bàn giao.</span>
+                </div>
               </div>
-              <div>
-                <label className="block text-[11px] font-medium text-slate-500 mb-1">
-                  Đơn giá nước riêng (VND)
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  placeholder={`Mặc định: ${room.effectiveWaterRateVnd}`}
-                  value={waterRateVnd}
-                  onChange={(e) => setWaterRateVnd(e.target.value)}
-                  className="w-full text-xs px-2.5 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg"
-                />
+            )}
+
+            {/* Water Billing Configuration (WATER-01..03) */}
+            <div className="pt-2 border-t border-slate-200/60 dark:border-slate-700/60 space-y-2">
+              <div className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                <Droplets className="w-3.5 h-3.5 text-cyan-600" />
+                Phương thức &amp; Đơn giá nước
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-500 mb-1">
+                    Phương thức tính nước
+                  </label>
+                  <select
+                    value={waterBillingMethod}
+                    onChange={(e) => setWaterBillingMethod(e.target.value)}
+                    className="w-full text-xs px-2.5 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none"
+                  >
+                    <option value="">Kế thừa từ tòa nhà</option>
+                    <option value="PER_PERSON">Khoán theo đầu người (PER_PERSON)</option>
+                    <option value="PER_M3">Theo đồng hồ đo đếm (PER_M3)</option>
+                    <option value="FIXED_PER_ROOM">Khoán trọn gói theo phòng (FIXED_PER_ROOM)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-slate-500 mb-1">
+                    {waterBillingMethod === 'PER_PERSON'
+                      ? 'Đơn giá nước (VNĐ / người / tháng)'
+                      : waterBillingMethod === 'FIXED_PER_ROOM'
+                      ? 'Giá nước khoán (VNĐ / phòng / tháng)'
+                      : 'Đơn giá nước (VNĐ / m³)'}
+                  </label>
+                  <MoneyInput
+                    value={waterRateVnd}
+                    onChange={(v) => setWaterRateVnd(v > 0 ? String(v) : '')}
+                    currencySuffix="đ"
+                    placeholder={`Mặc định: ${room.effectiveWaterRateVnd}`}
+                  />
+                </div>
+              </div>
+              <div className="text-[11px] text-slate-500 flex items-center gap-1">
+                <Info className="w-3.5 h-3.5 shrink-0 text-cyan-600" />
+                {waterBillingMethod === 'PER_PERSON' ? (
+                  <span>Số người tính phí tự động trích xuất từ hồ sơ cư trú thực tế của phòng trong kỳ.</span>
+                ) : waterBillingMethod === 'FIXED_PER_ROOM' ? (
+                  <span>Khoán trọn gói theo phòng, không yêu cầu số người hay chỉ số đo đếm.</span>
+                ) : (
+                  <span>Chỉ số đầu/cuối kỳ sẽ được nhập tại phân hệ Tổng hợp &amp; Cron.</span>
+                )}
               </div>
             </div>
           </div>
@@ -431,6 +537,11 @@ export const EditRoomModal: React.FC<EditRoomModalProps> = ({
           </div>
         </form>
       </div>
+
+      <HunonicSettingsModal
+        isOpen={isHunonicSettingsOpen}
+        onClose={() => setIsHunonicSettingsOpen(false)}
+      />
     </div>
   );
 };

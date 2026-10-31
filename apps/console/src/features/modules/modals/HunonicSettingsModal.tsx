@@ -208,7 +208,10 @@ export const HunonicSettingsModal: React.FC<HunonicSettingsModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+    <div
+      data-testid="hunonic-settings-modal"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+    >
       <div
         className="w-full max-w-4xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col max-h-[90vh] overflow-hidden"
         onClick={(e) => e.stopPropagation()}
@@ -233,6 +236,7 @@ export const HunonicSettingsModal: React.FC<HunonicSettingsModalProps> = ({
           </div>
           <button
             type="button"
+            data-testid="btn-close-hunonic-modal"
             onClick={onClose}
             className="p-2 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
           >
@@ -244,6 +248,7 @@ export const HunonicSettingsModal: React.FC<HunonicSettingsModalProps> = ({
         <div className="flex border-b border-slate-200 dark:border-slate-800 px-6 bg-slate-50/30 dark:bg-slate-900/50 overflow-x-auto gap-1">
           <button
             type="button"
+            data-testid="hunonic-tab-api"
             onClick={() => setActiveTab('api')}
             className={`flex items-center gap-2 py-3 px-3 text-xs font-semibold border-b-2 whitespace-nowrap transition-colors ${
               activeTab === 'api'
@@ -256,6 +261,7 @@ export const HunonicSettingsModal: React.FC<HunonicSettingsModalProps> = ({
           </button>
           <button
             type="button"
+            data-testid="hunonic-tab-meters"
             onClick={() => setActiveTab('meters')}
             className={`flex items-center gap-2 py-3 px-3 text-xs font-semibold border-b-2 whitespace-nowrap transition-colors ${
               activeTab === 'meters'
@@ -268,6 +274,7 @@ export const HunonicSettingsModal: React.FC<HunonicSettingsModalProps> = ({
           </button>
           <button
             type="button"
+            data-testid="hunonic-tab-tariff"
             onClick={() => setActiveTab('tariff')}
             className={`flex items-center gap-2 py-3 px-3 text-xs font-semibold border-b-2 whitespace-nowrap transition-colors ${
               activeTab === 'tariff'
@@ -280,6 +287,7 @@ export const HunonicSettingsModal: React.FC<HunonicSettingsModalProps> = ({
           </button>
           <button
             type="button"
+            data-testid="hunonic-tab-schedule"
             onClick={() => setActiveTab('schedule')}
             className={`flex items-center gap-2 py-3 px-3 text-xs font-semibold border-b-2 whitespace-nowrap transition-colors ${
               activeTab === 'schedule'
@@ -292,6 +300,7 @@ export const HunonicSettingsModal: React.FC<HunonicSettingsModalProps> = ({
           </button>
           <button
             type="button"
+            data-testid="hunonic-tab-history"
             onClick={() => setActiveTab('history')}
             className={`flex items-center gap-2 py-3 px-3 text-xs font-semibold border-b-2 whitespace-nowrap transition-colors ${
               activeTab === 'history'
@@ -793,3 +802,4 @@ export const HunonicSettingsModal: React.FC<HunonicSettingsModalProps> = ({
     </div>
   );
 };
+

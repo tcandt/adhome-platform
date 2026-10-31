@@ -790,6 +790,10 @@ export const UnifiedBuildingCanvas: React.FC = () => {
           setSelectedRoomId(null);
           setWizardTarget({ roomId });
         }}
+        onEditRoom={(rm) => {
+          setSelectedRoomId(null);
+          setEditingRoom(rm);
+        }}
       />
 
       {/* 6-STEP BOOKING & CONTRACT CREATION WIZARD */}

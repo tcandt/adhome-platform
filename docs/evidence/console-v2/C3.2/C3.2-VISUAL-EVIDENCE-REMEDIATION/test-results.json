@@ -1,0 +1,216 @@
+{
+  "taskId": "C3.2-VISUAL-EVIDENCE-REMEDIATION",
+  "evaluatedAt": "2026-10-31T10:22:18.184Z",
+  "commitSha": "4e9c31f62b7f21c27720c670dcd568e1a4143551",
+  "reportingTier": "LOCAL_GATE_PASSED",
+  "verdict": "LOCAL_GATE_PASSED",
+  "backendChecks": {
+    "adminAuth": {
+      "pass": true,
+      "status": 200
+    },
+    "csrfProtectionEnforced": {
+      "pass": true,
+      "statusCode": 403
+    },
+    "waterBillingPerPerson": {
+      "pass": true,
+      "expected": 200000,
+      "actual": 200000
+    },
+    "waterBillingPerM3": {
+      "pass": true,
+      "expected": 500000,
+      "actual": 500000
+    },
+    "waterBillingFixed": {
+      "pass": true,
+      "expected": 150000,
+      "actual": 150000
+    },
+    "hunonicSnapshot": {
+      "pass": true,
+      "meterCount": 14,
+      "status": 200
+    },
+    "hunonicBackgroundSync": {
+      "pass": true,
+      "status": 202
+    }
+  },
+  "visualEvidence": [
+    {
+      "filename": "desktop_contracts_table_clean_actions.png",
+      "sizeBytes": 251524,
+      "sha256": "d05bcebc1d8485fae99f5b51097c8c52baf7ad15aecb65b58f58c5d3d88d87ed",
+      "viewport": "1440x900",
+      "screenName": "Desktop Contracts Workspace",
+      "scenario": "Bảng hợp đồng đã chuẩn hóa, loại bỏ nút dư thừa, chỉ dùng menu 3 chấm",
+      "capturedAt": "2026-10-31T10:22:22.328Z",
+      "commitSha": "4e9c31f62b7f21c27720c670dcd568e1a4143551",
+      "relativePath": "screenshots/desktop_contracts_table_clean_actions.png"
+    },
+    {
+      "filename": "desktop_contracts_table_menu_open.png",
+      "sizeBytes": 269635,
+      "sha256": "df3bd0e741d943aa862ad60a3635117fcc5b8867e8b149566a621f36aad36ee8",
+      "viewport": "1440x900",
+      "screenName": "Desktop Contracts Table with Action Menu Open",
+      "scenario": "Menu 3 chấm được mở ra hiển thị Gia hạn, Đổi phòng, Thanh lý, Bàn giao",
+      "capturedAt": "2026-10-31T10:22:23.835Z",
+      "commitSha": "4e9c31f62b7f21c27720c670dcd568e1a4143551",
+      "relativePath": "screenshots/desktop_contracts_table_menu_open.png"
+    },
+    {
+      "filename": "mobile_contracts_cards_clean.png",
+      "sizeBytes": 145300,
+      "sha256": "3d5b36f04628eb7d678d42068f9207007fc489f02a0cd02906582a9cb697e864",
+      "viewport": "390x844",
+      "screenName": "Mobile Contracts Cards View",
+      "scenario": "Card hợp đồng Mobile căn chỉnh chuẩn, số tiền không bị xuống dòng, không ngắt chữ",
+      "capturedAt": "2026-10-31T10:22:26.202Z",
+      "commitSha": "4e9c31f62b7f21c27720c670dcd568e1a4143551",
+      "relativePath": "screenshots/mobile_contracts_cards_clean.png"
+    },
+    {
+      "filename": "desktop_wizard_step3_money_input.png",
+      "sizeBytes": 412538,
+      "sha256": "c03dad9b5059609f19473300f62dea863cdab7799802f63d442268d19fe5235a",
+      "viewport": "1440x900",
+      "screenName": "Contract Creation Wizard Step 4",
+      "scenario": "Các trường số tiền trong Wizard hiển thị định dạng chuẩn VND với MoneyInput (5.000.000 đ)",
+      "capturedAt": "2026-10-31T10:22:29.303Z",
+      "commitSha": "4e9c31f62b7f21c27720c670dcd568e1a4143551",
+      "relativePath": "screenshots/desktop_wizard_step3_money_input.png"
+    },
+    {
+      "filename": "desktop_room_modal_electric_hunonic_auto.png",
+      "sizeBytes": 653201,
+      "sha256": "a459c597add4d3db85eab3694e37eb2ffc3f4278d42d07243eb1bf4916483522",
+      "viewport": "1440x900",
+      "screenName": "Room Settings - Electric HUNONIC_AUTO",
+      "scenario": "Chế độ HUNONIC_AUTO tự động ẩn trường nhập đơn giá thủ công và hiển thị mapping công tơ",
+      "capturedAt": "2026-10-31T10:22:32.667Z",
+      "commitSha": "4e9c31f62b7f21c27720c670dcd568e1a4143551",
+      "relativePath": "screenshots/desktop_room_modal_electric_hunonic_auto.png"
+    },
+    {
+      "filename": "desktop_room_modal_electric_manual.png",
+      "sizeBytes": 646721,
+      "sha256": "286c6f7656bb3c1054e07d94165263fd9db3c6a73e55e58d825eba8e3a0f5aa8",
+      "viewport": "1440x900",
+      "screenName": "Room Settings - Electric MANUAL",
+      "scenario": "Chế độ MANUAL hiển thị trường nhập đơn giá điện thủ công định dạng chuẩn VND/kWh",
+      "capturedAt": "2026-10-31T10:22:34.276Z",
+      "commitSha": "4e9c31f62b7f21c27720c670dcd568e1a4143551",
+      "relativePath": "screenshots/desktop_room_modal_electric_manual.png"
+    },
+    {
+      "filename": "desktop_room_modal_water_per_person.png",
+      "sizeBytes": 647122,
+      "sha256": "10b95bcbad534959cc635ff1697e5cbe4b32e22cc26a320882de0b9c67f73a22",
+      "viewport": "1440x900",
+      "screenName": "Room Settings - Water PER_PERSON",
+      "scenario": "Phương pháp PER_PERSON hiển thị đơn vị VND/người/tháng với MoneyInput",
+      "capturedAt": "2026-10-31T10:22:36.001Z",
+      "commitSha": "4e9c31f62b7f21c27720c670dcd568e1a4143551",
+      "relativePath": "screenshots/desktop_room_modal_water_per_person.png"
+    },
+    {
+      "filename": "desktop_room_modal_water_per_m3.png",
+      "sizeBytes": 644430,
+      "sha256": "cd87581f66515766f31ff2eddda269c9b0fe276fe6cf8f650127560e09b8a98a",
+      "viewport": "1440x900",
+      "screenName": "Room Settings - Water PER_M3",
+      "scenario": "Phương pháp PER_M3 hiển thị ghi chú cấu hình biểu giá chung trong cài đặt tòa nhà",
+      "capturedAt": "2026-10-31T10:22:37.755Z",
+      "commitSha": "4e9c31f62b7f21c27720c670dcd568e1a4143551",
+      "relativePath": "screenshots/desktop_room_modal_water_per_m3.png"
+    },
+    {
+      "filename": "desktop_room_modal_water_fixed_per_room.png",
+      "sizeBytes": 646999,
+      "sha256": "4ad5a8c50f12f48516cfd8ed9c7fd3324ad7b397882031cd1a80b65776ed66cb",
+      "viewport": "1440x900",
+      "screenName": "Room Settings - Water FIXED_PER_ROOM",
+      "scenario": "Phương pháp FIXED_PER_ROOM hiển thị đơn vị VND/phòng/tháng",
+      "capturedAt": "2026-10-31T10:22:39.478Z",
+      "commitSha": "4e9c31f62b7f21c27720c670dcd568e1a4143551",
+      "relativePath": "screenshots/desktop_room_modal_water_fixed_per_room.png"
+    },
+    {
+      "filename": "desktop_hunonic_tab1_api_connection.png",
+      "sizeBytes": 546795,
+      "sha256": "5aee0b284609bbd1e8ee8e8d88a51793d1164deb34c67ca22fec88d6d2a152b3",
+      "viewport": "1440x900",
+      "screenName": "Hunonic Modal - Tab 1 API Connection",
+      "scenario": "Cấu hình kết nối API Hunonic Cloud, trạng thái Crypto Vault và kiểm tra kết nối",
+      "capturedAt": "2026-10-31T10:22:42.328Z",
+      "commitSha": "4e9c31f62b7f21c27720c670dcd568e1a4143551",
+      "relativePath": "screenshots/desktop_hunonic_tab1_api_connection.png"
+    },
+    {
+      "filename": "desktop_hunonic_tab2_meter_mapping.png",
+      "sizeBytes": 551108,
+      "sha256": "1301945818656b5cffa1e0e8af3883f55b43fe031e9ccc2ac2a6ea3b485a1868",
+      "viewport": "1440x900",
+      "screenName": "Hunonic Modal - Tab 2 Meter Mapping",
+      "scenario": "Danh sách công tơ thông minh, địa chỉ MAC, mapping phòng và trạng thái online",
+      "capturedAt": "2026-10-31T10:22:43.995Z",
+      "commitSha": "4e9c31f62b7f21c27720c670dcd568e1a4143551",
+      "relativePath": "screenshots/desktop_hunonic_tab2_meter_mapping.png"
+    },
+    {
+      "filename": "desktop_hunonic_tab3_tariffs.png",
+      "sizeBytes": 518960,
+      "sha256": "94db4fd31061beb6f810bd9f92e2e2b22e680cf78d8695fd1d7411ddc4d17579",
+      "viewport": "1440x900",
+      "screenName": "Hunonic Modal - Tab 3 Electricity Tariffs",
+      "scenario": "Cấu hình biểu giá điện: Biểu giá EVN bậc thang vs Đơn giá cố định có MoneyInput",
+      "capturedAt": "2026-10-31T10:22:45.685Z",
+      "commitSha": "4e9c31f62b7f21c27720c670dcd568e1a4143551",
+      "relativePath": "screenshots/desktop_hunonic_tab3_tariffs.png"
+    },
+    {
+      "filename": "desktop_hunonic_tab4_sync_schedule.png",
+      "sizeBytes": 556831,
+      "sha256": "7e7cec91867294eacd9bdb3e1242dd2275577128a1d2b5c51923c4836327bb23",
+      "viewport": "1440x900",
+      "screenName": "Hunonic Modal - Tab 4 Sync Schedule",
+      "scenario": "Cấu hình chu kỳ đồng bộ tự động và nút kích hoạt đồng bộ nền tức thời",
+      "capturedAt": "2026-10-31T10:22:47.454Z",
+      "commitSha": "4e9c31f62b7f21c27720c670dcd568e1a4143551",
+      "relativePath": "screenshots/desktop_hunonic_tab4_sync_schedule.png"
+    },
+    {
+      "filename": "desktop_hunonic_tab5_diagnostics.png",
+      "sizeBytes": 586833,
+      "sha256": "c7f0a72ecdc49325b8494cfff4d2365eed3b3be618bbe0782582a19181fee060",
+      "viewport": "1440x900",
+      "screenName": "Hunonic Modal - Tab 5 History & Diagnostics",
+      "scenario": "Nhật ký đồng bộ, lịch sử snapshot, trạng thái payload và chuẩn đoán lỗi",
+      "capturedAt": "2026-10-31T10:22:49.122Z",
+      "commitSha": "4e9c31f62b7f21c27720c670dcd568e1a4143551",
+      "relativePath": "screenshots/desktop_hunonic_tab5_diagnostics.png"
+    },
+    {
+      "filename": "desktop_settlements_workspace_hunonic_sync.png",
+      "sizeBytes": 430271,
+      "sha256": "eca421fd7490743cadfa032d4d24fff7d5453b559928d7f11fe65a950f181aac",
+      "viewport": "1440x900",
+      "screenName": "Settlements & Billing Workspace",
+      "scenario": "Màn hình Tổng hợp dịch vụ điện nước tự động, nút đồng bộ nền và bản chụp snapshot",
+      "capturedAt": "2026-10-31T10:22:51.674Z",
+      "commitSha": "4e9c31f62b7f21c27720c670dcd568e1a4143551",
+      "relativePath": "screenshots/desktop_settlements_workspace_hunonic_sync.png"
+    }
+  ],
+  "evidenceIntegrity": {
+    "pass": true,
+    "totalScreenshots": 15,
+    "distinctHashes": 15,
+    "allDistinct": true,
+    "allSufficientSize": true
+  },
+  "finishedAt": "2026-10-31T10:22:51.675Z"
+}

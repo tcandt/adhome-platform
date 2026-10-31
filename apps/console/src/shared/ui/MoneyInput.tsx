@@ -155,3 +155,4 @@ export const MoneyInput: React.FC<MoneyInputProps> = ({
     </div>
   );
 };
+

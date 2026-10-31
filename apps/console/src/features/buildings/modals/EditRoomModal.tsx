@@ -316,6 +316,7 @@ export const EditRoomModal: React.FC<EditRoomModalProps> = ({
             <div className="flex gap-2 p-1 bg-slate-200/60 dark:bg-slate-800 rounded-lg max-w-xs">
               <button
                 type="button"
+                data-testid="btn-mode-hunonic-auto"
                 onClick={() => setElectricBillingMode('HUNONIC_AUTO')}
                 className={`flex-1 py-1 px-2.5 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
                   electricBillingMode === 'HUNONIC_AUTO'
@@ -328,6 +329,7 @@ export const EditRoomModal: React.FC<EditRoomModalProps> = ({
               </button>
               <button
                 type="button"
+                data-testid="btn-mode-manual"
                 onClick={() => setElectricBillingMode('MANUAL')}
                 className={`flex-1 py-1 px-2.5 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
                   electricBillingMode === 'MANUAL'
@@ -376,6 +378,7 @@ export const EditRoomModal: React.FC<EditRoomModalProps> = ({
                   </span>
                   <button
                     type="button"
+                    data-testid="btn-open-hunonic-from-room"
                     onClick={() => setIsHunonicSettingsOpen(true)}
                     className="px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold flex items-center gap-1 transition-colors"
                   >
@@ -391,6 +394,7 @@ export const EditRoomModal: React.FC<EditRoomModalProps> = ({
                     Đơn giá điện thủ công (VND/kWh)
                   </label>
                   <MoneyInput
+                    data-testid="edit-room-electric-rate"
                     value={electricRateVnd}
                     onChange={(v) => setElectricRateVnd(v > 0 ? String(v) : '')}
                     currencySuffix="đ/kWh"
@@ -415,6 +419,7 @@ export const EditRoomModal: React.FC<EditRoomModalProps> = ({
                     Phương thức tính nước
                   </label>
                   <select
+                    data-testid="select-water-method"
                     value={waterBillingMethod}
                     onChange={(e) => setWaterBillingMethod(e.target.value)}
                     className="w-full text-xs px-2.5 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none"
@@ -434,6 +439,7 @@ export const EditRoomModal: React.FC<EditRoomModalProps> = ({
                       : 'Đơn giá nước (VNĐ / m³)'}
                   </label>
                   <MoneyInput
+                    data-testid="edit-room-water-rate"
                     value={waterRateVnd}
                     onChange={(v) => setWaterRateVnd(v > 0 ? String(v) : '')}
                     currencySuffix="đ"
@@ -515,6 +521,7 @@ export const EditRoomModal: React.FC<EditRoomModalProps> = ({
             <div className="flex items-center gap-2">
               <button
                 type="button"
+                data-testid="btn-cancel-edit-room"
                 onClick={onClose}
                 className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl"
               >

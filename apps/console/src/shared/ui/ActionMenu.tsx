@@ -9,6 +9,7 @@ export interface ActionMenuItem {
   disabled?: boolean;
   divider?: boolean;
   hidden?: boolean;
+  testId?: string;
 }
 
 export interface ActionMenuProps {
@@ -55,6 +56,7 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({
     <div ref={containerRef} className={`relative inline-block text-left ${className}`}>
       <button
         type="button"
+        data-testid="action-menu-trigger"
         aria-label={ariaLabel}
         aria-expanded={isOpen}
         onClick={(e) => {
@@ -96,6 +98,7 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({
                   )}
                   <button
                     type="button"
+                    data-testid={item.testId}
                     disabled={item.disabled}
                     onClick={() => {
                       setIsOpen(false);
@@ -125,3 +128,4 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({
     </div>
   );
 };
+

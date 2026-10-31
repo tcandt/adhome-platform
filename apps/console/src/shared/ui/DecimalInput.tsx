@@ -100,3 +100,4 @@ export const DecimalInput: React.FC<DecimalInputProps> = ({
     </div>
   );
 };
+

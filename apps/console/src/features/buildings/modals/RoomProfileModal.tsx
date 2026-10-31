@@ -32,6 +32,7 @@ interface Props {
   onOpenReservationModal: (roomId: string) => void;
   onOpenExtendModal?: (contract: any) => void;
   onOpenTerminateModal?: (contract: any) => void;
+  onEditRoom?: (room: ConsoleRoomDto) => void;
 }
 
 export const RoomProfileModal: React.FC<Props> = ({
@@ -42,6 +43,7 @@ export const RoomProfileModal: React.FC<Props> = ({
   onOpenReservationModal,
   onOpenExtendModal,
   onOpenTerminateModal,
+  onEditRoom,
 }) => {
   const { refreshPortfolio } = usePortfolio();
   const { user, hasCapability } = useAuth();
@@ -281,13 +283,25 @@ export const RoomProfileModal: React.FC<Props> = ({
               {room.buildingCode} — {room.buildingName} · {room.floorName} · {room.roomType} ({room.area}m²)
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {onEditRoom && (
+              <button
+                type="button"
+                data-testid="btn-open-edit-room"
+                onClick={() => onEditRoom(room)}
+                className="px-2.5 py-1 text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg transition-colors"
+              >
+                Cấu hình phòng
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* 5 NAVIGATION TABS */}

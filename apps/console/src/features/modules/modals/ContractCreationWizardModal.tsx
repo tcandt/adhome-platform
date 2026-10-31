@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { usePortfolio } from '../../../app/providers/PortfolioContext';
 import { ConsoleRoomDto, ConsoleTenantDto } from '../../../shared/types/portfolio';
+import { MoneyInput } from '../../../shared/ui/MoneyInput';
 
 interface Props {
   isOpen: boolean;
@@ -713,13 +714,11 @@ export const ContractCreationWizardModal: React.FC<Props> = ({
                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                       Số tiền giữ phòng (VND)
                     </label>
-                    <input
+                    <MoneyInput
                       data-testid="wizard-hold-amount"
-                      type="number"
-                      step={100000}
                       value={holdAmountVnd}
-                      onChange={(e) => setHoldAmountVnd(Math.max(0, Number(e.target.value)))}
-                      className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold"
+                      onChange={(val) => setHoldAmountVnd(Math.max(0, val))}
+                      className="w-full text-xs font-bold"
                     />
                   </div>
                   <div>
@@ -856,26 +855,22 @@ export const ContractCreationWizardModal: React.FC<Props> = ({
                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                       Tiền thuê phòng / tháng (VND) *
                     </label>
-                    <input
+                    <MoneyInput
                       data-testid="wizard-monthly-rent"
-                      type="number"
-                      step={100000}
                       value={monthlyRentVnd}
-                      onChange={(e) => setMonthlyRentVnd(Math.max(500000, Number(e.target.value)))}
-                      className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold"
+                      onChange={(val) => setMonthlyRentVnd(Math.max(500000, val))}
+                      className="w-full text-xs font-bold"
                     />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                       Tiền cọc hợp đồng yêu cầu (VND) *
                     </label>
-                    <input
+                    <MoneyInput
                       data-testid="wizard-required-deposit"
-                      type="number"
-                      step={100000}
                       value={requiredDepositVnd}
-                      onChange={(e) => setRequiredDepositVnd(Math.max(0, Number(e.target.value)))}
-                      className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold"
+                      onChange={(val) => setRequiredDepositVnd(Math.max(0, val))}
+                      className="w-full text-xs font-bold"
                     />
                   </div>
                 </div>

@@ -3661,6 +3661,593 @@ export async function handleConsoleV2Api(
     return sendJson(res, 200, { ok: true, deletedId: existing.id });
   }
 
+// ===========================================================================
+  // 6B. HISTORICAL IMPORT & OCCUPANCY SOURCE OF TRUTH (C4-IMPORT-01/02 & C4-OCC-01)
+  // ===========================================================================
+  if (method === 'POST' && pathname === '/api/v1/console/v2/import/tenants/preview') {
+    if (!actorHasPermission(actor, 'contracts.manage') && !actorHasPermission(actor, 'tenants.manage')) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'INSUFFICIENT_PERMISSION',
+        message: 'Tài khoản không có quyền nhập dữ liệu khách thuê lịch sử.',
+      });
+    }
+
+    const body = await readJsonBody(req);
+    const rawItems = Array.isArray(body.items) ? body.items : [];
+    if (rawItems.length === 0) {
+      return sendJson(res, 422, {
+        ok: false,
+        errorCode: 'EMPTY_BATCH',
+        message: 'Danh sách dữ liệu nhập trống. Vui lòng cung cấp ít nhất 1 dòng.',
+      });
+    }
+
+    const { authorizedBuildings } = await resolveScopedBuildings(prisma, actor, null, true);
+    const authorizedBuildingIds = new Set(authorizedBuildings.map((b) => b.id));
+
+    let totalOpeningDepositVnd = 0;
+    let totalOpeningDebtVnd = 0;
+    let totalOpeningCreditVnd = 0;
+    let roomsToOccupyCount = 0;
+    const roomOccupiedSet = new Set<string>();
+
+    const rowsEvaluated: any[] = [];
+    let validCount = 0;
+    let warningCount = 0;
+    let invalidCount = 0;
+
+    for (let i = 0; i < rawItems.length; i++) {
+      const item = rawItems[i] || {};
+      const errors: string[] = [];
+      const warnings: string[] = [];
+
+      // 1. Resolve room
+      let room: any = null;
+      if (item.roomId) {
+        room = await prisma.consoleRoom.findUnique({
+          where: { id: String(item.roomId).trim() },
+          include: { building: true, contracts: { where: { status: 'ACTIVE' } } },
+        });
+      } else if (item.roomCode) {
+        const roomCode = String(item.roomCode).trim().toUpperCase();
+        const foundRooms = await prisma.consoleRoom.findMany({
+          where: {
+            orgId: actor.orgId,
+            code: { equals: roomCode, mode: 'insensitive' },
+            buildingId: item.buildingId ? String(item.buildingId).trim() : undefined,
+          },
+          include: { building: true, contracts: { where: { status: 'ACTIVE' } } },
+        });
+        if (foundRooms.length === 1) {
+          room = foundRooms[0];
+        } else if (foundRooms.length > 1) {
+          errors.push(`Mã phòng ${roomCode} trùng lặp giữa nhiều tòa nhà. Vui lòng chọn buildingId cụ thể.`);
+        }
+      }
+
+      if (!room || room.orgId !== actor.orgId) {
+        errors.push('Không tìm thấy thông tin phòng trên hệ thống.');
+      } else if (!authorizedBuildingIds.has(room.buildingId)) {
+        errors.push(`Không có quyền truy cập tòa nhà ${room.building?.name || room.buildingId}.`);
+      } else {
+        if (room.contracts && room.contracts.length > 0) {
+          if (room.rentalModel === 'ENTIRE_ROOM') {
+            warnings.push(`Phòng ${room.code} hiện đã có hợp đồng hoạt động (${room.contracts[0].contractCode}). Nhập mới sẽ thay thế người thuê chính.`);
+          }
+        }
+      }
+
+      // 2. Validate tenant
+      const fullName = String(item.tenantName || item.fullName || '').trim();
+      const rawPhone = String(item.tenantPhone || item.phone || '').trim();
+      if (!fullName) {
+        errors.push('Họ tên khách thuê không được để trống.');
+      }
+      if (!rawPhone || !isValidVnPhone(rawPhone)) {
+        errors.push('Số điện thoại không hợp lệ (yêu cầu số di động Việt Nam 10 chữ số).');
+      }
+      const normalizedPhone = normalizeVnPhone(rawPhone);
+
+      // 3. Validate dates
+      const startDate = String(item.startDate || '').trim();
+      const endDate = String(item.endDate || '').trim();
+      const paidThrough = String(item.paidThrough || item.startDate || '').trim();
+
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
+        errors.push('Ngày bắt đầu hợp đồng không hợp lệ (YYYY-MM-DD).');
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+        errors.push('Ngày kết thúc hợp đồng không hợp lệ (YYYY-MM-DD).');
+      }
+      if (startDate && endDate && startDate > endDate) {
+        errors.push('Ngày bắt đầu hợp đồng phải nhỏ hơn hoặc bằng ngày kết thúc.');
+      }
+      if (paidThrough && !/^\d{4}-\d{2}-\d{2}$/.test(paidThrough)) {
+        errors.push('Ngày đã thu tiền đến (paidThrough) không hợp lệ (YYYY-MM-DD).');
+      }
+
+      // 4. Financial fields
+      const monthlyRentVnd = Math.max(0, Number(item.monthlyRentVnd || 0));
+      const depositVnd = Math.max(0, Number(item.depositVnd || 0));
+      const depositPaid = item.depositPaid !== false;
+      const openingDebtVnd = Math.max(0, Number(item.openingDebtVnd || 0));
+      const openingCreditVnd = Math.max(0, Number(item.openingCreditVnd || 0));
+
+      if (monthlyRentVnd <= 0) {
+        warnings.push('Tiền phòng tháng bằng 0 đ (cần kiểm tra lại biểu giá).');
+      }
+
+      const status = errors.length > 0 ? 'INVALID' : warnings.length > 0 ? 'WARNING' : 'VALID';
+      if (status === 'INVALID') invalidCount++;
+      else if (status === 'WARNING') {
+        warningCount++;
+        validCount++;
+      } else {
+        validCount++;
+      }
+
+      if (status !== 'INVALID') {
+        if (depositPaid && depositVnd > 0) {
+          totalOpeningDepositVnd += depositVnd;
+        }
+        totalOpeningDebtVnd += openingDebtVnd;
+        totalOpeningCreditVnd += openingCreditVnd;
+        if (room && !roomOccupiedSet.has(room.id)) {
+          roomOccupiedSet.add(room.id);
+          roomsToOccupyCount++;
+        }
+      }
+
+      rowsEvaluated.push({
+        rowIndex: i + 1,
+        status,
+        errors,
+        warnings,
+        room: room ? { id: room.id, code: room.code, buildingName: room.building?.name, currentOccupancy: room.occupancyStatus } : null,
+        tenant: { fullName, phone: rawPhone, normalizedPhone, idNumber: item.idNumber || item.tenantIdNumber || null },
+        contract: {
+          contractCode: item.contractCode || `IMP-${room?.code || 'RM'}-${i + 1}`,
+          startDate,
+          endDate,
+          paidThrough,
+          monthlyRentVnd,
+          depositVnd,
+          depositPaid,
+          openingDebtVnd,
+          openingCreditVnd,
+        },
+      });
+    }
+
+    return sendJson(res, 200, {
+      ok: true,
+      preview: {
+        totalRows: rawItems.length,
+        validRows: validCount,
+        warningRows: warningCount,
+        invalidRows: invalidCount,
+        totalOpeningDepositVnd,
+        totalOpeningDebtVnd,
+        totalOpeningCreditVnd,
+        roomsToOccupyCount,
+        reconciliationNotes:
+          'Khoản cọc lịch sử được ghi nhận nghĩa vụ HELD, KHÔNG ghi nhận dòng tiền thu mới (CASH_IN) vào sổ cái hiện tại. Hóa đơn đầu tiên của hệ thống sẽ chỉ phát sinh từ ngày sau paidThrough.',
+        rows: rowsEvaluated,
+      },
+    });
+  }
+
+  if (method === 'POST' && pathname === '/api/v1/console/v2/import/tenants') {
+    if (!actorHasPermission(actor, 'contracts.manage')) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'INSUFFICIENT_PERMISSION',
+        message: 'Tài khoản không có quyền nhập và chuyển giao hợp đồng khách thuê.',
+      });
+    }
+
+    const keyHeader = req.headers['idempotency-key'] || req.headers['x-idempotency-key'];
+    const body = await readJsonBody(req);
+    const rawBatchKey = typeof body.batchKey === 'string' && body.batchKey.trim()
+      ? body.batchKey.trim()
+      : (typeof keyHeader === 'string' ? keyHeader.trim() : '');
+    const batchKey = rawBatchKey || `IMP-BATCH-${Date.now()}`;
+
+    const rawItems = Array.isArray(body.items) ? body.items : [];
+    if (rawItems.length === 0) {
+      return sendJson(res, 422, {
+        ok: false,
+        errorCode: 'EMPTY_BATCH',
+        message: 'Danh sách dữ liệu nhập trống.',
+      });
+    }
+
+    return handleWithIdempotency(
+      prisma,
+      actor.orgId,
+      'IMPORT_HISTORICAL_TENANT_BATCH',
+      batchKey,
+      { batchKey, itemsCount: rawItems.length, itemsHash: crypto.createHash('sha256').update(JSON.stringify(rawItems)).digest('hex') },
+      res,
+      async () => {
+        const { authorizedBuildings } = await resolveScopedBuildings(prisma, actor, null, true);
+        const authorizedBuildingIds = new Set(authorizedBuildings.map((b) => b.id));
+
+        return await prisma.$transaction(async (tx) => {
+          let totalOpeningDepositVnd = 0;
+          let totalRoomsOccupied = 0;
+          let tenantsCreated = 0;
+          let contractsCreated = 0;
+          const importedResults: any[] = [];
+
+          for (let i = 0; i < rawItems.length; i++) {
+            const item = rawItems[i] || {};
+
+            // Resolve room
+            let room: any = null;
+            if (item.roomId) {
+              room = await tx.consoleRoom.findUnique({
+                where: { id: String(item.roomId).trim() },
+                include: { building: true },
+              });
+            } else if (item.roomCode) {
+              const roomCode = String(item.roomCode).trim().toUpperCase();
+              const found = await tx.consoleRoom.findMany({
+                where: {
+                  orgId: actor.orgId,
+                  code: { equals: roomCode, mode: 'insensitive' },
+                  buildingId: item.buildingId ? String(item.buildingId).trim() : undefined,
+                },
+                include: { building: true },
+              });
+              if (found.length === 1) room = found[0];
+            }
+
+            if (!room || room.orgId !== actor.orgId || !authorizedBuildingIds.has(room.buildingId)) {
+              continue;
+            }
+
+            const fullName = String(item.tenantName || item.fullName || '').trim();
+            const rawPhone = String(item.tenantPhone || item.phone || '').trim();
+            const normalizedPhone = normalizeVnPhone(rawPhone);
+            const idNumber = String(item.idNumber || item.tenantIdNumber || '').trim() || null;
+            const startDate = String(item.startDate || '').trim();
+            const endDate = String(item.endDate || '').trim();
+            const paidThrough = String(item.paidThrough || item.startDate || '').trim();
+            const monthlyRentVnd = Math.max(0, Number(item.monthlyRentVnd || 0));
+            const depositVnd = Math.max(0, Number(item.depositVnd || 0));
+            const depositPaid = item.depositPaid !== false;
+            const contractCode = String(item.contractCode || `HD-IMP-${room.code}-${Date.now().toString().slice(-4)}-${i + 1}`).trim();
+
+            // Check if contract with this contractCode already exists in org
+            const existingContract = await tx.contract.findFirst({
+              where: { orgId: actor.orgId, contractCode },
+            });
+            if (existingContract) {
+              importedResults.push({ contractId: existingContract.id, contractCode, skipped: true, reason: 'ALREADY_EXISTS' });
+              continue;
+            }
+
+            // Upsert Tenant (E2E-16 duplicate tenant prevention)
+            let tenant = await tx.tenant.findFirst({
+              where: { orgId: actor.orgId, normalizedPhone },
+            });
+            if (tenant) {
+              tenant = await tx.tenant.update({
+                where: { id: tenant.id },
+                data: {
+                  fullName: fullName || tenant.fullName,
+                  idNumber: idNumber || tenant.idNumber,
+                  currentRoomId: room.id,
+                  primaryBuildingId: room.buildingId,
+                },
+              });
+            } else {
+              tenant = await tx.tenant.create({
+                data: {
+                  orgId: actor.orgId,
+                  primaryBuildingId: room.buildingId,
+                  currentRoomId: room.id,
+                  fullName,
+                  phone: rawPhone,
+                  normalizedPhone,
+                  idNumber,
+                  residenceRegStatus: 'REGISTERED',
+                  notes: `Imported from legacy paper records (Batch: ${batchKey})`,
+                },
+              });
+              tenantsCreated++;
+            }
+
+            // Create Contract
+            const contract = await tx.contract.create({
+              data: {
+                orgId: actor.orgId,
+                buildingId: room.buildingId,
+                roomId: room.id,
+                tenantId: tenant.id,
+                contractCode,
+                rentalModel: item.rentalModel || room.rentalModel || 'ENTIRE_ROOM',
+                startDate,
+                endDate,
+                signedAt: new Date(startDate),
+                moveInDate: startDate,
+                monthlyRentVnd: BigInt(monthlyRentVnd),
+                depositVnd: BigInt(depositVnd),
+                occupantsCount: 1 + (Array.isArray(item.occupants) ? item.occupants.length : 0),
+                electricRateVnd: item.electricRateVnd || room.electricRateVnd || 3800,
+                waterBillingMethod: item.waterBillingMethod || room.waterBillingMethod || 'PER_M3',
+                waterRateVnd: item.waterRateVnd || room.waterRateVnd || 15000,
+                handoverMeterKwh: item.handoverMeterKwh !== undefined ? Number(item.handoverMeterKwh) : null,
+                handoverWaterM3: item.handoverWaterM3 !== undefined ? Number(item.handoverWaterM3) : null,
+                status: 'ACTIVE',
+                notes: `Imported from paper ledger (Batch: ${batchKey}). paidThrough: ${paidThrough}`,
+              },
+            });
+            contractsCreated++;
+
+            // Create Deposit: HELD, PAID (CRITICAL: ZERO CASH_IN LEDGER ENTRY GENERATED)
+            if (depositVnd > 0) {
+              await tx.deposit.create({
+                data: {
+                  orgId: actor.orgId,
+                  contractId: contract.id,
+                  depositType: 'CONTRACT',
+                  amountVnd: BigInt(depositVnd),
+                  paidAmountVnd: depositPaid ? BigInt(depositVnd) : BigInt(0),
+                  paymentStatus: depositPaid ? 'PAID' : 'PENDING',
+                  status: 'HELD',
+                  receivedAt: depositPaid ? new Date(startDate) : null,
+                  paymentMethod: 'OPENING_BALANCE',
+                  notes: `OPENING_DEPOSIT - Existing deposit migrated from paper records. paidThrough: ${paidThrough}`,
+                },
+              });
+              if (depositPaid) {
+                totalOpeningDepositVnd += depositVnd;
+              }
+            }
+
+            // Update ConsoleRoom occupancyStatus
+            await tx.consoleRoom.update({
+              where: { id: room.id },
+              data: { occupancyStatus: 'OCCUPIED' },
+            });
+            totalRoomsOccupied++;
+
+            // Create primary RoomOccupant
+            await tx.roomOccupant.create({
+              data: {
+                orgId: actor.orgId,
+                roomId: room.id,
+                contractId: contract.id,
+                tenantId: tenant.id,
+                fullName: tenant.fullName,
+                phone: tenant.phone,
+                idNumber: tenant.idNumber,
+                relationToPrimary: 'PRIMARY',
+                moveInDate: startDate,
+                occupancyStatus: 'ACTIVE',
+                isActive: true,
+                residenceRegStatus: 'REGISTERED',
+              },
+            });
+
+            // Create secondary RoomOccupants if provided
+            if (Array.isArray(item.occupants)) {
+              for (const occ of item.occupants) {
+                if (occ && occ.fullName) {
+                  await tx.roomOccupant.create({
+                    data: {
+                      orgId: actor.orgId,
+                      roomId: room.id,
+                      contractId: contract.id,
+                      fullName: String(occ.fullName).trim(),
+                      phone: occ.phone ? String(occ.phone).trim() : null,
+                      idNumber: occ.idNumber ? String(occ.idNumber).trim() : null,
+                      relationToPrimary: occ.relationToPrimary || 'ROOMMATE',
+                      moveInDate: startDate,
+                      occupancyStatus: 'ACTIVE',
+                      isActive: true,
+                      residenceRegStatus: 'REGISTERED',
+                    },
+                  });
+                }
+              }
+            }
+
+            // Audit log for individual import
+            await tx.consoleAuditLog.create({
+              data: {
+                orgId: actor.orgId,
+                buildingId: room.buildingId,
+                actorId: actor.id,
+                actorEmail: actor.email,
+                actorRole: actor.role,
+                entityType: 'CONTRACT',
+                entityId: contract.id,
+                action: 'IMPORT_HISTORICAL_TENANT',
+                summary: `Nhập khách đang thuê từ sổ cũ: ${tenant.fullName} - Phòng ${room.code} (HĐ: ${contractCode})`,
+                metadata: {
+                  clientIp,
+                  batchKey,
+                  roomId: room.id,
+                  roomCode: room.code,
+                  paidThrough,
+                  depositVnd,
+                  monthlyRentVnd,
+                },
+              },
+            });
+
+            importedResults.push({
+              contractId: contract.id,
+              contractCode,
+              tenantId: tenant.id,
+              tenantName: tenant.fullName,
+              roomCode: room.code,
+              status: 'IMPORTED',
+            });
+          }
+
+          // Batch Audit Log
+          await tx.consoleAuditLog.create({
+            data: {
+              orgId: actor.orgId,
+              actorId: actor.id,
+              actorEmail: actor.email,
+              actorRole: actor.role,
+              entityType: 'SYSTEM',
+              entityId: batchKey,
+              action: 'IMPORT_HISTORICAL_TENANT_BATCH',
+              summary: `Hoàn tất nhập lô dữ liệu sổ cũ ${batchKey} (${importedResults.length} hợp đồng, ${totalOpeningDepositVnd.toLocaleString('vi-VN')} đ cọc đầu kỳ)`,
+              metadata: {
+                clientIp,
+                batchKey,
+                importedCount: importedResults.length,
+                totalOpeningDepositVnd,
+                totalRoomsOccupied,
+                tenantsCreated,
+                contractsCreated,
+              },
+            },
+          });
+
+          return {
+            status: 200,
+            body: {
+              ok: true,
+              batchKey,
+              importedCount: importedResults.length,
+              summary: {
+                totalOpeningDepositVnd,
+                totalRoomsOccupied,
+                tenantsCreated,
+                contractsCreated,
+                financialPolicy: 'ZERO_CURRENT_PERIOD_CASH_IN_PRESERVED',
+                reconciliationNotes: 'Khoản cọc lịch sử được chuyển thành nghĩa vụ HELD. Không phát sinh dòng tiền thu mới (CASH_IN) vào sổ cái hiện tại.',
+              },
+              results: importedResults,
+            },
+          };
+        });
+      }
+    );
+  }
+
+  if (method === 'GET' && pathname === '/api/v1/console/v2/occupancy') {
+    const { authorizedBuildings, selectedBuildingIds, forbiddenRequestedIds } =
+      await resolveScopedBuildings(prisma, actor, buildingsParam, false);
+
+    if (forbiddenRequestedIds.length > 0 && selectedBuildingIds.length === 0) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'FORBIDDEN_BUILDING_SCOPE',
+        message: 'Không có quyền truy cập tòa nhà ngoài phạm vi phân công.',
+      });
+    }
+
+    const bldIds = selectedBuildingIds;
+
+    const rooms = await prisma.consoleRoom.findMany({
+      where: { orgId: actor.orgId, buildingId: { in: bldIds } },
+      include: {
+        building: true,
+        contracts: {
+          where: { status: 'ACTIVE' },
+          include: { tenant: true, deposits: true },
+        },
+        occupants: {
+          where: { isActive: true },
+        },
+      },
+      orderBy: [{ building: { code: 'asc' } }, { displayOrder: 'asc' }, { code: 'asc' }],
+    });
+
+    let totalRooms = rooms.length;
+    let occupiedRooms = 0;
+    let availableRooms = 0;
+    let reservedRooms = 0;
+    let maintenanceRooms = 0;
+    let totalOccupants = 0;
+
+    const roomDetails = rooms.map((r) => {
+      const activeContract = r.contracts[0] || null;
+      const activeOccupants = r.occupants || [];
+      totalOccupants += activeOccupants.length;
+
+      if (r.occupancyStatus === 'OCCUPIED') occupiedRooms++;
+      else if (r.occupancyStatus === 'AVAILABLE') availableRooms++;
+      else if (r.occupancyStatus === 'RESERVED') reservedRooms++;
+      else if (r.occupancyStatus === 'MAINTENANCE') maintenanceRooms++;
+
+      const isConsistent =
+        r.occupancyStatus === 'OCCUPIED'
+          ? activeContract !== null && activeOccupants.length > 0
+          : activeContract === null;
+
+      return {
+        roomId: r.id,
+        roomCode: r.code,
+        roomTitle: r.title,
+        buildingId: r.buildingId,
+        buildingName: r.building.name,
+        buildingCode: r.building.code,
+        rentalModel: r.rentalModel,
+        occupancyStatus: r.occupancyStatus,
+        maxOccupants: r.maxOccupants,
+        totalBeds: r.totalBeds,
+        occupantsCount: activeOccupants.length,
+        isConsistent,
+        primaryTenant: activeContract?.tenant
+          ? {
+              id: activeContract.tenant.id,
+              fullName: activeContract.tenant.fullName,
+              phone: activeContract.tenant.phone,
+              idNumber: activeContract.tenant.idNumber,
+            }
+          : null,
+        activeContract: activeContract
+          ? {
+              id: activeContract.id,
+              contractCode: activeContract.contractCode,
+              startDate: activeContract.startDate,
+              endDate: activeContract.endDate,
+              monthlyRentVnd: toSafeVndNumber(activeContract.monthlyRentVnd),
+              depositVnd: toSafeVndNumber(activeContract.depositVnd),
+              status: activeContract.status,
+              notes: activeContract.notes,
+            }
+          : null,
+        occupants: activeOccupants.map((occ) => ({
+          id: occ.id,
+          fullName: occ.fullName,
+          phone: occ.phone,
+          relationToPrimary: occ.relationToPrimary,
+          residenceRegStatus: occ.residenceRegStatus,
+          isActive: occ.isActive,
+        })),
+      };
+    });
+
+    const occupancyRatePercent =
+      totalRooms > 0 ? Math.round((occupiedRooms / totalRooms) * 1000) / 10 : 0;
+
+    return sendJson(res, 200, {
+      ok: true,
+      summary: {
+        totalRooms,
+        occupiedRooms,
+        availableRooms,
+        reservedRooms,
+        maintenanceRooms,
+        occupancyRatePercent,
+        totalOccupants,
+      },
+      rooms: roomDetails,
+    });
+  }
+
   // ===========================================================================
   // 7. OPERATIONAL MODULE DATA & RECORD CREATION (/api/v1/console/v2/module-data)
   // ===========================================================================
@@ -3804,6 +4391,7 @@ export async function handleConsoleV2Api(
             waterBillingMethod: c.waterBillingMethod,
             waterRateVnd: c.waterRateVnd,
             status: c.status,
+            notes: c.notes,
             createdAt: c.createdAt.toISOString(),
           };
         }),

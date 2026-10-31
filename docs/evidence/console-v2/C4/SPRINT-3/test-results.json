@@ -1,0 +1,182 @@
+{
+  "taskId": "C4-SPRINT-3-REMEDIATION",
+  "generatedAt": "2026-10-31T15:48:45.841Z",
+  "baseCommitSha": "0fbe9bcbe529b6f169bceba317941222d557a414",
+  "gateStatus": "LOCAL_GATE_PASSED",
+  "backendChecks": {
+    "import01WizardValidation": {
+      "pass": true,
+      "subChecks": [
+        {
+          "name": "previewResolvesRoomsAndCalculatesLiabilities",
+          "pass": true,
+          "details": {
+            "statusCode": 200,
+            "totalRows": 2,
+            "validRows": 2,
+            "totalOpeningDepositVnd": 10200000
+          }
+        },
+        {
+          "name": "validationRejectsInvalidPhoneAndInvertedDates",
+          "pass": true,
+          "details": {
+            "status": "INVALID",
+            "errors": [
+              "Số điện thoại không hợp lệ (yêu cầu số di động Việt Nam 10 chữ số).",
+              "Ngày bắt đầu hợp đồng phải nhỏ hơn hoặc bằng ngày kết thúc."
+            ]
+          }
+        }
+      ]
+    },
+    "import02OpeningBalancesDryRun": {
+      "pass": true,
+      "subChecks": [
+        {
+          "name": "commitCreatesContractsAndReturnsSummary",
+          "pass": true,
+          "details": {
+            "totalOpeningDepositVnd": 10500000,
+            "totalRoomsOccupied": 2,
+            "tenantsCreated": 0,
+            "contractsCreated": 2,
+            "financialPolicy": "ZERO_CURRENT_PERIOD_CASH_IN_PRESERVED",
+            "reconciliationNotes": "Khoản cọc lịch sử được chuyển thành nghĩa vụ HELD. Không phát sinh dòng tiền thu mới (CASH_IN) vào sổ cái hiện tại."
+          }
+        },
+        {
+          "name": "financialIntegrityZeroCashInOpeningBalanceLiability",
+          "pass": true,
+          "details": {
+            "depositsCount": 2,
+            "allDepositsHeldAndPaid": true,
+            "zeroCashInGenerated": true,
+            "ledgerDelta": 0,
+            "paymentTxDelta": 0
+          }
+        },
+        {
+          "name": "historicalBillingGuardZeroPastInvoices",
+          "pass": true,
+          "details": {
+            "invoicesCount": 0
+          }
+        },
+        {
+          "name": "idempotencyAndDuplicatePreventionGuard",
+          "pass": true,
+          "details": {
+            "replayStatus": 200,
+            "isReplay": true,
+            "contractsCountNow": 2,
+            "tenantsCountNow": 1
+          }
+        },
+        {
+          "name": "auditTrailBatchRecorded",
+          "pass": true,
+          "details": {
+            "action": "IMPORT_HISTORICAL_TENANT_BATCH",
+            "summary": "Hoàn tất nhập lô dữ liệu sổ cũ S3-COMMIT-BATCH-1793461730483 (2 hợp đồng, 10.500.000 đ cọc đầu kỳ)"
+          }
+        }
+      ]
+    },
+    "occ01SourceOfTruth": {
+      "pass": true,
+      "subChecks": [
+        {
+          "name": "importedRoomsTransitionToOccupied",
+          "pass": true,
+          "details": {
+            "room301Status": "OCCUPIED",
+            "room302Status": "OCCUPIED"
+          }
+        },
+        {
+          "name": "primaryTenantAndOccupantsLinked",
+          "pass": true,
+          "details": {
+            "room301Tenant": "Trần Đình Trọng",
+            "room302Tenant": "Hoàng Kim Chi",
+            "room302OccupantsCount": 2
+          }
+        },
+        {
+          "name": "occupancySourceOfTruthConsistency100Percent",
+          "pass": true,
+          "details": {
+            "totalRooms": 5,
+            "occupiedRooms": 2,
+            "availableRooms": 3,
+            "allConsistent": true
+          }
+        }
+      ]
+    }
+  },
+  "screenshots": [
+    {
+      "filename": "c4_s3_desktop_import_step1_input.png",
+      "screenName": "Legacy Import Wizard Step 1: Input Data",
+      "viewport": "1440x900",
+      "scenario": "Giao diện nhập liệu danh sách khách thuê sổ cũ với phòng, giá thuê, cọc đầu kỳ và ngày paidThrough",
+      "sizeBytes": 490985,
+      "sha256": "d353b5a24a3a4bd9ecfef062092ae2424ce051b2a051c31aa04e3dc8eac63ae9",
+      "relativePath": "screenshots/c4_s3_desktop_import_step1_input.png",
+      "capturedAt": "2026-10-31T15:48:55.338Z"
+    },
+    {
+      "filename": "c4_s3_desktop_import_step2_dryrun_preview.png",
+      "screenName": "Legacy Import Wizard Step 2: Dry-run Preview & Financial Reconciliation",
+      "viewport": "1440x900",
+      "scenario": "Bảng đối soát số dư đầu kỳ (Opening Liability HELD, 0 đ CASH_IN, paidThrough) và kiểm tra tính hợp lệ",
+      "sizeBytes": 602100,
+      "sha256": "6494e753e89a7d8b4b200649d1dc8cd14b686fb26a187bb4e84afa6db308a95e",
+      "relativePath": "screenshots/c4_s3_desktop_import_step2_dryrun_preview.png",
+      "capturedAt": "2026-10-31T15:48:57.855Z"
+    },
+    {
+      "filename": "c4_s3_desktop_import_step3_committed_report.png",
+      "screenName": "Legacy Import Wizard Step 3: Committed Batch Summary",
+      "viewport": "1440x900",
+      "scenario": "Báo cáo hoàn tất chuyển đổi lô dữ liệu với mã tham chiếu batchKey và số lượng hợp đồng/phòng OCCUPIED",
+      "sizeBytes": 546586,
+      "sha256": "6524b941f6ea1a0efa6bead175e33dea66835eda3d69ad5b4ae707cf37bab997",
+      "relativePath": "screenshots/c4_s3_desktop_import_step3_committed_report.png",
+      "capturedAt": "2026-10-31T15:49:00.366Z"
+    },
+    {
+      "filename": "c4_s3_desktop_occupancy_source_of_truth.png",
+      "screenName": "Occupancy Source of Truth Workspace",
+      "viewport": "1440x900",
+      "scenario": "Bảng theo dõi lấp đầy phòng với trạng thái OCCUPIED/AVAILABLE, hợp đồng, người ở và huy hiệu Khớp 100%",
+      "sizeBytes": 455182,
+      "sha256": "7662dd36af4e90c31e23dc0ba3e054788b6e256b0adfaed6c4817c92c1281cfe",
+      "relativePath": "screenshots/c4_s3_desktop_occupancy_source_of_truth.png",
+      "capturedAt": "2026-10-31T15:49:03.062Z"
+    },
+    {
+      "filename": "c4_s3_desktop_contracts_workspace_imported.png",
+      "screenName": "Contracts Workspace with Imported Records",
+      "viewport": "1440x900",
+      "scenario": "Danh sách hợp đồng thuê thể hiện hợp đồng mới chuyển đổi có ghi chú paidThrough và tiền cọc HELD",
+      "sizeBytes": 486864,
+      "sha256": "00198507532b60dfe3333d11bbb8c752192346b1536d05076ff7ebfd0d821ec4",
+      "relativePath": "screenshots/c4_s3_desktop_contracts_workspace_imported.png",
+      "capturedAt": "2026-10-31T15:49:04.974Z"
+    },
+    {
+      "filename": "c4_s3_mobile_import_wizard.png",
+      "screenName": "Mobile Import Wizard Modal",
+      "viewport": "390x844",
+      "scenario": "Giao diện di động 390x844 hiển thị wizard chuyển đổi dữ liệu sổ cũ responsive với điều hướng cảm ứng",
+      "sizeBytes": 172341,
+      "sha256": "4bb8fb5fedd014bf70ca0de8695c3ac7cba66fdbd51fdb7c020c1f23f972a6b2",
+      "relativePath": "screenshots/c4_s3_mobile_import_wizard.png",
+      "capturedAt": "2026-10-31T15:49:07.021Z"
+    }
+  ],
+  "errors": []
+}

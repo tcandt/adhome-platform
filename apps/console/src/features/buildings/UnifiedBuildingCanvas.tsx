@@ -35,6 +35,7 @@ import { EditRoomModal } from './modals/EditRoomModal';
 import { SafeDeleteModal } from './modals/SafeDeleteModal';
 import { RoomProfileModal } from './modals/RoomProfileModal';
 import { ContractCreationWizardModal } from '../modules/modals/ContractCreationWizardModal';
+import { LegacyImportWizardModal } from '../modules/modals/LegacyImportWizardModal';
 
 function renderOccupancyBadge(status: OccupancyStatus) {
   switch (status) {
@@ -125,6 +126,7 @@ export const UnifiedBuildingCanvas: React.FC = () => {
     roomId: string;
     reservationId?: string;
   } | null>(null);
+  const [legacyImportTargetRoomId, setLegacyImportTargetRoomId] = useState<string | null>(null);
 
   const selectedRoom = useMemo(
     () => rooms.find((r) => r.id === selectedRoomId) || null,
@@ -794,6 +796,10 @@ export const UnifiedBuildingCanvas: React.FC = () => {
           setSelectedRoomId(null);
           setEditingRoom(rm);
         }}
+        onOpenLegacyImport={(roomId) => {
+          setSelectedRoomId(null);
+          setLegacyImportTargetRoomId(roomId);
+        }}
       />
 
       {/* 6-STEP BOOKING & CONTRACT CREATION WIZARD */}
@@ -805,6 +811,18 @@ export const UnifiedBuildingCanvas: React.FC = () => {
           onClose={() => setWizardTarget(null)}
           onSuccess={async () => {
             setWizardTarget(null);
+          }}
+        />
+      )}
+
+      {/* LEGACY DATA IMPORT WIZARD (C4-IMPORT-01/02) */}
+      {legacyImportTargetRoomId && (
+        <LegacyImportWizardModal
+          isOpen={Boolean(legacyImportTargetRoomId)}
+          preselectedRoomId={legacyImportTargetRoomId}
+          onClose={() => setLegacyImportTargetRoomId(null)}
+          onSuccess={async () => {
+            setLegacyImportTargetRoomId(null);
           }}
         />
       )}

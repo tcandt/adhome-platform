@@ -160,20 +160,6 @@ export function NavigationProvider({
     return () => window.removeEventListener('popstate', onLocationChange);
   }, []);
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      (window as any).__adhome_setActiveModule = (mod: NavModuleId) => {
-        setActiveModuleState(mod);
-        sessionStorage.setItem('adhome_v2_active_module', mod);
-      };
-    }
-    return () => {
-      if (typeof window !== 'undefined') {
-        delete (window as any).__adhome_setActiveModule;
-      }
-    };
-  });
-
   const setActiveModule = (module: NavModuleId) => {
     const targetConfig = NAV_ITEMS_CONFIG.find((item) => item.id === module);
     if (
@@ -198,6 +184,19 @@ export function NavigationProvider({
     }
     void refreshSession();
   };
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).__adhome_setActiveModule = (mod: NavModuleId) => {
+        setActiveModule(mod);
+      };
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        delete (window as any).__adhome_setActiveModule;
+      }
+    };
+  });
 
   const setBuildingsSubTab = (tab: BuildingsSubTabId) => {
     setBuildingsSubTabState(tab);

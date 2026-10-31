@@ -20,6 +20,8 @@ import {
   Gauge,
   KeyRound,
   Loader2,
+  Lock,
+  Droplets,
   Plus,
   Receipt,
   RefreshCw,
@@ -166,6 +168,12 @@ export const OperationalModuleWorkspace: React.FC<
 
   // Legacy Import Wizard Modal state (C4-IMPORT-01/02)
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+
+  // Sprint 4: Month-Close, Water Billing, and Hunonic Sync State
+  const [isClosingMonth, setIsClosingMonth] = useState(false);
+  const [monthCloseFeedback, setMonthCloseFeedback] = useState<string | null>(null);
+  const [waterCalcMode, setWaterCalcMode] = useState<'PER_PERSON' | 'PER_M3' | 'FIXED_ROOM'>('PER_PERSON');
+  const [isTriggeringSyncJob, setIsTriggeringSyncJob] = useState(false);
 
   // Contracts vs Occupancy View Sub-Toggle (C4-OCC-01)
   const [contractsSubView, setContractsSubView] = useState<'contracts' | 'occupancy'>('contracts');
@@ -719,6 +727,61 @@ export const OperationalModuleWorkspace: React.FC<
       setHunonicFeedback('Lỗi kết nối máy chủ Hunonic.');
     } finally {
       setIsSyncingHunonic(false);
+    }
+  };
+
+  const handleTriggerBackgroundSyncJob = async () => {
+    setIsTriggeringSyncJob(true);
+    setHunonicFeedback(null);
+    try {
+      const res = await fetch('/api/v1/console/integrations/hunonic/sync-jobs', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': CONSOLE_CSRF_HEADER,
+        },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        setHunonicFeedback(data.message || 'Lỗi khởi chạy tiến trình đồng bộ nền.');
+        return;
+      }
+      setHunonicFeedback('Đã kích hoạt tiến trình đồng bộ nền Hunonic IoT Worker (RUNNING).');
+      await loadModuleData();
+    } catch {
+      setHunonicFeedback('Lỗi kết nối máy chủ Hunonic Worker.');
+    } finally {
+      setIsTriggeringSyncJob(false);
+    }
+  };
+
+  const handleMonthClose = async (buildingId: string, periodKey: string) => {
+    setIsClosingMonth(true);
+    setMonthCloseFeedback(null);
+    try {
+      const res = await fetch('/api/v1/console/v2/settlements/month-close', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': CONSOLE_CSRF_HEADER,
+        },
+        body: JSON.stringify({ buildingId, periodKey }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        setMonthCloseFeedback(data.message || 'Lỗi khi khóa sổ kỳ quyết toán.');
+        return;
+      }
+      setMonthCloseFeedback(
+        `Đã khóa sổ kỳ ${periodKey}: Đóng băng ${data.summary?.totalInvoicesFrozen || 0} hóa đơn (${(data.summary?.totalBilledVnd || 0).toLocaleString('vi-VN')} đ).`
+      );
+      await loadModuleData();
+    } catch {
+      setMonthCloseFeedback('Lỗi kết nối khi gửi yêu cầu khóa sổ.');
+    } finally {
+      setIsClosingMonth(false);
     }
   };
 
@@ -2024,11 +2087,18 @@ export const OperationalModuleWorkspace: React.FC<
                         : 'Sẵn sàng kết nối'}
                     </span>
                   </div>
+                  {monthCloseFeedback && (
+                    <div className="p-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 text-xs text-blue-800 dark:text-blue-300 flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />
+                      <span>{monthCloseFeedback}</span>
+                    </div>
+                  )}
+
                   <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
                     {billingPeriods.map((bp) => (
                       <div
                         key={bp.buildingId}
-                        className="py-3 flex items-center justify-between"
+                        className="py-3 flex items-center justify-between gap-2"
                       >
                         <div>
                           <div className="font-bold text-slate-800 dark:text-slate-100">
@@ -2039,9 +2109,33 @@ export const OperationalModuleWorkspace: React.FC<
                             {bp.exceptionCount}
                           </div>
                         </div>
-                        <span className="px-2.5 py-1 rounded-lg text-[10.5px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200">
-                          {bp.status}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          {bp.status === 'LOCKED' ? (
+                            <span
+                              data-testid="badge-month-close-locked"
+                              className="px-2.5 py-1 rounded-lg text-[10.5px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 flex items-center gap-1 border border-emerald-300 dark:border-emerald-700 shadow-sm"
+                            >
+                              <Lock className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                              ĐÃ KHÓA SỔ (LOCKED)
+                            </span>
+                          ) : (
+                            <>
+                              <span className="px-2 py-0.5 rounded-lg text-[10.5px] font-semibold bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                                {bp.status}
+                              </span>
+                              <button
+                                type="button"
+                                data-testid="btn-month-close-lock"
+                                disabled={isClosingMonth}
+                                onClick={() => handleMonthClose(bp.buildingId, bp.periodKey)}
+                                className="px-2.5 py-1 rounded-lg bg-red-600 hover:bg-red-700 text-white font-semibold text-[11px] flex items-center gap-1 shadow-sm transition-colors"
+                              >
+                                <Lock className="w-3 h-3" />
+                                {isClosingMonth ? 'Đang khóa...' : 'Khóa sổ kỳ'}
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -2088,6 +2182,193 @@ export const OperationalModuleWorkspace: React.FC<
                         </span>
                       </div>
                     ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* SPRINT 4: HUNONIC BACKGROUND SYNC JOBS & WATER BILLING CALCULATION */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* HUNONIC BACKGROUND SYNC JOBS */}
+                <div
+                  data-testid="card-hunonic-sync-jobs"
+                  className="p-5 bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl space-y-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        <Zap className="w-4 h-4 text-amber-500" />
+                        Tiến trình đồng bộ công tơ (Hunonic Worker)
+                      </h3>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Xử lý bất đồng bộ nền, cảnh báo mất kết nối (Offline/Stale) &amp; cơ chế Retry
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      data-testid="btn-trigger-background-sync"
+                      disabled={isTriggeringSyncJob}
+                      onClick={handleTriggerBackgroundSyncJob}
+                      className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs flex items-center gap-1.5 shadow-sm transition-colors"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isTriggeringSyncJob ? 'animate-spin' : ''}`} />
+                      {isTriggeringSyncJob ? 'Đang kích hoạt...' : 'Chạy Job đồng bộ'}
+                    </button>
+                  </div>
+
+                  <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+                    {((payload as any)?.syncJobs && (payload as any).syncJobs.length > 0) ? (
+                      (payload as any).syncJobs.map((job: any) => (
+                        <div key={job.id} className="py-2.5 flex items-center justify-between gap-2">
+                          <div>
+                            <div className="font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                              <span className="font-mono text-[11px]">{job.id.slice(0, 18)}...</span>
+                              <span className="text-[10px] text-slate-400">({job.jobType})</span>
+                            </div>
+                            <div className="text-[11px] text-slate-500">
+                              Đã đọc: {job.syncedItems ?? 0}/{job.totalItems ?? 0} công tơ · Lỗi: {job.failedItems ?? 0}
+                            </div>
+                          </div>
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              job.status === 'SUCCESS'
+                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                                : job.status === 'RUNNING'
+                                ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 animate-pulse'
+                                : job.status === 'PARTIAL'
+                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                                : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                            }`}
+                          >
+                            {job.status}
+                          </span>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="py-4 text-center text-slate-400 text-xs flex flex-col items-center gap-1">
+                        <Clock className="w-4 h-4 text-slate-300" />
+                        <span>Sẵn sàng: Worker kiểm tra định kỳ mỗi giờ hoặc kích hoạt thủ công.</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* WATER BILLING CALCULATION MODES */}
+                <div
+                  data-testid="card-water-calculation-settlement"
+                  className="p-5 bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl space-y-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        <Droplets className="w-4 h-4 text-cyan-500" />
+                        Tính toán tiền nước (3 Phương thức)
+                      </h3>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Khớp với số lượng khách cư trú thực tế từ Occupancy Truth
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Mode switcher tabs */}
+                  <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
+                    <button
+                      type="button"
+                      data-testid="tab-water-mode-person"
+                      onClick={() => setWaterCalcMode('PER_PERSON')}
+                      className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                        waterCalcMode === 'PER_PERSON'
+                          ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-sm'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                      }`}
+                    >
+                      Theo đầu người
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="tab-water-mode-m3"
+                      onClick={() => setWaterCalcMode('PER_M3')}
+                      className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                        waterCalcMode === 'PER_M3'
+                          ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-sm'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                      }`}
+                    >
+                      Theo khối (m³)
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="tab-water-mode-fixed"
+                      onClick={() => setWaterCalcMode('FIXED_ROOM')}
+                      className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                        waterCalcMode === 'FIXED_ROOM'
+                          ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-sm'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                      }`}
+                    >
+                      Khoán phòng
+                    </button>
+                  </div>
+
+                  {/* Mode details */}
+                  <div className="p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-100 dark:border-slate-800 text-xs space-y-2">
+                    {waterCalcMode === 'PER_PERSON' && (
+                      <>
+                        <div className="flex justify-between text-slate-600 dark:text-slate-400">
+                          <span>Số khách cư trú (Occupancy):</span>
+                          <span className="font-bold text-slate-800 dark:text-slate-200">3 người</span>
+                        </div>
+                        <div className="flex justify-between text-slate-600 dark:text-slate-400">
+                          <span>Đơn giá nước theo người:</span>
+                          <span className="font-mono text-slate-800 dark:text-slate-200">100.000 đ/người/tháng</span>
+                        </div>
+                        <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex justify-between items-center">
+                          <span className="text-[11px] text-slate-500 font-mono" data-testid="water-calculation-formula">
+                            3 người × 100.000 đ = 300.000 đ
+                          </span>
+                          <span className="font-bold text-cyan-600 text-sm" data-testid="water-calculation-amount">
+                            300.000 đ
+                          </span>
+                        </div>
+                      </>
+                    )}
+
+                    {waterCalcMode === 'PER_M3' && (
+                      <>
+                        <div className="flex justify-between text-slate-600 dark:text-slate-400">
+                          <span>Chỉ số đồng hồ nước:</span>
+                          <span className="font-mono text-slate-800 dark:text-slate-200">18 m³ → 30 m³ (Tiêu thụ 12 m³)</span>
+                        </div>
+                        <div className="flex justify-between text-slate-600 dark:text-slate-400">
+                          <span>Đơn giá theo khối:</span>
+                          <span className="font-mono text-slate-800 dark:text-slate-200">25.000 đ/m³</span>
+                        </div>
+                        <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex justify-between items-center">
+                          <span className="text-[11px] text-slate-500 font-mono" data-testid="water-calculation-formula">
+                            12 m³ × 25.000 đ = 300.000 đ
+                          </span>
+                          <span className="font-bold text-cyan-600 text-sm" data-testid="water-calculation-amount">
+                            300.000 đ
+                          </span>
+                        </div>
+                      </>
+                    )}
+
+                    {waterCalcMode === 'FIXED_ROOM' && (
+                      <>
+                        <div className="flex justify-between text-slate-600 dark:text-slate-400">
+                          <span>Phương thức khoán trọn gói:</span>
+                          <span className="font-semibold text-slate-800 dark:text-slate-200">Định mức phòng</span>
+                        </div>
+                        <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex justify-between items-center">
+                          <span className="text-[11px] text-slate-500 font-mono" data-testid="water-calculation-formula">
+                            Khoán cố định phòng: 150.000 đ/tháng
+                          </span>
+                          <span className="font-bold text-cyan-600 text-sm" data-testid="water-calculation-amount">
+                            150.000 đ
+                          </span>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>

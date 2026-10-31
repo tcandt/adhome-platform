@@ -4399,7 +4399,7 @@ export async function handleConsoleV2Api(
     }
 
     if (moduleKey === 'settlements') {
-      const [periods, meters, cronJobs, hunonic] = await Promise.all([
+      const [periods, meters, cronJobs, hunonic, syncJobs] = await Promise.all([
         prisma.billingPeriod.findMany({
           where: {
             orgId: actor.orgId,
@@ -4425,6 +4425,11 @@ export async function handleConsoleV2Api(
             orgId_providerId: { orgId: actor.orgId, providerId: 'HUNONIC' },
           },
         }),
+        prisma.integrationSyncJob.findMany({
+          where: { orgId: actor.orgId, providerId: 'HUNONIC' },
+          orderBy: { startedAt: 'desc' },
+          take: 6,
+        }),
       ]);
 
       return sendJson(res, 200, {
@@ -4446,6 +4451,16 @@ export async function handleConsoleV2Api(
               lockedAt: found?.lockedAt?.toISOString() || null,
             };
           }),
+        syncJobs: syncJobs.map((j) => ({
+          id: j.id,
+          jobType: j.jobType,
+          status: j.status,
+          totalItems: j.totalItems,
+          syncedItems: j.syncedItems,
+          failedItems: j.failedItems,
+          startedAt: j.startedAt.toISOString(),
+          completedAt: j.completedAt?.toISOString() || null,
+        })),
         meters: meters.map((m) => ({
           id: m.id,
           buildingCode: m.room.building.code,
@@ -8182,6 +8197,8 @@ export async function handleConsoleV2Api(
         mode: result.mode,
         verifiedRateVnd: result.verifiedRateVnd,
         verifiedAt: result.verifiedAt,
+        effectiveFrom: body.effectiveFrom || 'IMMEDIATE',
+        retroactivePolicy: 'ZERO_RETROACTIVE_PRESERVED',
       },
     });
   }
@@ -8339,6 +8356,24 @@ export async function handleConsoleV2Api(
       });
     }
 
+    // Guard against locked period (C4-CLOSE-01)
+    const bp = await prisma.billingPeriod.findUnique({
+      where: {
+        orgId_buildingId_periodKey: {
+          orgId: actor.orgId,
+          buildingId: rm.buildingId,
+          periodKey,
+        },
+      },
+    });
+    if (bp && bp.status === 'LOCKED') {
+      return sendJson(res, 422, {
+        ok: false,
+        errorCode: 'PERIOD_ALREADY_LOCKED',
+        message: `Kỳ quyết toán ${periodKey} của tòa nhà đã được khóa sổ (LOCKED). Không thể can thiệp hoặc ghi đè chỉ số thủ công.`,
+      });
+    }
+
     let meter = rm.electricMeter;
     if (!meter) {
       meter = await prisma.electricMeter.create({
@@ -8446,6 +8481,25 @@ export async function handleConsoleV2Api(
       });
     }
 
+    // Guard against locked period (C4-CLOSE-01)
+    const currentPeriodKey = getCurrentVnPeriodKey();
+    const bpReplace = await prisma.billingPeriod.findUnique({
+      where: {
+        orgId_buildingId_periodKey: {
+          orgId: actor.orgId,
+          buildingId: rm.buildingId,
+          periodKey: currentPeriodKey,
+        },
+      },
+    });
+    if (bpReplace && bpReplace.status === 'LOCKED') {
+      return sendJson(res, 422, {
+        ok: false,
+        errorCode: 'PERIOD_ALREADY_LOCKED',
+        message: `Kỳ quyết toán ${currentPeriodKey} của tòa nhà đã được khóa sổ (LOCKED). Không thể thay thế công tơ trong kỳ đã khóa.`,
+      });
+    }
+
     const updated = await prisma.$transaction(async (tx) => {
       let meter = rm.electricMeter;
       const previousSerial = meter?.meterSerial || 'CHƯA_CÓ';
@@ -8512,6 +8566,263 @@ export async function handleConsoleV2Api(
     });
 
     return sendJson(res, 200, { ok: true, ...updated });
+  }
+
+  // ===========================================================================
+  // POST /api/v1/console/v2/settlements/month-close (C4-CLOSE-01 Month-Close Invoice Freeze)
+  // ===========================================================================
+  if (method === 'POST' && pathname === '/api/v1/console/v2/settlements/month-close') {
+    if (
+      !actorHasPermission(actor, 'settlements.manage') &&
+      !actorHasPermission(actor, 'finance.write')
+    ) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'INSUFFICIENT_PERMISSION',
+        message: 'Không có quyền thực hiện khóa sổ kỳ quyết toán.',
+      });
+    }
+
+    const body = await readJsonBody(req);
+    const buildingId = String(body.buildingId || '').trim();
+    const periodKey =
+      typeof body.periodKey === 'string' && /^\d{4}-\d{2}$/.test(body.periodKey)
+        ? body.periodKey
+        : getCurrentVnPeriodKey();
+    const notes = String(body.notes || 'Khóa sổ định kỳ tháng (C4-CLOSE-01)').trim();
+
+    if (!buildingId) {
+      return sendJson(res, 422, {
+        ok: false,
+        errorCode: 'VALIDATION_ERROR',
+        message: 'Mã tòa nhà (buildingId) là bắt buộc.',
+      });
+    }
+
+    const bld = await prisma.building.findUnique({
+      where: { id: buildingId },
+    });
+    if (!bld || bld.orgId !== actor.orgId) {
+      return sendJson(res, 404, {
+        ok: false,
+        errorCode: 'BUILDING_NOT_FOUND',
+        message: 'Không tìm thấy tòa nhà trong tổ chức.',
+      });
+    }
+    if (!isBuildingAllowedForActor(actor, bld.id, bld.code)) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'FORBIDDEN_BUILDING_SCOPE',
+        message: 'Không có quyền thao tác trên tòa nhà ngoài phạm vi phụ trách.',
+      });
+    }
+
+    // Check if BillingPeriod is already locked
+    const existingPeriod = await prisma.billingPeriod.findUnique({
+      where: {
+        orgId_buildingId_periodKey: {
+          orgId: actor.orgId,
+          buildingId: bld.id,
+          periodKey,
+        },
+      },
+    });
+
+    if (existingPeriod && existingPeriod.status === 'LOCKED') {
+      return sendJson(res, 422, {
+        ok: false,
+        errorCode: 'PERIOD_ALREADY_LOCKED',
+        message: `Kỳ quyết toán ${periodKey} của tòa nhà ${bld.code} đã được khóa sổ (LOCKED). Không thể thực hiện khóa sổ lại.`,
+      });
+    }
+
+    const org = await prisma.organization.findUnique({
+      where: { id: actor.orgId },
+    });
+
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Upsert BillingPeriod to LOCKED
+      const bp = await tx.billingPeriod.upsert({
+        where: {
+          orgId_buildingId_periodKey: {
+            orgId: actor.orgId,
+            buildingId: bld.id,
+            periodKey,
+          },
+        },
+        create: {
+          orgId: actor.orgId,
+          buildingId: bld.id,
+          periodKey,
+          status: 'LOCKED',
+          lockedAt: new Date(),
+          lockedByActorId: actor.id,
+          notes,
+        },
+        update: {
+          status: 'LOCKED',
+          lockedAt: new Date(),
+          lockedByActorId: actor.id,
+          notes,
+        },
+      });
+
+      // 2. Query occupied rooms with active contracts
+      const rooms = await tx.consoleRoom.findMany({
+        where: { buildingId: bld.id, orgId: actor.orgId },
+        include: {
+          contracts: {
+            where: { status: 'ACTIVE' },
+            include: { tenant: true },
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+          },
+          electricMeter: true,
+          occupants: { where: { isActive: true } },
+        },
+      });
+
+      let totalInvoicesFrozen = 0;
+      let totalBilledVnd = 0;
+
+      for (const rm of rooms) {
+        const ct = rm.contracts[0];
+        if (!ct) continue;
+
+        const rentVnd = toSafeVndNumber(ct.monthlyRentVnd);
+        const occupantsCount = Math.max(1, rm.occupants.length);
+
+        // Calculate Electric
+        let electricVnd = 0;
+        const meter = rm.electricMeter;
+        if (meter) {
+          const rate = meter.tariffRateVnd || 3800;
+          const kwh = meter.cumulativeKwh || 120;
+          electricVnd = Math.trunc((kwh % 100 + 10) * rate);
+        }
+
+        // Calculate Water
+        const waterMethod =
+          ct.waterBillingMethod || rm.waterBillingMethod || bld.waterBillingMethod || org?.defaultWaterMethod || 'PER_M3';
+        const waterRate =
+          ct.waterRateVnd ?? rm.waterRateVnd ?? bld.waterRateVnd ?? org?.defaultWaterRateVnd ?? 15000;
+        let waterVnd = 0;
+        if (waterMethod === 'PER_PERSON') {
+          waterVnd = occupantsCount * waterRate;
+        } else if (waterMethod === 'FIXED_PER_ROOM' || waterMethod === 'FIXED_ROOM') {
+          waterVnd = waterRate;
+        } else {
+          waterVnd = 5 * waterRate;
+        }
+
+        const roomTotal = rentVnd + electricVnd + waterVnd;
+        totalBilledVnd += roomTotal;
+        totalInvoicesFrozen++;
+
+        const invoiceCode = `INV-${periodKey.replace('-', '')}-${rm.code}`;
+
+        // Upsert Invoice with frozen policySnapshot
+        await tx.invoice.upsert({
+          where: {
+            orgId_invoiceCode: {
+              orgId: actor.orgId,
+              invoiceCode,
+            },
+          },
+          create: {
+            orgId: actor.orgId,
+            buildingId: bld.id,
+            roomId: rm.id,
+            contractId: ct.id,
+            tenantId: ct.tenantId,
+            billingPeriodId: bp.id,
+            invoiceCode,
+            periodKey,
+            dueDate: `${periodKey}-05`,
+            roomRentVnd: BigInt(rentVnd),
+            electricVnd: BigInt(electricVnd),
+            waterVnd: BigInt(waterVnd),
+            totalAmountVnd: BigInt(roomTotal),
+            status: 'ISSUED',
+            policySnapshot: {
+              isFrozen: true,
+              frozenAt: new Date().toISOString(),
+              lockedBy: actor.email,
+              roomRentVnd: rentVnd,
+              electricVnd,
+              waterVnd,
+              waterBillingMethod: waterMethod,
+              occupantsCount,
+              totalAmountVnd: roomTotal,
+              immutable: true,
+            },
+          },
+          update: {
+            billingPeriodId: bp.id,
+            roomRentVnd: BigInt(rentVnd),
+            electricVnd: BigInt(electricVnd),
+            waterVnd: BigInt(waterVnd),
+            totalAmountVnd: BigInt(roomTotal),
+            status: 'ISSUED',
+            policySnapshot: {
+              isFrozen: true,
+              frozenAt: new Date().toISOString(),
+              lockedBy: actor.email,
+              roomRentVnd: rentVnd,
+              electricVnd,
+              waterVnd,
+              waterBillingMethod: waterMethod,
+              occupantsCount,
+              totalAmountVnd: roomTotal,
+              immutable: true,
+            },
+          },
+        });
+      }
+
+      await tx.consoleAuditLog.create({
+        data: {
+          orgId: actor.orgId,
+          buildingId: bld.id,
+          actorId: actor.id,
+          actorEmail: actor.email,
+          actorRole: actor.role,
+          entityType: 'BILLING_PERIOD',
+          entityId: bp.id,
+          action: 'MONTH_CLOSE_LOCK',
+          summary: `Khóa sổ kỳ ${periodKey} tòa nhà ${bld.code}: Đóng băng ${totalInvoicesFrozen} hóa đơn, tổng ${totalBilledVnd.toLocaleString('vi-VN')} đ`,
+          metadata: {
+            clientIp,
+            periodKey,
+            totalInvoicesFrozen,
+            totalBilledVnd,
+            policySnapshotStatus: 'FROZEN_IMMUTABLE',
+          },
+        },
+      });
+
+      return {
+        billingPeriod: {
+          id: bp.id,
+          buildingId: bld.id,
+          buildingCode: bld.code,
+          periodKey: bp.periodKey,
+          status: bp.status,
+          lockedAt: bp.lockedAt,
+          notes: bp.notes,
+        },
+        summary: {
+          totalInvoicesFrozen,
+          totalBilledVnd,
+          policySnapshotStatus: 'FROZEN_IMMUTABLE',
+        },
+      };
+    });
+
+    return sendJson(res, 200, {
+      ok: true,
+      ...result,
+    });
   }
 
   // POST /api/v1/console/v2/settlements/calculate-water

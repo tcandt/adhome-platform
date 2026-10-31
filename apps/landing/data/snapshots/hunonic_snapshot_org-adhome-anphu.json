@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
   "orgId": "org-adhome-anphu",
-  "syncJobId": "sync_job_1793442139929_5ef00d3a",
-  "exportedAt": "2026-10-31T10:22:19.961Z",
+  "syncJobId": "sync_job_1793464365172_1b1d9a66",
+  "exportedAt": "2026-10-31T16:32:45.224Z",
   "status": "SUCCESS",
   "summary": {
-    "totalMeters": 14,
-    "syncedMeters": 14,
+    "totalMeters": 17,
+    "syncedMeters": 17,
     "failedMeters": 0
   },
   "meters": [
@@ -20,15 +20,15 @@
       "provider": "HUNONIC",
       "reading": {
         "basis": "CUMULATIVE",
-        "valueKwh": 7964,
+        "valueKwh": 9236,
         "instantPowerW": 299,
-        "measuredAt": "2026-10-31T10:22:19.942Z",
+        "measuredAt": "2026-10-31T16:32:45.197Z",
         "quality": "VALID"
       },
       "tariff": {
         "mode": "custom",
-        "verifiedRateVnd": 4100,
-        "verifiedAt": "2026-10-31T09:24:06.155Z"
+        "verifiedRateVnd": 4200,
+        "verifiedAt": "2026-10-31T16:32:42.015Z"
       },
       "syncStatus": "SUCCESS"
     },
@@ -42,37 +42,15 @@
       "provider": "HUNONIC",
       "reading": {
         "basis": "CUMULATIVE",
-        "valueKwh": 157,
+        "valueKwh": 163,
         "instantPowerW": 1455,
-        "measuredAt": "2026-10-31T10:22:19.945Z",
+        "measuredAt": "2026-10-31T16:32:45.201Z",
         "quality": "VALID"
       },
       "tariff": {
         "mode": "custom",
-        "verifiedRateVnd": 4100,
-        "verifiedAt": "2026-10-31T09:24:06.155Z"
-      },
-      "syncStatus": "SUCCESS"
-    },
-    {
-      "buildingId": "bld-c3r",
-      "roomId": "rm-c3r-101",
-      "roomCode": "C3R-101",
-      "meterId": "mtr-c3r-101",
-      "hunonicDeviceId": "hn-dev-c3r101",
-      "meterType": "ROOM",
-      "provider": "HUNONIC",
-      "reading": {
-        "basis": "CUMULATIVE",
-        "valueKwh": 176,
-        "instantPowerW": 1400,
-        "measuredAt": "2026-10-31T10:22:19.946Z",
-        "quality": "VALID"
-      },
-      "tariff": {
-        "mode": "custom",
-        "verifiedRateVnd": 3800,
-        "verifiedAt": "2026-10-31T10:22:19.947Z"
+        "verifiedRateVnd": 4200,
+        "verifiedAt": "2026-10-31T16:32:42.015Z"
       },
       "syncStatus": "SUCCESS"
     },
@@ -86,15 +64,15 @@
       "provider": "HUNONIC",
       "reading": {
         "basis": "CUMULATIVE",
-        "valueKwh": 10554,
+        "valueKwh": 12246,
         "instantPowerW": 720,
-        "measuredAt": "2026-10-31T10:22:19.948Z",
+        "measuredAt": "2026-10-31T16:32:45.203Z",
         "quality": "VALID"
       },
       "tariff": {
         "mode": "custom",
-        "verifiedRateVnd": 4100,
-        "verifiedAt": "2026-10-31T09:24:06.155Z"
+        "verifiedRateVnd": 4200,
+        "verifiedAt": "2026-10-31T16:32:42.015Z"
       },
       "syncStatus": "SUCCESS"
     },
@@ -108,15 +86,15 @@
       "provider": "HUNONIC",
       "reading": {
         "basis": "CUMULATIVE",
-        "valueKwh": 897,
+        "valueKwh": 1023,
         "instantPowerW": 1417,
-        "measuredAt": "2026-10-31T10:22:19.949Z",
+        "measuredAt": "2026-10-31T16:32:45.204Z",
         "quality": "VALID"
       },
       "tariff": {
         "mode": "custom",
-        "verifiedRateVnd": 4100,
-        "verifiedAt": "2026-10-31T09:24:06.155Z"
+        "verifiedRateVnd": 4200,
+        "verifiedAt": "2026-10-31T16:32:42.015Z"
       },
       "syncStatus": "SUCCESS"
     },
@@ -130,15 +108,37 @@
       "provider": "HUNONIC",
       "reading": {
         "basis": "CUMULATIVE",
-        "valueKwh": 3709,
+        "valueKwh": 4291,
         "instantPowerW": 1034,
-        "measuredAt": "2026-10-31T10:22:19.950Z",
+        "measuredAt": "2026-10-31T16:32:45.206Z",
         "quality": "VALID"
       },
       "tariff": {
         "mode": "custom",
-        "verifiedRateVnd": 4100,
-        "verifiedAt": "2026-10-31T09:24:06.155Z"
+        "verifiedRateVnd": 4200,
+        "verifiedAt": "2026-10-31T16:32:42.015Z"
+      },
+      "syncStatus": "SUCCESS"
+    },
+    {
+      "buildingId": "bld-s4b",
+      "roomId": "rm-s4b-s4402",
+      "roomCode": "S4-402",
+      "meterId": "mtr-s4b-s4402",
+      "hunonicDeviceId": "MOCK-S4-402-OFFLINE",
+      "meterType": "ROOM",
+      "provider": "HUNONIC",
+      "reading": {
+        "basis": "CUMULATIVE",
+        "valueKwh": 160,
+        "instantPowerW": 0,
+        "measuredAt": "2026-10-31T16:32:45.207Z",
+        "quality": "OFFLINE"
+      },
+      "tariff": {
+        "mode": "custom",
+        "verifiedRateVnd": 4200,
+        "verifiedAt": "2026-10-31T16:32:42.015Z"
       },
       "syncStatus": "SUCCESS"
     },
@@ -152,15 +152,15 @@
       "provider": "HUNONIC",
       "reading": {
         "basis": "CUMULATIVE",
-        "valueKwh": 5892,
+        "valueKwh": 6828,
         "instantPowerW": 140,
-        "measuredAt": "2026-10-31T10:22:19.951Z",
+        "measuredAt": "2026-10-31T16:32:45.208Z",
         "quality": "VALID"
       },
       "tariff": {
         "mode": "custom",
-        "verifiedRateVnd": 4100,
-        "verifiedAt": "2026-10-31T09:24:06.155Z"
+        "verifiedRateVnd": 4200,
+        "verifiedAt": "2026-10-31T16:32:42.015Z"
       },
       "syncStatus": "SUCCESS"
     },
@@ -174,37 +174,15 @@
       "provider": "HUNONIC",
       "reading": {
         "basis": "CUMULATIVE",
-        "valueKwh": 9999,
+        "valueKwh": 11601,
         "instantPowerW": 712,
-        "measuredAt": "2026-10-31T10:22:19.952Z",
+        "measuredAt": "2026-10-31T16:32:45.210Z",
         "quality": "VALID"
       },
       "tariff": {
         "mode": "custom",
-        "verifiedRateVnd": 4100,
-        "verifiedAt": "2026-10-31T09:24:06.155Z"
-      },
-      "syncStatus": "SUCCESS"
-    },
-    {
-      "buildingId": "bld-lk01-31",
-      "roomId": "68916599-0899-4b7d-a834-834220ca145e",
-      "roomCode": "P.31-02",
-      "meterId": "473ac43e-41ba-4ced-94c0-97952f80add1",
-      "hunonicDeviceId": "MOCK-LK01-31-P.31-02",
-      "meterType": "ROOM",
-      "provider": "HUNONIC",
-      "reading": {
-        "basis": "CUMULATIVE",
-        "valueKwh": 4042,
-        "instantPowerW": 1545,
-        "measuredAt": "2026-10-31T10:22:19.954Z",
-        "quality": "VALID"
-      },
-      "tariff": {
-        "mode": "custom",
-        "verifiedRateVnd": 4100,
-        "verifiedAt": "2026-10-31T09:24:06.155Z"
+        "verifiedRateVnd": 4200,
+        "verifiedAt": "2026-10-31T16:32:42.015Z"
       },
       "syncStatus": "SUCCESS"
     },
@@ -218,15 +196,15 @@
       "provider": "HUNONIC",
       "reading": {
         "basis": "CUMULATIVE",
-        "valueKwh": 9111,
+        "valueKwh": 10569,
         "instantPowerW": 682,
-        "measuredAt": "2026-10-31T10:22:19.955Z",
+        "measuredAt": "2026-10-31T16:32:45.211Z",
         "quality": "VALID"
       },
       "tariff": {
         "mode": "custom",
-        "verifiedRateVnd": 4100,
-        "verifiedAt": "2026-10-31T09:24:06.155Z"
+        "verifiedRateVnd": 4200,
+        "verifiedAt": "2026-10-31T16:32:42.015Z"
       },
       "syncStatus": "SUCCESS"
     },
@@ -240,15 +218,15 @@
       "provider": "HUNONIC",
       "reading": {
         "basis": "CUMULATIVE",
-        "valueKwh": 8482,
+        "valueKwh": 9838,
         "instantPowerW": 1091,
-        "measuredAt": "2026-10-31T10:22:19.956Z",
+        "measuredAt": "2026-10-31T16:32:45.212Z",
         "quality": "VALID"
       },
       "tariff": {
         "mode": "custom",
-        "verifiedRateVnd": 4100,
-        "verifiedAt": "2026-10-31T09:24:06.155Z"
+        "verifiedRateVnd": 4200,
+        "verifiedAt": "2026-10-31T16:32:42.015Z"
       },
       "syncStatus": "SUCCESS"
     },
@@ -262,15 +240,15 @@
       "provider": "HUNONIC",
       "reading": {
         "basis": "CUMULATIVE",
-        "valueKwh": 5707,
+        "valueKwh": 6613,
         "instantPowerW": 620,
-        "measuredAt": "2026-10-31T10:22:19.957Z",
+        "measuredAt": "2026-10-31T16:32:45.215Z",
         "quality": "VALID"
       },
       "tariff": {
         "mode": "custom",
-        "verifiedRateVnd": 4100,
-        "verifiedAt": "2026-10-31T09:24:06.155Z"
+        "verifiedRateVnd": 4200,
+        "verifiedAt": "2026-10-31T16:32:42.015Z"
       },
       "syncStatus": "SUCCESS"
     },
@@ -284,15 +262,15 @@
       "provider": "HUNONIC",
       "reading": {
         "basis": "CUMULATIVE",
-        "valueKwh": 12552,
+        "valueKwh": 14568,
         "instantPowerW": 949,
-        "measuredAt": "2026-10-31T10:22:19.959Z",
+        "measuredAt": "2026-10-31T16:32:45.216Z",
         "quality": "VALID"
       },
       "tariff": {
         "mode": "custom",
-        "verifiedRateVnd": 4100,
-        "verifiedAt": "2026-10-31T09:24:06.155Z"
+        "verifiedRateVnd": 4200,
+        "verifiedAt": "2026-10-31T16:32:42.015Z"
       },
       "syncStatus": "SUCCESS"
     },
@@ -306,15 +284,103 @@
       "provider": "HUNONIC",
       "reading": {
         "basis": "CUMULATIVE",
-        "valueKwh": 3191,
+        "valueKwh": 3689,
         "instantPowerW": 1024,
-        "measuredAt": "2026-10-31T10:22:19.960Z",
+        "measuredAt": "2026-10-31T16:32:45.217Z",
         "quality": "VALID"
       },
       "tariff": {
         "mode": "custom",
-        "verifiedRateVnd": 4100,
-        "verifiedAt": "2026-10-31T09:24:06.155Z"
+        "verifiedRateVnd": 4200,
+        "verifiedAt": "2026-10-31T16:32:42.015Z"
+      },
+      "syncStatus": "SUCCESS"
+    },
+    {
+      "buildingId": "bld-lk01-31",
+      "roomId": "68916599-0899-4b7d-a834-834220ca145e",
+      "roomCode": "P.31-02",
+      "meterId": "473ac43e-41ba-4ced-94c0-97952f80add1",
+      "hunonicDeviceId": "MOCK-LK01-31-P.31-02",
+      "meterType": "ROOM",
+      "provider": "HUNONIC",
+      "reading": {
+        "basis": "CUMULATIVE",
+        "valueKwh": 4678,
+        "instantPowerW": 1545,
+        "measuredAt": "2026-10-31T16:32:45.218Z",
+        "quality": "VALID"
+      },
+      "tariff": {
+        "mode": "custom",
+        "verifiedRateVnd": 4200,
+        "verifiedAt": "2026-10-31T16:32:42.015Z"
+      },
+      "syncStatus": "SUCCESS"
+    },
+    {
+      "buildingId": "bld-s4b",
+      "roomId": "rm-s4b-s4401",
+      "roomCode": "S4-401",
+      "meterId": "mtr-s4b-s4401",
+      "hunonicDeviceId": "MOCK-S4-401",
+      "meterType": "ROOM",
+      "provider": "HUNONIC",
+      "reading": {
+        "basis": "CUMULATIVE",
+        "valueKwh": 572,
+        "instantPowerW": 488,
+        "measuredAt": "2026-10-31T16:32:45.220Z",
+        "quality": "VALID"
+      },
+      "tariff": {
+        "mode": "custom",
+        "verifiedRateVnd": 4200,
+        "verifiedAt": "2026-10-31T16:32:42.015Z"
+      },
+      "syncStatus": "SUCCESS"
+    },
+    {
+      "buildingId": "bld-s4b",
+      "roomId": "rm-s4b-s4403",
+      "roomCode": "S4-403",
+      "meterId": "mtr-s4b-s4403",
+      "hunonicDeviceId": "MOCK-S4-403-STALE",
+      "meterType": "ROOM",
+      "provider": "HUNONIC",
+      "reading": {
+        "basis": "CUMULATIVE",
+        "valueKwh": 732,
+        "instantPowerW": 1415,
+        "measuredAt": "2026-10-31T06:32:45.221Z",
+        "quality": "STALE"
+      },
+      "tariff": {
+        "mode": "custom",
+        "verifiedRateVnd": 4200,
+        "verifiedAt": "2026-10-31T16:32:42.015Z"
+      },
+      "syncStatus": "SUCCESS"
+    },
+    {
+      "buildingId": "bld-s4b",
+      "roomId": "rm-s4b-s4404",
+      "roomCode": "S4-404",
+      "meterId": "mtr-s4b-s4404",
+      "hunonicDeviceId": "MOCK-S4-404",
+      "meterType": "ROOM",
+      "provider": "HUNONIC",
+      "reading": {
+        "basis": "CUMULATIVE",
+        "valueKwh": 298,
+        "instantPowerW": 1826,
+        "measuredAt": "2026-10-31T16:32:45.223Z",
+        "quality": "VALID"
+      },
+      "tariff": {
+        "mode": "custom",
+        "verifiedRateVnd": 4200,
+        "verifiedAt": "2026-10-31T16:32:42.015Z"
       },
       "syncStatus": "SUCCESS"
     }

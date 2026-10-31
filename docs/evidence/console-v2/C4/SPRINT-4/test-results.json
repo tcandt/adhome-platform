@@ -1,0 +1,252 @@
+{
+  "taskId": "C4-SPRINT-4-REMEDIATION",
+  "generatedAt": "2026-10-31T16:32:37.427Z",
+  "baseCommitSha": "02622e02802b074609ccedd1652b6f917a5759c3",
+  "gateStatus": "LOCAL_GATE_PASSED",
+  "backendChecks": {
+    "hun01SyncWorkerAndOfflineAlerts": {
+      "pass": true,
+      "subChecks": [
+        {
+          "name": "Trigger Background Sync Job returns HTTP 202 Accepted",
+          "pass": true,
+          "data": {
+            "ok": true,
+            "message": "Tiến trình đồng bộ công tơ Hunonic nền đã được khởi tạo.",
+            "status": "RUNNING"
+          }
+        },
+        {
+          "name": "Background worker completes and records job in PostgreSQL",
+          "pass": true,
+          "data": {
+            "jobId": "sync_job_1793464361377_773a8daa",
+            "status": "SUCCESS",
+            "total": 17,
+            "synced": 17
+          }
+        },
+        {
+          "name": "Offline/Stale meters trigger EXCEPTION status and increment exceptionCount",
+          "pass": true,
+          "data": {
+            "periodKey": "2026-10",
+            "status": "EXCEPTION",
+            "exceptionCount": 2
+          }
+        }
+      ]
+    },
+    "hun02TariffVersioningAndAuditLog": {
+      "pass": true,
+      "subChecks": [
+        {
+          "name": "Update Hunonic Tariff returns verified tariff and ZERO_RETROACTIVE policy",
+          "pass": true,
+          "data": {
+            "mode": "custom",
+            "verifiedRateVnd": 4200,
+            "verifiedAt": "2026-10-31T16:32:42.015Z",
+            "effectiveFrom": "2026-11-01",
+            "retroactivePolicy": "ZERO_RETROACTIVE_PRESERVED"
+          }
+        },
+        {
+          "name": "Tariff update generates UPDATE_HUNONIC_TARIFF audit log",
+          "pass": true,
+          "data": {
+            "logId": "c4dfd87f-28d7-44f0-b3db-9e4ba2058ac6",
+            "summary": "Cập nhật và xác minh biểu giá Hunonic: mode=custom, rate=4200 đ/kWh"
+          }
+        },
+        {
+          "name": "Invariant: Zero retroactive recalculation of billed invoices preserved",
+          "pass": true,
+          "data": {
+            "initialAmount": 7240000,
+            "currentAmount": 7240000,
+            "snapshot": {
+              "rateVnd": 3800,
+              "isFrozen": true,
+              "immutable": true,
+              "totalAmountVnd": 7240000
+            }
+          }
+        }
+      ]
+    },
+    "wat01WaterBilling3Modes": {
+      "pass": true,
+      "subChecks": [
+        {
+          "name": "Mode PER_PERSON computes 3 occupants * 100,000 = 300,000 VND",
+          "pass": true,
+          "data": {
+            "roomId": "rm-s4b-s4401",
+            "roomCode": "S4-401",
+            "method": "PER_PERSON",
+            "rateVnd": 100000,
+            "occupantsCount": 3,
+            "consumptionM3": 0,
+            "amountVnd": 300000,
+            "breakdown": "3 người × 100.000 đ/người = 300.000 đ"
+          }
+        },
+        {
+          "name": "Mode PER_M3 computes 12 m3 * 25,000 = 300,000 VND",
+          "pass": true,
+          "data": {
+            "roomId": "rm-s4b-s4402",
+            "roomCode": "S4-402",
+            "method": "PER_M3",
+            "rateVnd": 25000,
+            "occupantsCount": 0,
+            "consumptionM3": 12,
+            "amountVnd": 300000,
+            "breakdown": "12 m³ (18 -> 30) × 25.000 đ/m³ = 300.000 đ"
+          }
+        },
+        {
+          "name": "Mode FIXED_ROOM computes flat 150,000 VND package",
+          "pass": true,
+          "data": {
+            "roomId": "rm-s4b-s4403",
+            "roomCode": "S4-403",
+            "method": "FIXED_ROOM",
+            "rateVnd": 150000,
+            "occupantsCount": 0,
+            "consumptionM3": 0,
+            "amountVnd": 150000,
+            "breakdown": "Khoán cố định phòng: 150.000 đ/tháng"
+          }
+        }
+      ]
+    },
+    "close01MonthCloseAndInvoiceFreeze": {
+      "pass": true,
+      "subChecks": [
+        {
+          "name": "POST /month-close successfully locks billing period and freezes invoices",
+          "pass": true,
+          "data": {
+            "ok": true,
+            "billingPeriod": {
+              "id": "8a2fe5c7-a266-4fe0-9aff-437fbf8ec79d",
+              "buildingId": "bld-s4b",
+              "buildingCode": "S4B",
+              "periodKey": "2026-10",
+              "status": "LOCKED",
+              "lockedAt": "2026-10-31T16:32:42.064Z",
+              "notes": "Khóa sổ kỳ 2026-10 nghiệm thu C4 Sprint 4"
+            },
+            "summary": {
+              "totalInvoicesFrozen": 4,
+              "totalBilledVnd": 25871200,
+              "policySnapshotStatus": "FROZEN_IMMUTABLE"
+            }
+          }
+        },
+        {
+          "name": "Reject duplicate month-close with HTTP 422 PERIOD_ALREADY_LOCKED",
+          "pass": true,
+          "data": {
+            "ok": false,
+            "errorCode": "PERIOD_ALREADY_LOCKED",
+            "message": "Kỳ quyết toán 2026-10 của tòa nhà S4B đã được khóa sổ (LOCKED). Không thể thực hiện khóa sổ lại."
+          }
+        },
+        {
+          "name": "Reject manual meter reading on locked period with HTTP 422 PERIOD_ALREADY_LOCKED",
+          "pass": true,
+          "data": {
+            "ok": false,
+            "errorCode": "PERIOD_ALREADY_LOCKED",
+            "message": "Kỳ quyết toán 2026-10 của tòa nhà đã được khóa sổ (LOCKED). Không thể can thiệp hoặc ghi đè chỉ số thủ công."
+          }
+        },
+        {
+          "name": "Invoice policySnapshot contains isFrozen: true and immutable: true snapshot",
+          "pass": true,
+          "data": {
+            "invoiceCode": "INV-202610-S4-401",
+            "snapshot": {
+              "frozenAt": "2026-10-31T16:32:42.074Z",
+              "isFrozen": true,
+              "lockedBy": "admin@adhome.vn",
+              "waterVnd": 300000,
+              "immutable": true,
+              "electricVnd": 298200,
+              "roomRentVnd": 6000000,
+              "occupantsCount": 3,
+              "totalAmountVnd": 6598200,
+              "waterBillingMethod": "PER_PERSON"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "screenshots": [
+    {
+      "filename": "c4_s4_desktop_hunonic_sync_jobs_running.png",
+      "screenName": "Settlements Workspace: Hunonic IoT Background Sync Jobs",
+      "viewport": "1440x900",
+      "scenario": "Tiến trình đồng bộ công tơ điện Hunonic nền, nhật ký tác vụ bất đồng bộ, cảnh báo Offline/Stale và nút kích hoạt job",
+      "sizeBytes": 496619,
+      "sha256": "310a1fc063811371108c54f9122837caaea1ea794fac35354351238d0071e60f",
+      "relativePath": "screenshots/c4_s4_desktop_hunonic_sync_jobs_running.png",
+      "capturedAt": "2026-10-31T16:32:46.533Z"
+    },
+    {
+      "filename": "c4_s4_desktop_hunonic_tariff_versioning.png",
+      "screenName": "Hunonic Settings Modal: Tariff Versioning & Zero Retroactive Recalculation",
+      "viewport": "1440x900",
+      "scenario": "Cấu hình biểu giá Hunonic, xác minh cloud, cam kết quy tắc bất biến không tính lại hóa đơn kỳ đã khóa sổ",
+      "sizeBytes": 554089,
+      "sha256": "f23ecc56c2c88dbfbafa68a3503e4e99715a1e1920d2b89f2097b246eff8c21a",
+      "relativePath": "screenshots/c4_s4_desktop_hunonic_tariff_versioning.png",
+      "capturedAt": "2026-10-31T16:32:48.402Z"
+    },
+    {
+      "filename": "c4_s4_desktop_water_settlement_per_person.png",
+      "screenName": "Settlements Workspace: Water Billing Per Person Mode",
+      "viewport": "1440x900",
+      "scenario": "Tính tiền nước theo đầu người khớp với số lượng khách cư trú thực tế (Occupancy Truth 3 người x 100.000 đ = 300.000 đ)",
+      "sizeBytes": 438838,
+      "sha256": "bec41bef3e3396136095443d897ad2e4cfd7b79d6fd3d7a35672f092220e4bba",
+      "relativePath": "screenshots/c4_s4_desktop_water_settlement_per_person.png",
+      "capturedAt": "2026-10-31T16:32:50.609Z"
+    },
+    {
+      "filename": "c4_s4_desktop_water_settlement_per_m3.png",
+      "screenName": "Settlements Workspace: Water Billing Per Cubic Meter (m³)",
+      "viewport": "1440x900",
+      "scenario": "Tính tiền nước theo chỉ số đồng hồ thực tế (18 m³ -> 30 m³, tiêu thụ 12 m³ x 25.000 đ = 300.000 đ)",
+      "sizeBytes": 436352,
+      "sha256": "dded9d98ab9060bcd0ec1b8b67a2b4e64a9da06e6924e8e622d0f666547b760a",
+      "relativePath": "screenshots/c4_s4_desktop_water_settlement_per_m3.png",
+      "capturedAt": "2026-10-31T16:32:52.272Z"
+    },
+    {
+      "filename": "c4_s4_desktop_settlements_month_close_locked.png",
+      "screenName": "Settlements Workspace: Month-Close Invoice Freeze & Period Locked",
+      "viewport": "1440x900",
+      "scenario": "Kỳ quyết toán tòa nhà S4B đã khóa sổ (LOCKED), toàn bộ hóa đơn đóng băng immutable, nút can thiệp bị vô hiệu hóa",
+      "sizeBytes": 498365,
+      "sha256": "e41849fdd4c9076f6cce8b646c0131fe4a9f69718e401ffd2bbc3a4f91c30ed1",
+      "relativePath": "screenshots/c4_s4_desktop_settlements_month_close_locked.png",
+      "capturedAt": "2026-10-31T16:32:53.931Z"
+    },
+    {
+      "filename": "c4_s4_mobile_settlements_locked_view.png",
+      "screenName": "Mobile Settlements Workspace: Responsive Locked Period & Water Billing",
+      "viewport": "390x844",
+      "scenario": "Giao diện mobile hiển thị trạng thái khóa sổ kỳ quyết toán và các thẻ tính toán tiền điện nước gọn gàng không tràn viền",
+      "sizeBytes": 198107,
+      "sha256": "5f38b7810e61d564cc6c5da71e9ec5c1662da5c094b9088b7b629e4b44a55d67",
+      "relativePath": "screenshots/c4_s4_mobile_settlements_locked_view.png",
+      "capturedAt": "2026-10-31T16:32:55.507Z"
+    }
+  ],
+  "errors": []
+}

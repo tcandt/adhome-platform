@@ -511,7 +511,12 @@ export const HunonicSettingsModal: React.FC<HunonicSettingsModalProps> = ({
 
           {/* TAB 3: TARIFF CONFIGURATION */}
           {activeTab === 'tariff' && (
-            <div className="space-y-5">
+            <div className="space-y-5" data-testid="card-hunonic-tariff-versioning">
+              {/* Zero Retroactive Invariant Notice */}
+              <div className="p-3 bg-blue-50/60 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 rounded-xl text-xs text-blue-900 dark:text-blue-200 flex items-start gap-2">
+                <ShieldCheck className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                <span><strong>Quy tắc bất biến (Zero Retroactive):</strong> Thay đổi biểu giá chỉ áp dụng cho kỳ tính tiền tiếp theo hoặc chưa chốt. Toàn bộ hóa đơn và kỳ đối soát đã khóa sổ (LOCKED) được bảo toàn tuyệt đối không tính lại.</span>
+              </div>
               <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 space-y-3">
                 <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
                   Lựa chọn nhóm biểu giá điện cho Hunonic Cloud
@@ -567,7 +572,7 @@ export const HunonicSettingsModal: React.FC<HunonicSettingsModalProps> = ({
                 </div>
 
                 {tariffMode === 'custom' && (
-                  <div className="pt-2 max-w-xs space-y-1">
+                  <div className="pt-2 max-w-xs space-y-1" data-testid="input-tariff-custom-rate">
                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
                       Mức đơn giá điện tự thiết lập (VNĐ/kWh)
                     </label>
@@ -593,6 +598,7 @@ export const HunonicSettingsModal: React.FC<HunonicSettingsModalProps> = ({
                 </div>
                 <button
                   type="button"
+                  data-testid="btn-verify-tariff"
                   disabled={isVerifyingTariff}
                   onClick={handleApplyTariff}
                   className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold flex items-center gap-2 shadow-sm transition-colors"

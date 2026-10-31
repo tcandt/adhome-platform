@@ -85,7 +85,21 @@ export async function executeHunonicBackgroundSync(
     for (const meter of meters) {
       const deviceId = meter.hunonicDeviceId!;
       try {
-        const telemetry = await client.fetchDeviceTelemetry(token, deviceId, meter.cumulativeKwh || 120.0);
+        let telemetry: any = null;
+        let attempt = 0;
+        const maxRetries = 2;
+        while (attempt <= maxRetries) {
+          try {
+            telemetry = await client.fetchDeviceTelemetry(token, deviceId, meter.cumulativeKwh || 120.0);
+            break;
+          } catch (fetchErr) {
+            attempt++;
+            if (attempt > maxRetries) {
+              throw fetchErr;
+            }
+            await new Promise((r) => setTimeout(r, 100 * attempt));
+          }
+        }
         const kwhValid = validateKwhReading(meter.cumulativeKwh, telemetry.cumulativeKwh);
 
         const quality: 'VALID' | 'STALE' | 'OFFLINE' | 'SUSPICIOUS' = !telemetry.isOnline
@@ -116,6 +130,30 @@ export async function executeHunonicBackgroundSync(
               readingKwh: telemetry.cumulativeKwh,
               source: 'HUNONIC_AUTO',
               recordedByActor: actorId,
+            },
+          });
+        }
+
+        // Track exception in BillingPeriod if quality is not valid
+        if (quality !== 'VALID') {
+          await prisma.billingPeriod.upsert({
+            where: {
+              orgId_buildingId_periodKey: {
+                orgId,
+                buildingId: meter.room.buildingId,
+                periodKey,
+              },
+            },
+            create: {
+              orgId,
+              buildingId: meter.room.buildingId,
+              periodKey,
+              status: 'EXCEPTION',
+              exceptionCount: 1,
+            },
+            update: {
+              status: 'EXCEPTION',
+              exceptionCount: { increment: 1 },
             },
           });
         }

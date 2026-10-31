@@ -148,6 +148,64 @@ function toSafeVndNumber(val: bigint | number | null | undefined): number {
   return typeof val === 'bigint' ? Number(val) : Math.trunc(val);
 }
 
+function computeServiceCycleEndIso(startDateIso: string): string {
+  try {
+    const [y, m, d] = startDateIso.split('-').map(Number);
+    const date = new Date(Date.UTC(y, m - 1, d));
+    date.setUTCMonth(date.getUTCMonth() + 1);
+    date.setUTCDate(date.getUTCDate() - 1);
+    return date.toISOString().slice(0, 10);
+  } catch {
+    return startDateIso;
+  }
+}
+
+async function handleWithIdempotency(
+  prisma: PrismaClient,
+  orgId: string,
+  action: string,
+  keyHeader: string | string[] | undefined,
+  res: any,
+  fn: () => Promise<{ status: number; body: any }>
+): Promise<void> {
+  const rawKey = Array.isArray(keyHeader) ? keyHeader[0] : keyHeader;
+  const key = typeof rawKey === 'string' ? rawKey.trim() : '';
+  if (!key) {
+    const result = await fn();
+    return sendJson(res, result.status, result.body);
+  }
+  const existing = await prisma.idempotencyRecord.findUnique({
+    where: {
+      orgId_action_idempotencyKey: {
+        orgId,
+        action,
+        idempotencyKey: key,
+      },
+    },
+  });
+  if (existing) {
+    res.setHeader('x-idempotent-replay', 'true');
+    return sendJson(res, existing.responseStatus, existing.responseBody);
+  }
+  const result = await fn();
+  if (result.status < 500) {
+    try {
+      await prisma.idempotencyRecord.create({
+        data: {
+          orgId,
+          action,
+          idempotencyKey: key,
+          responseStatus: result.status,
+          responseBody: result.body,
+        },
+      });
+    } catch {
+      // Ignore concurrent race insert
+    }
+  }
+  return sendJson(res, result.status, result.body);
+}
+
 function slugifyVietnamese(input: string): string {
   return input
     .normalize('NFD')
@@ -3403,6 +3461,7 @@ export async function handleConsoleV2Api(
             amountVnd: toSafeVndNumber(d.amountVnd),
             paidAmountVnd: toSafeVndNumber(d.paidAmountVnd),
             refundedVnd: toSafeVndNumber(d.refundedVnd),
+            deductedAmountVnd: toSafeVndNumber(d.deductedAmountVnd),
             paymentStatus: d.paymentStatus,
             paymentMethod: d.paymentMethod,
             receivedAt: d.receivedAt?.toISOString() || null,
@@ -3450,6 +3509,8 @@ export async function handleConsoleV2Api(
             phone: occ.phone,
             relationToPrimary: occ.relationToPrimary,
             residenceRegStatus: occ.residenceRegStatus,
+            isActive: occ.isActive,
+            occupancyStatus: (occ as any).occupancyStatus || (occ.isActive ? 'ACTIVE' : 'SCHEDULED'),
           })),
           electricRateVnd: c.electricRateVnd,
           waterBillingMethod: c.waterBillingMethod,
@@ -3919,7 +3980,7 @@ export async function handleConsoleV2Api(
 
         // Primary occupant created in DRAFT contract; room is RESERVED until formal handover
 
-        // Create primary occupant
+        // Create primary occupant (P1-01: SCHEDULED until formal handover)
         await tx.roomOccupant.create({
           data: {
             orgId: actor.orgId,
@@ -3932,7 +3993,8 @@ export async function handleConsoleV2Api(
             relationToPrimary: 'PRIMARY',
             residenceRegStatus: tenant.residenceRegStatus || 'PENDING',
             moveInDate: startDate,
-            isActive: true,
+            isActive: false,
+            occupancyStatus: 'SCHEDULED',
           },
         });
 
@@ -3950,7 +4012,8 @@ export async function handleConsoleV2Api(
                 relationToPrimary: occ.relationToPrimary || 'ROOMMATE',
                 residenceRegStatus: 'PENDING',
                 moveInDate: startDate,
-                isActive: true,
+                isActive: false,
+                occupancyStatus: 'SCHEDULED',
               },
             });
           }
@@ -4161,6 +4224,18 @@ export async function handleConsoleV2Api(
         ? Number(body.handoverWaterM3)
         : null;
 
+    const isMeteredRoom = Boolean(
+      ct.room.electricMeter ||
+      (ct.room.electricRateVnd && ct.room.electricRateVnd > 0)
+    );
+    if (isMeteredRoom && (handoverMeterKwh === null || handoverMeterKwh === undefined || isNaN(handoverMeterKwh))) {
+      return sendJson(res, 422, {
+        ok: false,
+        errorCode: 'MISSING_INITIAL_METER_READING',
+        message: 'Phòng tính điện theo công tơ, bắt buộc phải có chỉ số điện đầu kỳ hợp lệ (>= 0) khi bàn giao.',
+      });
+    }
+
     if (handoverMeterKwh !== null && handoverMeterKwh < 0) {
       return sendJson(res, 422, {
         ok: false,
@@ -4217,6 +4292,16 @@ export async function handleConsoleV2Api(
             handoverWaterM3,
             moveInDate,
             status: 'ACTIVE',
+          },
+        });
+
+        // Activate occupants upon formal handover (P1-01)
+        await tx.roomOccupant.updateMany({
+          where: { contractId: ct.id },
+          data: {
+            isActive: true,
+            occupancyStatus: 'ACTIVE',
+            moveInDate,
           },
         });
 
@@ -4412,6 +4497,7 @@ export async function handleConsoleV2Api(
               reservationId: resv.id,
               depositType: 'BOOKING',
               amountVnd: BigInt(holdAmountVnd),
+              paidAmountVnd: paymentConfirmed ? BigInt(holdAmountVnd) : BigInt(0),
               paymentStatus: paymentConfirmed ? 'PAID' : 'PENDING',
               paymentMethod: paymentConfirmed ? paymentMethod : null,
               receivedAt: paymentConfirmed ? new Date() : null,
@@ -4700,9 +4786,9 @@ export async function handleConsoleV2Api(
       });
     }
 
-    const paidDeposits = resv.deposits.filter((d) => d.status === 'HELD' && d.paymentStatus === 'PAID');
+    const paidDeposits = resv.deposits.filter((d) => (d.status === 'HELD' || d.status === 'PARTIALLY_REFUNDED') && d.paymentStatus === 'PAID');
     const totalAvailPaid = paidDeposits.reduce(
-      (sum, d) => sum + (Number(d.amountVnd) - Number(d.refundedVnd)),
+      (sum, d) => sum + Math.max(0, Number(d.paidAmountVnd || 0) - Number(d.refundedVnd || 0) - Number(d.deductedAmountVnd || 0)),
       0
     );
 
@@ -4728,6 +4814,7 @@ export async function handleConsoleV2Api(
     const updated = await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT id FROM "room_reservations" WHERE id = ${resv.id} FOR UPDATE`;
       await tx.$executeRaw`SELECT id FROM "console_rooms" WHERE id = ${resv.roomId} FOR UPDATE`;
+      await tx.$executeRaw`SELECT id FROM "deposits" WHERE reservation_id = ${resv.id} ORDER BY id ASC FOR UPDATE`;
 
       const nextNotes = resv.notes ? `${resv.notes} | [HỦY]: ${reason}` : `[HỦY]: ${reason}`;
       const cancelledResv = await tx.roomReservation.update({
@@ -4751,18 +4838,25 @@ export async function handleConsoleV2Api(
         }
       }
 
-      for (const d of resv.deposits) {
-        if (d.status === 'HELD') {
+      const freshDeposits = await tx.deposit.findMany({
+        where: { reservationId: resv.id },
+        orderBy: { id: 'asc' },
+      });
+
+      for (const d of freshDeposits) {
+        if (d.status === 'HELD' || d.status === 'PARTIALLY_REFUNDED') {
           if (d.paymentStatus === 'PAID') {
-            const availDep = Number(d.amountVnd) - Number(d.refundedVnd);
+            const availDep = Math.max(0, Number(d.paidAmountVnd || 0) - Number(d.refundedVnd || 0) - Number(d.deductedAmountVnd || 0));
             const actualRefund = finalRefund;
             const actualDeduction = finalDeduction;
             const actualForfeit = finalForfeit;
 
-            const nextStatus = actualRefund === availDep
-              ? 'REFUNDED'
-              : (actualForfeit + actualDeduction === availDep)
-              ? 'FORFEITED'
+            const nextRefunded = Number(d.refundedVnd || 0) + actualRefund;
+            const nextDeducted = Number(d.deductedAmountVnd || 0) + actualDeduction;
+            const isFull = (nextRefunded + nextDeducted + actualForfeit) >= Number(d.paidAmountVnd || 0);
+
+            const nextStatus = isFull
+              ? (nextRefunded > 0 ? 'REFUNDED' : 'FORFEITED')
               : 'PARTIALLY_REFUNDED';
 
             await tx.deposit.update({
@@ -4770,7 +4864,8 @@ export async function handleConsoleV2Api(
               data: {
                 status: nextStatus,
                 paymentStatus: actualRefund > 0 ? (actualRefund === availDep ? 'REFUNDED' : 'PARTIALLY_PAID') : 'FORFEITED',
-                refundedVnd: BigInt(Number(d.refundedVnd) + actualRefund),
+                refundedVnd: BigInt(nextRefunded),
+                deductedAmountVnd: BigInt(nextDeducted),
                 notes: d.notes
                   ? `${d.notes} | Hoàn: ${actualRefund.toLocaleString('vi-VN')}đ | Khấu trừ: ${actualDeduction.toLocaleString('vi-VN')}đ | Phạt hủy: ${actualForfeit.toLocaleString('vi-VN')}đ`
                   : `Hoàn: ${actualRefund.toLocaleString('vi-VN')}đ | Khấu trừ: ${actualDeduction.toLocaleString('vi-VN')}đ | Phạt hủy: ${actualForfeit.toLocaleString('vi-VN')}đ`,
@@ -4791,6 +4886,44 @@ export async function handleConsoleV2Api(
                   category: 'Hoàn tiền cọc',
                   amountVnd: BigInt(actualRefund),
                   description: `Hoàn cọc giữ chỗ ${resv.reservationCode} cho khách ${resv.customerName}`,
+                  recordedBy: actor.email,
+                },
+              });
+            }
+
+            if (actualDeduction > 0) {
+              await tx.ledgerEntry.create({
+                data: {
+                  orgId: actor.orgId,
+                  buildingId: resv.buildingId,
+                  periodKey: getCurrentVnPeriodKey(),
+                  entryCode: `PT-${getCurrentVnPeriodKey().replace('-', '')}-${crypto
+                    .randomBytes(2)
+                    .toString('hex')
+                    .toUpperCase()}`,
+                  entryType: 'INCOME',
+                  category: 'Khấu trừ tiền cọc giữ chỗ',
+                  amountVnd: BigInt(actualDeduction),
+                  description: `Khấu trừ cọc giữ chỗ ${resv.reservationCode} của khách ${resv.customerName}`,
+                  recordedBy: actor.email,
+                },
+              });
+            }
+
+            if (actualForfeit > 0) {
+              await tx.ledgerEntry.create({
+                data: {
+                  orgId: actor.orgId,
+                  buildingId: resv.buildingId,
+                  periodKey: getCurrentVnPeriodKey(),
+                  entryCode: `PT-${getCurrentVnPeriodKey().replace('-', '')}-${crypto
+                    .randomBytes(2)
+                    .toString('hex')
+                    .toUpperCase()}`,
+                  entryType: 'INCOME',
+                  category: 'Thu phạt hủy hợp đồng/giữ chỗ',
+                  amountVnd: BigInt(actualForfeit),
+                  description: `Thu phạt hủy cọc giữ chỗ ${resv.reservationCode} của khách ${resv.customerName}`,
                   recordedBy: actor.email,
                 },
               });
@@ -4860,6 +4993,15 @@ export async function handleConsoleV2Api(
         ok: false,
         errorCode: 'ENTITY_NOT_FOUND',
         message: 'Phiếu giữ chỗ không tồn tại trong tổ chức.',
+      });
+    }
+
+    // P0-02: Check building scope permission for actor
+    if (!isBuildingAllowedForActor(actor, resv.room.buildingId, resv.room.building?.code)) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'FORBIDDEN_BUILDING_SCOPE',
+        message: 'Tài khoản không có quyền thao tác trên tòa nhà chứa phiếu giữ chỗ này.',
       });
     }
     if (resv.status !== 'CONFIRMED' && resv.status !== 'PENDING') {
@@ -4944,7 +5086,10 @@ export async function handleConsoleV2Api(
 
     try {
       const result = await prisma.$transaction(async (tx) => {
+        // Concurrency row-level locks
         await tx.$executeRaw`SELECT id FROM "console_rooms" WHERE id = ${resv.roomId} FOR UPDATE`;
+        // P0-06: Lock all booking deposits in deterministic order to prevent race conditions
+        await tx.$executeRaw`SELECT id FROM "deposits" WHERE reservation_id = ${resv.id} ORDER BY id ASC FOR UPDATE`;
 
         const activeContracts = await tx.contract.count({
           where: { roomId: resv.roomId, status: { in: ['DRAFT', ...ACTIVE_CONTRACT_STATUSES] } },
@@ -4955,14 +5100,49 @@ export async function handleConsoleV2Api(
           throw err;
         }
 
-        // Calculate available received booking deposit B
-        const paidBookingDeposits = resv.deposits.filter(
-          (d) => d.paymentStatus === 'PAID' && (d.status === 'HELD' || d.status === 'PARTIALLY_REFUNDED')
+        // P1-02: Ensure tenant is resolved/created inside transaction with deduplication
+        let finalTenantId = tenantId;
+        let finalTenantRecord = tenantRecord;
+        if (!finalTenantRecord) {
+          const normPhone = normalizeVnPhone(resv.customerPhone);
+          finalTenantRecord = await tx.tenant.findFirst({
+            where: { orgId: actor.orgId, normalizedPhone: normPhone },
+          });
+          if (!finalTenantRecord) {
+            finalTenantRecord = await tx.tenant.create({
+              data: {
+                orgId: actor.orgId,
+                fullName: resv.customerName,
+                phone: normPhone,
+                normalizedPhone: normPhone,
+                primaryBuildingId: resv.buildingId,
+              },
+            });
+          }
+          finalTenantId = finalTenantRecord.id;
+        }
+
+        // P0-04 & P0-06: Read fresh locked deposits and calculate B strictly from paidAmountVnd - refundedVnd - deductedAmountVnd
+        const lockedDeposits = await tx.deposit.findMany({
+          where: { reservationId: resv.id },
+          orderBy: { id: 'asc' },
+        });
+
+        const paidBookingDeposits = lockedDeposits.filter(
+          (d) =>
+            (d.status === 'HELD' || d.status === 'PARTIALLY_REFUNDED') &&
+            d.paymentStatus !== 'TRANSFERRED' &&
+            d.transferredToDepositId === null
         );
-        const B = paidBookingDeposits.reduce(
-          (sum, d) => sum + (Number(d.amountVnd) - Number(d.refundedVnd)),
-          0
-        );
+
+        const B = paidBookingDeposits.reduce((sum, d) => {
+          const actualAvail = Math.max(
+            0,
+            Number(d.paidAmountVnd || 0) - Number(d.refundedVnd || 0) - Number(d.deductedAmountVnd || 0)
+          );
+          return sum + actualAvail;
+        }, 0);
+
         const C = requiredDepositVnd;
         const R = monthlyRentVnd;
 
@@ -4991,13 +5171,13 @@ export async function handleConsoleV2Api(
 
         const totalInitialInvoiceDue = firstCycleRentDue + additionalDepositDue;
 
-        // Create Contract
+        // Create Contract (DRAFT status, room RESERVED)
         const ct = await tx.contract.create({
           data: {
             orgId: actor.orgId,
             buildingId: resv.buildingId,
             roomId: resv.roomId,
-            tenantId,
+            tenantId: finalTenantId,
             reservationId: resv.id,
             contractCode,
             rentalModel,
@@ -5017,24 +5197,25 @@ export async function handleConsoleV2Api(
           },
         });
 
-        // Create primary occupant
+        // P1-01: Create primary occupant with SCHEDULED status (active upon handover)
         await tx.roomOccupant.create({
           data: {
             orgId: actor.orgId,
             roomId: resv.roomId,
             contractId: ct.id,
-            tenantId,
-            fullName: tenantRecord.fullName,
-            phone: tenantRecord.phone,
-            idNumber: tenantRecord.idNumber,
+            tenantId: finalTenantId,
+            fullName: finalTenantRecord.fullName,
+            phone: finalTenantRecord.phone,
+            idNumber: finalTenantRecord.idNumber,
             relationToPrimary: 'PRIMARY',
-            residenceRegStatus: tenantRecord.residenceRegStatus || 'PENDING',
+            residenceRegStatus: finalTenantRecord.residenceRegStatus || 'PENDING',
             moveInDate: startDate,
-            isActive: true,
+            isActive: false,
+            occupancyStatus: 'SCHEDULED',
           },
         });
 
-        // Create co-occupants if provided
+        // Create co-occupants if provided (P1-01)
         for (const occ of coOccupants) {
           if (occ && occ.fullName && occ.fullName.trim()) {
             await tx.roomOccupant.create({
@@ -5048,7 +5229,8 @@ export async function handleConsoleV2Api(
                 relationToPrimary: occ.relationToPrimary || 'ROOMMATE',
                 residenceRegStatus: 'PENDING',
                 moveInDate: startDate,
-                isActive: true,
+                isActive: false,
+                occupancyStatus: 'SCHEDULED',
               },
             });
           }
@@ -5071,6 +5253,7 @@ export async function handleConsoleV2Api(
               depositType: 'CONTRACT',
               amountVnd: BigInt(C),
               paidAmountVnd: BigInt(transferredDepositVnd),
+              deductedAmountVnd: BigInt(0),
               paymentStatus: depPaymentStatus,
               receivedAt: transferredDepositVnd > 0 ? new Date() : null,
               paymentMethod: transferredDepositVnd > 0 ? 'TRANSFER_FROM_BOOKING' : null,
@@ -5090,6 +5273,7 @@ export async function handleConsoleV2Api(
               depositType: 'ADVANCE_RENT',
               amountVnd: BigInt(remainingSurplusCreditVnd),
               paidAmountVnd: BigInt(remainingSurplusCreditVnd),
+              deductedAmountVnd: BigInt(0),
               paymentStatus: 'PAID',
               receivedAt: new Date(),
               paymentMethod: 'TRANSFER_FROM_BOOKING',
@@ -5134,21 +5318,41 @@ export async function handleConsoleV2Api(
           });
         }
 
-        // Generate First Combined Invoice
+        // P0-03: First Combined Invoice line items MUST sum exactly to totalInitialInvoiceDue
+        const invoiceBreakdown: Array<{ label: string; amountVnd: number }> = [
+          { label: 'Tiền thuê chu kỳ đầu (R)', amountVnd: monthlyRentVnd },
+        ];
+        if (additionalDepositDue > 0) {
+          invoiceBreakdown.push({ label: 'Tiền cọc hợp đồng còn phải thu thêm', amountVnd: additionalDepositDue });
+        }
+        if (appliedRentCreditVnd > 0) {
+          invoiceBreakdown.push({ label: 'Khấu trừ tiền cọc giữ chỗ dôi dư vào tiền phòng kỳ 1', amountVnd: -appliedRentCreditVnd });
+        }
+
+        const breakdownSum = invoiceBreakdown.reduce((sum, item) => sum + item.amountVnd, 0);
+        if (breakdownSum !== totalInitialInvoiceDue) {
+          const err: any = new Error(
+            `Invoice breakdown sum (${breakdownSum}) does not match total amount (${totalInitialInvoiceDue})`
+          );
+          err.statusCode = 422;
+          throw err;
+        }
+
         const initialInvoiceCode = `HD-INV-${resv.room.building.code}-${resv.room.code}-${crypto
           .randomBytes(2)
           .toString('hex')
           .toUpperCase()}`;
 
+        // P0-07: Clearly distinguish issuedAt, servicePeriod, and dueDate
         const invoice = await tx.invoice.create({
           data: {
             orgId: actor.orgId,
             buildingId: resv.buildingId,
             roomId: resv.roomId,
             contractId: ct.id,
-            tenantId,
+            tenantId: finalTenantId,
             invoiceCode: initialInvoiceCode,
-            periodKey: getCurrentVnPeriodKey(),
+            periodKey: startDate.slice(0, 7) || getCurrentVnPeriodKey(),
             dueDate: startDate,
             roomRentVnd: BigInt(monthlyRentVnd),
             adjustmentVnd: BigInt(additionalDepositDue - appliedRentCreditVnd),
@@ -5157,17 +5361,17 @@ export async function handleConsoleV2Api(
             paidAmountVnd: totalInitialInvoiceDue === 0 ? BigInt(totalInitialInvoiceDue) : BigInt(0),
             policySnapshot: {
               type: 'FIRST_COMBINED_INVOICE',
-              breakdown: [
-                { label: 'Tiền thuê chu kỳ đầu (R)', amountVnd: monthlyRentVnd },
-                { label: 'Cọc hợp đồng yêu cầu (C)', amountVnd: C },
-                { label: 'Cọc giữ chỗ đã chuyển (B)', amountVnd: -transferredDepositVnd },
-                ...(appliedRentCreditVnd > 0
-                  ? [{ label: 'Khấu trừ tiền cọc dôi dư vào tiền phòng kỳ 1', amountVnd: -appliedRentCreditVnd }]
-                  : []),
-                ...(remainingSurplusCreditVnd > 0
-                  ? [{ label: 'Tín dụng tiền thuê bảo lưu cho kỳ sau', amountVnd: remainingSurplusCreditVnd }]
-                  : []),
-              ],
+              breakdown: invoiceBreakdown,
+              deferredCredits: remainingSurplusCreditVnd > 0 ? [
+                { label: 'Tín dụng tiền thuê bảo lưu cho kỳ sau', amountVnd: remainingSurplusCreditVnd }
+              ] : [],
+              billingSchedule: {
+                issuedAt: new Date().toISOString(),
+                servicePeriodStart: startDate,
+                servicePeriodEnd: computeServiceCycleEndIso(startDate),
+                periodKey: startDate.slice(0, 7) || getCurrentVnPeriodKey(),
+                dueDate: startDate,
+              },
               financialSummary: {
                 bookingDepositB: B,
                 contractDepositRequiredC: C,
@@ -5203,7 +5407,7 @@ export async function handleConsoleV2Api(
           });
         }
         await tx.tenant.update({
-          where: { id: tenantId },
+          where: { id: finalTenantId },
           data: { currentRoomId: resv.roomId, primaryBuildingId: resv.buildingId },
         });
 
@@ -5255,6 +5459,7 @@ export async function handleConsoleV2Api(
               amountVnd: toSafeVndNumber(result.contractDeposit.amountVnd),
               paidAmountVnd: toSafeVndNumber(result.contractDeposit.paidAmountVnd),
               refundedVnd: toSafeVndNumber(result.contractDeposit.refundedVnd),
+              deductedAmountVnd: toSafeVndNumber(result.contractDeposit.deductedAmountVnd),
             }
           : null,
         advanceRentDeposit: result.advanceRentDeposit
@@ -5308,15 +5513,38 @@ export async function handleConsoleV2Api(
     const deductionAmountVnd = Math.max(0, Math.trunc(Number(body.deductionAmountVnd) || 0));
     const deductionReason = String(body.deductionReason || '').trim();
 
+    // P0-01: Deduction reason is mandatory if deductionAmountVnd > 0
+    if (deductionAmountVnd > 0 && !deductionReason) {
+      return sendJson(res, 422, {
+        ok: false,
+        errorCode: 'VALIDATION_ERROR',
+        message: 'Vui lòng cung cấp lý do khấu trừ khi có phát sinh chi phí khấu trừ hoặc bồi thường cọc.',
+      });
+    }
+
     const dep = await prisma.deposit.findUnique({
       where: { id: depId },
-      include: { contract: { include: { room: true } }, reservation: true },
+      include: {
+        contract: { include: { room: { include: { building: true } } } },
+        reservation: { include: { room: { include: { building: true } } } },
+      },
     });
     if (!dep || dep.orgId !== actor.orgId) {
       return sendJson(res, 404, {
         ok: false,
         errorCode: 'ENTITY_NOT_FOUND',
         message: 'Khoản cọc không tồn tại trong tổ chức.',
+      });
+    }
+
+    // P0-02: Check building scope permission for actor on deposit refund
+    const buildingId = dep.contract?.buildingId || dep.reservation?.buildingId || null;
+    const buildingCode = dep.contract?.room?.building?.code || dep.reservation?.room?.building?.code || null;
+    if (buildingId && !isBuildingAllowedForActor(actor, buildingId, buildingCode)) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'FORBIDDEN_BUILDING_SCOPE',
+        message: 'Tài khoản không có quyền tài chính trên tòa nhà của khoản cọc này.',
       });
     }
 
@@ -5345,7 +5573,10 @@ export async function handleConsoleV2Api(
       });
     }
 
-    const totalAvailable = Math.max(0, effectivePaid - Number(dep.refundedVnd || 0));
+    const totalAvailable = Math.max(
+      0,
+      effectivePaid - Number(dep.refundedVnd || 0) - Number(dep.deductedAmountVnd || 0)
+    );
     if (refundAmountVnd + deductionAmountVnd > totalAvailable) {
       return sendJson(res, 422, {
         ok: false,
@@ -5358,154 +5589,176 @@ export async function handleConsoleV2Api(
       });
     }
 
-    try {
-      const updated = await prisma.$transaction(async (tx) => {
-        await tx.$executeRaw`SELECT id FROM "deposits" WHERE id = ${dep.id} FOR UPDATE`;
-        const currentDep = await tx.deposit.findUnique({ where: { id: dep.id } });
-        if (!currentDep || currentDep.orgId !== actor.orgId) {
-          const err: any = new Error('Khoản cọc không tồn tại trong tổ chức.');
-          err.statusCode = 404;
-          err.errorCode = 'ENTITY_NOT_FOUND';
+    return handleWithIdempotency(
+      prisma,
+      actor.orgId,
+      'DEPOSIT_REFUND',
+      req.headers['idempotency-key'],
+      res,
+      async () => {
+        try {
+          const updated = await prisma.$transaction(async (tx) => {
+            await tx.$executeRaw`SELECT id FROM "deposits" WHERE id = ${dep.id} FOR UPDATE`;
+            const currentDep = await tx.deposit.findUnique({ where: { id: dep.id } });
+            if (!currentDep || currentDep.orgId !== actor.orgId) {
+              const err: any = new Error('Khoản cọc không tồn tại trong tổ chức.');
+              err.statusCode = 404;
+              err.errorCode = 'ENTITY_NOT_FOUND';
+              throw err;
+            }
+
+            if (
+              currentDep.status === 'APPLIED_TO_CONTRACT' ||
+              currentDep.paymentStatus === 'TRANSFERRED' ||
+              currentDep.transferredToDepositId !== null
+            ) {
+              const err: any = new Error(
+                'Khoản cọc đã được chuyển sang hợp đồng khác, không thể hoàn trực tiếp từ bản ghi nguồn.'
+              );
+              err.statusCode = 422;
+              err.errorCode = 'DEPOSIT_ALREADY_TRANSFERRED';
+              throw err;
+            }
+
+            const currentEffectivePaid = Math.max(0, Number(currentDep.paidAmountVnd || 0));
+            if (currentEffectivePaid <= 0 || currentDep.paymentStatus === 'PENDING') {
+              const err: any = new Error('Khoản cọc chưa được thu tiền thực tế, không thể thực hiện hoàn tiền.');
+              err.statusCode = 422;
+              err.errorCode = 'DEPOSIT_NOT_COLLECTED';
+              throw err;
+            }
+
+            // P0-01: Available balance subtracts BOTH refundedVnd AND deductedAmountVnd
+            const currentAvail = Math.max(
+              0,
+              currentEffectivePaid -
+                Number(currentDep.refundedVnd || 0) -
+                Number(currentDep.deductedAmountVnd || 0)
+            );
+            if (refundAmountVnd + deductionAmountVnd > currentAvail) {
+              const err: any = new Error(
+                `Số tiền hoàn và khấu trừ vượt quá số dư cọc khả dụng (${currentAvail.toLocaleString('vi-VN')}đ).`
+              );
+              err.statusCode = 422;
+              err.errorCode = 'EXCEEDS_DEPOSIT_BALANCE';
+              throw err;
+            }
+
+            const nextRefunded = Number(currentDep.refundedVnd || 0) + refundAmountVnd;
+            const nextDeducted = Number(currentDep.deductedAmountVnd || 0) + deductionAmountVnd;
+            const isFull = nextRefunded + nextDeducted >= currentEffectivePaid;
+            const nextStatus = isFull ? (nextRefunded > 0 ? 'REFUNDED' : 'FORFEITED') : 'PARTIALLY_REFUNDED';
+            const nextPaymentStatus = isFull
+              ? (nextRefunded > 0 ? 'REFUNDED' : 'FORFEITED')
+              : (nextRefunded + nextDeducted > 0 ? 'PARTIALLY_REFUNDED' : currentDep.paymentStatus);
+
+            const noteParts = [dep.notes || ''];
+            if (refundAmountVnd > 0)
+              noteParts.push(`Hoàn cọc: ${refundAmountVnd.toLocaleString('vi-VN')}đ`);
+            if (deductionAmountVnd > 0)
+              noteParts.push(`Khấu trừ: ${deductionAmountVnd.toLocaleString('vi-VN')}đ (${deductionReason})`);
+
+            const updatedDep = await tx.deposit.update({
+              where: { id: dep.id },
+              data: {
+                status: nextStatus,
+                paymentStatus: nextPaymentStatus,
+                refundedVnd: BigInt(nextRefunded),
+                deductedAmountVnd: BigInt(nextDeducted),
+                notes: noteParts.filter(Boolean).join(' | '),
+              },
+            });
+
+            if (refundAmountVnd > 0) {
+              await tx.ledgerEntry.create({
+                data: {
+                  orgId: actor.orgId,
+                  buildingId,
+                  periodKey: getCurrentVnPeriodKey(),
+                  entryCode: `PC-${getCurrentVnPeriodKey().replace('-', '')}-${crypto
+                    .randomBytes(2)
+                    .toString('hex')
+                    .toUpperCase()}`,
+                  entryType: 'EXPENSE',
+                  category: 'Hoàn tiền cọc',
+                  amountVnd: BigInt(refundAmountVnd),
+                  description: `Hoàn tiền cọc ${
+                    dep.contract?.contractCode || dep.reservation?.reservationCode || ''
+                  }`,
+                  recordedBy: actor.email,
+                },
+              });
+            }
+
+            if (deductionAmountVnd > 0) {
+              await tx.ledgerEntry.create({
+                data: {
+                  orgId: actor.orgId,
+                  buildingId,
+                  periodKey: getCurrentVnPeriodKey(),
+                  entryCode: `PT-${getCurrentVnPeriodKey().replace('-', '')}-${crypto
+                    .randomBytes(2)
+                    .toString('hex')
+                    .toUpperCase()}`,
+                  entryType: 'INCOME',
+                  category: 'Khấu trừ tiền cọc',
+                  amountVnd: BigInt(deductionAmountVnd),
+                  description: `Khấu trừ cọc ${
+                    dep.contract?.contractCode || dep.reservation?.reservationCode || ''
+                  }: ${deductionReason}`,
+                  recordedBy: actor.email,
+                },
+              });
+            }
+
+            await tx.consoleAuditLog.create({
+              data: {
+                orgId: actor.orgId,
+                buildingId,
+                actorId: actor.id,
+                actorEmail: actor.email,
+                actorRole: actor.role,
+                entityType: 'DEPOSIT',
+                entityId: dep.id,
+                action: 'REFUND_DEPOSIT',
+                summary: `Xử lý hoàn cọc ${refundAmountVnd.toLocaleString(
+                  'vi-VN'
+                )}đ, khấu trừ ${deductionAmountVnd.toLocaleString('vi-VN')}đ (${deductionReason || 'Không ghi lý do'})`,
+                metadata: { clientIp, refundAmountVnd, deductionAmountVnd, deductionReason },
+              },
+            });
+
+            return updatedDep;
+          });
+
+          return {
+            status: 200,
+            body: {
+              ok: true,
+              deposit: {
+                ...updated,
+                amountVnd: toSafeVndNumber(updated.amountVnd),
+                paidAmountVnd: toSafeVndNumber(updated.paidAmountVnd),
+                refundedVnd: toSafeVndNumber(updated.refundedVnd),
+                deductedAmountVnd: toSafeVndNumber(updated.deductedAmountVnd),
+              },
+            },
+          };
+        } catch (err: any) {
+          if (err.statusCode) {
+            return {
+              status: err.statusCode,
+              body: {
+                ok: false,
+                errorCode: err.errorCode || 'REFUND_FAILED',
+                message: err.message,
+              },
+            };
+          }
           throw err;
         }
-
-        if (
-          currentDep.status === 'APPLIED_TO_CONTRACT' ||
-          currentDep.paymentStatus === 'TRANSFERRED' ||
-          currentDep.transferredToDepositId !== null
-        ) {
-          const err: any = new Error(
-            'Khoản cọc đã được chuyển sang hợp đồng khác, không thể hoàn trực tiếp từ bản ghi nguồn.'
-          );
-          err.statusCode = 422;
-          err.errorCode = 'DEPOSIT_ALREADY_TRANSFERRED';
-          throw err;
-        }
-
-        const currentEffectivePaid = Math.max(0, Number(currentDep.paidAmountVnd || 0));
-        if (currentEffectivePaid <= 0 || currentDep.paymentStatus === 'PENDING') {
-          const err: any = new Error('Khoản cọc chưa được thu tiền thực tế, không thể thực hiện hoàn tiền.');
-          err.statusCode = 422;
-          err.errorCode = 'DEPOSIT_NOT_COLLECTED';
-          throw err;
-        }
-
-        const currentAvail = Math.max(0, currentEffectivePaid - Number(currentDep.refundedVnd || 0));
-        if (refundAmountVnd + deductionAmountVnd > currentAvail) {
-          const err: any = new Error(
-            `Số tiền hoàn và khấu trừ vượt quá số dư cọc khả dụng (${currentAvail.toLocaleString('vi-VN')}đ).`
-          );
-          err.statusCode = 422;
-          err.errorCode = 'EXCEEDS_DEPOSIT_BALANCE';
-          throw err;
-        }
-
-      const nextRefunded = Number(currentDep.refundedVnd) + refundAmountVnd;
-      const isFull = nextRefunded + deductionAmountVnd >= currentEffectivePaid;
-      const nextStatus = isFull ? 'REFUNDED' : 'PARTIALLY_REFUNDED';
-
-      const noteParts = [dep.notes || ''];
-      if (refundAmountVnd > 0)
-        noteParts.push(`Hoàn cọc: ${refundAmountVnd.toLocaleString('vi-VN')}đ`);
-      if (deductionAmountVnd > 0)
-        noteParts.push(
-          `Khấu trừ: ${deductionAmountVnd.toLocaleString('vi-VN')}đ (${
-            deductionReason || 'Không ghi lý do'
-          })`
-        );
-
-      const updatedDep = await tx.deposit.update({
-        where: { id: dep.id },
-        data: {
-          status: nextStatus,
-          refundedVnd: BigInt(nextRefunded),
-          notes: noteParts.filter(Boolean).join(' | '),
-        },
-      });
-
-      const buildingId = dep.contract?.buildingId || dep.reservation?.buildingId || null;
-
-      if (refundAmountVnd > 0) {
-        await tx.ledgerEntry.create({
-          data: {
-            orgId: actor.orgId,
-            buildingId,
-            periodKey: getCurrentVnPeriodKey(),
-            entryCode: `PC-${getCurrentVnPeriodKey().replace('-', '')}-${crypto
-              .randomBytes(2)
-              .toString('hex')
-              .toUpperCase()}`,
-            entryType: 'EXPENSE',
-            category: 'Hoàn tiền cọc',
-            amountVnd: BigInt(refundAmountVnd),
-            description: `Hoàn tiền cọc ${
-              dep.contract?.contractCode || dep.reservation?.reservationCode || ''
-            }`,
-            recordedBy: actor.email,
-          },
-        });
       }
-
-      if (deductionAmountVnd > 0) {
-        await tx.ledgerEntry.create({
-          data: {
-            orgId: actor.orgId,
-            buildingId,
-            periodKey: getCurrentVnPeriodKey(),
-            entryCode: `PT-${getCurrentVnPeriodKey().replace('-', '')}-${crypto
-              .randomBytes(2)
-              .toString('hex')
-              .toUpperCase()}`,
-            entryType: 'INCOME',
-            category: 'Khấu trừ tiền cọc',
-            amountVnd: BigInt(deductionAmountVnd),
-            description: `Khấu trừ cọc ${
-              dep.contract?.contractCode || dep.reservation?.reservationCode || ''
-            }: ${deductionReason}`,
-            recordedBy: actor.email,
-          },
-        });
-      }
-
-      await tx.consoleAuditLog.create({
-        data: {
-          orgId: actor.orgId,
-          buildingId,
-          actorId: actor.id,
-          actorEmail: actor.email,
-          actorRole: actor.role,
-          entityType: 'DEPOSIT',
-          entityId: dep.id,
-          action: 'REFUND_DEPOSIT',
-          summary: `Xử lý hoàn cọc ${refundAmountVnd.toLocaleString(
-            'vi-VN'
-          )}đ, khấu trừ ${deductionAmountVnd.toLocaleString('vi-VN')}đ`,
-          metadata: { clientIp, refundAmountVnd, deductionAmountVnd, deductionReason },
-        },
-      });
-
-      return updatedDep;
-    });
-
-    return sendJson(res, 200, {
-      ok: true,
-      deposit: {
-        ...updated,
-        amountVnd: toSafeVndNumber(updated.amountVnd),
-        paidAmountVnd: toSafeVndNumber(updated.paidAmountVnd),
-        refundedVnd: toSafeVndNumber(updated.refundedVnd),
-      },
-    });
-    } catch (err: any) {
-      if (err.statusCode) {
-        return sendJson(res, err.statusCode, {
-          ok: false,
-          errorCode: err.errorCode || 'REFUND_FAILED',
-          message: err.message,
-        });
-      }
-      throw err;
-    }
+    );
   }
 
   // POST /api/v1/console/v2/contracts/:id/extend (Extend Contract)

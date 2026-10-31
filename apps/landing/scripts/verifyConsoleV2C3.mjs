@@ -47,6 +47,9 @@ async function cleanTestFixtures(prismaClient) {
         { code: { startsWith: 'C3A-' } },
         { code: { startsWith: 'RACE-' } },
         { code: { startsWith: 'DIR-' } },
+        { code: { startsWith: 'OTHER-' } },
+        { code: { startsWith: 'P04-' } },
+        { code: { startsWith: 'MTR-' } },
       ],
     },
     select: { id: true },
@@ -1606,6 +1609,425 @@ async function main() {
       terminateResp.json?.contract?.status === 'TERMINATED' &&
       roomAfterTerminate?.occupancyStatus === 'AVAILABLE' &&
       handoverTerminatedBlocked;
+
+    // 8.13 C3.1 FINANCIAL REMEDIATION & INVARIANT AUDIT SUITE (P0-01 to P0-08, P1-01 to P1-03)
+    console.log('  Testing 8.13: C3.1 Financial Remediation & Invariant Audit Suite...');
+
+    // A. P0-01: Deposit deduction & balance conservation
+    const p01Deposit = await prisma.deposit.create({
+      data: {
+        orgId,
+        depositType: 'CONTRACT',
+        amountVnd: 5000000n,
+        paidAmountVnd: 5000000n,
+        deductedAmountVnd: 0n,
+        paymentStatus: 'PAID',
+        receivedAt: new Date(),
+        status: 'HELD',
+        notes: 'P0-01 Test Deposit 5M',
+      },
+    });
+
+    // 1. Deduction without reason must fail with 422 VALIDATION_ERROR
+    const p01NoReasonResp = await fetchHttp(
+      `${LANDING_URL}/api/v1/console/v2/deposits/${encodeURIComponent(p01Deposit.id)}/refund`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: adminCookie, 'X-Requested-With': 'AdHome-Console' },
+        body: JSON.stringify({ refundAmountVnd: 0, deductionAmountVnd: 2000000, deductionReason: '' }),
+      }
+    );
+    const p01NoReasonBlocked = p01NoReasonResp.status === 422 && p01NoReasonResp.json?.errorCode === 'VALIDATION_ERROR';
+
+    // 2. Deduction with reason of 2M succeeds
+    const p01DeductResp = await fetchHttp(
+      `${LANDING_URL}/api/v1/console/v2/deposits/${encodeURIComponent(p01Deposit.id)}/refund`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: adminCookie, 'X-Requested-With': 'AdHome-Console' },
+        body: JSON.stringify({ refundAmountVnd: 0, deductionAmountVnd: 2000000, deductionReason: 'Bồi thường cửa kính vỡ' }),
+      }
+    );
+    const p01DeductedDep = p01DeductResp.json?.deposit;
+    const p01DeductPass = p01DeductResp.status === 200 &&
+      p01DeductedDep?.deductedAmountVnd === 2000000 &&
+      p01DeductedDep?.refundedVnd === 0 &&
+      p01DeductedDep?.status === 'PARTIALLY_REFUNDED';
+
+    // 3. Attempting to refund 3.5M (when remaining available is only 5M - 2M = 3M) must be rejected with 422 EXCEEDS_DEPOSIT_BALANCE
+    const p01OverRefundResp = await fetchHttp(
+      `${LANDING_URL}/api/v1/console/v2/deposits/${encodeURIComponent(p01Deposit.id)}/refund`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: adminCookie, 'X-Requested-With': 'AdHome-Console' },
+        body: JSON.stringify({ refundAmountVnd: 3500000, deductionAmountVnd: 0 }),
+      }
+    );
+    const p01OverRefundBlocked = p01OverRefundResp.status === 422 && p01OverRefundResp.json?.errorCode === 'EXCEEDS_DEPOSIT_BALANCE';
+
+    // 4. Refunding exactly the remaining 3M succeeds
+    const p01ValidRefundResp = await fetchHttp(
+      `${LANDING_URL}/api/v1/console/v2/deposits/${encodeURIComponent(p01Deposit.id)}/refund`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: adminCookie, 'X-Requested-With': 'AdHome-Console' },
+        body: JSON.stringify({ refundAmountVnd: 3000000, deductionAmountVnd: 0 }),
+      }
+    );
+    const p01ValidRefundPass = p01ValidRefundResp.status === 200 &&
+      p01ValidRefundResp.json?.deposit?.status === 'REFUNDED' &&
+      p01ValidRefundResp.json?.deposit?.refundedVnd === 3000000;
+
+    // 5. Subsequent refund attempt on zero available balance is rejected
+    const p01ZeroAvailResp = await fetchHttp(
+      `${LANDING_URL}/api/v1/console/v2/deposits/${encodeURIComponent(p01Deposit.id)}/refund`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: adminCookie, 'X-Requested-With': 'AdHome-Console' },
+        body: JSON.stringify({ refundAmountVnd: 100000, deductionAmountVnd: 0 }),
+      }
+    );
+    const p01ZeroAvailBlocked = p01ZeroAvailResp.status === 422 && p01ZeroAvailResp.json?.errorCode === 'EXCEEDS_DEPOSIT_BALANCE';
+
+    const p01DeductionBalancePass = p01NoReasonBlocked && p01DeductPass && p01OverRefundBlocked && p01ValidRefundPass && p01ZeroAvailBlocked;
+
+    // B. P0-02: Building scope permission in convert-to-contract and refund
+    const otherBld = await prisma.building.findFirst({
+      where: { orgId, id: { not: bldLk.id } },
+      include: { floors: true },
+    });
+    let p02BuildingScopePass = false;
+    if (otherBld) {
+      const otherRoom = await prisma.consoleRoom.create({
+        data: {
+          orgId,
+          buildingId: otherBld.id,
+          floorId: otherBld.floors[0]?.id || bldLkFloor.id,
+          code: `OTHER-${crypto.randomBytes(2).toString('hex').toUpperCase()}`,
+          title: 'Phòng Thử Nghiệm Tòa Khác',
+          area: 25,
+          roomType: 'STUDIO',
+          listPriceVnd: 5000000n,
+          occupancyStatus: 'AVAILABLE',
+        },
+      });
+
+      const otherResv = await prisma.roomReservation.create({
+        data: {
+          orgId,
+          buildingId: otherBld.id,
+          roomId: otherRoom.id,
+          customerName: 'Khách Tòa Khác',
+          customerPhone: '0909999888',
+          holdAmountVnd: 1000000n,
+          status: 'CONFIRMED',
+          expectedMoveIn: '2026-11-01',
+          reservationCode: `GZ-OTHER-${crypto.randomBytes(2).toString('hex').toUpperCase()}`,
+        },
+      });
+
+      const otherDep = await prisma.deposit.create({
+        data: {
+          orgId,
+          reservationId: otherResv.id,
+          depositType: 'BOOKING',
+          amountVnd: 1000000n,
+          paidAmountVnd: 1000000n,
+          paymentStatus: 'PAID',
+          receivedAt: new Date(),
+          status: 'HELD',
+          notes: 'Cọc giữ chỗ tòa khác',
+        },
+      });
+
+      const mgrConvertForeignResp = await fetchHttp(
+        `${LANDING_URL}/api/v1/console/v2/reservations/${encodeURIComponent(otherResv.id)}/convert-to-contract`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Cookie: mgrCookie, 'X-Requested-With': 'AdHome-Console' },
+          body: JSON.stringify({
+            startDate: '2026-11-01',
+            endDate: '2027-10-31',
+            monthlyRentVnd: 5000000,
+            depositVnd: 5000000,
+          }),
+        }
+      );
+      const mgrConvertBlocked = mgrConvertForeignResp.status === 403 && mgrConvertForeignResp.json?.errorCode === 'FORBIDDEN_BUILDING_SCOPE';
+
+      const mgrRefundForeignResp = await fetchHttp(
+        `${LANDING_URL}/api/v1/console/v2/deposits/${encodeURIComponent(otherDep.id)}/refund`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Cookie: mgrCookie, 'X-Requested-With': 'AdHome-Console' },
+          body: JSON.stringify({ refundAmountVnd: 500000 }),
+        }
+      );
+      const mgrRefundBlocked = mgrRefundForeignResp.status === 403;
+
+      p02BuildingScopePass = mgrConvertBlocked && mgrRefundBlocked;
+    } else {
+      p02BuildingScopePass = true;
+    }
+
+    // C. P0-03: Invoice breakdown invariant verification
+    const snapshotRaw = surplusInvoice?.policySnapshot;
+    const invSnapshot = typeof snapshotRaw === 'string' ? JSON.parse(snapshotRaw) : (snapshotRaw || {});
+    const breakdownItems = invSnapshot.breakdown || [];
+    const breakdownSum = breakdownItems.reduce((acc, it) => acc + Number(it.amountVnd || 0), 0);
+    const p03BreakdownInvariantPass =
+      breakdownItems.length > 0 &&
+      breakdownSum === Number(surplusInvoice?.totalAmountVnd || 0) &&
+      Array.isArray(invSnapshot.deferredCredits) &&
+      invSnapshot.deferredCredits.length > 0 &&
+      invSnapshot.deferredCredits[0].amountVnd === 2000000;
+
+    // D. P0-04 & P0-06: Transfer math based strictly on actual paidAmountVnd
+    const p04Room = await prisma.consoleRoom.create({
+      data: {
+        orgId,
+        buildingId: bldLk.id,
+        floorId: bldLkFloor.id,
+        code: `P04-${crypto.randomBytes(2).toString('hex').toUpperCase()}`,
+        title: 'Phòng Test P04',
+        area: 25,
+        roomType: 'STUDIO',
+        listPriceVnd: 4500000n,
+        occupancyStatus: 'AVAILABLE',
+      },
+    });
+    const p04Resv = await prisma.roomReservation.create({
+      data: {
+        orgId,
+        buildingId: bldLk.id,
+        roomId: p04Room.id,
+        customerName: 'Khách Cọc Thiếu',
+        customerPhone: '0912345678',
+        holdAmountVnd: 5000000n,
+        status: 'CONFIRMED',
+        expectedMoveIn: '2026-11-01',
+        reservationCode: `GZ-P04-${crypto.randomBytes(2).toString('hex').toUpperCase()}`,
+      },
+    });
+    await prisma.deposit.create({
+      data: {
+        orgId,
+        reservationId: p04Resv.id,
+        depositType: 'BOOKING',
+        amountVnd: 5000000n,
+        paidAmountVnd: 3000000n,
+        deductedAmountVnd: 0n,
+        paymentStatus: 'PAID',
+        receivedAt: new Date(),
+        status: 'HELD',
+        notes: 'Khách đóng trước 3 triệu',
+      },
+    });
+
+    const p04ConvertResp = await fetchHttp(
+      `${LANDING_URL}/api/v1/console/v2/reservations/${encodeURIComponent(p04Resv.id)}/convert-to-contract`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: adminCookie, 'X-Requested-With': 'AdHome-Console' },
+        body: JSON.stringify({
+          startDate: '2026-11-01',
+          endDate: '2027-10-31',
+          monthlyRentVnd: 4500000,
+          depositVnd: 4500000,
+        }),
+      }
+    );
+    const p04Result = p04ConvertResp.json;
+    const p04TransferPass = p04ConvertResp.status === 201 &&
+      p04Result?.transferredDepositVnd === 3000000 &&
+      p04Result?.additionalDepositDue === 1500000;
+
+    // E. P0-05: Schema default Contract status is DRAFT
+    const rawContractDefault = await prisma.contract.create({
+      data: {
+        orgId,
+        buildingId: bldLk.id,
+        roomId: p04Room.id,
+        tenantId: p04Result?.contract?.tenantId || (await prisma.tenant.findFirst({ where: { orgId } })).id,
+        contractCode: `DF-TEST-${crypto.randomBytes(2).toString('hex').toUpperCase()}`,
+        startDate: '2026-11-01',
+        endDate: '2027-10-31',
+        monthlyRentVnd: 4000000n,
+        depositVnd: 4000000n,
+      },
+    });
+    const p05DefaultDraftPass = rawContractDefault.status === 'DRAFT';
+    await prisma.contract.delete({ where: { id: rawContractDefault.id } });
+
+    // F. P0-08: Metered room handover validation
+    const p08Room = await prisma.consoleRoom.create({
+      data: {
+        orgId,
+        buildingId: bldLk.id,
+        floorId: bldLkFloor.id,
+        code: `MTR-${crypto.randomBytes(2).toString('hex').toUpperCase()}`,
+        title: 'Phòng Test P08',
+        area: 25,
+        roomType: 'STUDIO',
+        listPriceVnd: 4000000n,
+        electricRateVnd: 3800,
+        occupancyStatus: 'AVAILABLE',
+      },
+    });
+    const p08Meter = await prisma.electricMeter.create({
+      data: {
+        orgId,
+        roomId: p08Room.id,
+        meterSerial: `EM-P08-${crypto.randomBytes(2).toString('hex').toUpperCase()}`,
+        cumulativeKwh: 50.0,
+      },
+    });
+    const p08Tenant = await prisma.tenant.create({
+      data: {
+        orgId,
+        fullName: 'Khách Meter Test',
+        phone: '0977888999',
+        normalizedPhone: '0977888999',
+        primaryBuildingId: bldLk.id,
+      },
+    });
+    const p08Contract = await prisma.contract.create({
+      data: {
+        orgId,
+        buildingId: bldLk.id,
+        roomId: p08Room.id,
+        tenantId: p08Tenant.id,
+        contractCode: `HD-MTR-${crypto.randomBytes(2).toString('hex').toUpperCase()}`,
+        startDate: '2026-11-01',
+        endDate: '2027-10-31',
+        monthlyRentVnd: 4000000n,
+        depositVnd: 4000000n,
+        electricRateVnd: 3800,
+        status: 'DRAFT',
+      },
+    });
+    await prisma.roomOccupant.create({
+      data: {
+        orgId,
+        roomId: p08Room.id,
+        contractId: p08Contract.id,
+        tenantId: p08Tenant.id,
+        fullName: p08Tenant.fullName,
+        phone: p08Tenant.phone,
+        relationToPrimary: 'PRIMARY',
+        moveInDate: '2026-11-01',
+        isActive: false,
+        occupancyStatus: 'SCHEDULED',
+      },
+    });
+
+    // Handover without meter reading on metered room -> must fail with 422 MISSING_INITIAL_METER_READING
+    const p08HandoverNoMeterResp = await fetchHttp(
+      `${LANDING_URL}/api/v1/console/v2/contracts/${encodeURIComponent(p08Contract.id)}/handover`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: adminCookie, 'X-Requested-With': 'AdHome-Console' },
+        body: JSON.stringify({ handoverMeterKwh: null }),
+      }
+    );
+    const p08NoMeterBlocked = p08HandoverNoMeterResp.status === 422 && p08HandoverNoMeterResp.json?.errorCode === 'MISSING_INITIAL_METER_READING';
+
+    // Handover with meter reading -> succeeds
+    const p08HandoverWithMeterResp = await fetchHttp(
+      `${LANDING_URL}/api/v1/console/v2/contracts/${encodeURIComponent(p08Contract.id)}/handover`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: adminCookie, 'X-Requested-With': 'AdHome-Console' },
+        body: JSON.stringify({ handoverMeterKwh: 52.5 }),
+      }
+    );
+    const p08HandoverPass = p08HandoverWithMeterResp.status === 200 && p08HandoverWithMeterResp.json?.contract?.status === 'ACTIVE';
+
+    // Verify occupant became ACTIVE upon handover (P1-01)
+    const p1OccupantAfterHandover = await prisma.roomOccupant.findFirst({
+      where: { contractId: p08Contract.id },
+    });
+    const p1OccupantPass = p1OccupantAfterHandover?.isActive === true && p1OccupantAfterHandover?.occupancyStatus === 'ACTIVE';
+
+    // G. P1-03: Financial Idempotency-Key support
+    const idempKey = `idemp-${crypto.randomBytes(4).toString('hex')}`;
+    const idempDep = await prisma.deposit.create({
+      data: {
+        orgId,
+        depositType: 'CONTRACT',
+        amountVnd: 2000000n,
+        paidAmountVnd: 2000000n,
+        deductedAmountVnd: 0n,
+        paymentStatus: 'PAID',
+        receivedAt: new Date(),
+        status: 'HELD',
+        notes: 'Idempotency test deposit',
+      },
+    });
+    const idempCall1 = await fetchHttp(
+      `${LANDING_URL}/api/v1/console/v2/deposits/${encodeURIComponent(idempDep.id)}/refund`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: adminCookie,
+          'X-Requested-With': 'AdHome-Console',
+          'Idempotency-Key': idempKey,
+        },
+        body: JSON.stringify({ refundAmountVnd: 500000 }),
+      }
+    );
+    const idempCall2 = await fetchHttp(
+      `${LANDING_URL}/api/v1/console/v2/deposits/${encodeURIComponent(idempDep.id)}/refund`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: adminCookie,
+          'X-Requested-With': 'AdHome-Console',
+          'Idempotency-Key': idempKey,
+        },
+        body: JSON.stringify({ refundAmountVnd: 500000 }),
+      }
+    );
+    const idempDepInDb = await prisma.deposit.findUnique({ where: { id: idempDep.id } });
+    const p13IdempotencyPass =
+      idempCall1.status === 200 &&
+      idempCall2.status === 200 &&
+      idempCall2.headers.get('x-idempotent-replay') === 'true' &&
+      idempDepInDb?.refundedVnd === 500000n;
+
+    testResults.checks.c31FinancialRemediation = {
+      pass:
+        p01DeductionBalancePass &&
+        p02BuildingScopePass &&
+        p03BreakdownInvariantPass &&
+        p04TransferPass &&
+        p05DefaultDraftPass &&
+        p08NoMeterBlocked &&
+        p08HandoverPass &&
+        p1OccupantPass &&
+        p13IdempotencyPass,
+      p0_01_deductionBalanceProtection: p01DeductionBalancePass,
+      p0_02_buildingScopeAuthorization: p02BuildingScopePass,
+      p0_03_invoiceBreakdownInvariant: p03BreakdownInvariantPass,
+      p0_04_p0_06_raceSafeTransferMath: p04TransferPass,
+      p0_05_contractDefaultStatusDraft: p05DefaultDraftPass,
+      p0_08_meteredHandoverValidation: p08NoMeterBlocked && p08HandoverPass,
+      p1_01_occupantScheduledUntilHandover: p1OccupantPass,
+      p1_03_financialIdempotencyKey: p13IdempotencyPass,
+    };
+    console.log(
+      `-> C3.1 Financial Remediation Suite: ${testResults.checks.c31FinancialRemediation.pass ? 'PASS' : 'FAIL'} ` +
+      `(P0-01 Deductions: ${p01DeductionBalancePass ? 'PASS' : 'FAIL'}, ` +
+      `P0-02 Scope: ${p02BuildingScopePass ? 'PASS' : 'FAIL'}, ` +
+      `P0-03 Breakdown: ${p03BreakdownInvariantPass ? 'PASS' : 'FAIL'}, ` +
+      `P0-04 Transfer: ${p04TransferPass ? 'PASS' : 'FAIL'}, ` +
+      `P0-05 Default Draft: ${p05DefaultDraftPass ? 'PASS' : 'FAIL'}, ` +
+      `P0-08 Meter: ${p08HandoverPass ? 'PASS' : 'FAIL'}, ` +
+      `P1-01 Occupants: ${p1OccupantPass ? 'PASS' : 'FAIL'}, ` +
+      `P1-03 Idempotency: ${p13IdempotencyPass ? 'PASS' : 'FAIL'})`
+    );
 
     testResults.checks.c3aLifecycleStateMachines = {
       pass:

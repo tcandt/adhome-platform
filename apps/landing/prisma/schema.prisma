@@ -271,6 +271,7 @@ model Deposit {
   amountVnd              BigInt    @map("amount_vnd")
   paidAmountVnd          BigInt    @default(0) @map("paid_amount_vnd")
   refundedVnd            BigInt    @default(0) @map("refunded_vnd")
+  deductedAmountVnd      BigInt    @default(0) @map("deducted_amount_vnd")
   /// PENDING | PARTIALLY_PAID | PAID | TRANSFERRED | REFUNDED | FORFEITED
   paymentStatus          String    @default("PENDING") @map("payment_status")
   transferredToDepositId String?   @map("transferred_to_deposit_id")
@@ -315,7 +316,7 @@ model Contract {
   handoverMeterKwh   Float?    @map("handover_meter_kwh")
   handoverWaterM3    Float?    @map("handover_water_m3")
   /// DRAFT | ACTIVE | EXPIRING | EXTENDED | TERMINATED | EXPIRED
-  status             String    @default("ACTIVE")
+  status             String    @default("DRAFT")
   notes              String?
   createdAt          DateTime  @default(now()) @map("created_at")
   updatedAt          DateTime  @updatedAt @map("updated_at")
@@ -353,7 +354,9 @@ model RoomOccupant {
   moveInDate         String    @map("move_in_date")
   moveOutDate        String?   @map("move_out_date")
   notes              String?
-  isActive           Boolean   @default(true) @map("is_active")
+  /// SCHEDULED | ACTIVE | MOVED_OUT | CANCELLED
+  occupancyStatus    String    @default("SCHEDULED") @map("occupancy_status")
+  isActive           Boolean   @default(false) @map("is_active")
   createdAt          DateTime  @default(now()) @map("created_at")
   updatedAt          DateTime  @updatedAt @map("updated_at")
 
@@ -742,4 +745,18 @@ model SeoSyncJob {
   @@index([status, createdAt])
   @@index([roomId, createdAt])
   @@map("seo_sync_jobs")
+}
+
+model IdempotencyRecord {
+  id             String   @id @default(uuid())
+  orgId          String   @map("org_id")
+  action         String
+  idempotencyKey String   @map("idempotency_key")
+  responseStatus Int      @map("response_status")
+  responseBody   Json     @map("response_body")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@unique([orgId, action, idempotencyKey])
+  @@index([orgId, action, createdAt])
+  @@map("idempotency_records")
 }

@@ -676,6 +676,7 @@ export const OperationalModuleWorkspace: React.FC<
         amountVnd: number;
         paidAmountVnd?: number;
         refundedVnd: number;
+        deductedAmountVnd?: number;
         paymentStatus?: string;
         status: string;
         createdAt: string;
@@ -1169,7 +1170,7 @@ export const OperationalModuleWorkspace: React.FC<
                         {depositsList.map((d) => {
                           const effectivePaid = d.paidAmountVnd ?? (d.paymentStatus === 'PAID' ? d.amountVnd : 0);
                           const remainingDue = Math.max(0, d.amountVnd - effectivePaid);
-                          const availableBalance = Math.max(0, effectivePaid - d.refundedVnd);
+                          const availableBalance = Math.max(0, effectivePaid - d.refundedVnd - (d.deductedAmountVnd || 0));
                           const isTransferred = d.status === 'APPLIED_TO_CONTRACT' || d.paymentStatus === 'TRANSFERRED';
                           return (
                           <tr key={d.id}>

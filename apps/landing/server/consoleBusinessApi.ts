@@ -64,6 +64,106 @@ export function isActiveContract(status: string | null | undefined): boolean {
   );
 }
 
+export interface FirstPeriodRentCalc {
+  policy: 'CALENDAR_PRORATE' | 'ANNIVERSARY_CYCLE' | 'FULL_FIRST_MONTH' | 'CUSTOM_FIRST_CYCLE';
+  daysInMonth: number;
+  billedDays: number;
+  periodKey: string;
+  periodStartDate: string;
+  periodEndDate: string;
+  monthlyRentVnd: number;
+  rentFirstPeriodVnd: number;
+  formula: string;
+}
+
+/**
+ * Calculates first billing period rent supporting CALENDAR_PRORATE, ANNIVERSARY_CYCLE, and FULL_FIRST_MONTH.
+ * Example (E2E-09): Start Nov 23, 2026 -> 8 / 30 days of Nov -> 4.500.000 * 8 / 30 = 1.200.000 VND
+ */
+export function calculateFirstPeriodRent(
+  policy: string | undefined,
+  startDate: string,
+  monthlyRentVnd: number,
+  customFirstPeriodVnd?: number
+): FirstPeriodRentCalc {
+  const [y, m, d] = startDate.split('-').map(Number);
+  const periodKey = `${y}-${String(m).padStart(2, '0')}`;
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const validPolicy = (['CALENDAR_PRORATE', 'ANNIVERSARY_CYCLE', 'FULL_FIRST_MONTH', 'CUSTOM_FIRST_CYCLE'].includes(String(policy))
+    ? policy
+    : 'CALENDAR_PRORATE') as FirstPeriodRentCalc['policy'];
+
+  if (validPolicy === 'CUSTOM_FIRST_CYCLE' && customFirstPeriodVnd !== undefined && customFirstPeriodVnd >= 0) {
+    const periodEndDate = `${y}-${String(m).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+    return {
+      policy: 'CUSTOM_FIRST_CYCLE',
+      daysInMonth,
+      billedDays: Math.max(1, daysInMonth - d + 1),
+      periodKey,
+      periodStartDate: startDate,
+      periodEndDate,
+      monthlyRentVnd,
+      rentFirstPeriodVnd: Math.trunc(customFirstPeriodVnd),
+      formula: `Tùy chỉnh phê duyệt: ${Math.trunc(customFirstPeriodVnd).toLocaleString('vi-VN')} đ`,
+    };
+  }
+
+  if (validPolicy === 'ANNIVERSARY_CYCLE') {
+    const target = new Date(y, m, d);
+    target.setDate(target.getDate() - 1);
+    const endIso = `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, '0')}-${String(target.getDate()).padStart(2, '0')}`;
+    return {
+      policy: 'ANNIVERSARY_CYCLE',
+      daysInMonth,
+      billedDays: daysInMonth,
+      periodKey,
+      periodStartDate: startDate,
+      periodEndDate: endIso,
+      monthlyRentVnd,
+      rentFirstPeriodVnd: monthlyRentVnd,
+      formula: `Chu kỳ tròn tháng (${startDate} → ${endIso}): ${monthlyRentVnd.toLocaleString('vi-VN')} đ`,
+    };
+  }
+
+  if (validPolicy === 'FULL_FIRST_MONTH') {
+    const endIso = `${y}-${String(m).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+    return {
+      policy: 'FULL_FIRST_MONTH',
+      daysInMonth,
+      billedDays: daysInMonth,
+      periodKey,
+      periodStartDate: startDate,
+      periodEndDate: endIso,
+      monthlyRentVnd,
+      rentFirstPeriodVnd: monthlyRentVnd,
+      formula: `Trọn tháng dương lịch ${periodKey}: ${monthlyRentVnd.toLocaleString('vi-VN')} đ`,
+    };
+  }
+
+  // Default: CALENDAR_PRORATE
+  const billedDays = daysInMonth - d + 1; // inclusive of start date to month end
+  const rentFirstPeriodVnd =
+    billedDays === daysInMonth
+      ? monthlyRentVnd
+      : Math.round((monthlyRentVnd * billedDays) / daysInMonth);
+  const periodEndDate = `${y}-${String(m).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+
+  return {
+    policy: 'CALENDAR_PRORATE',
+    daysInMonth,
+    billedDays,
+    periodKey,
+    periodStartDate: startDate,
+    periodEndDate,
+    monthlyRentVnd,
+    rentFirstPeriodVnd,
+    formula:
+      billedDays === daysInMonth
+        ? `Trọn tháng (${billedDays}/${daysInMonth} ngày): ${monthlyRentVnd.toLocaleString('vi-VN')} đ`
+        : `${monthlyRentVnd.toLocaleString('vi-VN')} đ × (${billedDays}/${daysInMonth} ngày: ${startDate} → ${periodEndDate}) = ${rentFirstPeriodVnd.toLocaleString('vi-VN')} đ`,
+  };
+}
+
 function sendJson(
   res: ServerResponse,
   status: number,
@@ -4237,13 +4337,21 @@ export async function handleConsoleV2Api(
           }
         }
 
-        // Generate First Combined Invoice
+        // Generate First Combined Invoice with Prorate Engine (C4-BILL-01 & C4-BILL-02)
+        const firstRentCalc = calculateFirstPeriodRent(
+          String(body.firstPeriodBillingPolicy || org?.billingCyclePolicy || 'CALENDAR_PRORATE'),
+          startDate,
+          monthlyRentVnd,
+          body.customFirstPeriodVnd !== undefined ? Number(body.customFirstPeriodVnd) : undefined
+        );
+        const rentFirstPeriodVnd = firstRentCalc.rentFirstPeriodVnd;
+
         const initialInvoiceCode = `HD-INV-${rm.building.code}-${rm.code}-${crypto
           .randomBytes(2)
           .toString('hex')
           .toUpperCase()}`;
         const additionalDepositDue = isDepositPaid ? 0 : depositVnd;
-        const totalFirstDue = monthlyRentVnd + additionalDepositDue;
+        const totalFirstDue = rentFirstPeriodVnd + additionalDepositDue;
 
         await tx.invoice.create({
           data: {
@@ -4253,17 +4361,26 @@ export async function handleConsoleV2Api(
             contractId: ct.id,
             tenantId: tenant.id,
             invoiceCode: initialInvoiceCode,
-            periodKey: getCurrentVnPeriodKey(),
+            periodKey: firstRentCalc.periodKey,
             dueDate: startDate,
-            roomRentVnd: BigInt(monthlyRentVnd),
+            roomRentVnd: BigInt(rentFirstPeriodVnd),
             adjustmentVnd: BigInt(additionalDepositDue),
             totalAmountVnd: BigInt(totalFirstDue),
             status: totalFirstDue === 0 ? 'PAID' : 'ISSUED',
             paidAmountVnd: totalFirstDue === 0 ? BigInt(totalFirstDue) : BigInt(0),
             policySnapshot: {
               type: 'FIRST_COMBINED_INVOICE',
+              billingPolicy: firstRentCalc.policy,
+              daysInMonth: firstRentCalc.daysInMonth,
+              billedDays: firstRentCalc.billedDays,
+              periodStartDate: firstRentCalc.periodStartDate,
+              periodEndDate: firstRentCalc.periodEndDate,
+              formula: firstRentCalc.formula,
               breakdown: [
-                { label: 'Tiền thuê chu kỳ đầu', amountVnd: monthlyRentVnd },
+                {
+                  label: `Tiền thuê chu kỳ đầu (${firstRentCalc.billedDays}/${firstRentCalc.daysInMonth} ngày: ${firstRentCalc.periodStartDate} → ${firstRentCalc.periodEndDate})`,
+                  amountVnd: rentFirstPeriodVnd,
+                },
                 { label: 'Tiền cọc hợp đồng yêu cầu', amountVnd: depositVnd },
                 ...(isDepositPaid
                   ? [{ label: 'Tiền cọc hợp đồng đã thu riêng', amountVnd: -depositVnd }]
@@ -4271,6 +4388,7 @@ export async function handleConsoleV2Api(
               ],
               financialSummary: {
                 monthlyRentVnd,
+                rentFirstPeriodVnd,
                 depositVnd,
                 isDepositPaid,
                 additionalDepositDue,
@@ -4396,6 +4514,59 @@ export async function handleConsoleV2Api(
       });
     }
 
+    // C4-HAND-01: Check Deposit Collection Policy before Handover
+    const depositSummary = await prisma.deposit.aggregate({
+      where: {
+        contractId: ct.id,
+        status: { in: ['HELD', 'PAID'] },
+      },
+      _sum: {
+        paidAmountVnd: true,
+      },
+    });
+    const paidDepositTotal = Number(depositSummary._sum.paidAmountVnd || 0);
+    const requiredDeposit = Number(ct.depositVnd || 0);
+    const isDepositFullyPaid = paidDepositTotal >= requiredDeposit;
+
+    const allowPartialWithApproval = Boolean(
+      body.allowPartialDepositWithApproval || body.overrideDepositRequirement
+    );
+
+    if (!isDepositFullyPaid && requiredDeposit > 0) {
+      if (!allowPartialWithApproval) {
+        return sendJson(res, 422, {
+          ok: false,
+          errorCode: 'UNPAID_DEPOSIT_REQUIRED',
+          message: `Hợp đồng chưa thu đủ tiền cọc (${requiredDeposit.toLocaleString('vi-VN')} đ, đã ghi nhận: ${paidDepositTotal.toLocaleString('vi-VN')} đ). Bắt buộc phải thu cọc trước khi bàn giao, hoặc yêu cầu phê duyệt từ Quản lý (ALLOW_PARTIAL_WITH_APPROVAL).`,
+          requiredDepositVnd: requiredDeposit,
+          paidDepositVnd: paidDepositTotal,
+          outstandingDepositVnd: requiredDeposit - paidDepositTotal,
+        });
+      }
+
+      // Check permission for partial deposit handover approval
+      const canApproveOverride =
+        actor.role === 'ADMIN' ||
+        actorHasPermission(actor, 'finance.override') ||
+        actorHasPermission(actor, 'contracts.manage');
+      if (!canApproveOverride) {
+        return sendJson(res, 403, {
+          ok: false,
+          errorCode: 'INSUFFICIENT_PERMISSION_OVERRIDE',
+          message: 'Chỉ Quản trị viên (ADMIN) hoặc tài khoản có quyền finance.override mới được phê duyệt bàn giao khi còn nợ cọc.',
+        });
+      }
+
+      const overrideReason = String(body.depositOverrideReason || body.overrideReason || '').trim();
+      if (!overrideReason) {
+        return sendJson(res, 422, {
+          ok: false,
+          errorCode: 'OVERRIDE_REASON_REQUIRED',
+          message: 'Bắt buộc nhập lý do phê duyệt bàn giao phòng khi chưa thu đủ tiền cọc.',
+        });
+      }
+    }
+
     const handoverMeterKwh =
       body.handoverMeterKwh !== undefined && body.handoverMeterKwh !== null && !isNaN(Number(body.handoverMeterKwh))
         ? Number(body.handoverMeterKwh)
@@ -4414,6 +4585,15 @@ export async function handleConsoleV2Api(
         ok: false,
         errorCode: 'MISSING_INITIAL_METER_READING',
         message: 'Phòng tính điện theo công tơ, bắt buộc phải có chỉ số điện đầu kỳ hợp lệ (>= 0) khi bàn giao.',
+      });
+    }
+
+    const isWaterMetered = ct.waterBillingMethod === 'PER_M3' || ct.room.waterBillingMethod === 'PER_M3';
+    if (isWaterMetered && (handoverWaterM3 === null || handoverWaterM3 === undefined || isNaN(handoverWaterM3))) {
+      return sendJson(res, 422, {
+        ok: false,
+        errorCode: 'MISSING_INITIAL_WATER_READING',
+        message: 'Phòng tính nước theo đồng hồ (PER_M3), bắt buộc phải có chỉ số nước đầu kỳ hợp lệ (>= 0) khi bàn giao.',
       });
     }
 
@@ -4525,7 +4705,7 @@ export async function handleConsoleV2Api(
             entityType: 'CONTRACT',
             entityId: ct.id,
             action: 'HANDOVER_ROOM',
-            summary: `Bàn giao phòng ${ct.room.code} cho hợp đồng ${ct.contractCode} (Giao: ${handoverBy}, Nhận: ${handoverTo}, Điện: ${handoverMeterKwh ?? 'N/A'} kWh, Nước: ${handoverWaterM3 ?? 'N/A'} m³)`,
+            summary: `Bàn giao phòng ${ct.room.code} cho hợp đồng ${ct.contractCode} (Giao: ${handoverBy}, Nhận: ${handoverTo}, Điện: ${handoverMeterKwh ?? 'N/A'} kWh, Nước: ${handoverWaterM3 ?? 'N/A'} m³)${!isDepositFullyPaid && requiredDeposit > 0 ? ` [DUYỆT NỢ CỌC: thiếu ${(requiredDeposit - paidDepositTotal).toLocaleString('vi-VN')}đ, Lý do: ${body.depositOverrideReason || body.overrideReason}]` : ''}`,
             metadata: {
               clientIp,
               handoverBy,
@@ -4534,6 +4714,14 @@ export async function handleConsoleV2Api(
               handoverMeterKwh,
               handoverWaterM3,
               moveInDate,
+              depositCompliance: {
+                requiredDeposit,
+                paidDepositTotal,
+                isDepositFullyPaid,
+                allowPartialWithApproval,
+                overrideReason: !isDepositFullyPaid ? String(body.depositOverrideReason || body.overrideReason || '') : null,
+                approvedBy: !isDepositFullyPaid ? actor.email : null,
+              },
             },
           },
         });
@@ -5446,7 +5634,14 @@ export async function handleConsoleV2Api(
         }, 0);
 
         const C = requiredDepositVnd;
-        const R = monthlyRentVnd;
+        // Calculate first period rent with Prorate Engine (C4-BILL-01 & C4-BILL-02)
+        const firstRentCalc = calculateFirstPeriodRent(
+          String(body.firstPeriodBillingPolicy || org?.billingCyclePolicy || 'CALENDAR_PRORATE'),
+          startDate,
+          monthlyRentVnd,
+          body.customFirstPeriodVnd !== undefined ? Number(body.customFirstPeriodVnd) : undefined
+        );
+        const R = firstRentCalc.rentFirstPeriodVnd;
 
         // Apply transfer math
         let transferredDepositVnd = 0;
@@ -5478,7 +5673,7 @@ export async function handleConsoleV2Api(
           .toString('hex')
           .toUpperCase()}`;
 
-        // Create Contract (DRAFT status, room RESERVED)
+        // Create Contract (DRAFT status, room RESERVED) with proper rate inheritance (C4-HUN-02)
         const ct = await tx.contract.create({
           data: {
             orgId: actor.orgId,
@@ -5495,9 +5690,14 @@ export async function handleConsoleV2Api(
             monthlyRentVnd: BigInt(monthlyRentVnd),
             depositVnd: BigInt(Math.max(0, C)),
             occupantsCount,
-            electricRateVnd: resv.room.electricRateVnd || 3800,
-            waterBillingMethod: resv.room.waterBillingMethod || 'PER_M3',
-            waterRateVnd: resv.room.waterRateVnd || 15000,
+            electricRateVnd:
+              resv.room.electricBillingMode === 'HUNONIC_AUTO'
+                ? null
+                : (resv.room.electricRateVnd ?? resv.room.building?.electricRateVnd ?? org?.defaultElectricRateVnd ?? 3800),
+            waterBillingMethod:
+              resv.room.waterBillingMethod || resv.room.building?.waterBillingMethod || org?.defaultWaterMethod || 'PER_M3',
+            waterRateVnd:
+              resv.room.waterRateVnd ?? resv.room.building?.waterRateVnd ?? org?.defaultWaterRateVnd ?? 15000,
             handoverMeterKwh: null,
             handoverWaterM3: null,
             status: 'DRAFT',
@@ -5633,9 +5833,12 @@ export async function handleConsoleV2Api(
           });
         }
 
-        // P0-03: First Combined Invoice line items MUST sum exactly to totalInitialInvoiceDue
+        // P0-03: First Combined Invoice line items MUST sum exactly to totalInitialInvoiceDue (C4-BILL-01)
         const invoiceBreakdown: Array<{ label: string; amountVnd: number }> = [
-          { label: 'Tiền thuê chu kỳ đầu (R)', amountVnd: monthlyRentVnd },
+          {
+            label: `Tiền thuê chu kỳ đầu (${firstRentCalc.billedDays}/${firstRentCalc.daysInMonth} ngày: ${firstRentCalc.periodStartDate} → ${firstRentCalc.periodEndDate})`,
+            amountVnd: R,
+          },
         ];
         if (additionalDepositDue > 0) {
           invoiceBreakdown.push({ label: 'Tiền cọc hợp đồng còn phải thu thêm', amountVnd: additionalDepositDue });
@@ -5667,24 +5870,30 @@ export async function handleConsoleV2Api(
             contractId: ct.id,
             tenantId: finalTenantId,
             invoiceCode: initialInvoiceCode,
-            periodKey: startDate.slice(0, 7) || getCurrentVnPeriodKey(),
+            periodKey: firstRentCalc.periodKey,
             dueDate: startDate,
-            roomRentVnd: BigInt(monthlyRentVnd),
+            roomRentVnd: BigInt(R),
             adjustmentVnd: BigInt(additionalDepositDue - appliedRentCreditVnd),
             totalAmountVnd: BigInt(totalInitialInvoiceDue),
             status: totalInitialInvoiceDue === 0 ? 'PAID' : 'ISSUED',
             paidAmountVnd: totalInitialInvoiceDue === 0 ? BigInt(totalInitialInvoiceDue) : BigInt(0),
             policySnapshot: {
               type: 'FIRST_COMBINED_INVOICE',
+              billingPolicy: firstRentCalc.policy,
+              daysInMonth: firstRentCalc.daysInMonth,
+              billedDays: firstRentCalc.billedDays,
+              periodStartDate: firstRentCalc.periodStartDate,
+              periodEndDate: firstRentCalc.periodEndDate,
+              formula: firstRentCalc.formula,
               breakdown: invoiceBreakdown,
               deferredCredits: remainingSurplusCreditVnd > 0 ? [
                 { label: 'Tín dụng tiền thuê bảo lưu cho kỳ sau', amountVnd: remainingSurplusCreditVnd }
               ] : [],
               billingSchedule: {
                 issuedAt: new Date().toISOString(),
-                servicePeriodStart: startDate,
-                servicePeriodEnd: computeServiceCycleEndIso(startDate),
-                periodKey: startDate.slice(0, 7) || getCurrentVnPeriodKey(),
+                servicePeriodStart: firstRentCalc.periodStartDate,
+                servicePeriodEnd: firstRentCalc.periodEndDate,
+                periodKey: firstRentCalc.periodKey,
                 dueDate: startDate,
               },
               financialSummary: {

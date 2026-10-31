@@ -19,6 +19,7 @@ import {
   ShieldAlert,
   ArrowRight,
   Sparkles,
+  BookOpen,
 } from 'lucide-react';
 import { usePortfolio } from '../../../app/providers/PortfolioContext';
 import { useAuth } from '../../../app/providers/AuthContext';
@@ -33,6 +34,7 @@ interface Props {
   onOpenExtendModal?: (contract: any) => void;
   onOpenTerminateModal?: (contract: any) => void;
   onEditRoom?: (room: ConsoleRoomDto) => void;
+  onOpenLegacyImport?: (roomId: string) => void;
 }
 
 export const RoomProfileModal: React.FC<Props> = ({
@@ -44,6 +46,7 @@ export const RoomProfileModal: React.FC<Props> = ({
   onOpenExtendModal,
   onOpenTerminateModal,
   onEditRoom,
+  onOpenLegacyImport,
 }) => {
   const { refreshPortfolio } = usePortfolio();
   const { user, hasCapability } = useAuth();
@@ -759,17 +762,43 @@ export const RoomProfileModal: React.FC<Props> = ({
               Đóng
             </button>
 
-            {/* Dynamic Button based on Room Status */}
+            {/* Dynamic Buttons based on Room Status (C4-LIFE-01: 3 Explicit Entry Intents) */}
             {room.occupancyStatus === 'AVAILABLE' && (
-              <button
-                type="button"
-                data-testid="room-modal-primary-btn"
-                onClick={() => onOpenContractWizard(room.id)}
-                className="px-5 py-2 text-xs font-bold bg-brand-primary hover:bg-brand-hover text-white rounded-xl shadow-sm flex items-center gap-1.5"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                Lập hợp đồng / Giữ phòng
-              </button>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  data-testid="btn-room-intent-reserve"
+                  onClick={() => onOpenReservationModal(room.id)}
+                  className="px-3.5 py-2 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white rounded-xl shadow-sm flex items-center gap-1.5 transition-colors"
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                  Giữ chỗ - đặt cọc
+                </button>
+                <button
+                  type="button"
+                  data-testid="btn-room-intent-direct-contract"
+                  onClick={() => onOpenContractWizard(room.id)}
+                  className="px-4 py-2 text-xs font-bold bg-brand-primary hover:bg-brand-hover text-white rounded-xl shadow-sm flex items-center gap-1.5 transition-colors"
+                >
+                  <FileSignature className="w-3.5 h-3.5" />
+                  Thuê ngay - hợp đồng mới
+                </button>
+                <button
+                  type="button"
+                  data-testid="btn-room-intent-legacy-import"
+                  onClick={() => {
+                    if (onOpenLegacyImport) {
+                      onOpenLegacyImport(room.id);
+                    } else {
+                      onOpenContractWizard(room.id);
+                    }
+                  }}
+                  className="px-3.5 py-2 text-xs font-semibold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl flex items-center gap-1.5 transition-colors"
+                >
+                  <BookOpen className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                  Đồng bộ từ sổ giấy
+                </button>
+              </div>
             )}
 
             {room.occupancyStatus === 'RESERVED' && (

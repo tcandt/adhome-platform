@@ -184,6 +184,8 @@ export const OperationalModuleWorkspace: React.FC<
   const [handoverBy, setHandoverBy] = useState('');
   const [handoverTo, setHandoverTo] = useState('');
   const [handoverNotes, setHandoverNotes] = useState('');
+  const [handoverAllowPartialDeposit, setHandoverAllowPartialDeposit] = useState(false);
+  const [handoverDepositOverrideReason, setHandoverDepositOverrideReason] = useState('');
   const [isSavingHandover, setIsSavingHandover] = useState(false);
   const [handoverError, setHandoverError] = useState<string | null>(null);
 
@@ -508,6 +510,8 @@ export const OperationalModuleWorkspace: React.FC<
     setHandoverBy(user?.name || user?.email || 'Quản lý vận hành');
     setHandoverTo(c.tenantName || '');
     setHandoverNotes('');
+    setHandoverAllowPartialDeposit(false);
+    setHandoverDepositOverrideReason('');
     setHandoverError(null);
     setIsHandoverModalOpen(true);
   };
@@ -536,6 +540,8 @@ export const OperationalModuleWorkspace: React.FC<
             handoverBy: handoverBy.trim() || user?.name || user?.email || 'Quản lý vận hành',
             handoverTo: handoverTo.trim() || selectedHandoverContract.tenantName || 'Khách thuê',
             notes: handoverNotes.trim() || undefined,
+            allowPartialDepositWithApproval: handoverAllowPartialDeposit,
+            depositOverrideReason: handoverDepositOverrideReason.trim() || undefined,
           }),
         }
       );
@@ -2684,6 +2690,46 @@ export const OperationalModuleWorkspace: React.FC<
                 <div>Hợp đồng: <b className="font-mono">{selectedHandoverContract.contractCode}</b></div>
                 <div>Phòng: <b>{selectedHandoverContract.buildingCode} · {selectedHandoverContract.roomCode}</b></div>
                 <div>Khách thuê: <b>{selectedHandoverContract.tenantName}</b> ({selectedHandoverContract.tenantPhone})</div>
+              </div>
+
+              {/* C4-HAND-01 Deposit Policy & Override Check */}
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 space-y-2 border border-slate-200 dark:border-slate-800">
+                <div className="flex items-center justify-between text-xs font-semibold">
+                  <span className="text-slate-600 dark:text-slate-400">Tiền cọc quy định:</span>
+                  <span className="font-mono font-bold text-slate-900 dark:text-white">
+                    {Number(selectedHandoverContract.depositVnd || 0).toLocaleString('vi-VN')} đ
+                  </span>
+                </div>
+                <div className="pt-2 border-t border-slate-200 dark:border-slate-700/60">
+                  <label className="flex items-start gap-2 cursor-pointer text-[11px] font-medium text-slate-700 dark:text-slate-300">
+                    <input
+                      type="checkbox"
+                      data-testid="chk-handover-partial-deposit"
+                      checked={handoverAllowPartialDeposit}
+                      onChange={(e) => setHandoverAllowPartialDeposit(e.target.checked)}
+                      className="mt-0.5 rounded border-slate-300 dark:border-slate-700 text-brand-primary focus:ring-brand-primary"
+                    />
+                    <span>
+                      Phê duyệt bàn giao khi còn nợ tiền cọc (ALLOW_PARTIAL_WITH_APPROVAL)
+                    </span>
+                  </label>
+                  {handoverAllowPartialDeposit && (
+                    <div className="mt-2 pl-5 space-y-1">
+                      <label className="block text-[10.5px] font-semibold text-amber-700 dark:text-amber-400">
+                        Lý do phê duyệt nợ cọc *
+                      </label>
+                      <input
+                        type="text"
+                        data-testid="input-handover-override-reason"
+                        required={handoverAllowPartialDeposit}
+                        value={handoverDepositOverrideReason}
+                        onChange={(e) => setHandoverDepositOverrideReason(e.target.value)}
+                        placeholder="Ví dụ: Khách hẹn thanh toán cọc kèm tiền phòng kỳ 1"
+                        className="w-full p-2 text-xs rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20 text-slate-900 dark:text-white"
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

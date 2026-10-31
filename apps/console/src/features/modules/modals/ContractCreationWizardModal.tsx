@@ -96,6 +96,9 @@ export const ContractCreationWizardModal: React.FC<Props> = ({
   const [endDate, setEndDate] = useState<string>(() => computeEndDateIsoVn(getTodayIsoVn(), 12));
   const [monthlyRentVnd, setMonthlyRentVnd] = useState<number>(4500000);
   const [requiredDepositVnd, setRequiredDepositVnd] = useState<number>(4500000);
+  const [firstPeriodBillingPolicy, setFirstPeriodBillingPolicy] = useState<
+    'CALENDAR_PRORATE' | 'ANNIVERSARY_CYCLE' | 'FULL_FIRST_MONTH'
+  >('CALENDAR_PRORATE');
   const [coOccupants, setCoOccupants] = useState<CoOccupantItem[]>([]);
 
   // Step 5: Surplus handling
@@ -190,11 +193,56 @@ export const ContractCreationWizardModal: React.FC<Props> = ({
     );
   };
 
+  // C4-BILL-01 Prorate Calculation Engine for First Billing Period
+  const firstRentCalc = useMemo(() => {
+    if (!startDate || !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
+      return {
+        rentVnd: monthlyRentVnd,
+        formula: `${monthlyRentVnd.toLocaleString('vi-VN')} đ/tháng`,
+        billedDays: 30,
+        daysInMonth: 30,
+      };
+    }
+    const [y, m, d] = startDate.split('-').map(Number);
+    const daysInMonth = new Date(y, m, 0).getDate();
+    if (firstPeriodBillingPolicy === 'FULL_FIRST_MONTH') {
+      return {
+        rentVnd: monthlyRentVnd,
+        formula: `Trọn tháng dương lịch ${y}-${String(m).padStart(2, '0')}: ${monthlyRentVnd.toLocaleString('vi-VN')} đ`,
+        billedDays: daysInMonth,
+        daysInMonth,
+      };
+    }
+    if (firstPeriodBillingPolicy === 'ANNIVERSARY_CYCLE') {
+      return {
+        rentVnd: monthlyRentVnd,
+        formula: `Chu kỳ tròn 1 tháng từ ${startDate}: ${monthlyRentVnd.toLocaleString('vi-VN')} đ`,
+        billedDays: daysInMonth,
+        daysInMonth,
+      };
+    }
+    // CALENDAR_PRORATE
+    const billedDays = daysInMonth - d + 1;
+    const rentVnd =
+      billedDays === daysInMonth
+        ? monthlyRentVnd
+        : Math.round((monthlyRentVnd * billedDays) / daysInMonth);
+    return {
+      rentVnd,
+      formula:
+        billedDays === daysInMonth
+          ? `Trọn tháng (${billedDays}/${daysInMonth} ngày): ${monthlyRentVnd.toLocaleString('vi-VN')} đ`
+          : `${monthlyRentVnd.toLocaleString('vi-VN')} đ × (${billedDays}/${daysInMonth} ngày: ${startDate} → ${y}-${String(m).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}) = ${rentVnd.toLocaleString('vi-VN')} đ`,
+      billedDays,
+      daysInMonth,
+    };
+  }, [startDate, monthlyRentVnd, firstPeriodBillingPolicy]);
+
   // Financial Transfer Math
   const financialSummary = useMemo(() => {
     const B = isPaymentConfirmed ? holdAmountVnd : 0;
     const C = requiredDepositVnd;
-    const R = monthlyRentVnd;
+    const R = firstRentCalc.rentVnd;
 
     if (B <= C) {
       const transferredB = B;
@@ -230,7 +278,7 @@ export const ContractCreationWizardModal: React.FC<Props> = ({
         surplusAction,
       };
     }
-  }, [isPaymentConfirmed, holdAmountVnd, requiredDepositVnd, monthlyRentVnd, surplusAction]);
+  }, [isPaymentConfirmed, holdAmountVnd, requiredDepositVnd, firstRentCalc, surplusAction]);
 
   // Termination at Step 3: Save as Reservation Only
   const handleSaveAsReservationOnly = async () => {
@@ -329,6 +377,7 @@ export const ContractCreationWizardModal: React.FC<Props> = ({
               occupantsCount: coOccupants.length + 1,
               rentalModel,
               surplusAction,
+              firstPeriodBillingPolicy,
               coOccupants: coOccupants.filter((co) => co.fullName.trim()),
             }),
           }
@@ -353,6 +402,7 @@ export const ContractCreationWizardModal: React.FC<Props> = ({
             depositVnd: requiredDepositVnd,
             occupantsCount: coOccupants.length + 1,
             rentalModel,
+            firstPeriodBillingPolicy,
             coOccupants: coOccupants.filter((co) => co.fullName.trim()),
           }),
         });
@@ -872,6 +922,34 @@ export const ContractCreationWizardModal: React.FC<Props> = ({
                       onChange={(val) => setRequiredDepositVnd(Math.max(0, val))}
                       className="w-full text-xs font-bold"
                     />
+                  </div>
+                </div>
+
+                {/* C4-BILL-01 Prorate Billing Policy and Preview */}
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      Chính sách tính tiền kỳ đầu (Prorate)
+                    </label>
+                    <select
+                      data-testid="select-first-period-policy"
+                      value={firstPeriodBillingPolicy}
+                      onChange={(e: any) => setFirstPeriodBillingPolicy(e.target.value)}
+                      className="text-xs p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium"
+                    >
+                      <option value="CALENDAR_PRORATE">Theo ngày thực tế trong tháng (Prorate lịch dương)</option>
+                      <option value="ANNIVERSARY_CYCLE">Chu kỳ tròn tháng (Anniversary 30 ngày)</option>
+                      <option value="FULL_FIRST_MONTH">Thu trọn tháng đầu</option>
+                    </select>
+                  </div>
+                  <div className="text-[11px] text-slate-600 dark:text-slate-400 bg-white dark:bg-slate-900/60 p-2.5 rounded-lg border border-slate-100 dark:border-slate-800">
+                    <span className="font-semibold text-brand-primary">Dự kiến tiền thuê kỳ đầu:</span>{' '}
+                    <span className="font-mono font-bold text-slate-900 dark:text-white">
+                      {firstRentCalc.rentVnd.toLocaleString('vi-VN')} đ
+                    </span>
+                    <span className="block text-[10.5px] text-slate-500 mt-0.5 font-mono">
+                      {firstRentCalc.formula}
+                    </span>
                   </div>
                 </div>
 

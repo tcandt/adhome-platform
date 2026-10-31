@@ -1,0 +1,63 @@
+{
+  "taskId": "C4-SPRINT-0-1-REMEDIATION",
+  "evaluatedAt": "2026-10-31T14:00:36.863Z",
+  "baseCommitSha": "c32b8107b76b59cd7420868b68067c66987da2ed",
+  "totalScreenshots": 5,
+  "screenshots": [
+    {
+      "filename": "c4_desktop_action_menu_portal_open.png",
+      "sizeBytes": 289675,
+      "sha256": "11bc9556f129ee987e42dc98c6f619f906146c03517aeff73058307e5603ede7",
+      "viewport": "1440x900",
+      "screenName": "Desktop ActionMenu with FloatingPortal",
+      "scenario": "Menu ba chấm mở tại dòng bảng hợp đồng, render qua FloatingPortal ra body, tự động flip/shift không bị clipping bởi khung cuộn table",
+      "capturedAt": "2026-10-31T14:00:13.125Z",
+      "commitSha": "c32b8107b76b59cd7420868b68067c66987da2ed",
+      "relativePath": "screenshots/c4_desktop_action_menu_portal_open.png"
+    },
+    {
+      "filename": "c4_mobile_action_menu_bottom_sheet.png",
+      "sizeBytes": 143267,
+      "sha256": "30b28362598b7493292781649eb2fd7a1e02e0525f4eee07d9e8feee5b0a8c53",
+      "viewport": "390x844",
+      "screenName": "Mobile ActionMenu Bottom Sheet",
+      "scenario": "Thao tác trên Mobile 390x844 mở menu dạng Bottom Sheet có backdrop, kích thước chạm đạt chuẩn >=44px, không che navigation",
+      "capturedAt": "2026-10-31T14:00:16.068Z",
+      "commitSha": "c32b8107b76b59cd7420868b68067c66987da2ed",
+      "relativePath": "screenshots/c4_mobile_action_menu_bottom_sheet.png"
+    },
+    {
+      "filename": "c4_desktop_room_profile_3_intents.png",
+      "sizeBytes": 494112,
+      "sha256": "5097ad661923a1bc46554b4d5cae449f9e586e84a379be8fa8d7fcbf0f36f2e7",
+      "viewport": "1440x900",
+      "screenName": "Room Profile Modal - 3 Rental Entry Intents",
+      "scenario": "Hồ sơ phòng Trống (AVAILABLE) hiển thị 3 nút hành động riêng biệt: Giữ chỗ - đặt cọc, Thuê ngay - hợp đồng mới, và Đồng bộ từ sổ giấy",
+      "capturedAt": "2026-10-31T14:00:30.222Z",
+      "commitSha": "c32b8107b76b59cd7420868b68067c66987da2ed",
+      "relativePath": "screenshots/c4_desktop_room_profile_3_intents.png"
+    },
+    {
+      "filename": "c4_desktop_wizard_prorate_step4.png",
+      "sizeBytes": 452346,
+      "sha256": "a644cf4f040f861b7900feac8023a9f023ed4c74002cddeaf84cc849393c4f03",
+      "viewport": "1440x900",
+      "screenName": "Contract Wizard Step 4 - Prorate Engine",
+      "scenario": "Bộ tính tiền lẻ ngày hiển thị công thức trực quan cho ngày vào giữa tháng 23/11/2026: 4.500.000 đ x 8/30 ngày = 1.200.000 đ",
+      "capturedAt": "2026-10-31T14:00:33.719Z",
+      "commitSha": "c32b8107b76b59cd7420868b68067c66987da2ed",
+      "relativePath": "screenshots/c4_desktop_wizard_prorate_step4.png"
+    },
+    {
+      "filename": "c4_desktop_handover_deposit_override.png",
+      "sizeBytes": 501524,
+      "sha256": "3b0e6f02bfcd57452a40b0c6f717d88a5ed5cb0c92dd4629d46cf7401c6b8944",
+      "viewport": "1440x900",
+      "screenName": "Handover Modal - Deposit Compliance & Override",
+      "scenario": "Biên bản bàn giao phòng hiển thị cảnh báo tiền cọc quy định và checkbox phê duyệt bàn giao khi nợ cọc (ALLOW_PARTIAL_WITH_APPROVAL)",
+      "capturedAt": "2026-10-31T14:00:36.444Z",
+      "commitSha": "c32b8107b76b59cd7420868b68067c66987da2ed",
+      "relativePath": "screenshots/c4_desktop_handover_deposit_override.png"
+    }
+  ]
+}

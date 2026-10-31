@@ -3848,20 +3848,14 @@ export async function handleConsoleV2Api(
       )
     );
 
-    const handoverNow = Boolean(body.handoverNow);
-    const handoverMeterKwh =
-      body.handoverMeterKwh !== undefined && body.handoverMeterKwh !== null && !isNaN(Number(body.handoverMeterKwh))
-        ? Number(body.handoverMeterKwh)
-        : null;
-    const handoverWaterM3 =
-      body.handoverWaterM3 !== undefined && body.handoverWaterM3 !== null && !isNaN(Number(body.handoverWaterM3))
-        ? Number(body.handoverWaterM3)
-        : null;
-    const isHandedOver = handoverNow || handoverMeterKwh !== null;
-    const contractStatus = isHandedOver ? 'ACTIVE' : 'DRAFT';
-    const roomNextOccupancy = isHandedOver ? 'OCCUPIED' : 'RESERVED';
-
     const isDepositPaid = Boolean(body.isDepositPaid);
+    if (isDepositPaid && !actorHasPermission(actor, 'finance.write')) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'INSUFFICIENT_PERMISSION',
+        message: 'Tài khoản không có quyền xác nhận thu tiền cọc (yêu cầu finance.write).',
+      });
+    }
     const depositPaymentMethod = isDepositPaid ? String(body.depositPaymentMethod || 'CASH').trim() : null;
 
     try {
@@ -3882,6 +3876,22 @@ export async function handleConsoleV2Api(
           throw err;
         }
 
+        // Check if room is currently held by an active reservation (P0 Room Conflict)
+        const activeResv = await tx.roomReservation.findFirst({
+          where: {
+            roomId: rm.id,
+            status: { in: ['PENDING', 'CONFIRMED'] },
+          },
+        });
+        if (activeResv && (!body.reservationId || activeResv.id !== String(body.reservationId))) {
+          const err: any = new Error(
+            `Phòng ${rm.code} hiện đang có phiếu giữ chỗ hoạt động (${activeResv.reservationCode}). Không thể tạo hợp đồng trực tiếp.`
+          );
+          err.code = 'ROOM_CURRENTLY_RESERVED';
+          err.statusCode = 409;
+          throw err;
+        }
+
         const ct = await tx.contract.create({
           data: {
             orgId: actor.orgId,
@@ -3894,32 +3904,20 @@ export async function handleConsoleV2Api(
             startDate,
             endDate,
             signedAt: new Date(),
-            moveInDate: isHandedOver ? startDate : null,
+            moveInDate: null,
             monthlyRentVnd: BigInt(monthlyRentVnd),
             depositVnd: BigInt(Math.max(0, depositVnd)),
             occupantsCount,
             electricRateVnd,
             waterBillingMethod: waterMethod,
             waterRateVnd,
-            handoverMeterKwh: isHandedOver ? handoverMeterKwh : null,
-            handoverWaterM3: isHandedOver ? handoverWaterM3 : null,
-            status: contractStatus,
+            handoverMeterKwh: null,
+            handoverWaterM3: null,
+            status: 'DRAFT',
           },
         });
 
-        // If handed over with baseline meter reading, record reading
-        if (isHandedOver && handoverMeterKwh !== null && rm.electricMeter) {
-          await tx.meterReading.create({
-            data: {
-              meterId: rm.electricMeter.id,
-              periodKey: getCurrentVnPeriodKey(),
-              readingKwh: handoverMeterKwh,
-              source: 'MANUAL_OVERRIDE',
-              recordedByActor: actor.email,
-              overrideReason: `Bàn giao phòng hợp đồng ${ct.contractCode}`,
-            },
-          });
-        }
+        // Primary occupant created in DRAFT contract; room is RESERVED until formal handover
 
         // Create primary occupant
         await tx.roomOccupant.create({
@@ -4040,14 +4038,14 @@ export async function handleConsoleV2Api(
 
         await tx.consoleRoom.update({
           where: { id: rm.id },
-          data: { occupancyStatus: roomNextOccupancy },
+          data: { occupancyStatus: 'RESERVED' },
         });
         if (rm.publicListingId) {
           await tx.publicRoomListing.update({
             where: { id: rm.publicListingId },
             data: {
-              status: roomNextOccupancy,
-              currentTenantName: isHandedOver ? tenant.fullName : null,
+              status: 'RESERVED',
+              currentTenantName: null,
               currentTenantPhone: null,
             },
           });
@@ -4087,11 +4085,11 @@ export async function handleConsoleV2Api(
         },
       });
     } catch (err: any) {
-      if (err?.code === 'ROOM_ALREADY_HAS_CONTRACT' || err?.statusCode === 409) {
+      if (err?.code === 'ROOM_ALREADY_HAS_CONTRACT' || err?.code === 'ROOM_CURRENTLY_RESERVED' || err?.statusCode === 409) {
         return sendJson(res, 409, {
           ok: false,
-          errorCode: 'ROOM_ALREADY_HAS_CONTRACT',
-          message: err.message || `Phòng ${rm.code} đang có hợp đồng hiệu lực.`,
+          errorCode: err.code || 'ROOM_ALREADY_HAS_CONTRACT',
+          message: err.message || `Phòng ${rm.code} đang có hợp đồng hiệu lực hoặc đang giữ chỗ.`,
         });
       }
       throw err;
@@ -4124,80 +4122,177 @@ export async function handleConsoleV2Api(
         message: 'Hợp đồng không tồn tại.',
       });
     }
+    if (!isBuildingAllowedForActor(actor, ct.buildingId, ct.room.building.code)) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'FORBIDDEN_BUILDING_SCOPE',
+        message: 'Không có quyền bàn giao phòng ngoài tòa nhà phụ trách.',
+      });
+    }
 
-    const handoverMeterKwh = body.handoverMeterKwh !== undefined ? Number(body.handoverMeterKwh) : null;
-    const handoverWaterM3 = body.handoverWaterM3 !== undefined ? Number(body.handoverWaterM3) : null;
+    // Check if contract is already ACTIVE (Idempotency)
+    if (ct.status === 'ACTIVE') {
+      return sendJson(res, 200, {
+        ok: true,
+        alreadyActive: true,
+        contract: {
+          ...ct,
+          monthlyRentVnd: toSafeVndNumber(ct.monthlyRentVnd),
+          depositVnd: toSafeVndNumber(ct.depositVnd),
+        },
+      });
+    }
+
+    // Must strictly be in DRAFT status
+    if (ct.status !== 'DRAFT') {
+      return sendJson(res, 422, {
+        ok: false,
+        errorCode: 'INVALID_CONTRACT_STATUS',
+        message: `Hợp đồng đang ở trạng thái "${ct.status}", chỉ có thể bàn giao hợp đồng đang ở trạng thái Chờ bàn giao (DRAFT).`,
+      });
+    }
+
+    const handoverMeterKwh =
+      body.handoverMeterKwh !== undefined && body.handoverMeterKwh !== null && !isNaN(Number(body.handoverMeterKwh))
+        ? Number(body.handoverMeterKwh)
+        : null;
+    const handoverWaterM3 =
+      body.handoverWaterM3 !== undefined && body.handoverWaterM3 !== null && !isNaN(Number(body.handoverWaterM3))
+        ? Number(body.handoverWaterM3)
+        : null;
+
+    if (handoverMeterKwh !== null && handoverMeterKwh < 0) {
+      return sendJson(res, 422, {
+        ok: false,
+        errorCode: 'VALIDATION_ERROR',
+        message: 'Chỉ số điện bàn giao không hợp lệ (phải >= 0).',
+      });
+    }
+    if (handoverWaterM3 !== null && handoverWaterM3 < 0) {
+      return sendJson(res, 422, {
+        ok: false,
+        errorCode: 'VALIDATION_ERROR',
+        message: 'Chỉ số nước bàn giao không hợp lệ (phải >= 0).',
+      });
+    }
+
     const moveInDate =
       typeof body.moveInDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.moveInDate)
         ? body.moveInDate
         : getTodayIsoVn();
 
-    const updated = await prisma.$transaction(async (tx) => {
-      const c = await tx.contract.update({
-        where: { id: ct.id },
-        data: {
-          handoverMeterKwh,
-          handoverWaterM3,
-          moveInDate,
-          status: 'ACTIVE',
-        },
-      });
+    const handoverBy = String(body.handoverBy || actor.email).trim();
+    const handoverTo = String(body.handoverTo || ct.tenant.fullName).trim();
+    const handoverNotes = typeof body.notes === 'string' ? body.notes.trim() : null;
 
-      // If meter reading provided and meter exists, record baseline reading
-      if (handoverMeterKwh !== null && ct.room.electricMeter) {
-        await tx.meterReading.create({
+    try {
+      const updated = await prisma.$transaction(async (tx) => {
+        // Concurrency row-level locks
+        await tx.$executeRaw`SELECT id FROM "contracts" WHERE id = ${ct.id} FOR UPDATE`;
+        await tx.$executeRaw`SELECT id FROM "console_rooms" WHERE id = ${ct.roomId} FOR UPDATE`;
+
+        const freshCt = await tx.contract.findUnique({
+          where: { id: ct.id },
+          include: { room: { include: { electricMeter: true } } },
+        });
+        if (!freshCt || freshCt.orgId !== actor.orgId) {
+          throw new Error('CONTRACT_NOT_FOUND');
+        }
+        if (freshCt.status === 'ACTIVE') {
+          return freshCt; // idempotent in tx
+        }
+        if (freshCt.status !== 'DRAFT') {
+          const err: any = new Error(
+            `Hợp đồng ở trạng thái "${freshCt.status}", không thể thực hiện bàn giao.`
+          );
+          err.errorCode = 'INVALID_CONTRACT_STATUS';
+          err.statusCode = 422;
+          throw err;
+        }
+
+        const c = await tx.contract.update({
+          where: { id: ct.id },
           data: {
-            meterId: ct.room.electricMeter.id,
-            periodKey: getCurrentVnPeriodKey(),
-            readingKwh: handoverMeterKwh,
-            source: 'MANUAL_OVERRIDE',
-            recordedByActor: actor.email,
-            overrideReason: `Bàn giao phòng hợp đồng ${ct.contractCode}`,
+            handoverMeterKwh,
+            handoverWaterM3,
+            moveInDate,
+            status: 'ACTIVE',
           },
         });
-      }
 
-      await tx.consoleRoom.update({
-        where: { id: ct.roomId },
-        data: { occupancyStatus: 'OCCUPIED' },
-      });
-      if (ct.room.publicListingId) {
-        await tx.publicRoomListing.update({
-          where: { id: ct.room.publicListingId },
+        // If meter reading provided and meter exists, record baseline reading
+        if (handoverMeterKwh !== null && ct.room.electricMeter) {
+          await tx.meterReading.create({
+            data: {
+              meterId: ct.room.electricMeter.id,
+              periodKey: getCurrentVnPeriodKey(),
+              readingKwh: handoverMeterKwh,
+              source: 'MANUAL_OVERRIDE',
+              recordedByActor: actor.email,
+              overrideReason: `Bàn giao phòng hợp đồng ${ct.contractCode} (Giao: ${handoverBy}, Nhận: ${handoverTo})`,
+            },
+          });
+        }
+
+        await tx.consoleRoom.update({
+          where: { id: ct.roomId },
+          data: { occupancyStatus: 'OCCUPIED' },
+        });
+        if (ct.room.publicListingId) {
+          await tx.publicRoomListing.update({
+            where: { id: ct.room.publicListingId },
+            data: {
+              status: 'OCCUPIED',
+              currentTenantName: handoverTo || ct.tenant.fullName,
+              currentTenantPhone: ct.tenant.phone,
+            },
+          });
+        }
+
+        await tx.consoleAuditLog.create({
           data: {
-            status: 'OCCUPIED',
-            currentTenantName: ct.tenant.fullName,
-            currentTenantPhone: ct.tenant.phone,
+            orgId: actor.orgId,
+            buildingId: ct.buildingId,
+            actorId: actor.id,
+            actorEmail: actor.email,
+            actorRole: actor.role,
+            entityType: 'CONTRACT',
+            entityId: ct.id,
+            action: 'HANDOVER_ROOM',
+            summary: `Bàn giao phòng ${ct.room.code} cho hợp đồng ${ct.contractCode} (Giao: ${handoverBy}, Nhận: ${handoverTo}, Điện: ${handoverMeterKwh ?? 'N/A'} kWh, Nước: ${handoverWaterM3 ?? 'N/A'} m³)`,
+            metadata: {
+              clientIp,
+              handoverBy,
+              handoverTo,
+              notes: handoverNotes,
+              handoverMeterKwh,
+              handoverWaterM3,
+              moveInDate,
+            },
           },
         });
-      }
 
-      await tx.consoleAuditLog.create({
-        data: {
-          orgId: actor.orgId,
-          buildingId: ct.buildingId,
-          actorId: actor.id,
-          actorEmail: actor.email,
-          actorRole: actor.role,
-          entityType: 'CONTRACT',
-          entityId: ct.id,
-          action: 'HANDOVER_ROOM',
-          summary: `Bàn giao phòng ${ct.room.code} cho hợp đồng ${ct.contractCode} (Điện: ${handoverMeterKwh ?? 'N/A'} kWh, Nước: ${handoverWaterM3 ?? 'N/A'} m³)`,
-          metadata: { clientIp, handoverMeterKwh, handoverWaterM3, moveInDate },
-        },
+        return c;
       });
 
-      return c;
-    });
-
-    return sendJson(res, 200, {
-      ok: true,
-      contract: {
-        ...updated,
-        monthlyRentVnd: toSafeVndNumber(updated.monthlyRentVnd),
-        depositVnd: toSafeVndNumber(updated.depositVnd),
-      },
-    });
+      return sendJson(res, 200, {
+        ok: true,
+        contract: {
+          ...updated,
+          monthlyRentVnd: toSafeVndNumber(updated.monthlyRentVnd),
+          depositVnd: toSafeVndNumber(updated.depositVnd),
+        },
+      });
+    } catch (err: any) {
+      if (err.statusCode) {
+        return sendJson(res, err.statusCode, {
+          ok: false,
+          errorCode: err.errorCode || 'HANDOVER_FAILED',
+          message: err.message,
+        });
+      }
+      throw err;
+    }
   }
 
   // ===========================================================================
@@ -4227,6 +4322,14 @@ export async function handleConsoleV2Api(
     const notes = typeof body.notes === 'string' ? body.notes.trim() : null;
     const paymentConfirmed = Boolean(body.paymentConfirmed);
     const paymentMethod = String(body.paymentMethod || 'BANK_TRANSFER').trim();
+
+    if (paymentConfirmed && holdAmountVnd > 0 && !actorHasPermission(actor, 'finance.write')) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'INSUFFICIENT_PERMISSION',
+        message: 'Tài khoản không có quyền xác nhận thu tiền cọc giữ chỗ (yêu cầu finance.write).',
+      });
+    }
 
     if (!roomId || !customerName || !customerPhone) {
       return sendJson(res, 422, {
@@ -4399,11 +4502,11 @@ export async function handleConsoleV2Api(
     /^\/api\/v1\/console\/v2\/reservations\/([^/]+)\/confirm-payment$/
   );
   if (method === 'POST' && resvConfirmPayMatch) {
-    if (!actorHasPermission(actor, 'contracts.manage') && !actorHasPermission(actor, 'finance.write')) {
+    if (!actorHasPermission(actor, 'finance.write')) {
       return sendJson(res, 403, {
         ok: false,
         errorCode: 'INSUFFICIENT_PERMISSION',
-        message: 'Không có quyền xác nhận thu tiền cọc giữ chỗ.',
+        message: 'Tài khoản không có quyền xác nhận thu tiền cọc giữ chỗ (yêu cầu finance.write).',
       });
     }
 
@@ -4560,6 +4663,13 @@ export async function handleConsoleV2Api(
     const body = await readJsonBody(req);
     const reason = String(body.reason || 'Khách hủy giữ chỗ').trim();
     const refundAmountVnd = Math.max(0, Math.trunc(Number(body.refundAmountVnd) || 0));
+    if (refundAmountVnd > 0 && !actorHasPermission(actor, 'finance.write')) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'INSUFFICIENT_PERMISSION',
+        message: 'Tài khoản không có quyền hoàn tiền cọc giữ chỗ (yêu cầu finance.write).',
+      });
+    }
     const deductionAmountVnd = Math.max(0, Math.trunc(Number(body.deductionAmountVnd) || 0));
     const forfeitAmountVnd = Math.max(0, Math.trunc(Number(body.forfeitAmountVnd) || 0));
     const forfeit = Boolean(body.forfeit);
@@ -4804,18 +4914,13 @@ export async function handleConsoleV2Api(
       ? String(body.rentalModel)
       : 'ENTIRE_ROOM';
     const surplusAction = String(body.surplusAction || 'RENT_CREDIT'); // RENT_CREDIT | REFUND
-    const handoverNow = Boolean(body.handoverNow);
-    const handoverMeterKwh =
-      body.handoverMeterKwh !== undefined && body.handoverMeterKwh !== null && !isNaN(Number(body.handoverMeterKwh))
-        ? Number(body.handoverMeterKwh)
-        : null;
-    const handoverWaterM3 =
-      body.handoverWaterM3 !== undefined && body.handoverWaterM3 !== null && !isNaN(Number(body.handoverWaterM3))
-        ? Number(body.handoverWaterM3)
-        : null;
-    const isHandedOver = handoverNow || handoverMeterKwh !== null;
-    const contractStatus = isHandedOver ? 'ACTIVE' : 'DRAFT';
-    const roomNextOccupancy = isHandedOver ? 'OCCUPIED' : 'RESERVED';
+    if (surplusAction === 'REFUND' && !actorHasPermission(actor, 'finance.write')) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'INSUFFICIENT_PERMISSION',
+        message: 'Tài khoản không có quyền hoàn tiền cọc dôi dư (yêu cầu finance.write).',
+      });
+    }
 
     const coOccupants: Array<{
       fullName: string;
@@ -4899,31 +5004,18 @@ export async function handleConsoleV2Api(
             startDate,
             endDate,
             signedAt: new Date(),
-            moveInDate: isHandedOver ? startDate : null,
+            moveInDate: null,
             monthlyRentVnd: BigInt(monthlyRentVnd),
             depositVnd: BigInt(Math.max(0, C)),
             occupantsCount,
             electricRateVnd: resv.room.electricRateVnd || 3800,
             waterBillingMethod: resv.room.waterBillingMethod || 'PER_M3',
             waterRateVnd: resv.room.waterRateVnd || 15000,
-            handoverMeterKwh: isHandedOver ? handoverMeterKwh : null,
-            handoverWaterM3: isHandedOver ? handoverWaterM3 : null,
-            status: contractStatus,
+            handoverMeterKwh: null,
+            handoverWaterM3: null,
+            status: 'DRAFT',
           },
         });
-
-        if (isHandedOver && handoverMeterKwh !== null && resv.room.electricMeter) {
-          await tx.meterReading.create({
-            data: {
-              meterId: resv.room.electricMeter.id,
-              periodKey: getCurrentVnPeriodKey(),
-              readingKwh: handoverMeterKwh,
-              source: 'MANUAL_OVERRIDE',
-              recordedByActor: actor.email,
-              overrideReason: `Bàn giao phòng hợp đồng ${ct.contractCode}`,
-            },
-          });
-        }
 
         // Create primary occupant
         await tx.roomOccupant.create({
@@ -5098,15 +5190,15 @@ export async function handleConsoleV2Api(
 
         await tx.consoleRoom.update({
           where: { id: resv.roomId },
-          data: { occupancyStatus: roomNextOccupancy },
+          data: { occupancyStatus: 'RESERVED' },
         });
         if (resv.room.publicListingId) {
           await tx.publicRoomListing.update({
             where: { id: resv.room.publicListingId },
             data: {
-              status: roomNextOccupancy,
-              currentTenantName: isHandedOver ? tenantRecord.fullName : null,
-              currentTenantPhone: isHandedOver ? tenantRecord.phone : null,
+              status: 'RESERVED',
+              currentTenantName: null,
+              currentTenantPhone: null,
             },
           });
         }
@@ -5228,11 +5320,32 @@ export async function handleConsoleV2Api(
       });
     }
 
-    const effectivePaid =
-      Number(dep.paidAmountVnd) > 0
-        ? Number(dep.paidAmountVnd)
-        : Number(dep.amountVnd);
-    const totalAvailable = effectivePaid - Number(dep.refundedVnd);
+    // P0.5: Transferred deposit guard (cannot refund from source record)
+    if (
+      dep.status === 'APPLIED_TO_CONTRACT' ||
+      dep.paymentStatus === 'TRANSFERRED' ||
+      dep.transferredToDepositId !== null
+    ) {
+      return sendJson(res, 422, {
+        ok: false,
+        errorCode: 'DEPOSIT_ALREADY_TRANSFERRED',
+        message:
+          'Khoản cọc đã được chuyển sang hợp đồng khác, không thể hoàn trực tiếp từ bản ghi nguồn.',
+      });
+    }
+
+    // P0.1: Strictly calculate available refund from paidAmountVnd - zero fallback to amountVnd
+    const effectivePaid = Math.max(0, Number(dep.paidAmountVnd || 0));
+    if (effectivePaid <= 0 || dep.paymentStatus === 'PENDING') {
+      return sendJson(res, 422, {
+        ok: false,
+        errorCode: 'DEPOSIT_NOT_COLLECTED',
+        message:
+          'Khoản cọc chưa được thu tiền thực tế, không thể thực hiện hoàn tiền.',
+      });
+    }
+
+    const totalAvailable = Math.max(0, effectivePaid - Number(dep.refundedVnd || 0));
     if (refundAmountVnd + deductionAmountVnd > totalAvailable) {
       return sendJson(res, 422, {
         ok: false,
@@ -5245,24 +5358,47 @@ export async function handleConsoleV2Api(
       });
     }
 
-    const updated = await prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT id FROM "deposits" WHERE id = ${dep.id} FOR UPDATE`;
-      const currentDep = await tx.deposit.findUnique({ where: { id: dep.id } });
-      if (!currentDep || currentDep.orgId !== actor.orgId) {
-        throw new Error('NOT_FOUND');
-      }
-      const currentEffectivePaid =
-        Number(currentDep.paidAmountVnd) > 0
-          ? Number(currentDep.paidAmountVnd)
-          : Number(currentDep.amountVnd);
-      const currentAvail = currentEffectivePaid - Number(currentDep.refundedVnd);
-      if (refundAmountVnd + deductionAmountVnd > currentAvail) {
-        const err: any = new Error(
-          `Số tiền hoàn và khấu trừ vượt quá số dư cọc khả dụng (${currentAvail.toLocaleString('vi-VN')}đ).`
-        );
-        (err as any).statusCode = 422;
-        throw err;
-      }
+    try {
+      const updated = await prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT id FROM "deposits" WHERE id = ${dep.id} FOR UPDATE`;
+        const currentDep = await tx.deposit.findUnique({ where: { id: dep.id } });
+        if (!currentDep || currentDep.orgId !== actor.orgId) {
+          const err: any = new Error('Khoản cọc không tồn tại trong tổ chức.');
+          err.statusCode = 404;
+          err.errorCode = 'ENTITY_NOT_FOUND';
+          throw err;
+        }
+
+        if (
+          currentDep.status === 'APPLIED_TO_CONTRACT' ||
+          currentDep.paymentStatus === 'TRANSFERRED' ||
+          currentDep.transferredToDepositId !== null
+        ) {
+          const err: any = new Error(
+            'Khoản cọc đã được chuyển sang hợp đồng khác, không thể hoàn trực tiếp từ bản ghi nguồn.'
+          );
+          err.statusCode = 422;
+          err.errorCode = 'DEPOSIT_ALREADY_TRANSFERRED';
+          throw err;
+        }
+
+        const currentEffectivePaid = Math.max(0, Number(currentDep.paidAmountVnd || 0));
+        if (currentEffectivePaid <= 0 || currentDep.paymentStatus === 'PENDING') {
+          const err: any = new Error('Khoản cọc chưa được thu tiền thực tế, không thể thực hiện hoàn tiền.');
+          err.statusCode = 422;
+          err.errorCode = 'DEPOSIT_NOT_COLLECTED';
+          throw err;
+        }
+
+        const currentAvail = Math.max(0, currentEffectivePaid - Number(currentDep.refundedVnd || 0));
+        if (refundAmountVnd + deductionAmountVnd > currentAvail) {
+          const err: any = new Error(
+            `Số tiền hoàn và khấu trừ vượt quá số dư cọc khả dụng (${currentAvail.toLocaleString('vi-VN')}đ).`
+          );
+          err.statusCode = 422;
+          err.errorCode = 'EXCEEDS_DEPOSIT_BALANCE';
+          throw err;
+        }
 
       const nextRefunded = Number(currentDep.refundedVnd) + refundAmountVnd;
       const isFull = nextRefunded + deductionAmountVnd >= currentEffectivePaid;
@@ -5356,9 +5492,20 @@ export async function handleConsoleV2Api(
       deposit: {
         ...updated,
         amountVnd: toSafeVndNumber(updated.amountVnd),
+        paidAmountVnd: toSafeVndNumber(updated.paidAmountVnd),
         refundedVnd: toSafeVndNumber(updated.refundedVnd),
       },
     });
+    } catch (err: any) {
+      if (err.statusCode) {
+        return sendJson(res, err.statusCode, {
+          ok: false,
+          errorCode: err.errorCode || 'REFUND_FAILED',
+          message: err.message,
+        });
+      }
+      throw err;
+    }
   }
 
   // POST /api/v1/console/v2/contracts/:id/extend (Extend Contract)

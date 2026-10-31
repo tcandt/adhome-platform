@@ -96,7 +96,7 @@ interface OperationalModuleWorkspaceProps {
 export const OperationalModuleWorkspace: React.FC<
   OperationalModuleWorkspaceProps
 > = ({ moduleId }) => {
-  const { hasCapability } = useAuth();
+  const { hasCapability, user } = useAuth();
   const {
     currentNavConfig,
     selectedPeriod,
@@ -179,6 +179,9 @@ export const OperationalModuleWorkspace: React.FC<
   const [handoverKwh, setHandoverKwh] = useState<number | ''>('');
   const [handoverWaterM3, setHandoverWaterM3] = useState<number | ''>('');
   const [handoverMoveInDate, setHandoverMoveInDate] = useState(getTodayIsoVn());
+  const [handoverBy, setHandoverBy] = useState('');
+  const [handoverTo, setHandoverTo] = useState('');
+  const [handoverNotes, setHandoverNotes] = useState('');
   const [isSavingHandover, setIsSavingHandover] = useState(false);
   const [handoverError, setHandoverError] = useState<string | null>(null);
 
@@ -494,6 +497,18 @@ export const OperationalModuleWorkspace: React.FC<
     }
   };
 
+  const openHandoverModal = (c: any) => {
+    setSelectedHandoverContract(c);
+    setHandoverKwh(c.handoverMeterKwh ?? '');
+    setHandoverWaterM3(c.handoverWaterM3 ?? '');
+    setHandoverMoveInDate(getTodayIsoVn());
+    setHandoverBy(user?.name || user?.email || 'Quản lý vận hành');
+    setHandoverTo(c.tenantName || '');
+    setHandoverNotes('');
+    setHandoverError(null);
+    setIsHandoverModalOpen(true);
+  };
+
   const handleHandoverSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedHandoverContract) return;
@@ -515,6 +530,9 @@ export const OperationalModuleWorkspace: React.FC<
             handoverMeterKwh: handoverKwh !== '' ? Number(handoverKwh) : null,
             handoverWaterM3: handoverWaterM3 !== '' ? Number(handoverWaterM3) : null,
             moveInDate: handoverMoveInDate,
+            handoverBy: handoverBy.trim() || user?.name || user?.email || 'Quản lý vận hành',
+            handoverTo: handoverTo.trim() || selectedHandoverContract.tenantName || 'Khách thuê',
+            notes: handoverNotes.trim() || undefined,
           }),
         }
       );
@@ -1139,14 +1157,21 @@ export const OperationalModuleWorkspace: React.FC<
                           <th className="pb-3">Phân loại</th>
                           <th className="pb-3">Tiền cọc yêu cầu</th>
                           <th className="pb-3">Đã thu</th>
+                          <th className="pb-3">Còn phải thu</th>
                           <th className="pb-3">Đã hoàn</th>
+                          <th className="pb-3">Số dư khả dụng</th>
                           <th className="pb-3">Thanh toán</th>
                           <th className="pb-3">Trạng thái cọc</th>
                           <th className="pb-3 text-right">Xử lý cọc</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                        {depositsList.map((d) => (
+                        {depositsList.map((d) => {
+                          const effectivePaid = d.paidAmountVnd ?? (d.paymentStatus === 'PAID' ? d.amountVnd : 0);
+                          const remainingDue = Math.max(0, d.amountVnd - effectivePaid);
+                          const availableBalance = Math.max(0, effectivePaid - d.refundedVnd);
+                          const isTransferred = d.status === 'APPLIED_TO_CONTRACT' || d.paymentStatus === 'TRANSFERRED';
+                          return (
                           <tr key={d.id}>
                             <td className="py-3 font-mono font-bold">
                               {d.id.slice(0, 8).toUpperCase()}
@@ -1164,10 +1189,20 @@ export const OperationalModuleWorkspace: React.FC<
                               {d.amountVnd.toLocaleString('vi-VN')} đ
                             </td>
                             <td className="py-3 font-bold tabular-nums text-emerald-600">
-                              {(d.paidAmountVnd ?? (d.paymentStatus === 'PAID' ? d.amountVnd : 0)).toLocaleString('vi-VN')} đ
+                              {effectivePaid.toLocaleString('vi-VN')} đ
+                            </td>
+                            <td className="py-3 tabular-nums font-semibold">
+                              {remainingDue > 0 ? (
+                                <span className="text-rose-500 font-bold">{remainingDue.toLocaleString('vi-VN')} đ</span>
+                              ) : (
+                                <span className="text-slate-400">0 đ</span>
+                              )}
                             </td>
                             <td className="py-3 tabular-nums text-slate-500">
                               {d.refundedVnd.toLocaleString('vi-VN')} đ
+                            </td>
+                            <td className="py-3 tabular-nums font-bold text-emerald-600 dark:text-emerald-400">
+                              {availableBalance.toLocaleString('vi-VN')} đ
                             </td>
                             <td className="py-3">
                               <span
@@ -1220,19 +1255,17 @@ export const OperationalModuleWorkspace: React.FC<
                               </span>
                             </td>
                             <td className="py-3 text-right">
-                              {d.status === 'HELD' ||
-                              d.status === 'APPLIED_TO_CONTRACT' ||
-                              d.status === 'PARTIALLY_REFUNDED' ? (
+                              {isTransferred ? (
+                                <span className="text-[10.5px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2 py-1 rounded">
+                                  Đã chuyển HĐ
+                                </span>
+                              ) : availableBalance > 0 && (d.status === 'HELD' || d.status === 'PARTIALLY_REFUNDED') ? (
                                 <button
                                   type="button"
                                   onClick={() => {
                                     setSelectedDepositId(d.id);
-                                    setDepTotalAmountVnd(
-                                      d.amountVnd - d.refundedVnd
-                                    );
-                                    setDepRefundVnd(
-                                      d.amountVnd - d.refundedVnd
-                                    );
+                                    setDepTotalAmountVnd(availableBalance);
+                                    setDepRefundVnd(availableBalance);
                                     setDepDeductionVnd(0);
                                     setDepDeductionReason('');
                                     setDepError(null);
@@ -1244,12 +1277,13 @@ export const OperationalModuleWorkspace: React.FC<
                                 </button>
                               ) : (
                                 <span className="text-[11px] text-slate-400">
-                                  Đã tất toán
+                                  Hết số dư
                                 </span>
                               )}
                             </td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -1358,14 +1392,7 @@ export const OperationalModuleWorkspace: React.FC<
                             {c.status === 'DRAFT' && (
                               <button
                                 type="button"
-                                onClick={() => {
-                                  setSelectedHandoverContract(c);
-                                  setHandoverKwh('');
-                                  setHandoverWaterM3('');
-                                  setHandoverMoveInDate(getTodayIsoVn());
-                                  setHandoverError(null);
-                                  setIsHandoverModalOpen(true);
-                                }}
+                                onClick={() => openHandoverModal(c)}
                                 data-testid="btn-open-handover-mobile"
                                 className="px-2.5 py-1 text-[11px] font-bold bg-emerald-600 text-white rounded hover:bg-emerald-700 shadow-sm"
                               >
@@ -1497,14 +1524,7 @@ export const OperationalModuleWorkspace: React.FC<
                               {c.status === 'DRAFT' && (
                                 <button
                                   type="button"
-                                  onClick={() => {
-                                    setSelectedHandoverContract(c);
-                                    setHandoverKwh('');
-                                    setHandoverWaterM3('');
-                                    setHandoverMoveInDate(getTodayIsoVn());
-                                    setHandoverError(null);
-                                    setIsHandoverModalOpen(true);
-                                  }}
+                                  onClick={() => openHandoverModal(c)}
                                   data-testid="btn-open-handover"
                                   className="px-2.5 py-1 text-[11px] font-bold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 shadow-sm"
                                 >
@@ -2555,6 +2575,35 @@ export const OperationalModuleWorkspace: React.FC<
                 <div>Khách thuê: <b>{selectedHandoverContract.tenantName}</b> ({selectedHandoverContract.tenantPhone})</div>
               </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-600 dark:text-slate-300 font-semibold mb-1">
+                    Người bàn giao (Đại diện) *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={handoverBy}
+                    onChange={(e) => setHandoverBy(e.target.value)}
+                    placeholder="Tên/Email đại diện"
+                    className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-600 dark:text-slate-300 font-semibold mb-1">
+                    Người nhận bàn giao (Khách thuê) *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={handoverTo}
+                    onChange={(e) => setHandoverTo(e.target.value)}
+                    placeholder="Tên khách nhận phòng"
+                    className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium"
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="block text-slate-600 dark:text-slate-300 font-semibold mb-1">
                   Chỉ số công tơ điện ban đầu (kWh) *
@@ -2595,6 +2644,23 @@ export const OperationalModuleWorkspace: React.FC<
                   onChange={(e) => setHandoverMoveInDate(e.target.value)}
                   className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
                 />
+              </div>
+
+              <div>
+                <label className="block text-slate-600 dark:text-slate-300 font-semibold mb-1">
+                  Ghi chú hiện trạng bàn giao (chìa khóa, thẻ từ, trang thiết bị)
+                </label>
+                <textarea
+                  rows={2}
+                  value={handoverNotes}
+                  onChange={(e) => setHandoverNotes(e.target.value)}
+                  placeholder="Ví dụ: Bàn giao 2 chìa khóa cơ, 1 remote máy lạnh, tường không trầy xước..."
+                  className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+                />
+              </div>
+
+              <div className="p-3 rounded-xl bg-emerald-50/70 border border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-800 text-[11px] text-emerald-800 dark:text-emerald-300">
+                Xác nhận bàn giao sẽ tự động chuyển hợp đồng sang <b>Đang hiệu lực (ACTIVE)</b> và phòng sang <b>Đang thuê (OCCUPIED)</b>.
               </div>
 
               <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-2">

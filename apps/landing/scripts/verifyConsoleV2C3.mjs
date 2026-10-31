@@ -862,7 +862,31 @@ async function main() {
     );
 
     // 8.2 Direct Contract Creation: Unpaid Deposit, Draft Status, Pre-handover State (P0)
-    console.log('  Testing 8.2: Direct contract creation without payment proof (P0)...');
+    console.log('  Testing 8.2: Direct contract creation without payment proof & financial permissions (P0)...');
+    // P0.2 Manager cannot create contract with isDepositPaid: true
+    const mgrContractPaidResp = await fetchHttp(
+      `${LANDING_URL}/api/v1/console/v2/contracts`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: mgrCookie,
+          'X-Requested-With': 'AdHome-Console',
+        },
+        body: JSON.stringify({
+          roomId: directRoom.id,
+          tenantId: directTenant.id,
+          startDate: '2026-11-01',
+          endDate: '2027-10-31',
+          monthlyRentVnd: 4500000,
+          depositVnd: 4500000,
+          isDepositPaid: true,
+        }),
+      }
+    );
+    const mgrContractPaidBlocked =
+      mgrContractPaidResp.status === 403 &&
+      mgrContractPaidResp.json?.errorCode === 'INSUFFICIENT_PERMISSION';
     const directContractResp = await fetchHttp(
       `${LANDING_URL}/api/v1/console/v2/contracts`,
       {
@@ -921,7 +945,29 @@ async function main() {
     );
 
     // 8.3 Booking Hold Without Payment (Zero Ledger Entry)
-    console.log('  Testing 8.3: Booking hold without payment (zero ledger entry)...');
+    console.log('  Testing 8.3: Booking hold without payment & financial permissions...');
+    // P0.2 Manager cannot create reservation with paymentConfirmed: true
+    const mgrResvPaidResp = await fetchHttp(
+      `${LANDING_URL}/api/v1/console/v2/reservations`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: mgrCookie,
+          'X-Requested-With': 'AdHome-Console',
+        },
+        body: JSON.stringify({
+          roomId: lifeRoom1.id,
+          customerName: 'Trần Thị Thu Thảo',
+          customerPhone: '0919988776',
+          holdAmountVnd: 2000000,
+          paymentConfirmed: true,
+        }),
+      }
+    );
+    const mgrResvPaidBlocked =
+      mgrResvPaidResp.status === 403 &&
+      mgrResvPaidResp.json?.errorCode === 'INSUFFICIENT_PERMISSION';
     const unpaidResvResp = await fetchHttp(
       `${LANDING_URL}/api/v1/console/v2/reservations`,
       {
@@ -956,6 +1002,66 @@ async function main() {
       unpaidDep?.paymentStatus === 'PENDING' &&
       unpaidDep?.paidAmountVnd === 0 &&
       unpaidLedgerCount === 0;
+
+    // P0.1 Attempt to refund uncollected deposit must be rejected with 422 DEPOSIT_NOT_COLLECTED
+    console.log('  Testing P0.1: Attempt refund on uncollected deposit...');
+    const refundUncollectedResp = await fetchHttp(
+      `${LANDING_URL}/api/v1/console/v2/deposits/${encodeURIComponent(unpaidDep.id)}/refund`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: adminCookie,
+          'X-Requested-With': 'AdHome-Console',
+        },
+        body: JSON.stringify({ refundAmountVnd: 500000 }),
+      }
+    );
+    const refundUncollectedBlocked =
+      refundUncollectedResp.status === 422 &&
+      refundUncollectedResp.json?.errorCode === 'DEPOSIT_NOT_COLLECTED';
+
+    // Direct contract room conflict: attempting to create direct contract while room has active reservation
+    console.log('  Testing Room Conflict: Direct contract on room held by active reservation...');
+    const directConflictResp = await fetchHttp(
+      `${LANDING_URL}/api/v1/console/v2/contracts`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: adminCookie,
+          'X-Requested-With': 'AdHome-Console',
+        },
+        body: JSON.stringify({
+          roomId: lifeRoom1.id,
+          tenantId: directTenant.id,
+          startDate: '2026-11-01',
+          endDate: '2027-10-31',
+          monthlyRentVnd: 4500000,
+          depositVnd: 4500000,
+        }),
+      }
+    );
+    const directConflictBlocked =
+      directConflictResp.status === 409 &&
+      directConflictResp.json?.errorCode === 'ROOM_CURRENTLY_RESERVED';
+
+    // P0.2 Manager cannot call confirm-payment without finance.write
+    const mgrConfirmPayResp = await fetchHttp(
+      `${LANDING_URL}/api/v1/console/v2/reservations/${encodeURIComponent(unpaidResv.id)}/confirm-payment`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: mgrCookie,
+          'X-Requested-With': 'AdHome-Console',
+        },
+        body: JSON.stringify({ paymentMethod: 'BANK_TRANSFER' }),
+      }
+    );
+    const mgrConfirmPayBlocked =
+      mgrConfirmPayResp.status === 403 &&
+      mgrConfirmPayResp.json?.errorCode === 'INSUFFICIENT_PERMISSION';
 
     // 8.4 Confirm Payment with Idempotency Test (P0)
     console.log('  Testing 8.4: Confirm payment idempotency & row locking (P0)...');
@@ -1222,6 +1328,24 @@ async function main() {
       newContractDep?.paymentStatus === 'PARTIALLY_PAID' && // B < C is PARTIALLY_PAID!
       firstInvoice?.totalAmountVnd === 8000000n;
 
+    // P0.5 Attempt to refund transferred reservation deposit must be rejected with 422 DEPOSIT_ALREADY_TRANSFERRED
+    console.log('  Testing P0.5: Attempt refund on transferred reservation deposit...');
+    const refundTransferredResp = await fetchHttp(
+      `${LANDING_URL}/api/v1/console/v2/deposits/${encodeURIComponent(origBookingDep.id)}/refund`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: adminCookie,
+          'X-Requested-With': 'AdHome-Console',
+        },
+        body: JSON.stringify({ refundAmountVnd: 500000 }),
+      }
+    );
+    const refundTransferredBlocked =
+      refundTransferredResp.status === 422 &&
+      refundTransferredResp.json?.errorCode === 'DEPOSIT_ALREADY_TRANSFERRED';
+
     // 8.7 Conversion Math Case B > C with S > R and Advance Rent Credit (P0)
     console.log('  Testing 8.7: Conversion math B > C (S > R) with ADVANCE_RENT preservation (P0)...');
     const surplusResvResp = await fetchHttp(
@@ -1333,12 +1457,34 @@ async function main() {
     const roomAfterHandover = await prisma.consoleRoom.findUnique({
       where: { id: lifeRoom1.id },
     });
+    // P0.4 Handover Idempotency: Calling handover a second time on ACTIVE contract returns 200 idempotently
+    const handoverIdempotentResp = await fetchHttp(
+      `${LANDING_URL}/api/v1/console/v2/contracts/${encodeURIComponent(contract.id)}/handover`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: adminCookie,
+          'X-Requested-With': 'AdHome-Console',
+        },
+        body: JSON.stringify({
+          handoverMeterKwh: 125.5,
+          handoverWaterM3: 35.0,
+          notes: 'Gọi lại lần 2 khi hợp đồng đã ACTIVE',
+        }),
+      }
+    );
+    const handoverIdempotentPass =
+      handoverIdempotentResp.status === 200 &&
+      handoverIdempotentResp.json?.alreadyActive === true;
+
     const handoverPass =
       handoverResp.status === 200 &&
       contractAfterHandover?.status === 'ACTIVE' &&
       roomAfterHandover?.occupancyStatus === 'OCCUPIED' &&
       contractAfterHandover?.handoverMeterKwh === 125.5 &&
-      contractAfterHandover?.handoverWaterM3 === 35.0;
+      contractAfterHandover?.handoverWaterM3 === 35.0 &&
+      handoverIdempotentPass;
 
     // 8.9 Deposit Partial Refund with Deduction
     const depRefundResp = await fetchHttp(
@@ -1438,10 +1584,28 @@ async function main() {
     const roomAfterTerminate = await prisma.consoleRoom.findUnique({
       where: { id: lifeRoom2.id },
     });
+    // P0.4 Handover Status Guard: Calling handover on TERMINATED contract returns 422 INVALID_CONTRACT_STATUS
+    const handoverTerminatedResp = await fetchHttp(
+      `${LANDING_URL}/api/v1/console/v2/contracts/${encodeURIComponent(contract.id)}/handover`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: adminCookie,
+          'X-Requested-With': 'AdHome-Console',
+        },
+        body: JSON.stringify({ handoverMeterKwh: 150.0 }),
+      }
+    );
+    const handoverTerminatedBlocked =
+      handoverTerminatedResp.status === 422 &&
+      handoverTerminatedResp.json?.errorCode === 'INVALID_CONTRACT_STATUS';
+
     const terminatePass =
       terminateResp.status === 200 &&
       terminateResp.json?.contract?.status === 'TERMINATED' &&
-      roomAfterTerminate?.occupancyStatus === 'AVAILABLE';
+      roomAfterTerminate?.occupancyStatus === 'AVAILABLE' &&
+      handoverTerminatedBlocked;
 
     testResults.checks.c3aLifecycleStateMachines = {
       pass:
@@ -1449,16 +1613,27 @@ async function main() {
         roomOccupantsPass &&
         softDeletePass &&
         directContractProofPass &&
+        mgrContractPaidBlocked &&
+        mgrResvPaidBlocked &&
+        mgrConfirmPayBlocked &&
+        refundUncollectedBlocked &&
+        directConflictBlocked &&
         unpaidHoldPass &&
         confirmPaymentPass &&
         resvCancelledPass &&
         convertShortagePass &&
+        refundTransferredBlocked &&
         convertSurplusPass &&
         handoverPass &&
         depRefundPass &&
         extendPass &&
         transferPass &&
         terminatePass,
+      p0UncollectedRefundGuard: refundUncollectedBlocked,
+      p0TransferredDepositGuard: refundTransferredBlocked,
+      p0FinancialPermissions: mgrContractPaidBlocked && mgrResvPaidBlocked && mgrConfirmPayBlocked,
+      p0DirectContractRoomConflictGuard: directConflictBlocked,
+      p0HandoverIdempotencyAndStatusGuard: handoverPass && terminatePass,
       tenantDecoupled: tenantDecoupledPass,
       roomOccupants: roomOccupantsPass,
       occupantSoftDeleted: softDeletePass,

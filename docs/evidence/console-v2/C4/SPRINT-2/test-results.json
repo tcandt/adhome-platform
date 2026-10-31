@@ -1,0 +1,187 @@
+{
+  "taskId": "C4-SPRINT-2-REMEDIATION",
+  "timestamp": "2026-10-31T14:51:51.301Z",
+  "baseCommitSha": "5fc33149ef05d8afea961a4b8a848566be99e4b0",
+  "backendChecks": {
+    "hold01ConcurrencyAndRace": {
+      "pass": true,
+      "subchecks": {
+        "unpaidHoldStatusPending": {
+          "pass": true,
+          "status": 201
+        },
+        "unpaidHoldNoLedgerIncome": {
+          "pass": true,
+          "ledgerCount": 0
+        },
+        "concurrencyRaceOneWinnerOneConflict": {
+          "pass": true,
+          "statuses": [
+            201,
+            409
+          ]
+        },
+        "dbExactlyOneHoldCreated": {
+          "pass": true,
+          "count": 1
+        },
+        "confirmPaymentQrStatus": {
+          "pass": true,
+          "status": 200
+        },
+        "confirmPaymentLedgerAndTx": {
+          "pass": true,
+          "txId": "f5cb0401-52de-4aff-b35d-4e103495d696",
+          "ledgerId": "6da026c4-629f-4596-af9b-3b55bca70f31"
+        }
+      }
+    },
+    "hold02DepositTransferMatrix": {
+      "pass": true,
+      "subchecks": {
+        "bLessThanC_invoice6m": {
+          "pass": true,
+          "invoiceTotal": 6000000
+        },
+        "bEqualsC_invoice4m": {
+          "pass": true,
+          "invoiceTotal": 4000000
+        },
+        "bGreaterC_creditRent_invoice3m": {
+          "pass": true,
+          "invoiceTotal": 3000000
+        },
+        "bGreaterC_refund_invoice4m": {
+          "pass": true,
+          "invoiceTotal": 4000000
+        },
+        "bGreaterC_pendingRefundDepositCreated": {
+          "pass": true,
+          "status": "PENDING_REFUND"
+        },
+        "bGreaterC_noImmediateExpenseLedger": {
+          "pass": true,
+          "expenseCount": 0
+        },
+        "bGreaterC_executedRefundStatusAndLedger": {
+          "pass": true,
+          "finalStatus": "REFUNDED"
+        },
+        "convertIdempotencyReplaySafe": {
+          "pass": true,
+          "replayContractId": "78c730e8-894b-4831-bffc-8e669f73314c"
+        }
+      }
+    },
+    "hold03CancellationAndRefund": {
+      "pass": true,
+      "subchecks": {
+        "cancelUnpaidRoomReleased": {
+          "pass": true,
+          "roomStatus": "AVAILABLE"
+        },
+        "conservationEquationGuard422": {
+          "pass": true,
+          "status": 422
+        },
+        "validPartialRefundAndForfeitLedger": {
+          "pass": true,
+          "status": 200
+        }
+      }
+    },
+    "fin01LedgerAndReconciliation": {
+      "pass": true,
+      "subchecks": {
+        "partialPaymentState": {
+          "pass": true,
+          "status": "PARTIAL",
+          "state": "PARTIAL_MATCH"
+        },
+        "qrReconciliationMatchedPaid": {
+          "pass": true,
+          "status": "PAID",
+          "state": "MATCHED"
+        },
+        "overpaymentState": {
+          "pass": true,
+          "status": "PAID",
+          "state": "OVERPAID"
+        },
+        "replayProtectionIdempotent": {
+          "pass": true,
+          "replay": true
+        }
+      }
+    }
+  },
+  "screenshots": [
+    {
+      "taskId": "C4-SPRINT-2-REMEDIATION",
+      "filename": "c4_s2_desktop_reservations_workspace.png",
+      "screenName": "Reservations & Deposits Workspace",
+      "viewport": "1440x900",
+      "scenario": "Hiển thị danh sách phiếu giữ chỗ PENDING/CONFIRMED và sổ theo dõi tiền cọc",
+      "sizeBytes": 392098,
+      "sha256": "7e83a7dcc91c64e0be79a504267c3fdd21d459c86613bea01a456e4238d1707c",
+      "relativePath": "screenshots/c4_s2_desktop_reservations_workspace.png",
+      "capturedAt": "2026-10-31T14:51:57.236Z"
+    },
+    {
+      "taskId": "C4-SPRINT-2-REMEDIATION",
+      "filename": "c4_s2_desktop_deposit_transfer_surplus_credit.png",
+      "screenName": "Contract Wizard Deposit Transfer Matrix",
+      "viewport": "1440x900",
+      "scenario": "Giao diện tính toán chuyển cọc và lựa chọn xử lý dôi dư B > C (cấn tiền thuê / tạo nghĩa vụ hoàn)",
+      "sizeBytes": 373616,
+      "sha256": "f7bacbeb1338741fb5ac2bd197efc2bd8948f8f78035fc0f43e22ff8a9d554ed",
+      "relativePath": "screenshots/c4_s2_desktop_deposit_transfer_surplus_credit.png",
+      "capturedAt": "2026-10-31T14:52:03.225Z"
+    },
+    {
+      "taskId": "C4-SPRINT-2-REMEDIATION",
+      "filename": "c4_s2_desktop_invoices_workspace_actions.png",
+      "screenName": "Invoices Workspace ActionMenu",
+      "viewport": "1440x900",
+      "scenario": "Danh sách hóa đơn hiển thị menu thao tác Thu tiền hóa đơn nổi độc lập qua Portal",
+      "sizeBytes": 192749,
+      "sha256": "8b685827f4af1f71adb70f445d2c2547c9da3ca40f213c3b7f7798d7cf97c8c9",
+      "relativePath": "screenshots/c4_s2_desktop_invoices_workspace_actions.png",
+      "capturedAt": "2026-10-31T14:52:06.266Z"
+    },
+    {
+      "taskId": "C4-SPRINT-2-REMEDIATION",
+      "filename": "c4_s2_desktop_invoice_payment_modal_open.png",
+      "screenName": "Invoice Payment Modal",
+      "viewport": "1440x900",
+      "scenario": "Modal thu tiền hóa đơn chọn phương thức Tiền mặt / SePay VietQR và nhập số tiền",
+      "sizeBytes": 350968,
+      "sha256": "647262f4681f659de8c77c82c1e506798691c8d3f73b908f5c09370c4f5addac",
+      "relativePath": "screenshots/c4_s2_desktop_invoice_payment_modal_open.png",
+      "capturedAt": "2026-10-31T14:52:08.343Z"
+    },
+    {
+      "taskId": "C4-SPRINT-2-REMEDIATION",
+      "filename": "c4_s2_desktop_payments_reconciliation_workspace.png",
+      "screenName": "Payments & Reconciliation Table",
+      "viewport": "1440x900",
+      "scenario": "Danh sách giao dịch ngân hàng đối soát hiển thị trạng thái MATCHED, PARTIAL_MATCH, OVERPAID",
+      "sizeBytes": 323749,
+      "sha256": "b69f341be931b9ea1022849a1307c1ee2f7efa563e3411e7f953b6744a28a406",
+      "relativePath": "screenshots/c4_s2_desktop_payments_reconciliation_workspace.png",
+      "capturedAt": "2026-10-31T14:52:11.147Z"
+    },
+    {
+      "taskId": "C4-SPRINT-2-REMEDIATION",
+      "filename": "c4_s2_mobile_invoices_cards.png",
+      "screenName": "Mobile Invoices Cards",
+      "viewport": "390x844",
+      "scenario": "Giao diện Mobile thẻ hóa đơn với số tiền, trạng thái và nút CTA Thu tiền chuẩn 44px+",
+      "sizeBytes": 84300,
+      "sha256": "ac8f306170a14b134f6b0da34581cef87397f700e89de480908be3cd77f852e7",
+      "relativePath": "screenshots/c4_s2_mobile_invoices_cards.png",
+      "capturedAt": "2026-10-31T14:52:13.514Z"
+    }
+  ],
+  "gateStatus": "LOCAL_GATE_PASSED"
+}

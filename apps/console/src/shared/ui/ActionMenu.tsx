@@ -78,15 +78,14 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({
     ],
   });
 
-  const click = useClick(context);
   const dismiss = useDismiss(context, { outsidePress: true, escapeKey: true });
   const role = useRole(context, { role: 'menu' });
-  const { getReferenceProps, getFloatingProps } = useInteractions([click, dismiss, role]);
+  const { getReferenceProps, getFloatingProps } = useInteractions([dismiss, role]);
 
   if (visibleItems.length === 0) return null;
 
   return (
-    <div className={`relative inline-block text-left ${className}`}>
+    <div className={`relative inline-block text-left ${className}`} data-menu-open={isOpen ? 'true' : 'false'}>
       <button
         type="button"
         ref={refs.setReference}

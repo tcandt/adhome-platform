@@ -142,6 +142,24 @@ export const OperationalModuleWorkspace: React.FC<
   const [depError, setDepError] = useState<string | null>(null);
   const [isSavingDep, setIsSavingDep] = useState(false);
 
+  // Invoice Payment Modal state
+  const [isInvoicePaymentModalOpen, setIsInvoicePaymentModalOpen] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState<{
+    id: string;
+    invoiceCode: string;
+    buildingCode: string;
+    roomCode: string;
+    tenantName: string | null;
+    totalAmountVnd: number;
+    paidAmountVnd: number;
+    status: string;
+  } | null>(null);
+  const [invoicePayAmount, setInvoicePayAmount] = useState('');
+  const [invoicePayMethod, setInvoicePayMethod] = useState<'MANUAL_CASH' | 'MANUAL_TRANSFER' | 'SEPAY' | 'PAYOS'>('MANUAL_CASH');
+  const [invoicePayRef, setInvoicePayRef] = useState('');
+  const [invoicePayError, setInvoicePayError] = useState<string | null>(null);
+  const [isSavingInvoicePay, setIsSavingInvoicePay] = useState(false);
+
   // Contract Lifecycle Modals (Extend / Transfer / Terminate)
   const [selectedContract, setSelectedContract] = useState<{
     id: string;
@@ -347,6 +365,61 @@ export const OperationalModuleWorkspace: React.FC<
     setCtRoomId(r.roomId);
     setCtReservationId(r.id);
     setIsContractModalOpen(true);
+  };
+
+  const handleOpenInvoicePaymentModal = (inv: {
+    id: string;
+    invoiceCode: string;
+    buildingCode: string;
+    roomCode: string;
+    tenantName: string | null;
+    totalAmountVnd: number;
+    paidAmountVnd: number;
+    status: string;
+  }) => {
+    setSelectedInvoice(inv);
+    const due = Math.max(0, inv.totalAmountVnd - inv.paidAmountVnd);
+    setInvoicePayAmount(due.toString());
+    setInvoicePayMethod('MANUAL_CASH');
+    setInvoicePayRef('');
+    setInvoicePayError(null);
+    setIsInvoicePaymentModalOpen(true);
+  };
+
+  const handleInvoicePaymentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedInvoice) return;
+    setIsSavingInvoicePay(true);
+    setInvoicePayError(null);
+    try {
+      const res = await fetch(
+        `/api/v1/console/v2/invoices/${encodeURIComponent(selectedInvoice.id)}/pay`,
+        {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': CONSOLE_CSRF_HEADER,
+          },
+          body: JSON.stringify({
+            amountVnd: Math.trunc(Number(invoicePayAmount) || 0),
+            providerId: invoicePayMethod,
+            referenceText: invoicePayRef || undefined,
+          }),
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        setInvoicePayError(data.message || 'Lỗi khi thu tiền hóa đơn.');
+        return;
+      }
+      setIsInvoicePaymentModalOpen(false);
+      await Promise.all([loadModuleData(), refreshPortfolio()]);
+    } catch {
+      setInvoicePayError('Lỗi kết nối máy chủ.');
+    } finally {
+      setIsSavingInvoicePay(false);
+    }
   };
 
   const handleDepositRefundSubmit = async (e: React.FormEvent) => {
@@ -786,6 +859,20 @@ export const OperationalModuleWorkspace: React.FC<
         status: string;
       }>)
     : [];
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).__adhome_openInvoicePayModal = (inv?: any) => {
+        const target = inv || invoices[0];
+        if (target) handleOpenInvoicePaymentModal(target);
+      };
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        delete (window as any).__adhome_openInvoicePayModal;
+      }
+    };
+  }, [invoices]);
 
   const paymentProviders = Array.isArray(payload?.providers)
     ? (payload.providers as Array<{
@@ -1900,7 +1987,7 @@ export const OperationalModuleWorkspace: React.FC<
 
           {/* 4. INVOICES */}
           {moduleId === 'invoices' && (
-            <div className="bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5">
+            <div className="bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5 space-y-4">
               {invoices.length === 0 ? (
                 <div className="py-10 text-center space-y-2">
                   <Receipt className="w-8 h-8 text-slate-400 mx-auto" />
@@ -1914,47 +2001,129 @@ export const OperationalModuleWorkspace: React.FC<
                   </p>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead>
-                      <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 font-semibold">
-                        <th className="pb-3">Mã hóa đơn</th>
-                        <th className="pb-3">Phòng / Khách</th>
-                        <th className="pb-3">Hạn thanh toán</th>
-                        <th className="pb-3">Tổng phải thu</th>
-                        <th className="pb-3">Đã thu</th>
-                        <th className="pb-3">Trạng thái</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                      {invoices.map((inv) => (
-                        <tr key={inv.id}>
-                          <td className="py-3 font-mono font-bold">
-                            {inv.invoiceCode}
-                          </td>
-                          <td className="py-3">
-                            <b>
-                              {inv.buildingCode} · {inv.roomCode}
-                            </b>
-                            {inv.tenantName ? ` — ${inv.tenantName}` : ''}
-                          </td>
-                          <td className="py-3 font-mono">{inv.dueDate}</td>
-                          <td className="py-3 font-bold tabular-nums">
-                            {inv.totalAmountVnd.toLocaleString('vi-VN')} đ
-                          </td>
-                          <td className="py-3 tabular-nums text-emerald-600 font-semibold">
-                            {inv.paidAmountVnd.toLocaleString('vi-VN')} đ
-                          </td>
-                          <td className="py-3">
+                <>
+                  {/* Mobile Cards View (md:hidden) */}
+                  <div className="md:hidden space-y-3">
+                    {invoices.map((inv) => {
+                      const remaining = Math.max(0, inv.totalAmountVnd - inv.paidAmountVnd);
+                      return (
+                        <div
+                          key={inv.id}
+                          data-testid={`invoice-card-${inv.id}`}
+                          className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] space-y-3 shadow-xs"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-mono font-bold text-xs text-slate-900 dark:text-white">
+                              {inv.invoiceCode}
+                            </span>
                             <span className="px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
                               {inv.status}
                             </span>
-                          </td>
+                          </div>
+                          <div className="text-xs text-slate-600 dark:text-slate-300">
+                            <div className="font-semibold text-slate-900 dark:text-white">
+                              {inv.buildingCode} · {inv.roomCode}
+                            </div>
+                            {inv.tenantName && <div>Khách: {inv.tenantName}</div>}
+                            <div className="text-[11px] text-slate-500">Hạn: {inv.dueDate}</div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
+                            <div>
+                              <span className="text-[11px] text-slate-500 block">Tổng tiền</span>
+                              <span className="font-bold tabular-nums">{inv.totalAmountVnd.toLocaleString('vi-VN')} đ</span>
+                            </div>
+                            <div>
+                              <span className="text-[11px] text-slate-500 block">Còn thiếu</span>
+                              <span className={`font-bold tabular-nums ${remaining > 0 ? 'text-rose-600 font-bold' : 'text-emerald-600'}`}>
+                                {remaining.toLocaleString('vi-VN')} đ
+                              </span>
+                            </div>
+                          </div>
+                          {remaining > 0 && (
+                            <button
+                              type="button"
+                              data-testid={`btn-pay-invoice-mobile-${inv.id}`}
+                              onClick={() => handleOpenInvoicePaymentModal(inv)}
+                              className="w-full min-h-[44px] py-2.5 px-4 bg-brand-primary text-white font-bold text-xs rounded-xl shadow-xs hover:bg-brand-hover active:scale-[0.99] flex items-center justify-center gap-2"
+                            >
+                              <CreditCard className="w-4 h-4" />
+                              Thu tiền hóa đơn
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Desktop Table View (hidden md:block) */}
+                  <div className="hidden md:block overflow-x-auto">
+                    <table className="w-full text-left text-xs" data-testid="invoices-table">
+                      <thead>
+                        <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 font-semibold">
+                          <th className="pb-3">Mã hóa đơn</th>
+                          <th className="pb-3">Phòng / Khách</th>
+                          <th className="pb-3">Hạn thanh toán</th>
+                          <th className="pb-3">Tổng phải thu</th>
+                          <th className="pb-3">Đã thu</th>
+                          <th className="pb-3">Còn thiếu</th>
+                          <th className="pb-3">Trạng thái</th>
+                          <th className="pb-3 text-right">Thao tác</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {invoices.map((inv) => {
+                          const remaining = Math.max(0, inv.totalAmountVnd - inv.paidAmountVnd);
+                          return (
+                            <tr key={inv.id}>
+                              <td className="py-3 font-mono font-bold">
+                                {inv.invoiceCode}
+                              </td>
+                              <td className="py-3">
+                                <b>
+                                  {inv.buildingCode} · {inv.roomCode}
+                                </b>
+                                {inv.tenantName ? ` — ${inv.tenantName}` : ''}
+                              </td>
+                              <td className="py-3 font-mono">{inv.dueDate}</td>
+                              <td className="py-3 font-bold tabular-nums">
+                                {inv.totalAmountVnd.toLocaleString('vi-VN')} đ
+                              </td>
+                              <td className="py-3 tabular-nums text-emerald-600 font-semibold">
+                                {inv.paidAmountVnd.toLocaleString('vi-VN')} đ
+                              </td>
+                              <td className="py-3 tabular-nums font-semibold">
+                                <span className={remaining > 0 ? 'text-rose-600 font-bold' : 'text-slate-400'}>
+                                  {remaining.toLocaleString('vi-VN')} đ
+                                </span>
+                              </td>
+                              <td className="py-3">
+                                <span className="px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                                  {inv.status}
+                                </span>
+                              </td>
+                              <td className="py-3 text-right">
+                                <ActionMenu
+                                  items={[
+                                    ...(remaining > 0
+                                      ? [
+                                          {
+                                            label: 'Thu tiền hóa đơn',
+                                            variant: 'primary' as const,
+                                            testId: 'action-pay-invoice',
+                                            onClick: () => handleOpenInvoicePaymentModal(inv),
+                                          },
+                                        ]
+                                      : []),
+                                  ]}
+                                />
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
               )}
             </div>
           )}
@@ -3132,6 +3301,121 @@ export const OperationalModuleWorkspace: React.FC<
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   )}
                   <span>Lưu bút toán sổ quỹ</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Invoice Payment Modal */}
+      {isInvoicePaymentModalOpen && selectedInvoice && (
+        <div data-testid="invoice-payment-modal" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <CreditCard className="w-4 h-4 text-brand-primary" />
+                Thu tiền hóa đơn — {selectedInvoice.invoiceCode}
+              </h3>
+              <button
+                type="button"
+                data-testid="btn-close-invoice-payment-modal"
+                onClick={() => setIsInvoicePaymentModalOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <form onSubmit={handleInvoicePaymentSubmit} className="p-5 space-y-4">
+              {invoicePayError && (
+                <div className="p-3 text-xs bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 rounded-xl">
+                  {invoicePayError}
+                </div>
+              )}
+              <div className="p-3 bg-slate-50 dark:bg-slate-800/80 rounded-xl text-xs space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Phòng / Tòa:</span>
+                  <span className="font-bold">{selectedInvoice.buildingCode} · {selectedInvoice.roomCode}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Khách thuê:</span>
+                  <span className="font-bold">{selectedInvoice.tenantName || '—'}</span>
+                </div>
+                <div className="flex justify-between border-t border-slate-200 dark:border-slate-700 pt-2">
+                  <span className="text-slate-500">Tổng phải thu:</span>
+                  <span className="font-bold tabular-nums">{selectedInvoice.totalAmountVnd.toLocaleString('vi-VN')} đ</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Đã thu:</span>
+                  <span className="font-bold tabular-nums text-emerald-600">{selectedInvoice.paidAmountVnd.toLocaleString('vi-VN')} đ</span>
+                </div>
+                <div className="flex justify-between border-t border-slate-200 dark:border-slate-700 pt-2">
+                  <span className="text-slate-700 dark:text-slate-300 font-semibold">Còn phải thu:</span>
+                  <span className="font-bold tabular-nums text-brand-primary text-sm">
+                    {Math.max(0, selectedInvoice.totalAmountVnd - selectedInvoice.paidAmountVnd).toLocaleString('vi-VN')} đ
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold mb-1">
+                  Phương thức thanh toán
+                </label>
+                <select
+                  value={invoicePayMethod}
+                  onChange={(e) => setInvoicePayMethod(e.target.value as any)}
+                  className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-semibold"
+                >
+                  <option value="MANUAL_CASH">Tiền mặt (Thu trực tiếp)</option>
+                  <option value="MANUAL_TRANSFER">Chuyển khoản ngân hàng</option>
+                  <option value="SEPAY">SePay (Quét mã VietQR)</option>
+                  <option value="PAYOS">PayOS (Cổng thanh toán)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold mb-1">
+                  Số tiền thu (VND)
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  step={10000}
+                  value={invoicePayAmount}
+                  onChange={(e) => setInvoicePayAmount(e.target.value)}
+                  className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold tabular-nums text-brand-primary"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold mb-1">
+                  Ghi chú / Mã giao dịch tham chiếu
+                </label>
+                <input
+                  type="text"
+                  placeholder="VD: GD-123456 hoặc Thu tiền đợt 1"
+                  value={invoicePayRef}
+                  onChange={(e) => setInvoicePayRef(e.target.value)}
+                  className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsInvoicePaymentModalOpen(false)}
+                  className="px-4 py-2 text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl"
+                >
+                  Đóng
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingInvoicePay}
+                  className="px-4 py-2 text-xs font-bold bg-brand-primary hover:bg-brand-hover text-white rounded-xl shadow-sm flex items-center gap-1.5"
+                >
+                  {isSavingInvoicePay && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Xác nhận thu tiền
                 </button>
               </div>
             </form>

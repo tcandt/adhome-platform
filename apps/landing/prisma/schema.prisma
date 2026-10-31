@@ -272,6 +272,8 @@ model Deposit {
   paidAmountVnd          BigInt    @default(0) @map("paid_amount_vnd")
   refundedVnd            BigInt    @default(0) @map("refunded_vnd")
   deductedAmountVnd      BigInt    @default(0) @map("deducted_amount_vnd")
+  forfeitedAmountVnd     BigInt    @default(0) @map("forfeited_amount_vnd")
+  transferredAmountVnd   BigInt    @default(0) @map("transferred_amount_vnd")
   /// PENDING | PARTIALLY_PAID | PAID | TRANSFERRED | REFUNDED | FORFEITED
   paymentStatus          String    @default("PENDING") @map("payment_status")
   transferredToDepositId String?   @map("transferred_to_deposit_id")
@@ -752,9 +754,12 @@ model IdempotencyRecord {
   orgId          String   @map("org_id")
   action         String
   idempotencyKey String   @map("idempotency_key")
-  responseStatus Int      @map("response_status")
-  responseBody   Json     @map("response_body")
+  requestHash    String   @default("") @map("request_hash")
+  status         String   @default("PROCESSING")
+  responseStatus Int?     @map("response_status")
+  responseBody   Json?    @map("response_body")
   createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at")
 
   @@unique([orgId, action, idempotencyKey])
   @@index([orgId, action, createdAt])

@@ -677,6 +677,9 @@ export const OperationalModuleWorkspace: React.FC<
         paidAmountVnd?: number;
         refundedVnd: number;
         deductedAmountVnd?: number;
+        forfeitedAmountVnd?: number;
+        transferredAmountVnd?: number;
+        transferredToDepositId?: string | null;
         paymentStatus?: string;
         status: string;
         createdAt: string;
@@ -696,6 +699,8 @@ export const OperationalModuleWorkspace: React.FC<
         endDate: string;
         monthlyRentVnd: number;
         depositVnd: number;
+        collectedDepositVnd?: number;
+        remainingDepositVnd?: number;
         electricRateVnd: number;
         waterBillingMethod: string;
         waterRateVnd: number;
@@ -1168,10 +1173,20 @@ export const OperationalModuleWorkspace: React.FC<
                       </thead>
                       <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                         {depositsList.map((d) => {
-                          const effectivePaid = d.paidAmountVnd ?? (d.paymentStatus === 'PAID' ? d.amountVnd : 0);
-                          const remainingDue = Math.max(0, d.amountVnd - effectivePaid);
-                          const availableBalance = Math.max(0, effectivePaid - d.refundedVnd - (d.deductedAmountVnd || 0));
                           const isTransferred = d.status === 'APPLIED_TO_CONTRACT' || d.paymentStatus === 'TRANSFERRED';
+                          const isTerminal = d.status === 'REFUNDED' || d.status === 'FORFEITED' || isTransferred;
+                          const effectivePaid = d.paidAmountVnd ?? (d.paymentStatus === 'PAID' ? d.amountVnd : 0);
+                          const remainingDue = isTerminal ? 0 : Math.max(0, d.amountVnd - effectivePaid);
+                          const availableBalance = isTransferred
+                            ? 0
+                            : Math.max(
+                                0,
+                                effectivePaid -
+                                  d.refundedVnd -
+                                  (d.deductedAmountVnd || 0) -
+                                  (d.forfeitedAmountVnd || 0) -
+                                  (d.transferredAmountVnd || 0)
+                              );
                           return (
                           <tr key={d.id}>
                             <td className="py-3 font-mono font-bold">
@@ -1214,6 +1229,12 @@ export const OperationalModuleWorkspace: React.FC<
                                     ? 'bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800'
                                     : d.paymentStatus === 'TRANSFERRED'
                                     ? 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800'
+                                    : d.paymentStatus === 'REFUNDED'
+                                    ? 'bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800'
+                                    : d.paymentStatus === 'FORFEITED'
+                                    ? 'bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800'
+                                    : d.paymentStatus === 'PENDING'
+                                    ? 'bg-amber-50/80 text-amber-600 border border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800'
                                     : 'bg-slate-100 text-slate-600 border border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
                                 }`}
                               >
@@ -1223,6 +1244,12 @@ export const OperationalModuleWorkspace: React.FC<
                                   ? 'Thu 1 phần'
                                   : d.paymentStatus === 'TRANSFERRED'
                                   ? 'Đã chuyển HĐ'
+                                  : d.paymentStatus === 'REFUNDED'
+                                  ? 'Đã hoàn cọc'
+                                  : d.paymentStatus === 'FORFEITED'
+                                  ? 'Đã tịch thu'
+                                  : d.paymentStatus === 'PENDING'
+                                  ? 'Chờ thanh toán'
                                   : 'Chờ thu'}
                               </span>
                             </td>
@@ -1257,8 +1284,13 @@ export const OperationalModuleWorkspace: React.FC<
                             </td>
                             <td className="py-3 text-right">
                               {isTransferred ? (
-                                <span className="text-[10.5px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2 py-1 rounded">
+                                <span className="text-[10.5px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2 py-1 rounded inline-flex items-center gap-1">
                                   Đã chuyển HĐ
+                                  {d.transferredToDepositId && (
+                                    <span className="font-mono text-[9px] opacity-75">
+                                      ({d.transferredToDepositId.slice(0, 6)})
+                                    </span>
+                                  )}
                                 </span>
                               ) : availableBalance > 0 && (d.status === 'HELD' || d.status === 'PARTIALLY_REFUNDED') ? (
                                 <button
@@ -1311,27 +1343,30 @@ export const OperationalModuleWorkspace: React.FC<
               ) : (
                 <>
                   {/* CONTRACTS STATUS FILTER BAR */}
-                  <div className="flex items-center gap-1.5 pb-3 border-b border-slate-100 dark:border-slate-800 mb-4 overflow-x-auto">
-                    {[
-                      { id: 'ALL', label: 'Tất cả' },
-                      { id: 'ACTIVE', label: 'Đang hiệu lực' },
-                      { id: 'DRAFT', label: 'Chờ bàn giao' },
-                      { id: 'EXPIRING', label: 'Sắp hết hạn' },
-                      { id: 'TERMINATED', label: 'Đã thanh lý' },
-                    ].map((tab) => (
-                      <button
-                        key={tab.id}
-                        type="button"
-                        onClick={() => setContractStatusFilter(tab.id as any)}
-                        className={`px-3 py-1 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap ${
-                          contractStatusFilter === tab.id
-                            ? 'bg-brand-primary text-white shadow-sm'
-                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
-                        }`}
-                      >
-                        {tab.label}
-                      </button>
-                    ))}
+                  <div className="relative mb-4">
+                    <div className="flex items-center gap-1.5 pb-2 border-b border-slate-100 dark:border-slate-800 overflow-x-auto no-scrollbar scroll-smooth">
+                      {[
+                        { id: 'ALL', label: 'Tất cả' },
+                        { id: 'ACTIVE', label: 'Đang hiệu lực' },
+                        { id: 'DRAFT', label: 'Chờ bàn giao' },
+                        { id: 'EXPIRING', label: 'Sắp hết hạn' },
+                        { id: 'TERMINATED', label: 'Đã thanh lý' },
+                      ].map((tab) => (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => setContractStatusFilter(tab.id as any)}
+                          className={`px-3 py-1 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap ${
+                            contractStatusFilter === tab.id
+                              ? 'bg-brand-primary text-white shadow-sm'
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
+                          }`}
+                        >
+                          {tab.label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="pointer-events-none absolute right-0 top-0 bottom-2 w-6 bg-gradient-to-l from-white dark:from-[#111827] to-transparent md:hidden" />
                   </div>
 
                   {/* Mobile Contracts Cards */}
@@ -1386,9 +1421,19 @@ export const OperationalModuleWorkspace: React.FC<
                         </div>
 
                         <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px]">
-                          <span className="text-slate-500">
-                            Cọc: {c.depositVnd.toLocaleString('vi-VN')} đ
-                          </span>
+                          <div className="flex flex-col">
+                            <span className="text-slate-600 dark:text-slate-400">
+                              Cọc yêu cầu: <b className="text-slate-900 dark:text-white tabular-nums">{c.depositVnd.toLocaleString('vi-VN')} đ</b>
+                            </span>
+                            <span className="text-[10px] text-slate-500">
+                              Đã thu: <span className="text-emerald-600 font-bold tabular-nums">{(c.collectedDepositVnd ?? c.depositVnd).toLocaleString('vi-VN')} đ</span>
+                              {c.remainingDepositVnd && c.remainingDepositVnd > 0 ? (
+                                <> · Thiếu: <span className="text-rose-500 font-bold tabular-nums">{c.remainingDepositVnd.toLocaleString('vi-VN')} đ</span></>
+                              ) : (
+                                <> · <span className="text-emerald-600 font-semibold">Đủ</span></>
+                              )}
+                            </span>
+                          </div>
                           <div className="flex items-center gap-1">
                             {c.status === 'DRAFT' && (
                               <button
@@ -1491,7 +1536,17 @@ export const OperationalModuleWorkspace: React.FC<
                               {c.monthlyRentVnd.toLocaleString('vi-VN')} đ/th
                             </div>
                             <div className="text-[11px] text-slate-500">
-                              Cọc: {c.depositVnd.toLocaleString('vi-VN')} đ
+                              Cọc yêu cầu: {c.depositVnd.toLocaleString('vi-VN')} đ
+                              {c.collectedDepositVnd !== undefined && (
+                                <span className="block text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                                  Đã thu: {c.collectedDepositVnd.toLocaleString('vi-VN')} đ
+                                  {c.remainingDepositVnd && c.remainingDepositVnd > 0 ? (
+                                    <span className="text-rose-500 font-bold"> (thiếu {c.remainingDepositVnd.toLocaleString('vi-VN')}đ)</span>
+                                  ) : (
+                                    <span> (đủ)</span>
+                                  )}
+                                </span>
+                              )}
                             </div>
                           </td>
                           <td className="py-3 text-[11px] text-slate-600 dark:text-slate-300">

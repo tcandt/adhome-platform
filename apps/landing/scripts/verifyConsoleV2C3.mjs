@@ -1997,6 +1997,188 @@ async function main() {
       idempCall2.headers.get('x-idempotent-replay') === 'true' &&
       idempDepInDb?.refundedVnd === 500000n;
 
+    // H. TASK P0-01: Multi-Deposit Waterfall Cancellation
+    const wfRoom = await prisma.consoleRoom.create({
+      data: {
+        orgId,
+        buildingId: bldLk.id,
+        floorId: bldLkFloor.id,
+        code: `R-WF-${crypto.randomBytes(2).toString('hex').toUpperCase()}`,
+        title: 'Phòng Studio Test Waterfall',
+        area: 30,
+        listPriceVnd: 5000000n,
+        occupancyStatus: 'AVAILABLE',
+        rentalModel: 'ENTIRE_ROOM',
+        totalBeds: 1,
+      },
+    });
+    const wfResv = await prisma.roomReservation.create({
+      data: {
+        orgId,
+        buildingId: bldLk.id,
+        roomId: wfRoom.id,
+        reservationCode: `RES-WF-${crypto.randomBytes(2).toString('hex').toUpperCase()}`,
+        customerName: 'Khách Test Waterfall',
+        customerPhone: '0933111222',
+        holdAmountVnd: 5000000n,
+        status: 'CONFIRMED',
+        holdUntil: new Date(Date.now() + 86400000),
+      },
+    });
+    const wfDep1 = await prisma.deposit.create({
+      data: {
+        orgId,
+        reservationId: wfResv.id,
+        depositType: 'BOOKING',
+        amountVnd: 2000000n,
+        paidAmountVnd: 2000000n,
+        paymentStatus: 'PAID',
+        receivedAt: new Date(),
+        status: 'HELD',
+      },
+    });
+    const wfDep2 = await prisma.deposit.create({
+      data: {
+        orgId,
+        reservationId: wfResv.id,
+        depositType: 'BOOKING',
+        amountVnd: 3000000n,
+        paidAmountVnd: 3000000n,
+        paymentStatus: 'PAID',
+        receivedAt: new Date(),
+        status: 'HELD',
+      },
+    });
+
+    const wfCancelResp = await fetchHttp(
+      `${LANDING_URL}/api/v1/console/v2/reservations/${encodeURIComponent(wfResv.id)}/cancel`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: adminCookie,
+          'X-Requested-With': 'AdHome-Console',
+          'Idempotency-Key': `idemp-wf-${crypto.randomBytes(4).toString('hex')}`,
+        },
+        body: JSON.stringify({
+          refundAmountVnd: 2000000,
+          deductionAmountVnd: 0,
+          forfeitAmountVnd: 3000000,
+          forfeit: true,
+          reason: 'Khách hủy, thỏa thuận hoàn 2M phạt 3M',
+        }),
+      }
+    );
+    const wfDep1After = await prisma.deposit.findUnique({ where: { id: wfDep1.id } });
+    const wfDep2After = await prisma.deposit.findUnique({ where: { id: wfDep2.id } });
+    const totalRefunded = Number(wfDep1After?.refundedVnd || 0) + Number(wfDep2After?.refundedVnd || 0);
+    const totalForfeited = Number(wfDep1After?.forfeitedAmountVnd || 0) + Number(wfDep2After?.forfeitedAmountVnd || 0);
+    const dep1Balanced = Number(wfDep1After?.paidAmountVnd || 0) === Number(wfDep1After?.refundedVnd || 0) + Number(wfDep1After?.forfeitedAmountVnd || 0);
+    const dep2Balanced = Number(wfDep2After?.paidAmountVnd || 0) === Number(wfDep2After?.refundedVnd || 0) + Number(wfDep2After?.forfeitedAmountVnd || 0);
+    const wfWaterfallPass =
+      wfCancelResp.status === 200 &&
+      totalRefunded === 2000000 &&
+      totalForfeited === 3000000 &&
+      dep1Balanced &&
+      dep2Balanced;
+
+    // I. TASK P0-02 & P0-08: Atomic Idempotency Under Concurrency and Request Fingerprint Mismatch
+    const concurrentKey = `idemp-conc-${crypto.randomBytes(4).toString('hex')}`;
+    const concurrentDep = await prisma.deposit.create({
+      data: {
+        orgId,
+        depositType: 'CONTRACT',
+        amountVnd: 1000000n,
+        paidAmountVnd: 1000000n,
+        paymentStatus: 'PAID',
+        receivedAt: new Date(),
+        status: 'HELD',
+      },
+    });
+
+    const payloadA = { refundAmountVnd: 200000 };
+    const concPromises = Array.from({ length: 10 }, () =>
+      fetchHttp(
+        `${LANDING_URL}/api/v1/console/v2/deposits/${encodeURIComponent(concurrentDep.id)}/refund`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Cookie: adminCookie,
+            'X-Requested-With': 'AdHome-Console',
+            'Idempotency-Key': concurrentKey,
+          },
+          body: JSON.stringify(payloadA),
+        }
+      )
+    );
+    const concResponses = await Promise.all(concPromises);
+    const concStatuses = concResponses.map((r) => r.status);
+    const total200s = concStatuses.filter((s) => s === 200).length;
+    const total409s = concStatuses.filter((s) => s === 409).length;
+    const concAllHandled = total200s >= 1 && (total200s + total409s === 10);
+    const concDepInDb = await prisma.deposit.findUnique({ where: { id: concurrentDep.id } });
+    const concNoOverRefund = concDepInDb?.refundedVnd === 200000n;
+
+    const mismatchResp = await fetchHttp(
+      `${LANDING_URL}/api/v1/console/v2/deposits/${encodeURIComponent(concurrentDep.id)}/refund`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: adminCookie,
+          'X-Requested-With': 'AdHome-Console',
+          'Idempotency-Key': concurrentKey,
+        },
+        body: JSON.stringify({ refundAmountVnd: 300000 }),
+      }
+    );
+    const payloadMismatchBlocked =
+      mismatchResp.status === 422 &&
+      mismatchResp.json?.errorCode === 'IDEMPOTENCY_KEY_PAYLOAD_MISMATCH';
+    const p02AtomicIdempotencyPass = concAllHandled && concNoOverRefund && payloadMismatchBlocked;
+    if (!p02AtomicIdempotencyPass) {
+      console.log('DEBUG p02AtomicIdempotencyPass failed:', {
+        concStatuses,
+        concAllHandled,
+        concRefunded: concDepInDb?.refundedVnd?.toString(),
+        mismatchStatus: mismatchResp.status,
+        mismatchJson: mismatchResp.json,
+      });
+    }
+
+    // J. TASK P0-03: Status Guard on Confirm-Payment for Cancelled or Converted Holds
+    const guardCancelResp = await fetchHttp(
+      `${LANDING_URL}/api/v1/console/v2/reservations/${encodeURIComponent(wfResv.id)}/confirm-payment`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: adminCookie,
+          'X-Requested-With': 'AdHome-Console',
+        },
+        body: JSON.stringify({ paymentMethod: 'CASH' }),
+      }
+    );
+    const p03StatusGuardPass =
+      guardCancelResp.status === 422 &&
+      guardCancelResp.json?.errorCode === 'INVALID_RESERVATION_STATUS';
+
+    // K. TASK P0-04: Transferred Deposit Balance & Workspace Verification
+    const workspaceDepositsResp = await fetchHttp(
+      `${LANDING_URL}/api/v1/console/v2/module-data?module=deposits`,
+      {
+        method: 'GET',
+        headers: { Cookie: adminCookie, 'X-Requested-With': 'AdHome-Console' },
+      }
+    );
+    const depList = workspaceDepositsResp.json?.deposits || [];
+    const transferredDep = depList.find((d) => d.status === 'APPLIED_TO_CONTRACT' || d.paymentStatus === 'TRANSFERRED');
+    const p04TransferredBalancePass =
+      transferredDep !== undefined &&
+      transferredDep.transferredAmountVnd > 0 &&
+      transferredDep.transferredToDepositId !== null;
+
     testResults.checks.c31FinancialRemediation = {
       pass:
         p01DeductionBalancePass &&
@@ -2007,10 +2189,18 @@ async function main() {
         p08NoMeterBlocked &&
         p08HandoverPass &&
         p1OccupantPass &&
-        p13IdempotencyPass,
+        p13IdempotencyPass &&
+        wfWaterfallPass &&
+        p02AtomicIdempotencyPass &&
+        p03StatusGuardPass &&
+        p04TransferredBalancePass,
       p0_01_deductionBalanceProtection: p01DeductionBalancePass,
+      p0_01_multiDepositWaterfallCancellation: wfWaterfallPass,
       p0_02_buildingScopeAuthorization: p02BuildingScopePass,
+      p0_02_p0_08_atomicIdempotencyConcurrencyAndMismatch: p02AtomicIdempotencyPass,
+      p0_03_confirmPaymentStatusGuard: p03StatusGuardPass,
       p0_03_invoiceBreakdownInvariant: p03BreakdownInvariantPass,
+      p0_04_transferredDepositZeroBalanceAndLink: p04TransferredBalancePass,
       p0_04_p0_06_raceSafeTransferMath: p04TransferPass,
       p0_05_contractDefaultStatusDraft: p05DefaultDraftPass,
       p0_08_meteredHandoverValidation: p08NoMeterBlocked && p08HandoverPass,
@@ -2019,14 +2209,12 @@ async function main() {
     };
     console.log(
       `-> C3.1 Financial Remediation Suite: ${testResults.checks.c31FinancialRemediation.pass ? 'PASS' : 'FAIL'} ` +
-      `(P0-01 Deductions: ${p01DeductionBalancePass ? 'PASS' : 'FAIL'}, ` +
-      `P0-02 Scope: ${p02BuildingScopePass ? 'PASS' : 'FAIL'}, ` +
-      `P0-03 Breakdown: ${p03BreakdownInvariantPass ? 'PASS' : 'FAIL'}, ` +
-      `P0-04 Transfer: ${p04TransferPass ? 'PASS' : 'FAIL'}, ` +
-      `P0-05 Default Draft: ${p05DefaultDraftPass ? 'PASS' : 'FAIL'}, ` +
+      `(P0-01 Waterfall: ${wfWaterfallPass ? 'PASS' : 'FAIL'}, ` +
+      `P0-02 Atomic Idempotency: ${p02AtomicIdempotencyPass ? 'PASS' : 'FAIL'}, ` +
+      `P0-03 Status Guard: ${p03StatusGuardPass ? 'PASS' : 'FAIL'}, ` +
+      `P0-04 Transferred Balance: ${p04TransferredBalancePass ? 'PASS' : 'FAIL'}, ` +
       `P0-08 Meter: ${p08HandoverPass ? 'PASS' : 'FAIL'}, ` +
-      `P1-01 Occupants: ${p1OccupantPass ? 'PASS' : 'FAIL'}, ` +
-      `P1-03 Idempotency: ${p13IdempotencyPass ? 'PASS' : 'FAIL'})`
+      `P1-01 Occupants: ${p1OccupantPass ? 'PASS' : 'FAIL'})`
     );
 
     testResults.checks.c3aLifecycleStateMachines = {

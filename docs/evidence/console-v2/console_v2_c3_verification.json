@@ -1,5 +1,5 @@
 {
-  "evaluatedAt": "2026-10-31T01:33:20.365Z",
+  "evaluatedAt": "2026-10-31T07:55:00.348Z",
   "verdict": "LOCAL_GATE_PASSED",
   "reportingTier": "LOCAL_GATE_PASSED",
   "checks": {
@@ -85,8 +85,12 @@
     "c31FinancialRemediation": {
       "pass": true,
       "p0_01_deductionBalanceProtection": true,
+      "p0_01_multiDepositWaterfallCancellation": true,
       "p0_02_buildingScopeAuthorization": true,
+      "p0_02_p0_08_atomicIdempotencyConcurrencyAndMismatch": true,
+      "p0_03_confirmPaymentStatusGuard": true,
       "p0_03_invoiceBreakdownInvariant": true,
+      "p0_04_transferredDepositZeroBalanceAndLink": true,
       "p0_04_p0_06_raceSafeTransferMath": true,
       "p0_05_contractDefaultStatusDraft": true,
       "p0_08_meteredHandoverValidation": true,
@@ -134,33 +138,33 @@
       "hashes": [
         {
           "filename": "console_v2_1440_contracts_workspace.png",
-          "sizeBytes": 401547,
-          "sha256": "9dec69e3504e788fc3adf73d227a4db8f941c27430b5beac16004decf870fa5e"
+          "sizeBytes": 446175,
+          "sha256": "a206bdbd1630638aee49b4e9172cce1c3011d4fbbacf8a98946aace5fbc2b9b5"
         },
         {
           "filename": "console_v2_1440_contract_handover_modal.png",
-          "sizeBytes": 611357,
-          "sha256": "88ff4dcda9f05b2119f90c6e52868ce5adfbb0552fe1abbd8345ec255443ddc0"
+          "sizeBytes": 623276,
+          "sha256": "d6b77c6a3ec0691e3179d28552b7c891b1ddbaded4c7d8414a6b6ecad4508181"
         },
         {
           "filename": "console_v2_1440_contract_modal_dynamic_dates.png",
-          "sizeBytes": 500971,
-          "sha256": "fbea2131153c32f86d6481915ada106796f3b074a103021c35577cc0eeb6eb85"
+          "sizeBytes": 471342,
+          "sha256": "3e1e3eef2d86c7d032be6b87429740d48053967f3ec62a76b42e612af0707433"
         },
         {
           "filename": "console_v2_1440_deposits_workspace.png",
-          "sizeBytes": 417532,
-          "sha256": "2ba7b7007a2e7d11ed9f8bd6f3cab753df990a87ee46dda90666d3094dd9238a"
+          "sizeBytes": 376667,
+          "sha256": "fa3127dc773d30e363b7475a11cc9d7402bf80a2c0ef66fd1636ba3d5e490820"
         },
         {
           "filename": "console_v2_1440_settlements_hunonic.png",
-          "sizeBytes": 427604,
-          "sha256": "99155169dea246e2ebf592cd34c96fdb82e459443e7f5d1b2f2978eefb1edec5"
+          "sizeBytes": 427726,
+          "sha256": "c726dd8f408037c39e08008a7ef993ed5cfad50f56f4e6fdcbf166dd2e496607"
         },
         {
           "filename": "console_v2_390x844_contracts_mobile.png",
-          "sizeBytes": 139783,
-          "sha256": "6c9f044461d495903a820702fe18f07dd79feff0bfd689e88fb374f3305c665a"
+          "sizeBytes": 151166,
+          "sha256": "75a52b30573849a4e1457066b872dfec563de30c5418ab167d6d259f75df0483"
         }
       ]
     }
@@ -173,5 +177,5 @@
     "console_v2_1440_settlements_hunonic.png",
     "console_v2_390x844_contracts_mobile.png"
   ],
-  "finishedAt": "2026-10-31T01:33:35.288Z"
+  "finishedAt": "2026-10-31T07:55:14.401Z"
 }

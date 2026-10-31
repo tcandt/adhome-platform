@@ -29,7 +29,7 @@ export const MobileShell: React.FC = () => {
 
       <MobileDrawer isOpen={drawerOpen} onClose={() => setDrawerOpen(false)} />
 
-      <main className="pt-16 pb-20 px-3.5">
+      <main className="pt-3 pb-20 px-3.5">
         {!isModuleAllowed ? (
           <div
             data-testid="console-module-forbidden"

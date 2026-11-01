@@ -1,5 +1,5 @@
 {
-  "auditedAt": "2026-11-01T01:45:13.268Z",
+  "auditedAt": "2026-11-01T02:17:48.548Z",
   "databaseUrl": "postgresql://127.0.0.1:5432/adhome_v2 (local native, no Docker)",
   "primaryOrgId": "org-adhome-anphu",
   "organizations": [

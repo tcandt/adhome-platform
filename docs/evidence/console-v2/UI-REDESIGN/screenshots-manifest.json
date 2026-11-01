@@ -1,0 +1,74 @@
+[
+  {
+    "filename": "redesign_desktop_1440_header_expanded.png",
+    "scenario": "UI-01/02: Desktop 1440x900 Header mới (3 vùng rõ ràng, building selector, search Ctrl+K, sync status, user profile) & Sidebar mở rộng",
+    "viewport": "1440x900",
+    "sizeBytes": 405617,
+    "sha256": "f9ee1ed6ed56f6eeeb9e8d87537c78e3e952f99ca02b5a166d9ac2304bf2db07",
+    "relativePath": "screenshots/redesign_desktop_1440_header_expanded.png",
+    "capturedAt": "2026-11-01T02:54:05.096Z"
+  },
+  {
+    "filename": "redesign_desktop_1440_header_collapsed.png",
+    "scenario": "UI-02: Desktop 1440x900 Sidebar thu gọn với trigger 40x40px, icon morphing, tooltip Ctrl+B và focus ring",
+    "viewport": "1440x900",
+    "sizeBytes": 332604,
+    "sha256": "5010a6577cd178ff55b0f88cd2ae1f5c5b5b7e0c75aaba37725bc0e200ca0b9c",
+    "relativePath": "screenshots/redesign_desktop_1440_header_collapsed.png",
+    "capturedAt": "2026-11-01T02:54:06.416Z"
+  },
+  {
+    "filename": "redesign_desktop_1280_header_contracts.png",
+    "scenario": "UI-01: Desktop 1280x720 Header không tràn 2 dòng, các cụm điều hướng và context tòa nhà cân đối",
+    "viewport": "1280x720",
+    "sizeBytes": 347286,
+    "sha256": "83dc196ba6817f69bb372115a7fe827dad728c77d24b7e33c7ded872d483950f",
+    "relativePath": "screenshots/redesign_desktop_1280_header_contracts.png",
+    "capturedAt": "2026-11-01T02:54:07.706Z"
+  },
+  {
+    "filename": "redesign_desktop_1920_header_overview.png",
+    "scenario": "UI-01: Desktop 1920x1080 Header trên màn hình rộng 1080p, bố cục sắc nét không vỡ tỷ lệ",
+    "viewport": "1920x1080",
+    "sizeBytes": 447871,
+    "sha256": "569f85e34a2e14381453cd40d006c27512be3f2902c9d019149cb57c8c43719c",
+    "relativePath": "screenshots/redesign_desktop_1920_header_overview.png",
+    "capturedAt": "2026-11-01T02:54:08.477Z"
+  },
+  {
+    "filename": "redesign_desktop_contracts_table_polished.png",
+    "scenario": "UI-04/05: Bảng danh sách hợp đồng Desktop: Mã HĐ ngắn (HD-WF-010A, HD-S2R-105), badge \"Từ sổ cũ\", định dạng tiền tệ nowrap, điện nước chuẩn hóa",
+    "viewport": "1440x900",
+    "sizeBytes": 470916,
+    "sha256": "57fc1e337961d6fd187971fc178c79a895357c4a8cc164a4a493767a4cbe9d3c",
+    "relativePath": "screenshots/redesign_desktop_contracts_table_polished.png",
+    "capturedAt": "2026-11-01T02:54:10.062Z"
+  },
+  {
+    "filename": "redesign_desktop_contracts_menu_open.png",
+    "scenario": "UI-06: Menu ba chấm mở bằng Portal tại dòng cuối hợp đồng, tự động flip/shift, không bị cắt bởi table container",
+    "viewport": "1440x900",
+    "sizeBytes": 454425,
+    "sha256": "f7a40cd2430d36d9a1771846655d9ba6bd02d1efe4acec926231b6e4f2ba4abb",
+    "relativePath": "screenshots/redesign_desktop_contracts_menu_open.png",
+    "capturedAt": "2026-11-01T02:54:11.515Z"
+  },
+  {
+    "filename": "redesign_mobile_390x844_contracts_cards.png",
+    "scenario": "UI-07: Thẻ hợp đồng Mobile (390x844): Giá thuê nowrap không bị xuống dòng, mã HĐ ngắn, bố cục 2 cột gọn gàng, nút Bàn giao 44px+",
+    "viewport": "390x844",
+    "sizeBytes": 144011,
+    "sha256": "018d878080617f89b77230942811d8ae1baeca2c974f99d806ded40f11beaf00",
+    "relativePath": "screenshots/redesign_mobile_390x844_contracts_cards.png",
+    "capturedAt": "2026-11-01T02:54:13.194Z"
+  },
+  {
+    "filename": "redesign_mobile_390x844_actions_bottom_sheet.png",
+    "scenario": "UI-07: Action Bottom Sheet trên Mobile mở từ thẻ hợp đồng với grab-bar, safe-area padding và touch targets 44px+",
+    "viewport": "390x844",
+    "sizeBytes": 112214,
+    "sha256": "f5e55691506ae881d713a15eada5a34fefc7a53633fb7db7071aa7f3fdfc6306",
+    "relativePath": "screenshots/redesign_mobile_390x844_actions_bottom_sheet.png",
+    "capturedAt": "2026-11-01T02:54:14.401Z"
+  }
+]

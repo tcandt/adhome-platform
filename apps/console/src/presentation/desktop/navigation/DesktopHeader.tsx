@@ -23,6 +23,11 @@ import {
 import { usePortfolio } from '@/app/providers/PortfolioContext';
 import { useTheme } from '@/app/providers/ThemeContext';
 import { SidebarTrigger } from '@/shared/ui/animate-sidebar';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@animate-ui/react/primitives/tooltip';
 
 export const DesktopHeader: React.FC = () => {
   const { user, logout, hasCapability } = useAuth();
@@ -54,6 +59,7 @@ export const DesktopHeader: React.FC = () => {
 
   const [isScopeOpen, setIsScopeOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [scopeSearchQuery, setScopeSearchQuery] = useState('');
 
   const scopeRef = useRef<HTMLDivElement | null>(null);
   const notifRef = useRef<HTMLDivElement | null>(null);
@@ -92,6 +98,16 @@ export const DesktopHeader: React.FC = () => {
     [activeBuildings]
   );
 
+  const filteredBuildings = useMemo(() => {
+    if (!scopeSearchQuery.trim()) return activeBuildings;
+    const q = scopeSearchQuery.toLowerCase();
+    return activeBuildings.filter(
+      (b) =>
+        b.code.toLowerCase().includes(q) ||
+        b.name.toLowerCase().includes(q)
+    );
+  }, [activeBuildings, scopeSearchQuery]);
+
   const scopeSummaryLabel = useMemo(() => {
     if (activeBuildings.length === 0) {
       return 'Chưa có tòa nhà (0)';
@@ -126,11 +142,14 @@ export const DesktopHeader: React.FC = () => {
   return (
     <header
       data-testid="console-desktop-header"
-      className="sticky top-0 z-20 flex h-16 w-full shrink-0 items-center justify-between gap-3 border-b border-slate-200/90 dark:border-slate-800/90 bg-white/95 dark:bg-[#111827]/95 px-4 lg:px-6 backdrop-blur-md"
+      className="sticky top-0 z-20 flex h-16 w-full shrink-0 items-center justify-between gap-4 border-b border-slate-200/90 dark:border-slate-800/90 bg-white/95 dark:bg-[#111827]/95 px-4 lg:px-6 backdrop-blur-md select-none transition-colors"
     >
-      {/* ZONE 1 (LEFT): Navigation Trigger + Module Title + Conditional 2nd-Level Breadcrumb */}
-      <div className="flex min-w-0 items-center gap-2.5">
+      {/* ZONE 1 (LEFT): Navigation Trigger + Subtle Divider + Contextual Title / Breadcrumbs */}
+      <div className="flex min-w-0 items-center gap-3">
         <SidebarTrigger />
+
+        <div className="h-5 w-px bg-slate-200 dark:bg-slate-800 hidden sm:block shrink-0" aria-hidden="true" />
+
         <nav
           aria-label="Điều hướng ngữ cảnh"
           className="flex min-w-0 items-center gap-1.5"
@@ -144,7 +163,7 @@ export const DesktopHeader: React.FC = () => {
                     setBuildingsSubTab('rooms');
                   }
                 }}
-                className="truncate text-sm font-medium text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
+                className="truncate text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
               >
                 {currentNavConfig.label}
               </button>
@@ -167,7 +186,7 @@ export const DesktopHeader: React.FC = () => {
         </nav>
       </div>
 
-      {/* ZONE 2 (CENTER): Server-Scoped Single/Multi Building Selector (only on building-scoped modules) */}
+      {/* ZONE 2 (CENTER): Server-Scoped Building Selector (when supported) */}
       <div className="flex min-w-0 items-center justify-center">
         {currentNavConfig.supportsBuildingScope && (
           <div ref={scopeRef} className="relative">
@@ -175,12 +194,14 @@ export const DesktopHeader: React.FC = () => {
               type="button"
               data-testid="console-building-scope-selector"
               onClick={() => setIsScopeOpen((prev) => !prev)}
-              className="inline-flex h-9 max-w-[240px] xl:max-w-[300px] items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-700/80 bg-slate-50/90 dark:bg-slate-800/70 px-3 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:border-slate-300 dark:hover:border-slate-600 transition-colors"
+              aria-expanded={isScopeOpen}
+              aria-haspopup="listbox"
+              className="inline-flex h-9.5 max-w-[240px] xl:max-w-[320px] items-center gap-2 rounded-lg border border-slate-200/90 dark:border-slate-700/80 bg-slate-50/90 dark:bg-slate-800/70 px-3 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-100/90 dark:hover:bg-slate-800 transition-all shadow-2xs"
             >
-              <Building2 className="h-3.5 w-3.5 shrink-0 text-brand-primary dark:text-blue-400" />
+              <Building2 className="h-3.5 w-3.5 shrink-0 text-blue-600 dark:text-blue-400" />
               <span className="truncate">{scopeSummaryLabel}</span>
               <ChevronDown
-                className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform ${
+                className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform duration-200 ${
                   isScopeOpen ? 'rotate-180' : ''
                 }`}
               />
@@ -189,9 +210,9 @@ export const DesktopHeader: React.FC = () => {
             {isScopeOpen && (
               <div
                 data-testid="console-building-scope-popover"
-                className="absolute left-1/2 top-full z-50 mt-2 w-80 -translate-x-1/2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 shadow-xl"
+                className="absolute left-1/2 top-full z-50 mt-2 w-84 -translate-x-1/2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2.5 shadow-xl"
               >
-                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 px-2.5 pb-2 pt-1">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 px-2 pb-2">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
                     Phạm vi tòa nhà
                   </span>
@@ -201,26 +222,45 @@ export const DesktopHeader: React.FC = () => {
                       setSelectedBuildingIds([]);
                       setIsScopeOpen(false);
                     }}
-                    className="text-[11px] font-semibold text-brand-primary dark:text-blue-400 hover:underline"
+                    className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:underline"
                   >
                     Chọn tất cả ({activeBuildings.length})
                   </button>
                 </div>
 
+                {activeBuildings.length > 4 && (
+                  <div className="mt-2 px-1">
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Tìm mã hoặc tên tòa nhà..."
+                        value={scopeSearchQuery}
+                        onChange={(e) => setScopeSearchQuery(e.target.value)}
+                        className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 pl-8 pr-3 py-1.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                )}
+
                 {activeBuildings.length === 0 ? (
                   <p className="px-3 py-4 text-center text-xs text-slate-500">
                     Chưa có tòa nhà hoạt động trong phạm vi của bạn.
                   </p>
+                ) : filteredBuildings.length === 0 ? (
+                  <p className="px-3 py-4 text-center text-xs text-slate-500">
+                    Không tìm thấy tòa nhà khớp với &ldquo;{scopeSearchQuery}&rdquo;.
+                  </p>
                 ) : (
                   <div className="mt-1.5 max-h-64 space-y-0.5 overflow-y-auto">
-                    {activeBuildings.map((bld) => {
+                    {filteredBuildings.map((bld) => {
                       const isChecked =
                         selectedBuildingIds.length === 0 ||
                         selectedBuildingIds.includes(bld.id);
                       return (
                         <div
                           key={bld.id}
-                          className="flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/70"
+                          className="flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/70 transition-colors"
                         >
                           <button
                             type="button"
@@ -230,9 +270,9 @@ export const DesktopHeader: React.FC = () => {
                             className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
                           >
                             <span
-                              className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                              className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
                                 isChecked
-                                  ? 'border-brand-primary bg-brand-primary text-white'
+                                  ? 'border-blue-600 bg-blue-600 text-white'
                                   : 'border-slate-300 dark:border-slate-600'
                               }`}
                             >
@@ -254,7 +294,7 @@ export const DesktopHeader: React.FC = () => {
                               setSelectedBuildingIds([bld.id]);
                               setIsScopeOpen(false);
                             }}
-                            className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 hover:bg-slate-200/70 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white"
+                            className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 hover:bg-slate-200/70 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-colors"
                           >
                             Chỉ tòa này
                           </button>
@@ -269,67 +309,69 @@ export const DesktopHeader: React.FC = () => {
         )}
       </div>
 
-      {/* ZONE 3 (RIGHT): Search (Ctrl+K) + Sync Status + Real Notifications + Avatar Menu */}
+      {/* ZONE 3 (RIGHT): Search (Ctrl+K) + PostgreSQL Live Sync + Notifications + User Avatar Menu */}
       <div className="flex shrink-0 items-center gap-2">
         {/* Global Search (Ctrl/Cmd + K) */}
         <button
           type="button"
           data-testid="console-global-search-trigger"
           onClick={() => setIsSearchOpen(true)}
-          className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-700/80 bg-slate-50/80 dark:bg-slate-800/60 px-2.5 xl:px-3 text-xs text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
+          className="inline-flex h-9.5 items-center gap-2 rounded-lg border border-slate-200/90 dark:border-slate-700/80 bg-slate-50/90 dark:bg-slate-800/60 px-2.5 xl:px-3 text-xs text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-800 dark:hover:text-slate-200 transition-all shadow-2xs"
           title="Tìm kiếm nhanh toàn hệ thống (Ctrl + K)"
         >
-          <Search className="h-3.5 w-3.5 shrink-0" />
-          <span className="hidden xl:inline">Tìm phòng, khách, hợp đồng...</span>
-          <kbd className="rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-1.5 py-0.5 font-mono text-[10px] font-medium text-slate-400">
+          <Search className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+          <span className="hidden xl:inline font-medium">Tìm phòng, khách, hợp đồng...</span>
+          <kbd className="rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-1.5 py-0.5 font-mono text-[10px] font-medium text-slate-400 shadow-2xs">
             Ctrl K
           </kbd>
         </button>
 
-        {/* PostgreSQL Connection / Sync Indicator */}
+        {/* PostgreSQL Live Sync Indicator */}
         {syncStatus === 'error' ? (
           <button
             type="button"
             data-testid="console-sync-status"
             onClick={() => void refreshPortfolio()}
             title={syncError || 'Lỗi kết nối PostgreSQL — Nhấn để thử lại'}
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/40 px-2.5 text-[11px] font-semibold text-red-700 dark:text-red-300"
+            className="inline-flex h-9.5 items-center gap-1.5 rounded-lg border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/40 px-2.5 text-[11px] font-semibold text-red-700 dark:text-red-300 shadow-2xs"
           >
             <AlertCircle className="h-3.5 w-3.5 shrink-0" />
             <span className="hidden 2xl:inline">Thử lại</span>
           </button>
         ) : (
-          <button
-            type="button"
-            data-testid="console-sync-status"
-            onClick={() => void refreshPortfolio()}
-            title={
-              lastSyncedAt
-                ? `Đồng bộ PostgreSQL lúc ${new Date(
-                    lastSyncedAt
-                  ).toLocaleTimeString('vi-VN')}`
-                : 'Đang kết nối PostgreSQL...'
-            }
-            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200/80 dark:border-slate-700/80 bg-white dark:bg-slate-800/70 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white transition-colors"
-          >
-            <RefreshCw
-              className={`h-3.5 w-3.5 ${
-                syncStatus === 'loading' || syncStatus === 'refreshing'
-                  ? 'animate-spin text-brand-primary'
-                  : 'text-emerald-600 dark:text-emerald-400'
-              }`}
-            />
-          </button>
+          <Tooltip side="bottom" sideOffset={8}>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                data-testid="console-sync-status"
+                onClick={() => void refreshPortfolio()}
+                className="inline-flex h-9.5 w-9.5 items-center justify-center rounded-lg border border-slate-200/90 dark:border-slate-700/80 bg-white dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-750 transition-all shadow-2xs"
+              >
+                <RefreshCw
+                  className={`h-3.5 w-3.5 ${
+                    syncStatus === 'loading' || syncStatus === 'refreshing'
+                      ? 'animate-spin text-blue-600 dark:text-blue-400'
+                      : 'text-emerald-600 dark:text-emerald-400'
+                  }`}
+                />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent className="z-50 rounded-lg border border-slate-700/80 bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-white shadow-lg">
+              {lastSyncedAt
+                ? `Đồng bộ PostgreSQL lúc ${new Date(lastSyncedAt).toLocaleTimeString('vi-VN')} (Nhấn để làm mới)`
+                : 'Đang kết nối PostgreSQL...'}
+            </TooltipContent>
+          </Tooltip>
         )}
 
-        {/* Real Notifications Popover — Red badge ONLY when unreadNotificationsCount > 0 */}
+        {/* Real Notifications Popover */}
         <div ref={notifRef} className="relative">
           <button
             type="button"
             data-testid="console-notifications-trigger"
             onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
             aria-label="Thông báo vận hành"
-            className="relative inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200/80 dark:border-slate-700/80 bg-white dark:bg-slate-800/70 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+            className="relative inline-flex h-9.5 w-9.5 items-center justify-center rounded-lg border border-slate-200/90 dark:border-slate-700/80 bg-white dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-750 transition-all shadow-2xs"
           >
             <Bell className="h-4 w-4" />
             {unreadNotificationsCount > 0 && (
@@ -367,7 +409,7 @@ export const DesktopHeader: React.FC = () => {
                         notifications.filter((n) => !n.isRead).map((n) => n.key)
                       )
                     }
-                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-brand-primary dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40"
+                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40"
                   >
                     <CheckCheck className="h-3.5 w-3.5" />
                     Đã đọc hết
@@ -400,7 +442,7 @@ export const DesktopHeader: React.FC = () => {
                     >
                       <span
                         className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${
-                          item.isRead ? 'bg-slate-300 dark:bg-slate-600' : 'bg-brand-primary'
+                          item.isRead ? 'bg-slate-300 dark:bg-slate-600' : 'bg-blue-600'
                         }`}
                       />
                       <div className="min-w-0 flex-1">
@@ -419,19 +461,21 @@ export const DesktopHeader: React.FC = () => {
           )}
         </div>
 
-        {/* User Avatar Menu (Role, Scope, Theme Switcher, Settings, Logout) */}
+        {/* User Profile Avatar Menu */}
         <div ref={userMenuRef} className="relative">
           <button
             type="button"
             data-testid="console-user-menu-trigger"
             onClick={() => setIsUserMenuOpen((prev) => !prev)}
-            className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200/90 dark:border-slate-700/80 bg-white dark:bg-slate-800/80 pl-1.5 pr-2.5 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+            aria-expanded={isUserMenuOpen}
+            aria-haspopup="menu"
+            className="inline-flex h-9.5 items-center gap-2 rounded-lg border border-slate-200/90 dark:border-slate-700/80 bg-white dark:bg-slate-800/80 pl-1.5 pr-2.5 hover:bg-slate-50 dark:hover:bg-slate-750 transition-all shadow-2xs"
           >
-            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-gradient-to-tr from-blue-600 to-cyan-500 text-[11px] font-bold text-white">
+            <div className="flex h-6.5 w-6.5 shrink-0 items-center justify-center rounded-md bg-gradient-to-tr from-blue-600 to-indigo-600 text-[11px] font-bold text-white shadow-2xs">
               {initials}
             </div>
             <div className="hidden md:flex flex-col items-start leading-none">
-              <span className="max-w-[116px] truncate text-xs font-semibold text-slate-800 dark:text-slate-100">
+              <span className="max-w-[124px] 2xl:max-w-[170px] truncate text-xs font-semibold text-slate-800 dark:text-slate-100">
                 {user?.name}
               </span>
               <span
@@ -441,7 +485,11 @@ export const DesktopHeader: React.FC = () => {
                 {user?.backendRole === 'ADMIN' ? 'ADMIN' : 'MANAGER'}
               </span>
             </div>
-            <ChevronDown className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+            <ChevronDown
+              className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform duration-200 ${
+                isUserMenuOpen ? 'rotate-180' : ''
+              }`}
+            />
           </button>
 
           {isUserMenuOpen && (
@@ -480,7 +528,7 @@ export const DesktopHeader: React.FC = () => {
                   type="button"
                   data-testid="console-theme-toggle"
                   onClick={() => toggleTheme()}
-                  className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                 >
                   <span className="flex items-center gap-2.5">
                     {theme === 'light' ? (
@@ -502,7 +550,7 @@ export const DesktopHeader: React.FC = () => {
                       setActiveModule('settings');
                       setIsUserMenuOpen(false);
                     }}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                    className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                   >
                     <Settings className="h-4 w-4 text-slate-500" />
                     Cài đặt & Thiết lập hệ thống
@@ -518,7 +566,7 @@ export const DesktopHeader: React.FC = () => {
                     setIsUserMenuOpen(false);
                     void logout();
                   }}
-                  className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30"
+                  className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
                 >
                   <LogOut className="h-4 w-4" />
                   Đăng xuất an toàn

@@ -292,29 +292,36 @@ export function SidebarRail() {
 
 export function SidebarTrigger({ className = '' }: { className?: string }) {
   const { toggleSidebar, state } = useSidebar();
-  return (
+  const isExpanded = state === 'expanded';
+  const tooltipText = isExpanded
+    ? 'Thu gọn thanh điều hướng (Ctrl+B)'
+    : 'Mở rộng thanh điều hướng (Ctrl+B)';
+
+  const triggerButton = (
     <button
       type="button"
       data-sidebar="trigger"
       data-testid="console-sidebar-trigger"
+      data-state={state}
+      aria-expanded={isExpanded}
+      aria-label={tooltipText}
       onClick={toggleSidebar}
-      title={
-        state === 'expanded'
-          ? 'Thu gọn menu (Ctrl+B)'
-          : 'Mở rộng menu (Ctrl+B)'
-      }
-      aria-label={
-        state === 'expanded'
-          ? 'Thu gọn thanh điều hướng'
-          : 'Mở rộng thanh điều hướng'
-      }
-      className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200/80 dark:border-slate-700/80 bg-white dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40 ${className}`}
+      className={`relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200/90 dark:border-slate-700/80 bg-white/90 dark:bg-slate-800/90 text-slate-600 dark:text-slate-300 shadow-xs hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700/80 hover:text-slate-900 dark:hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 transition-all duration-150 active:scale-95 ${className}`}
     >
       <TriggerIcon
-        open={<PanelLeftClose className="h-4 w-4" />}
-        closed={<PanelLeftOpen className="h-4 w-4" />}
+        open={<PanelLeftClose className="h-4.5 w-4.5 transition-transform duration-200" />}
+        closed={<PanelLeftOpen className="h-4.5 w-4.5 text-blue-600 dark:text-blue-400 transition-transform duration-200" />}
       />
     </button>
+  );
+
+  return (
+    <Tooltip side="bottom" sideOffset={8} align="start">
+      <TooltipTrigger asChild>{triggerButton}</TooltipTrigger>
+      <TooltipContent className="z-50 rounded-lg border border-slate-700/80 bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-white shadow-lg">
+        {tooltipText}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 

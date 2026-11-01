@@ -379,7 +379,26 @@ async function main() {
       scenario: 'UI-01: Desktop 1920x1080 Header trên màn hình rộng 1080p, bố cục sắc nét không vỡ tỷ lệ',
     });
 
-    // 5. Desktop Contracts Table Polished (1440x900)
+    // Helper to reliably set and verify sidebar state (QA-04-FIX-01)
+    async function setSidebarState(targetState) {
+      const getState = () => cdp.eval(`(() => {
+        const sidebar = document.querySelector('[data-testid="console-desktop-sidebar"]');
+        return sidebar ? sidebar.getAttribute('data-state') : null;
+      })()`);
+
+      let current = await getState();
+      if (current !== targetState) {
+        await cdp.eval(`document.querySelector('[data-testid="console-sidebar-trigger"]')?.click()`);
+        await new Promise((r) => setTimeout(r, 600));
+        current = await getState();
+      }
+      if (current !== targetState) {
+        throw new Error(`QA-04-FIX-01 Assertion Failed: Expected sidebar '${targetState}', but got '${current}'`);
+      }
+      return current;
+    }
+
+    // 5. Desktop Contracts Table Multi-Viewport Matrix (QA-04, QA-04-FIX-01, QA-04-FIX-02)
     await cdp.send('Emulation.setDeviceMetricsOverride', {
       width: 1440,
       height: 900,
@@ -389,8 +408,7 @@ async function main() {
     await navigateModule('contracts');
     await waitForSelector('[data-testid="contracts-table"]', 30, 200);
 
-    // QA-04: Multi-viewport & Sidebar state matrix for Contracts Table
-    console.log('\n[QA-04] Executing Multi-Viewport Table & Sticky Column Assertions...');
+    console.log('\n[QA-04] Executing Multi-Viewport Table & Sticky Column Assertions (1280, 1366, 1440, 1920)...');
     const tableTestMatrix = [
       { width: 1280, height: 720, label: '1280x720' },
       { width: 1366, height: 768, label: '1366x768' },
@@ -406,90 +424,146 @@ async function main() {
           deviceScaleFactor: 2,
           mobile: false,
         });
-        await cdp.eval(`(() => {
-          window.dispatchEvent(new Event('resize'));
-          const trigger = document.querySelector('[data-testid="console-sidebar-trigger"]');
-          const isCurrentlyOpen = document.querySelector('[data-sidebar="sidebar"]')?.getAttribute('data-state') === 'expanded';
-          if (${sidebarState === 'collapsed'} && isCurrentlyOpen) trigger?.click();
-          else if (${sidebarState === 'expanded'} && !isCurrentlyOpen) trigger?.click();
-        })()`);
-        await new Promise((r) => setTimeout(r, 400));
+        await cdp.eval(`window.dispatchEvent(new Event('resize'))`);
+        await new Promise((r) => setTimeout(r, 200));
+
+        // Enforce verified sidebar state
+        const verifiedSidebar = await setSidebarState(sidebarState);
 
         const matrixResult = await cdp.eval(`(() => {
           const doc = document.documentElement;
           const table = document.querySelector('[data-testid="contracts-table"]');
+          const container = table?.closest('.overflow-x-auto') || table;
+          const containerRect = container ? container.getBoundingClientRect() : null;
           const stickyTh = table?.querySelector('th.sticky');
           const stickyTds = Array.from(table?.querySelectorAll('td.sticky') || []);
           const triggers = Array.from(table?.querySelectorAll('[data-testid="action-menu-trigger"]') || []);
 
           const overflow = doc.scrollWidth > window.innerWidth;
           const thRect = stickyTh ? stickyTh.getBoundingClientRect() : null;
-          const allTdsVisible = stickyTds.every((td) => {
+          const stickyThPinned = thRect && containerRect
+            ? thRect.right <= containerRect.right + 2 && thRect.right >= containerRect.right - 120 && thRect.right <= window.innerWidth
+            : false;
+          const allTdsVisible = stickyTds.length > 0 && stickyTds.every((td) => {
             const r = td.getBoundingClientRect();
-            return r.right <= window.innerWidth && r.right > window.innerWidth - 120;
+            return containerRect
+              ? r.right <= containerRect.right + 2 && r.right >= containerRect.right - 120 && r.right <= window.innerWidth && r.left >= 0
+              : r.right <= window.innerWidth && r.left >= 0;
           });
-          const allTriggersAccessible = triggers.every((t) => {
+          const allTriggersAccessible = triggers.length > 0 && triggers.every((t) => {
             const r = t.getBoundingClientRect();
             return r.right <= window.innerWidth && r.left >= 0 && r.width >= 40 && r.height >= 40;
           });
+
+          // QA-04-FIX-02: Hit-testing with document.elementFromPoint
+          let hitTestPassed = false;
+          let hitTestDetails = null;
+          if (triggers.length > 0) {
+            const trg = triggers[0];
+            const r = trg.getBoundingClientRect();
+            const cx = Math.round(r.left + r.width / 2);
+            const cy = Math.round(r.top + r.height / 2);
+            const topEl = document.elementFromPoint(cx, cy);
+            hitTestPassed = topEl === trg || trg.contains(topEl);
+            hitTestDetails = { cx, cy, topElTag: topEl?.tagName, topElTestId: topEl?.getAttribute('data-testid') };
+          }
 
           return {
             docScrollWidth: doc.scrollWidth,
             windowInnerWidth: window.innerWidth,
             overflow,
             hasTable: !!table,
-            stickyThPinned: thRect ? thRect.right <= window.innerWidth : false,
+            stickyThPinned,
             allTdsVisible,
             allTriggersAccessible,
             triggerCount: triggers.length,
+            hitTestPassed,
+            hitTestDetails,
           };
         })()`);
 
-        console.log(`     [QA-04 ${vp.label} | Sidebar ${sidebarState}] scrollWidth=${matrixResult.docScrollWidth}/${matrixResult.windowInnerWidth} | Overflow: ${matrixResult.overflow} | Sticky Th Pinned: ${matrixResult.stickyThPinned} | Triggers OK: ${matrixResult.allTriggersAccessible}`);
+        console.log(`     [QA-04 ${vp.label} | Sidebar ${verifiedSidebar}] scrollWidth=${matrixResult.docScrollWidth}/${matrixResult.windowInnerWidth} | Overflow: ${matrixResult.overflow} | Sticky Th Pinned: ${matrixResult.stickyThPinned} | HitTest: ${matrixResult.hitTestPassed}`);
 
         if (matrixResult.overflow) {
           throw new Error(`QA-04 Failure at ${vp.label} (${sidebarState}): Whole-page horizontal overflow detected (scrollWidth=${matrixResult.docScrollWidth} > innerWidth=${matrixResult.windowInnerWidth})`);
         }
-        if (!matrixResult.stickyThPinned || !matrixResult.allTdsVisible || !matrixResult.allTriggersAccessible) {
-          throw new Error(`QA-04 Failure at ${vp.label} (${sidebarState}): Sticky action column or triggers obscured: ${JSON.stringify(matrixResult)}`);
+        if (!matrixResult.stickyThPinned || !matrixResult.allTdsVisible || !matrixResult.allTriggersAccessible || !matrixResult.hitTestPassed) {
+          throw new Error(`QA-04 Failure at ${vp.label} (${sidebarState}): Sticky action column, triggers, or hit-testing obscured: ${JSON.stringify(matrixResult)}`);
         }
       }
     }
 
-    // Capture Table at 1280x720 with sidebar expanded (QA-04 Visual Proof)
+    // QA-04-FIX-02: 125% Zoom Simulation Test (width 1024px equivalent to 1280px at 125% zoom)
+    console.log('\n[QA-04-FIX-02] Simulating 125% Zoom on 1280px (Effective Width: 1024px)...');
+    await cdp.send('Emulation.setDeviceMetricsOverride', {
+      width: 1024,
+      height: 768,
+      deviceScaleFactor: 2,
+      mobile: false,
+    });
+    await setSidebarState('expanded');
+    const zoom125Result = await cdp.eval(`(() => {
+      const doc = document.documentElement;
+      const table = document.querySelector('[data-testid="contracts-table"]');
+      const triggers = Array.from(table?.querySelectorAll('[data-testid="action-menu-trigger"]') || []);
+      let hitTestPassed = false;
+      if (triggers.length > 0) {
+        const trg = triggers[0];
+        const r = trg.getBoundingClientRect();
+        const cx = Math.round(r.left + r.width / 2);
+        const cy = Math.round(r.top + r.height / 2);
+        const topEl = document.elementFromPoint(cx, cy);
+        hitTestPassed = topEl === trg || trg.contains(topEl);
+      }
+      return {
+        docScrollWidth: doc.scrollWidth,
+        windowInnerWidth: window.innerWidth,
+        overflow: doc.scrollWidth > window.innerWidth,
+        hitTestPassed,
+      };
+    })()`);
+    console.log(`     [125% Zoom Simulation Result]: scrollWidth=${zoom125Result.docScrollWidth}/${zoom125Result.windowInnerWidth} | Overflow: ${zoom125Result.overflow} | HitTest: ${zoom125Result.hitTestPassed}`);
+    if (zoom125Result.overflow || !zoom125Result.hitTestPassed) {
+      throw new Error(`QA-04-FIX-02 Failure at 125% zoom: ${JSON.stringify(zoom125Result)}`);
+    }
+
+    // Capture Table at 1280x720 with Sidebar EXPANDED (QA-04-FIX-01 Visual Proof)
     await cdp.send('Emulation.setDeviceMetricsOverride', {
       width: 1280,
       height: 720,
       deviceScaleFactor: 2,
       mobile: false,
     });
-    await cdp.eval(`(() => {
-      const trigger = document.querySelector('[data-testid="console-sidebar-trigger"]');
-      const isCurrentlyOpen = document.querySelector('[data-sidebar="sidebar"]')?.getAttribute('data-state') === 'expanded';
-      if (!isCurrentlyOpen) trigger?.click();
-    })()`);
-    await new Promise((r) => setTimeout(r, 400));
+    await setSidebarState('expanded');
     await capture({
-      filename: 'redesign_desktop_1280_contracts_table_polished.png',
+      filename: 'redesign_desktop_1280_contracts_table_expanded.png',
       width: 1280,
       height: 720,
-      scenario: 'QA-04: Bảng hợp đồng Desktop tại độ phân giải 1280x720 khi Sidebar mở rộng: 6 cột cân đối, không tràn ngang, cột Thao tác sticky-right luôn nhìn thấy',
+      scenario: 'QA-04-FIX-01: Bảng hợp đồng Desktop tại 1280x720 khi Sidebar MỞ RỘNG (248px): 6 cột cân đối, không tràn ngang, cột Thao tác sticky-right luôn nhìn thấy',
     });
 
-    // Reset to 1440x900
+    // Capture Table at 1280x720 with Sidebar COLLAPSED (QA-04-FIX-01 Visual Proof)
+    await setSidebarState('collapsed');
+    await capture({
+      filename: 'redesign_desktop_1280_contracts_table_collapsed.png',
+      width: 1280,
+      height: 720,
+      scenario: 'QA-04-FIX-01: Bảng hợp đồng Desktop tại 1280x720 khi Sidebar THU GỌN (72px): Vùng hiển thị mở rộng, cột Thao tác sticky-right ghim cố định',
+    });
+
+    // Reset to 1440x900 with Sidebar EXPANDED for Desktop Polished
     await cdp.send('Emulation.setDeviceMetricsOverride', {
       width: 1440,
       height: 900,
       deviceScaleFactor: 2,
       mobile: false,
     });
-    await new Promise((r) => setTimeout(r, 400));
-
+    await setSidebarState('expanded');
     await capture({
       filename: 'redesign_desktop_contracts_table_polished.png',
       width: 1440,
       height: 900,
-      scenario: 'UI-04/05/FIN-UI-03: Bảng danh sách hợp đồng Desktop: Mã HĐ ngắn (HD-WF-010A, HD-S2R-105), badge "Từ sổ cũ", định dạng tiền tệ nowrap, phân rã cọc cam kết và thực thu chuẩn hóa, cột Thao tác sticky-right',
+      scenario: 'UI-04/05/FIN-UI-03: Bảng danh sách hợp đồng Desktop 1440x900: Mã HĐ ngắn (HD-WF-010A, HD-S2R-105), badge "Từ sổ cũ", định dạng tiền tệ nowrap, phân rã cọc cam kết và thực thu chuẩn hóa, cột Thao tác sticky-right',
     });
 
     // 6. Action Menu Open in Portal (no clipping)
@@ -589,7 +663,7 @@ async function main() {
       scenario: 'UI-07/FIN-UI-03: Thẻ hợp đồng Mobile (390x844): Giá thuê nowrap không bị xuống dòng, mã HĐ ngắn, cọc thực thu chuẩn hóa, nút Bàn giao 44px+',
     });
 
-    // 8. Mobile Action Bottom Sheet
+    // 8. Mobile Action Bottom Sheet & Keyboard / A11y Proof (UI-07-FIX-02, UI-07-FIX-03, UI-07-FIX-04, QA-06)
     await cdp.eval(`(() => {
       const triggers = Array.from(document.querySelectorAll('[data-testid="action-menu-trigger"]')).filter(
         (t) => t.getBoundingClientRect().height > 0
@@ -600,7 +674,7 @@ async function main() {
     })()`);
     await new Promise((r) => setTimeout(r, 700));
 
-    // Assert UI-07-FIX-02 & UI-07-FIX-03: Bottom Sheet with contextual header and accessibility
+    // Assert UI-07-FIX-02, UI-07-FIX-03, UI-07-FIX-04: Bottom Sheet with contextual header, scroll lock, and safe area
     const sheetProof = await cdp.eval(`(() => {
       const sheet = document.querySelector('[data-testid="action-menu-bottom-sheet"]');
       if (!sheet) return { found: false, error: 'Bottom sheet not found' };
@@ -622,16 +696,74 @@ async function main() {
         ariaModal,
       };
     })()`);
-    console.log('     [UI-07-FIX-02/03 Contextual Bottom Sheet & A11y check]:', sheetProof);
+    console.log('     [UI-07-FIX-02/03/04 Contextual Bottom Sheet & A11y check]:', sheetProof);
     if (!sheetProof?.found || sheetProof.height < 100 || !sheetProof.bodyLocked || sheetProof.role !== 'dialog' || sheetProof.ariaModal !== 'true') {
-      throw new Error(`UI-07-FIX-02/03 Assertion Failed: Bottom sheet accessibility contract violated: ${JSON.stringify(sheetProof)}`);
+      throw new Error(`UI-07-FIX-02/03/04 Assertion Failed: Bottom sheet accessibility contract violated: ${JSON.stringify(sheetProof)}`);
     }
+
+    // QA-06: Testing Keyboard Navigation & Focus Trap via CDP
+    console.log('\n[QA-06] Testing Mobile Bottom Sheet Keyboard Navigation & Focus Trap...');
+    const initialFocus = await cdp.eval(`(() => {
+      const sheet = document.querySelector('[data-testid="action-menu-bottom-sheet"]');
+      return {
+        inside: sheet ? sheet.contains(document.activeElement) : false,
+        activeTag: document.activeElement?.tagName,
+        activeText: document.activeElement?.textContent?.trim()?.slice(0, 30),
+      };
+    })()`);
+    console.log('     [QA-06 Step 1] Initial Focus Inside Sheet:', initialFocus);
+
+    // Tab key navigation
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+    await new Promise((r) => setTimeout(r, 100));
+
+    const tabFocus = await cdp.eval(`(() => {
+      const sheet = document.querySelector('[data-testid="action-menu-bottom-sheet"]');
+      return {
+        inside: sheet ? sheet.contains(document.activeElement) : false,
+        activeText: document.activeElement?.textContent?.trim()?.slice(0, 30),
+      };
+    })()`);
+    console.log('     [QA-06 Step 2] Tab Key Cycled Focus:', tabFocus);
+    if (!tabFocus.inside) {
+      throw new Error(`QA-06 Failed: Focus escaped bottom sheet on Tab: ${JSON.stringify(tabFocus)}`);
+    }
+
+    // Escape key closes sheet and restores focus
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await new Promise((r) => setTimeout(r, 400));
+
+    const escapeProof = await cdp.eval(`(() => {
+      const sheet = document.querySelector('[data-testid="action-menu-bottom-sheet"]');
+      const bodyOverflow = document.body.style.overflow;
+      const activeTrigger = document.activeElement?.getAttribute('data-testid') === 'action-menu-trigger';
+      return {
+        sheetClosed: sheet === null,
+        scrollLockRestored: bodyOverflow !== 'hidden',
+        focusRestoredToTrigger: activeTrigger,
+      };
+    })()`);
+    console.log('     [QA-06 Step 3] Escape Key & Focus Restoration:', escapeProof);
+    if (!escapeProof.sheetClosed || !escapeProof.scrollLockRestored || !escapeProof.focusRestoredToTrigger) {
+      throw new Error(`QA-06 Failed: Escape handling or focus restoration failed: ${JSON.stringify(escapeProof)}`);
+    }
+
+    // Re-open sheet for screenshot capture
+    await cdp.eval(`(() => {
+      const triggers = Array.from(document.querySelectorAll('[data-testid="action-menu-trigger"]')).filter(
+        (t) => t.getBoundingClientRect().height > 0
+      );
+      if (triggers.length > 0) triggers[0].click();
+    })()`);
+    await new Promise((r) => setTimeout(r, 600));
 
     await capture({
       filename: 'redesign_mobile_390x844_actions_bottom_sheet.png',
       width: 390,
       height: 844,
-      scenario: 'UI-07: Action Bottom Sheet trên Mobile mở từ thẻ hợp đồng với grab-bar, contextual header (tòa/phòng, mã HĐ, trạng thái), safe-area padding và touch targets 44px+',
+      scenario: 'UI-07/QA-06: Action Bottom Sheet trên Mobile mở từ thẻ hợp đồng với grab-bar, contextual header (tòa/phòng, mã HĐ, trạng thái), safe-area padding và touch targets 44px+',
     });
 
     cdp.close();
@@ -642,6 +774,27 @@ async function main() {
 
     const checkLines = manifest.map((m) => `${m.sha256}  ${m.relativePath} (${m.sizeBytes} bytes, ${m.viewport})`);
     fs.writeFileSync(path.join(EVIDENCE_DIR, 'checksums-verified.txt'), checkLines.join('\n'));
+
+    // QA-07: Direct Disk Verification of Evidence Integrity
+    console.log('\n[QA-07] Verifying Image Files on Disk against SHA-256 Manifest...');
+    let qa07Passed = true;
+    for (const item of manifest) {
+      const fullPath = path.join(EVIDENCE_DIR, item.relativePath);
+      if (!fs.existsSync(fullPath)) {
+        console.error(`  [QA-07 FAIL] Missing file: ${item.relativePath}`);
+        qa07Passed = false;
+        continue;
+      }
+      const diskBuf = fs.readFileSync(fullPath);
+      const diskSha = crypto.createHash('sha256').update(diskBuf).digest('hex');
+      const matches = diskSha === item.sha256 && diskBuf.length === item.sizeBytes;
+      console.log(`  File: ${item.filename.padEnd(46)} | Disk Bytes: ${diskBuf.length} | SHA: ${diskSha.slice(0, 16)}... [${matches ? 'PASS' : 'FAIL'}]`);
+      if (!matches) qa07Passed = false;
+    }
+    if (!qa07Passed) {
+      throw new Error('QA-07 Assertion Failed: Discrepancy detected between disk evidence and manifest');
+    }
+    console.log(`\n[QA-07] 100% of ${manifest.length} screenshot files on disk verified matching recorded SHA-256 checksums.`);
 
     console.log(`Successfully captured ${manifest.length} redesign screenshots.`);
 

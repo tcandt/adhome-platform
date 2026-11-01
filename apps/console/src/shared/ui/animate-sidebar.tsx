@@ -66,6 +66,7 @@ export function Sidebar({
   return (
     <div
       className="group/sidebar relative hidden lg:block shrink-0"
+      data-sidebar="sidebar"
       data-state={state}
       data-collapsible={state === 'collapsed' ? 'icon' : ''}
       data-testid="console-desktop-sidebar"

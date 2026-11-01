@@ -68,13 +68,15 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // UI-07-FIX-03: Mobile Bottom Sheet Focus Trap, Keyboard Escape, Background Scroll Lock & Focus Restoration
+  // UI-07-FIX-03 & UI-07-FIX-04: Mobile Bottom Sheet Focus Trap, Keyboard Escape, Safe Area & Background Scroll Lock
   useEffect(() => {
     if (!isOpen || !isMobile) return;
 
-    // 1. Lock background body scrolling
+    // 1. Lock background body scrolling & touch action
     const originalOverflow = document.body.style.overflow;
+    const originalTouchAction = document.body.style.touchAction;
     document.body.style.overflow = 'hidden';
+    document.body.style.touchAction = 'none';
 
     // 2. Auto-focus first interactive element inside sheet
     const timer = setTimeout(() => {
@@ -122,6 +124,7 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({
     return () => {
       clearTimeout(timer);
       document.body.style.overflow = originalOverflow;
+      document.body.style.touchAction = originalTouchAction;
       window.removeEventListener('keydown', handleKeyDown);
       // Restore focus to trigger button
       triggerButtonRef.current?.focus();
@@ -194,21 +197,22 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({
               data-testid="action-menu-bottom-sheet-container"
               className="fixed inset-0 z-[100] flex flex-col justify-end"
             >
-              {/* Backdrop */}
+              {/* Backdrop with touch lock */}
               <div
                 data-testid="action-menu-backdrop"
-                className="fixed inset-0 bg-black/55 backdrop-blur-xs transition-opacity animate-in fade-in duration-150"
+                className="fixed inset-0 bg-black/55 backdrop-blur-xs transition-opacity animate-in fade-in duration-150 touch-none overscroll-none"
                 onClick={(e) => {
                   e.stopPropagation();
                   setIsOpen(false);
                 }}
               />
 
-              {/* Bottom Sheet Modal with Context Header & Accessibility */}
+              {/* Bottom Sheet Modal with Context Header & Accessibility (UI-07-FIX-04 Safe Area) */}
               <div
                 ref={sheetRef}
                 data-testid="action-menu-bottom-sheet"
-                className="relative z-10 w-full rounded-t-2xl bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 shadow-2xl p-4 pb-8 max-h-[85vh] overflow-y-auto animate-in slide-in-from-bottom duration-200 focus:outline-none"
+                style={{ paddingBottom: 'max(2rem, env(safe-area-inset-bottom, 2rem))' }}
+                className="relative z-10 w-full rounded-t-2xl bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 shadow-2xl p-4 max-h-[85vh] overflow-y-auto overscroll-contain animate-in slide-in-from-bottom duration-200 focus:outline-none"
                 onClick={(e) => e.stopPropagation()}
                 role="dialog"
                 aria-modal="true"

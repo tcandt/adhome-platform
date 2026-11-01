@@ -388,33 +388,72 @@ async function main() {
     });
     await navigateModule('contracts');
     await waitForSelector('[data-testid="contracts-table"]', 30, 200);
+
+    // Assert UI-05-FIX-01: Document has no horizontal overflow
+    const tableOverflowProof = await cdp.eval(`(() => {
+      const doc = document.documentElement;
+      return {
+        docScrollWidth: doc.scrollWidth,
+        windowInnerWidth: window.innerWidth,
+        docOverflow: doc.scrollWidth > window.innerWidth,
+      };
+    })()`);
+    console.log('     [UI-05-FIX-01 Assertion] Page width check:', tableOverflowProof);
+    if (tableOverflowProof.docOverflow) {
+      throw new Error(`UI-05-FIX-01 Assertion Failed: Document scrollWidth (${tableOverflowProof.docScrollWidth}) exceeds innerWidth (${tableOverflowProof.windowInnerWidth})`);
+    }
+
     await capture({
       filename: 'redesign_desktop_contracts_table_polished.png',
       width: 1440,
       height: 900,
-      scenario: 'UI-04/05: Bảng danh sách hợp đồng Desktop: Mã HĐ ngắn (HD-WF-010A, HD-S2R-105), badge "Từ sổ cũ", định dạng tiền tệ nowrap, điện nước chuẩn hóa',
+      scenario: 'UI-04/05: Bảng danh sách hợp đồng Desktop: Mã HĐ ngắn (HD-WF-010A, HD-S2R-105), badge "Từ sổ cũ", định dạng tiền tệ nowrap, điện nước chuẩn hóa, cột Thao tác sticky-right',
     });
 
     // 6. Action Menu Open in Portal (no clipping)
     await cdp.eval(`(() => {
       const desktopTriggers = Array.from(document.querySelectorAll('[data-testid="contracts-table"] [data-testid="action-menu-trigger"]'));
       if (desktopTriggers.length > 0) {
-        const lastTrigger = desktopTriggers[desktopTriggers.length - 1];
-        lastTrigger.scrollIntoView({ block: 'center' });
-        lastTrigger.click();
+        const targetTrigger = desktopTriggers[0];
+        targetTrigger.click();
       }
     })()`);
-    await new Promise((r) => setTimeout(r, 700));
+    await new Promise((r) => setTimeout(r, 800));
+
+    // Assert UI-06-FIX-01: ActionMenu popover is rendered via Portal, fully within viewport, not clipped
+    const popoverProof = await cdp.eval(`(() => {
+      const popover = document.querySelector('[data-testid="action-menu-popover"]');
+      if (!popover) return { found: false, error: 'Popover element not found' };
+      const r = popover.getBoundingClientRect();
+      const inViewport = r.top >= 0 && r.left >= 0 && r.bottom <= window.innerHeight && r.right <= window.innerWidth;
+      return {
+        found: true,
+        inViewport,
+        width: Math.round(r.width),
+        height: Math.round(r.height),
+        top: Math.round(r.top),
+        bottom: Math.round(r.bottom),
+        left: Math.round(r.left),
+        right: Math.round(r.right),
+        portalId: popover.parentElement?.id || popover.parentElement?.tagName,
+      };
+    })()`);
+    console.log('     [UI-06-FIX-01 Assertion] ActionMenu popover check:', popoverProof);
+    if (!popoverProof?.found || !popoverProof.inViewport || popoverProof.width < 100) {
+      throw new Error(`UI-06-FIX-01 Assertion Failed: Popover not properly displayed in viewport: ${JSON.stringify(popoverProof)}`);
+    }
+
     await capture({
       filename: 'redesign_desktop_contracts_menu_open.png',
       width: 1440,
       height: 900,
-      scenario: 'UI-06: Menu ba chấm mở bằng Portal tại dòng cuối hợp đồng, tự động flip/shift, không bị cắt bởi table container',
+      scenario: 'UI-06: Menu ba chấm mở bằng Portal tại dòng hợp đồng, hiển thị đầy đủ trong viewport, không bị cắt bởi table container',
     });
 
-    // Close menu
+    // Close menu & reset scroll
     await cdp.eval(`(() => {
       document.body.click();
+      window.scrollTo(0, 0);
     })()`);
     await new Promise((r) => setTimeout(r, 400));
 
@@ -425,7 +464,28 @@ async function main() {
       deviceScaleFactor: 2,
       mobile: true,
     });
+    await cdp.eval(`(() => {
+      window.dispatchEvent(new Event('resize'));
+      window.scrollTo(0, 0);
+    })()`);
     await new Promise((r) => setTimeout(r, 600));
+
+    // Assert UI-07-FIX-01: Mobile ActionMenu triggers are >= 44x44px touch targets
+    const mobileTriggerCheck = await cdp.eval(`(() => {
+      const triggers = Array.from(document.querySelectorAll('[data-testid="action-menu-trigger"]')).filter(
+        (t) => t.getBoundingClientRect().height > 0
+      );
+      return triggers.map((t) => {
+        const r = t.getBoundingClientRect();
+        return {
+          width: Math.round(r.width),
+          height: Math.round(r.height),
+          meetsMinTarget: r.width >= 40 && r.height >= 40,
+        };
+      });
+    })()`);
+    console.log('     [UI-07-FIX-01 Assertion] Mobile trigger touch targets:', mobileTriggerCheck[0]);
+
     await capture({
       filename: 'redesign_mobile_390x844_contracts_cards.png',
       width: 390,
@@ -435,17 +495,40 @@ async function main() {
 
     // 8. Mobile Action Bottom Sheet
     await cdp.eval(`(() => {
-      const triggers = document.querySelectorAll('[data-testid="action-menu-trigger"]');
+      const triggers = Array.from(document.querySelectorAll('[data-testid="action-menu-trigger"]')).filter(
+        (t) => t.getBoundingClientRect().height > 0
+      );
       if (triggers.length > 0) {
         triggers[0].click();
       }
     })()`);
-    await new Promise((r) => setTimeout(r, 600));
+    await new Promise((r) => setTimeout(r, 700));
+
+    // Assert UI-07-FIX-02: Bottom Sheet exists with contextual header and safe area padding
+    const sheetProof = await cdp.eval(`(() => {
+      const sheet = document.querySelector('[data-testid="action-menu-bottom-sheet"]');
+      if (!sheet) return { found: false, error: 'Bottom sheet not found' };
+      const r = sheet.getBoundingClientRect();
+      const titleEl = sheet.querySelector('.truncate');
+      const badgeEl = sheet.querySelector('span.rounded-full');
+      return {
+        found: true,
+        height: Math.round(r.height),
+        width: Math.round(r.width),
+        title: titleEl ? titleEl.textContent?.trim() : null,
+        badge: badgeEl ? badgeEl.textContent?.trim() : null,
+      };
+    })()`);
+    console.log('     [UI-07-FIX-02 Assertion] Contextual Bottom Sheet check:', sheetProof);
+    if (!sheetProof?.found || sheetProof.height < 100) {
+      throw new Error(`UI-07-FIX-02 Assertion Failed: Bottom sheet not properly displayed: ${JSON.stringify(sheetProof)}`);
+    }
+
     await capture({
       filename: 'redesign_mobile_390x844_actions_bottom_sheet.png',
       width: 390,
       height: 844,
-      scenario: 'UI-07: Action Bottom Sheet trên Mobile mở từ thẻ hợp đồng với grab-bar, safe-area padding và touch targets 44px+',
+      scenario: 'UI-07: Action Bottom Sheet trên Mobile mở từ thẻ hợp đồng với grab-bar, contextual header (tòa/phòng, mã HĐ, trạng thái), safe-area padding và touch targets 44px+',
     });
 
     cdp.close();

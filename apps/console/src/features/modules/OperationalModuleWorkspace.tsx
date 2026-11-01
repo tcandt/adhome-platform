@@ -1798,6 +1798,17 @@ export const OperationalModuleWorkspace: React.FC<
                                   : 'Đã thanh lý'}
                               </span>
                               <ActionMenu
+                                contextTitle={`${c.buildingCode} · ${c.roomCode}`}
+                                contextSubtitle={`HĐ: ${displayCode} · ${c.tenantName}`}
+                                contextBadge={
+                                  c.status === 'ACTIVE' || c.status === 'EXTENDED'
+                                    ? 'Đang hiệu lực'
+                                    : c.status === 'DRAFT'
+                                    ? 'Chờ bàn giao'
+                                    : c.status === 'EXPIRING'
+                                    ? 'Sắp hết hạn'
+                                    : 'Đã thanh lý'
+                                }
                                 items={[
                                   ...(c.status === 'DRAFT'
                                     ? [
@@ -1929,14 +1940,14 @@ export const OperationalModuleWorkspace: React.FC<
                     >
                     <thead>
                       <tr className="border-b border-slate-200/80 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 font-semibold">
-                        <th className="py-3 px-3.5 whitespace-nowrap">Mã hợp đồng</th>
-                        <th className="py-3 px-3 whitespace-nowrap">Tòa & Phòng</th>
+                        <th className="py-3 px-3.5 whitespace-nowrap">Hợp đồng & Phòng</th>
                         <th className="py-3 px-3 whitespace-nowrap">Khách đứng tên</th>
-                        <th className="py-3 px-3 whitespace-nowrap">Thời hạn</th>
-                        <th className="py-3 px-3 whitespace-nowrap">Giá thuê / Cọc</th>
-                        <th className="py-3 px-3 whitespace-nowrap">Điện & Nước</th>
-                        <th className="py-3 px-3 whitespace-nowrap">Trạng thái</th>
-                        <th className="py-3 px-3.5 text-right whitespace-nowrap">Thao tác</th>
+                        <th className="py-3 px-3 whitespace-nowrap">Thời hạn & Tiện ích</th>
+                        <th className="py-3 px-3 whitespace-nowrap">Giá thuê & Cọc</th>
+                        <th className="py-3 px-3 text-center whitespace-nowrap">Trạng thái</th>
+                        <th className="py-3 px-3.5 text-right whitespace-nowrap sticky right-0 bg-slate-50/95 dark:bg-slate-800/95 backdrop-blur-xs shadow-[-6px_0_10px_-4px_rgba(0,0,0,0.08)] dark:shadow-[-6px_0_10px_-4px_rgba(0,0,0,0.4)] z-10 w-16">
+                          Thao tác
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
@@ -1944,33 +1955,49 @@ export const OperationalModuleWorkspace: React.FC<
                         const { displayCode, isImported, rawCode } = formatContractDisplayCode(c.contractCode);
                         return (
                           <tr key={c.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors">
-                            <td className="py-3 px-3.5 font-mono text-slate-900 dark:text-white">
+                            {/* Col 1: Hợp đồng & Phòng */}
+                            <td className="py-3 px-3.5">
                               <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className="font-bold text-slate-900 dark:text-slate-100">{displayCode}</span>
+                                <span className="font-mono font-bold text-slate-900 dark:text-slate-100">{displayCode}</span>
                                 {isImported && (
-                                  <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200/60 dark:border-blue-900/40">
+                                  <span className="inline-flex items-center rounded px-1.5 py-0.2 text-[9.5px] font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200/60 dark:border-blue-900/40">
                                     Từ sổ cũ
                                   </span>
                                 )}
                               </div>
+                              <div className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 mt-0.5">
+                                {c.buildingCode} · {c.roomCode}
+                              </div>
                               {displayCode !== rawCode && (
-                                <div className="text-[10px] text-slate-400 dark:text-slate-500 font-mono truncate max-w-[170px]" title={rawCode}>
+                                <div className="text-[10px] text-slate-400 dark:text-slate-500 font-mono truncate max-w-[160px]" title={rawCode}>
                                   {rawCode}
                                 </div>
                               )}
                             </td>
-                            <td className="py-3 px-3 font-semibold text-slate-800 dark:text-slate-200 whitespace-nowrap">
-                              {c.buildingCode} · {c.roomCode}
-                            </td>
-                            <td className="py-3 px-3 min-w-[140px]">
-                              <div className="font-bold text-slate-900 dark:text-white truncate max-w-[180px]">{c.tenantName}</div>
+
+                            {/* Col 2: Khách đứng tên */}
+                            <td className="py-3 px-3">
+                              <div className="font-bold text-slate-900 dark:text-white truncate max-w-[160px]" title={c.tenantName}>
+                                {c.tenantName}
+                              </div>
                               <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 tabular-nums">
                                 {c.tenantPhone}
                               </div>
                             </td>
-                            <td className="py-3 px-3 font-mono text-[11px] whitespace-nowrap text-slate-600 dark:text-slate-300">
-                              {c.startDate} → {c.endDate}
+
+                            {/* Col 3: Thời hạn & Tiện ích */}
+                            <td className="py-3 px-3">
+                              <div className="font-mono text-[11px] whitespace-nowrap text-slate-700 dark:text-slate-300">
+                                {c.startDate} → {c.endDate}
+                              </div>
+                              <div className="text-[10.5px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5 flex-wrap mt-0.5">
+                                <span>Điện: <strong className="tabular-nums font-semibold text-slate-700 dark:text-slate-300">{c.electricRateVnd.toLocaleString('vi-VN')}đ</strong></span>
+                                <span>·</span>
+                                <span>Nước: <strong className="tabular-nums font-semibold text-slate-700 dark:text-slate-300">{c.waterRateVnd.toLocaleString('vi-VN')}đ</strong>{formatWaterBillingLabel(c.waterBillingMethod)}</span>
+                              </div>
                             </td>
+
+                            {/* Col 4: Giá thuê & Cọc */}
                             <td className="py-3 px-3 tabular-nums whitespace-nowrap">
                               <div className="font-bold text-slate-900 dark:text-white">
                                 {c.monthlyRentVnd.toLocaleString('vi-VN')} đ/tháng
@@ -1989,11 +2016,9 @@ export const OperationalModuleWorkspace: React.FC<
                                 )}
                               </div>
                             </td>
-                            <td className="py-3 px-3 text-[11px] text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                              <div>Điện: <span className="font-semibold tabular-nums text-slate-800 dark:text-slate-200">{c.electricRateVnd.toLocaleString('vi-VN')}đ</span>/kWh</div>
-                              <div className="text-slate-400">Nước: <span className="font-semibold tabular-nums text-slate-800 dark:text-slate-200">{c.waterRateVnd.toLocaleString('vi-VN')}đ</span>{formatWaterBillingLabel(c.waterBillingMethod)}</div>
-                            </td>
-                            <td className="py-3 px-3 whitespace-nowrap">
+
+                            {/* Col 5: Trạng thái */}
+                            <td className="py-3 px-3 text-center whitespace-nowrap">
                               <span
                                 className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10.5px] font-bold ${
                                   c.status === 'ACTIVE' || c.status === 'EXTENDED'
@@ -2014,7 +2039,9 @@ export const OperationalModuleWorkspace: React.FC<
                                   : 'Đã thanh lý'}
                               </span>
                             </td>
-                            <td className="py-3 px-3.5 text-right whitespace-nowrap">
+
+                            {/* Col 6: Thao tác (Sticky Right) */}
+                            <td className="py-3 px-3.5 text-right whitespace-nowrap sticky right-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xs shadow-[-6px_0_10px_-4px_rgba(0,0,0,0.08)] dark:shadow-[-6px_0_10px_-4px_rgba(0,0,0,0.4)] z-10 w-16">
                               <div className="inline-flex items-center justify-end">
                                 {/* Invisible programmatic test trigger for handover when DRAFT */}
                                 {c.status === 'DRAFT' && (
@@ -2030,8 +2057,19 @@ export const OperationalModuleWorkspace: React.FC<
                                   </button>
                                 )}
 
-                                {/* Standard Three-Dot Action Menu (UI-03) - Only action trigger on Desktop row */}
+                                {/* Standard Three-Dot Action Menu (UI-03 / UI-06 / UI-07) */}
                                 <ActionMenu
+                                  contextTitle={`${c.buildingCode} · ${c.roomCode}`}
+                                  contextSubtitle={`HĐ: ${displayCode} · ${c.tenantName}`}
+                                  contextBadge={
+                                    c.status === 'ACTIVE' || c.status === 'EXTENDED'
+                                      ? 'Đang hiệu lực'
+                                      : c.status === 'DRAFT'
+                                      ? 'Chờ bàn giao'
+                                      : c.status === 'EXPIRING'
+                                      ? 'Sắp hết hạn'
+                                      : 'Đã thanh lý'
+                                  }
                                   items={[
                                     ...(c.status === 'DRAFT'
                                       ? [

@@ -471,11 +471,11 @@ export const DesktopHeader: React.FC = () => {
             aria-haspopup="menu"
             className="inline-flex h-9.5 items-center gap-2 rounded-lg border border-slate-200/90 dark:border-slate-700/80 bg-white dark:bg-slate-800/80 pl-1.5 pr-2.5 hover:bg-slate-50 dark:hover:bg-slate-750 transition-all shadow-2xs"
           >
-            <div className="flex h-6.5 w-6.5 shrink-0 items-center justify-center rounded-md bg-gradient-to-tr from-blue-600 to-indigo-600 text-[11px] font-bold text-white shadow-2xs">
+            <div className="flex h-6.5 w-6.5 shrink-0 items-center justify-center rounded-md bg-blue-600 dark:bg-blue-500 text-[11px] font-bold text-white shadow-2xs">
               {initials}
             </div>
-            <div className="hidden md:flex flex-col items-start leading-none">
-              <span className="max-w-[124px] 2xl:max-w-[170px] truncate text-xs font-semibold text-slate-800 dark:text-slate-100">
+            <div className="hidden md:flex flex-col items-start leading-none" title={user?.name}>
+              <span className="max-w-[160px] lg:max-w-[220px] 2xl:max-w-[320px] truncate text-xs font-semibold text-slate-800 dark:text-slate-100">
                 {user?.name}
               </span>
               <span

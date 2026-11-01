@@ -138,13 +138,13 @@ export function formatContractDisplayCode(rawCode: string): {
   // 1. HD-IMP-R-WF-010A-3673 -> HD-WF-010A
   let displayCode = rawCode;
   if (isImported) {
-    const match = rawCode.match(/HD-IMP-(?:R-)?([A-Za-z0-9-]+?)(?:-[0-9a-fA-F]{4})?$/);
+    const match = rawCode.match(/HD-IMP-(?:R-)?([A-Za-z0-9._-]+?)(?:-[0-9a-fA-F]{4})?$/);
     if (match && match[1]) {
       displayCode = `HD-${match[1]}`;
     }
   } else {
     // 2. HD-S2B-S2R-105-BCF2 -> HD-S2R-105
-    const match = rawCode.match(/^HD-[A-Za-z0-9]+-([A-Za-z0-9-]+)-[0-9a-fA-F]{4}$/);
+    const match = rawCode.match(/^HD-[A-Za-z0-9._]+-([A-Za-z0-9._-]+)-[0-9a-fA-F]{4}$/);
     if (match && match[1]) {
       displayCode = `HD-${match[1]}`;
     }

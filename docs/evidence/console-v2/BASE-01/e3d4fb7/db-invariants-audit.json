@@ -1,0 +1,91 @@
+{
+  "auditedAt": "2026-11-01T01:13:49.599Z",
+  "databaseUrl": "postgresql://127.0.0.1:5432/adhome_v2 (local native, no Docker)",
+  "organizations": [
+    {
+      "id": "org-empty-saas",
+      "name": "Tổ chức SaaS Mới (0 Tòa nhà · 0 Tầng · 0 Phòng)",
+      "slug": "empty-saas-tenant"
+    },
+    {
+      "id": "org-adhome-anphu",
+      "name": "AdHome KĐT Ân Phú",
+      "slug": "adhome-anphu"
+    }
+  ],
+  "buildings": [
+    {
+      "id": "bld-lk01-31",
+      "orgId": "org-adhome-anphu",
+      "code": "LK01-31",
+      "name": "Tòa LK01-31"
+    },
+    {
+      "id": "bld-lk08-25",
+      "orgId": "org-adhome-anphu",
+      "code": "LK08-25",
+      "name": "Tòa LK08-25"
+    },
+    {
+      "id": "bld-lk01-32",
+      "orgId": "org-adhome-anphu",
+      "code": "LK01-32",
+      "name": "Tòa LK01-32"
+    },
+    {
+      "id": "bld-lk08-24",
+      "orgId": "org-adhome-anphu",
+      "code": "LK08-24",
+      "name": "Tòa LK08-24"
+    },
+    {
+      "id": "bld-s2b",
+      "orgId": "org-adhome-anphu",
+      "code": "S2B",
+      "name": "Tòa S2 Finance & Holding"
+    },
+    {
+      "id": "bld-s3b",
+      "orgId": "org-adhome-anphu",
+      "code": "S3B",
+      "name": "Tòa S3 Data Migration & Occupancy"
+    },
+    {
+      "id": "bld-s4b",
+      "orgId": "org-adhome-anphu",
+      "code": "S4B",
+      "name": "Tòa S4 Hunonic IoT & Settlements"
+    }
+  ],
+  "tableCounts": {
+    "organizations": 2,
+    "buildings": 7,
+    "rooms": 44,
+    "tenants": 32,
+    "contracts": 13,
+    "reservations": 21,
+    "deposits": 98,
+    "invoices": 16,
+    "paymentTransactions": 9,
+    "ledgerEntries": 437,
+    "electricMeters": 17,
+    "auditLogs": 1022
+  },
+  "financialTotals": {
+    "ledgerCashInVnd": 877100000,
+    "ledgerCashOutVnd": 255200000,
+    "openingBalancesVnd": 0,
+    "zeroCashInLiabilityInvariantPreserved": true,
+    "baselineGeneratedNoCashMovement": true
+  },
+  "backupState": {
+    "backupFileExists": true,
+    "backupFileRelativePath": "backups/adhome_v2_rc1_backup.dump",
+    "backupSizeBytes": 39927
+  },
+  "isolationStatus": {
+    "multiTenantSafe": true,
+    "allFixturesScopedToOrg": "org-adhome-anphu",
+    "noProductionCrossWrite": true
+  }
+}

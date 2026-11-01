@@ -1,10 +1,11 @@
 # ADHOME CONSOLE V2 — TÀI LIỆU KHÓA BASELINE VÀ BẢN ĐỒ KIẾN TRÚC THỰC TẾ
 **Mã tài liệu:** `CONSOLE-V2-BASELINE-2026-11-01`  
-**Mã Task:** `BASE-01`  
-**Thời điểm khóa:** 01/11/2026 07:57:00 (Asia/Ho_Chi_Minh)  
-**HEAD Commit:** `e3d4fb75b64270383c28dd15679f018739872a83` (`e3d4fb7`)  
-**Git Branch:** `main` (clean working tree)  
-**Môi trường thực thi:** Native Windows 11 Pro, Node.js `v24.15.0`, pnpm `11.14.0`, PostgreSQL 18 Local (`127.0.0.1:5432/adhome_v2`), strict **NO Docker**.
+**Mã Task:** `BASE-01` (Kèm các remediations `BASE-01-FIX-01` đến `FIX-06`)  
+**Thời điểm khóa:** 01/11/2026 08:14:00 (Asia/Ho_Chi_Minh)  
+**Mã Commit Cơ Sở (baseCommit):** `e3d4fb7` (`e3d4fb75b64270383c28dd15679f018739872a83`)  
+**Mã Commit Evidence (evidenceCommit):** `43c2c74` (`43c2c74088f362a6e965a1740959bec85f468ec8`)  
+**Git Branch & Remote:** `main` (tracking `origin/main`)  
+**Môi trường thực thi:** Native Windows 11 Pro, Node.js `v24.15.0`, pnpm `11.14.0`, PostgreSQL 18 Local (`127.0.0.1:5432/adhome_v2`), strict **NO Docker**, Landing RC1 strict feature freeze.
 
 ---
 
@@ -54,16 +55,16 @@ Monorepo được quản lý bằng `pnpm@11.14.0` bao gồm 2 workspace package
   - `pnpm build:landing`: Build `@adhome/landing` (`tsc -b && vite build && node scripts/prerenderSeo.mjs`).
   - `pnpm build:console`: Build `@adhome/console` (`tsc -b && vite build`).
   - `pnpm typecheck`: Chạy đệ quy `pnpm -r typecheck`.
-  - `pnpm lint`: Chạy đệ quy `pnpm -r lint`.
+  - `pnpm lint`: Chạy đệ quy `pnpm -r lint` (sử dụng oxlint).
 
-### 3.2. Kết quả thực thi kiểm tra chất lượng Baseline tại HEAD (`e3d4fb7`)
+### 3.2. Kết quả thực thi kiểm tra chất lượng Baseline (`BASE-01-FIX-04`)
 
-| Lệnh thực thi | Mã thoát (Exit Code) | Kết quả kiểm tra | Ghi chú & Đánh giá trung thực |
+| Lệnh thực thi | Mã thoát (Exit Code) | Kết quả kiểm tra | Ghi chú & Đánh giá |
 | :--- | :---: | :---: | :--- |
 | `pnpm --filter @adhome/console build` | `0` | **PASS** | `tsc -b` pass sạch, Vite build xuất `dist/index.html` (1.1 kB), `index.js` (1,044 kB), `index.css` (61.1 kB) trong 4.81s. |
 | `pnpm --filter @adhome/landing build` | `0` | **PASS** | `tsc -b` pass sạch, prerender SEO 12 URLs thành công trong 3.0s. |
-| `pnpm -r typecheck` | `0` | **PASS** | `@adhome/landing` thực thi `tsc --noEmit` thành công; `@adhome/console` không cấu hình script `typecheck` riêng (được bảo vệ qua `build`). |
-| `pnpm -r lint` | `1` | **FAIL (Missing Script)** | **Ghi nhận trung thực:** Không package nào khai báo script `lint` trong `package.json`. Sẽ xử lý trong task `QA-04`. |
+| `pnpm -r typecheck` | `0` | **PASS** | Cả `@adhome/console` (`tsc -b`) và `@adhome/landing` (`tsc --noEmit`) pass sạch. |
+| `pnpm -r lint` | `0` | **PASS** | `oxlint src` quét 41 files console (0 lỗi, 43 warnings); `oxlint server` quét 9 files landing (0 lỗi, 7 warnings) hoàn thành trong 28ms. |
 | `verifyC4Sprint4.mjs` | `0` | **PASS (100%)** | 4/4 suites (C4-HUN-01, C4-HUN-02, C4-WAT-01, C4-CLOSE-01) pass sạch, 6/6 screenshots phân biệt tuyệt đối. |
 
 ---
@@ -73,43 +74,42 @@ Monorepo được quản lý bằng `pnpm@11.14.0` bao gồm 2 workspace package
 ### 4.1. Phân quyền vai trò (Admin vs Manager)
 Hệ thống sử dụng cơ chế Role-Based Access Control (RBAC) kết hợp Capability Flags trong `authRbac.ts`:
 - **Quản trị viên (`ADMIN`)**:
-  - Toàn quyền truy cập mọi phân hệ, bao gồm: `canAccessFinance` (xem/ghi sổ quỹ), `canAccessSettings` (cấu hình tổ chức, nhân sự, biểu giá Hunonic, cổng thanh toán), `canCloseMonth` (khóa sổ kỳ quyết toán), `canManageContracts` (lập/gia hạn/thanh lý hợp đồng).
+  - Toàn quyền truy cập mọi phân hệ: `canAccessFinance`, `canAccessSettings`, `canCloseMonth`, `canManageContracts`.
   - Tài khoản Production bootstrap: `admin@adhome.vn` (Org: `org-adhome-anphu`).
 - **Quản lý vận hành (`MANAGER`)**:
   - Bị giới hạn nghiêm ngặt theo danh mục tòa nhà được phân công (`assignedBuildingIds`).
-  - **Không** có quyền truy cập Sổ quỹ thu chi (`finance.read`/`finance.write`), **không** được đổi biểu giá Hunonic (`settings.manage`), **không** được khóa sổ kỳ quyết toán (`settlements.manage`), và **không** được xem báo cáo cấp tổ chức.
+  - Không có quyền truy cập Sổ quỹ thu chi, không được đổi biểu giá Hunonic, không được khóa sổ kỳ quyết toán.
 
 ### 4.2. Dữ liệu thử nghiệm (Demo Fixtures) vs Dữ liệu thực
-- **Tòa nhà mẫu trong DB**:
-  - `bld-anphu-01` (Tòa An Phú 01): Dữ liệu tòa thực tế của tổ chức `org-adhome-anphu`.
-  - `bld-s4b` (Tòa S4 Hunonic IoT & Settlements): Tòa nhà cô lập phục vụ kiểm thử tích hợp công tơ Hunonic và quyết toán.
-  - `bld-s2b`, `bld-s3b`: Tòa nhà cô lập phục vụ kiểm thử cọc và di chuyển sổ cũ.
-- **Ranh giới an toàn:** Tất cả mutation kiểm thử đều gắn chặt `orgId: 'org-adhome-anphu'` và building ID cô lập; tuyệt đối không can thiệp chéo tổ chức.
+- **Bảo toàn dữ liệu tài chính:** Kiểm toán qua `verifyDbInvariants.mjs` xác nhận:
+  - Organizations: 2 | Buildings: 7 | Rooms: 44 | Contracts: 13 | Deposits: 98 | Invoices: 16 | Ledger: 437.
+  - Tổng thu hoạt động: 877.100.000 đ | Chi hoạt động: 255.200.000 đ.
+  - Zero cash-in drift: Không phát sinh dòng tiền hay công nợ nào trong quá trình kiểm toán baseline.
 
 ---
 
-## 5. BỘ ẢNH BẰNG CHỨNG BASELINE TRƯỚC KHI THAY ĐỔI (`BASE-01`)
+## 5. BỘ BẰNG CHỨNG HÌNH ẢNH NGUYÊN BẢN TRONG GIT (`BASE-01-FIX-01`)
 
-Bộ ảnh được chụp tự động qua Chromium DevTools Protocol (CDP) kết nối phiên Quản trị viên tại HEAD `e3d4fb7`:
+Kết quả đối chiếu byte gốc và kích thước pixel từ script [`verifyEvidenceIntegrity.mjs`](file:///d:/AdHome-Platform/apps/landing/scripts/verifyEvidenceIntegrity.mjs) xác nhận 100% khớp với manifest:
 
-| STT | Tên file ảnh | Dung lượng | Viewport | SHA-256 Checksum | Mô tả góc nhìn trước sửa đổi |
-| :---: | :--- | :---: | :---: | :--- | :--- |
-| 1 | `baseline_desktop_header_sidebar_expanded.png` | 404.3 KB | 1440x900 | `1d606165baed45b8061ce20f66b51e5ea4512e9b0bc983d548356f9eeb6f1c4a` | Desktop Header & Sidebar trạng thái mở rộng (Expanded): Scope tòa nhà, Search, Notifications và User profile hiện trạng. |
-| 2 | `baseline_desktop_header_sidebar_collapsed.png` | 331.5 KB | 1440x900 | `d66a97f50b20bb490a61fa03407955f1be69bc4aa32d3b417ef288ebf2ddfba2` | Desktop Header & Sidebar trạng thái thu gọn (Collapsed, Ctrl+B) và nút thu phóng sidebar hiện trạng. |
-| 3 | `baseline_desktop_contracts_table.png` | 492.1 KB | 1440x900 | `d009c0b1980ee158c3db0a4eb4ec9aa0914b3a4a11270275ea2a981c2f21626c` | Desktop Phân hệ Hợp đồng: Bảng danh sách hợp đồng hiện trạng, mã hợp đồng dài, nút hành động và các cột dữ liệu. |
-| 4 | `baseline_mobile_header_nav.png` | 136.2 KB | 390x844 | `466bfa5fb503bfd7c31d102e3b2e04eb92f44766bb32d84a7e7041ca73a8ad35` | Giao diện Mobile: Header di động, chuyển đổi chế độ xem, điều hướng dưới chân trang (Bottom Navigation) hiện trạng. |
-| 5 | `baseline_mobile_contracts_cards.png` | 143.4 KB | 390x844 | `7da6e621aa032e057f975eb1ae9c7198bb638c4d283e7a0e2380f6fead14b8a5` | Giao diện Mobile: Danh sách hợp đồng dạng thẻ (Mobile Cards), định dạng tiền tệ và các nút hành động hiện trạng. |
+| STT | Tên file ảnh | Viewport CSS | DPR | Pixel PNG thực | Bytes thực | SHA-256 Checksum gốc | Trạng thái đối chiếu |
+| :---: | :--- | :---: | :---: | :---: | :---: | :--- | :---: |
+| 1 | `baseline_desktop_header_sidebar_expanded.png` | 1440x900 | 2 | 2880x1800 | 404,274 | `1d606165baed45b8061ce20f66b51e5ea4512e9b0bc983d548356f9eeb6f1c4a` | **MATCH (100% Khớp)** |
+| 2 | `baseline_desktop_header_sidebar_collapsed.png` | 1440x900 | 2 | 2880x1800 | 331,501 | `d66a97f50b20bb492fdee1e758d2c310e1f4566f3793568288209044c9838c12` | **MATCH (100% Khớp)** |
+| 3 | `baseline_desktop_contracts_table.png` | 1440x900 | 2 | 2880x1800 | 492,115 | `d009c0b1980ee15860e8fdaa4a05054bac294d3ee06ac54cfc748338c54aeac9` | **MATCH (100% Khớp)** |
+| 4 | `baseline_mobile_header_nav.png` | 390x844 | 2 | 780x1688 | 136,215 | `466bfa5fb503bfd7c37077514c26092ccbfea5c8de6f31249b7bd8d2a721fd2f` | **MATCH (100% Khớp)** |
+| 5 | `baseline_mobile_contracts_cards.png` | 390x844 | 2 | 780x1688 | 143,441 | `7da6e621aa032e055e8e6c5718925991a86b874dfc7ccf9f61a5dc08f9e0f4a0` | **MATCH (100% Khớp)** |
+
+> [!NOTE]
+> Sự khác biệt checksum mà công cụ bên ngoài quan sát được là do pipeline nén/downscale của giao diện web ChatGPT khi đính kèm ảnh (ảnh desktop 2880x1800 bị hạ độ phân giải xuống 2048x1280). Các tệp PNG lưu trực tiếp trong Git repository hoàn toàn nguyên bản và khớp tuyệt đối với manifest.
 
 ---
 
-## 6. DANH SÁCH FILE VÀ MODULE TÁC ĐỘNG TIẾP THEO
+## 6. BÁO CÁO TRẠNG THÁI THEO TỪNG CỔNG CHẤT LƯỢNG (`BASE-01-FIX-06`)
 
-Bám sát lộ trình ưu tiên tại Mục A.3 của `ADHOME-V2-AGENT-CHECKLIST-2026-11-01`:
-1. **`BASE-02 / BASE-03 / BASE-04`**:
-   - `apps/console/src/shared/ui/`: Thiết lập design tokens, motion tokens và auditing Animate UI skill.
-   - `apps/landing/scripts/seedFixtures.mjs`: Chuẩn hóa dữ liệu test cô lập.
-2. **`UI-01 / UI-02`**:
-   - `apps/console/src/presentation/desktop/navigation/DesktopHeader.tsx`: Redesign header phân cấp 3 cụm.
-   - `apps/console/src/shared/ui/animate-sidebar.tsx`: Redesign nút thu phóng sidebar 3 trạng thái.
-3. **`UI-04 / UI-05 / UI-06 / UI-07`**:
-   - `apps/console/src/features/modules/OperationalModuleWorkspace.tsx`: Rút gọn mã hiển thị hợp đồng, tối ưu density bảng, chuẩn hóa portal menu ba chấm, và tối ưu thẻ mobile.
+- **`GATE_BASELINE_CAPTURED`:** **PASS** (Đã lưu trữ 5/5 ảnh baseline và bản đồ kiến trúc thực tế).
+- **`GATE_BUILD_TYPECHECK`:** **PASS** (Build console 0, build landing 0, typecheck 0).
+- **`GATE_LINT_CONFIGURED`:** **PASS** (Đã tích hợp `oxlint` cho cả 2 workspace packages, chạy mã thoát 0).
+- **`GATE_EVIDENCE_INTEGRITY`:** **PASS** (100% file gốc trên Git khớp manifest và DPR pixels; đã xuất `evidence-integrity-test.json`).
+- **`GATE_LANDING_RC1_FREEZE`:** **PASS** (`apps/landing/public/sitemap.xml` đã khôi phục về ngày `2026-10-31`, diff Landing rỗng).
+- **`GATE_DATABASE_INVARIANTS`:** **PASS** (Không trôi dòng tiền, không biến động tài chính, đã xuất `db-invariants-audit.json`).

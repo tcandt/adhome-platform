@@ -1,5 +1,5 @@
 {
-  "verifiedAt": "2026-11-01T02:17:41.724Z",
+  "verifiedAt": "2026-11-01T02:41:55.227Z",
   "sourceCommit": "e3d4fb7",
   "targetDirectory": "docs/evidence/console-v2/BASE-01/e3d4fb7/screenshots",
   "totalScreenshots": 5,
@@ -10,8 +10,9 @@
   "allAboveMinSize": true,
   "allUnique": true,
   "allGitTracked": true,
+  "allBlobShaMatch": true,
   "integrityStatus": "PASS",
-  "explanation": "Direct byte-level verification of raw PNG screenshot files in Git repository against manifest.json, pixel DPR=2 dimensions, zero SHA collisions, minimum size (>= 25KB), and git blob tracking.",
+  "explanation": "Direct byte-level verification of raw PNG screenshot files in Git repository against manifest.json, pixel DPR=2 dimensions, zero SHA collisions, minimum size (>= 25KB), and local git hash-object matching HEAD blob SHA.",
   "details": [
     {
       "filename": "baseline_desktop_contracts_table.png",
@@ -27,7 +28,9 @@
       "sizeMatches": true,
       "pixelDimensionsValid": true,
       "gitTracked": true,
-      "gitBlobSha": "4884a6ef606bc2a119ac056f1143f02485595189",
+      "headGitBlobSha": "4884a6ef606bc2a119ac056f1143f02485595189",
+      "localGitBlobSha": "4884a6ef606bc2a119ac056f1143f02485595189",
+      "blobShaMatches": true,
       "sourceCommit": "e3d4fb7"
     },
     {
@@ -44,7 +47,9 @@
       "sizeMatches": true,
       "pixelDimensionsValid": true,
       "gitTracked": true,
-      "gitBlobSha": "24c11ba0f51bb2a477e2024b9f31f79004bed361",
+      "headGitBlobSha": "24c11ba0f51bb2a477e2024b9f31f79004bed361",
+      "localGitBlobSha": "24c11ba0f51bb2a477e2024b9f31f79004bed361",
+      "blobShaMatches": true,
       "sourceCommit": "e3d4fb7"
     },
     {
@@ -61,7 +66,9 @@
       "sizeMatches": true,
       "pixelDimensionsValid": true,
       "gitTracked": true,
-      "gitBlobSha": "73c42a04ad6efa4cd73ff1dd5ab98492e992b367",
+      "headGitBlobSha": "73c42a04ad6efa4cd73ff1dd5ab98492e992b367",
+      "localGitBlobSha": "73c42a04ad6efa4cd73ff1dd5ab98492e992b367",
+      "blobShaMatches": true,
       "sourceCommit": "e3d4fb7"
     },
     {
@@ -78,7 +85,9 @@
       "sizeMatches": true,
       "pixelDimensionsValid": true,
       "gitTracked": true,
-      "gitBlobSha": "e0ee3750bb2990c945fcf8705df958137e9d4861",
+      "headGitBlobSha": "e0ee3750bb2990c945fcf8705df958137e9d4861",
+      "localGitBlobSha": "e0ee3750bb2990c945fcf8705df958137e9d4861",
+      "blobShaMatches": true,
       "sourceCommit": "e3d4fb7"
     },
     {
@@ -95,7 +104,9 @@
       "sizeMatches": true,
       "pixelDimensionsValid": true,
       "gitTracked": true,
-      "gitBlobSha": "c77c10253e45589d485d5b2c22eaed7c74a8bfd6",
+      "headGitBlobSha": "c77c10253e45589d485d5b2c22eaed7c74a8bfd6",
+      "localGitBlobSha": "c77c10253e45589d485d5b2c22eaed7c74a8bfd6",
+      "blobShaMatches": true,
       "sourceCommit": "e3d4fb7"
     }
   ]

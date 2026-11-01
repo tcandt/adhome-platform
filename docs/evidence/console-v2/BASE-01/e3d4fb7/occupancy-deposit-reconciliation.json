@@ -1,0 +1,267 @@
+{
+  "reconciledAt": "2026-11-01T02:41:57.898Z",
+  "kpiDefinitions": {
+    "totalRooms": {
+      "count": 44,
+      "formula": "OCCUPIED (16) + RESERVED (5) + AVAILABLE (23) = 44"
+    },
+    "occupiedRooms": {
+      "count": 16,
+      "breakdown": {
+        "withActiveContract": 9,
+        "fromLegacyOccupancySeed": 7
+      }
+    },
+    "reservedRooms": {
+      "count": 5
+    },
+    "availableRooms": {
+      "count": 23
+    },
+    "activeContracts": {
+      "count": 9
+    },
+    "draftContracts": {
+      "count": 4
+    }
+  },
+  "occupiedWithActiveContract": [
+    {
+      "roomCode": "P.31-06",
+      "building": "LK01-31",
+      "contractCode": "HD-IMP-P.31-06-3673",
+      "tenant": "Nguyễn Văn An",
+      "monthlyRentVnd": 5000000
+    },
+    {
+      "roomCode": "R-WF-010A",
+      "building": "LK01-31",
+      "contractCode": "HD-IMP-R-WF-010A-3673",
+      "tenant": "Lê Hoàng Long",
+      "monthlyRentVnd": 5000000
+    },
+    {
+      "roomCode": "S2R-INV",
+      "building": "S2B",
+      "contractCode": "HD-S2B-INV",
+      "tenant": "Nguyễn Văn Minh (S2 Test)",
+      "monthlyRentVnd": 4000000
+    },
+    {
+      "roomCode": "S3-301",
+      "building": "S3B",
+      "contractCode": "HD-IMP-S3-301-0483",
+      "tenant": "Trần Đình Trọng",
+      "monthlyRentVnd": 5000000
+    },
+    {
+      "roomCode": "S3-302",
+      "building": "S3B",
+      "contractCode": "HD-IMP-S3-302-0483",
+      "tenant": "Hoàng Kim Chi",
+      "monthlyRentVnd": 5500000
+    },
+    {
+      "roomCode": "S4-401",
+      "building": "S4B",
+      "contractCode": "HD-S4-401",
+      "tenant": "Khách Thuê S4-401",
+      "monthlyRentVnd": 6000000
+    },
+    {
+      "roomCode": "S4-402",
+      "building": "S4B",
+      "contractCode": "HD-S4-402",
+      "tenant": "Khách Thuê S4-402",
+      "monthlyRentVnd": 6000000
+    },
+    {
+      "roomCode": "S4-403",
+      "building": "S4B",
+      "contractCode": "HD-S4-403",
+      "tenant": "Khách Thuê S4-403",
+      "monthlyRentVnd": 6000000
+    },
+    {
+      "roomCode": "S4-404",
+      "building": "S4B",
+      "contractCode": "HD-S4-404",
+      "tenant": "Khách Thuê S4-404",
+      "monthlyRentVnd": 6000000
+    }
+  ],
+  "occupiedFromLegacySeeded": [
+    {
+      "roomCode": "P.24-06",
+      "building": "LK08-24",
+      "origin": "Public listing seed / legacy occupancy without migrated digital contract"
+    },
+    {
+      "roomCode": "P.25-03",
+      "building": "LK08-25",
+      "origin": "Public listing seed / legacy occupancy without migrated digital contract"
+    },
+    {
+      "roomCode": "P.31-01",
+      "building": "LK01-31",
+      "origin": "Public listing seed / legacy occupancy without migrated digital contract"
+    },
+    {
+      "roomCode": "P.31-02",
+      "building": "LK01-31",
+      "origin": "Public listing seed / legacy occupancy without migrated digital contract"
+    },
+    {
+      "roomCode": "P.31-04",
+      "building": "LK01-31",
+      "origin": "Public listing seed / legacy occupancy without migrated digital contract"
+    },
+    {
+      "roomCode": "P.31-05",
+      "building": "LK01-31",
+      "origin": "Public listing seed / legacy occupancy without migrated digital contract"
+    },
+    {
+      "roomCode": "P.32-05",
+      "building": "LK01-32",
+      "origin": "Public listing seed / legacy occupancy without migrated digital contract"
+    }
+  ],
+  "contractDepositReconciliation": [
+    {
+      "contractCode": "HD-IMP-S3-301-0483",
+      "roomCode": "S3-301",
+      "status": "ACTIVE",
+      "requiredDepositVnd": 5000000,
+      "totalPaidDepositVnd": 5000000,
+      "depositDeficitVnd": 0,
+      "uiWarningLabel": "Đã thu đủ cọc",
+      "businessExplanation": "Cọc đã thu đủ theo thỏa thuận hợp đồng."
+    },
+    {
+      "contractCode": "HD-IMP-S3-302-0483",
+      "roomCode": "S3-302",
+      "status": "ACTIVE",
+      "requiredDepositVnd": 5500000,
+      "totalPaidDepositVnd": 5500000,
+      "depositDeficitVnd": 0,
+      "uiWarningLabel": "Đã thu đủ cọc",
+      "businessExplanation": "Cọc đã thu đủ theo thỏa thuận hợp đồng."
+    },
+    {
+      "contractCode": "HD-IMP-P.31-06-3673",
+      "roomCode": "P.31-06",
+      "status": "ACTIVE",
+      "requiredDepositVnd": 5000000,
+      "totalPaidDepositVnd": 5000000,
+      "depositDeficitVnd": 0,
+      "uiWarningLabel": "Đã thu đủ cọc",
+      "businessExplanation": "Cọc đã thu đủ theo thỏa thuận hợp đồng."
+    },
+    {
+      "contractCode": "HD-IMP-R-WF-010A-3673",
+      "roomCode": "R-WF-010A",
+      "status": "ACTIVE",
+      "requiredDepositVnd": 5000000,
+      "totalPaidDepositVnd": 5000000,
+      "depositDeficitVnd": 0,
+      "uiWarningLabel": "Đã thu đủ cọc",
+      "businessExplanation": "Cọc đã thu đủ theo thỏa thuận hợp đồng."
+    },
+    {
+      "contractCode": "HD-S4-401",
+      "roomCode": "S4-401",
+      "status": "ACTIVE",
+      "requiredDepositVnd": 6000000,
+      "totalPaidDepositVnd": 0,
+      "depositDeficitVnd": 6000000,
+      "uiWarningLabel": "Đã thu 0đ (thiếu 6.000.000đ)",
+      "businessExplanation": "Hợp đồng đã ký/kích hoạt (ACTIVE) nhưng khách thuê chưa nộp cọc hoặc chưa ghi nhận phiếu thu cọc liên kết. Đây là cảnh báo công nợ cọc nghiệp vụ chính xác, không phải lỗi tính toán."
+    },
+    {
+      "contractCode": "HD-S4-402",
+      "roomCode": "S4-402",
+      "status": "ACTIVE",
+      "requiredDepositVnd": 6000000,
+      "totalPaidDepositVnd": 0,
+      "depositDeficitVnd": 6000000,
+      "uiWarningLabel": "Đã thu 0đ (thiếu 6.000.000đ)",
+      "businessExplanation": "Hợp đồng đã ký/kích hoạt (ACTIVE) nhưng khách thuê chưa nộp cọc hoặc chưa ghi nhận phiếu thu cọc liên kết. Đây là cảnh báo công nợ cọc nghiệp vụ chính xác, không phải lỗi tính toán."
+    },
+    {
+      "contractCode": "HD-S4-403",
+      "roomCode": "S4-403",
+      "status": "ACTIVE",
+      "requiredDepositVnd": 6000000,
+      "totalPaidDepositVnd": 0,
+      "depositDeficitVnd": 6000000,
+      "uiWarningLabel": "Đã thu 0đ (thiếu 6.000.000đ)",
+      "businessExplanation": "Hợp đồng đã ký/kích hoạt (ACTIVE) nhưng khách thuê chưa nộp cọc hoặc chưa ghi nhận phiếu thu cọc liên kết. Đây là cảnh báo công nợ cọc nghiệp vụ chính xác, không phải lỗi tính toán."
+    },
+    {
+      "contractCode": "HD-S4-404",
+      "roomCode": "S4-404",
+      "status": "ACTIVE",
+      "requiredDepositVnd": 6000000,
+      "totalPaidDepositVnd": 0,
+      "depositDeficitVnd": 6000000,
+      "uiWarningLabel": "Đã thu 0đ (thiếu 6.000.000đ)",
+      "businessExplanation": "Hợp đồng đã ký/kích hoạt (ACTIVE) nhưng khách thuê chưa nộp cọc hoặc chưa ghi nhận phiếu thu cọc liên kết. Đây là cảnh báo công nợ cọc nghiệp vụ chính xác, không phải lỗi tính toán."
+    },
+    {
+      "contractCode": "HD-S2B-INV",
+      "roomCode": "S2R-INV",
+      "status": "ACTIVE",
+      "requiredDepositVnd": 4000000,
+      "totalPaidDepositVnd": 0,
+      "depositDeficitVnd": 4000000,
+      "uiWarningLabel": "Đã thu 0đ (thiếu 4.000.000đ)",
+      "businessExplanation": "Hợp đồng đã ký/kích hoạt (ACTIVE) nhưng khách thuê chưa nộp cọc hoặc chưa ghi nhận phiếu thu cọc liên kết. Đây là cảnh báo công nợ cọc nghiệp vụ chính xác, không phải lỗi tính toán."
+    }
+  ],
+  "buildingScopes": [
+    {
+      "code": "LK01-31",
+      "name": "Tòa LK01-31",
+      "type": "OPERATIONAL_COMMERCIAL",
+      "role": "Tòa nhà khu liền kề KĐT Ân Phú thực tế"
+    },
+    {
+      "code": "LK01-32",
+      "name": "Tòa LK01-32",
+      "type": "OPERATIONAL_COMMERCIAL",
+      "role": "Tòa nhà khu liền kề KĐT Ân Phú thực tế"
+    },
+    {
+      "code": "LK08-24",
+      "name": "Tòa LK08-24",
+      "type": "OPERATIONAL_COMMERCIAL",
+      "role": "Tòa nhà khu liền kề KĐT Ân Phú thực tế"
+    },
+    {
+      "code": "LK08-25",
+      "name": "Tòa LK08-25",
+      "type": "OPERATIONAL_COMMERCIAL",
+      "role": "Tòa nhà khu liền kề KĐT Ân Phú thực tế"
+    },
+    {
+      "code": "S2B",
+      "name": "Tòa S2 Finance & Holding",
+      "type": "FEATURE_TESTING_FIXTURE",
+      "role": "Tòa fixture kiểm thử phân hệ Tài chính, Đặt cọc & Sổ quỹ (C4 Sprint 2)"
+    },
+    {
+      "code": "S3B",
+      "name": "Tòa S3 Data Migration & Occupancy",
+      "type": "FEATURE_TESTING_FIXTURE",
+      "role": "Tòa fixture kiểm thử Di chuyển dữ liệu Sổ cũ (C4 Sprint 3)"
+    },
+    {
+      "code": "S4B",
+      "name": "Tòa S4 Hunonic IoT & Settlements",
+      "type": "FEATURE_TESTING_FIXTURE",
+      "role": "Tòa fixture kiểm thử Đồng bộ Hunonic IoT & Tiền nước (C4 Sprint 4)"
+    }
+  ],
+  "reconciliationStatus": "PASS"
+}

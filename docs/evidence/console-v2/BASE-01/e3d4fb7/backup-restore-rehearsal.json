@@ -1,49 +1,48 @@
 {
-  "rehearsalTimestamp": "2026-11-01T02:17:56.301Z",
+  "rehearsalTimestamp": "2026-11-01T02:41:57.764Z",
   "engine": "PostgreSQL 18.4 (Native Windows, local socket/TCP, no Docker)",
+  "rehearsalScope": "Full Operational Database Recovery Rehearsal (31 Schema Tables)",
   "sourceDump": {
-    "relativePath": "backups/adhome_v2_rc1_backup.dump",
-    "byteSize": 39927,
+    "relativePath": "backups/adhome_v2_full_operational_backup.dump",
+    "byteSize": 265728,
     "format": "PostgreSQL Custom Archive (pg_dump -Fc)"
   },
-  "targetDatabase": "adhome_v2_test_restore",
+  "targetDatabase": "adhome_v2_rehearsal_c852edd7",
   "operationalDatabase": "adhome_v2",
   "restoredSchema": {
-    "tables": [
-      "buildings",
-      "console_actors",
-      "console_login_audit",
-      "floors",
-      "lead_inquiries",
-      "organizations",
-      "public_room_listings",
-      "revoked_tokens",
-      "room_audit_logs",
-      "seo_sync_jobs"
-    ],
+    "totalTables": 31,
     "counts": {
       "organizations": 2,
-      "buildings": 4,
-      "floors": 11,
-      "publicRoomListings": 13,
-      "consoleActors": 6,
-      "leadInquiries": 1
+      "buildings": 7,
+      "floors": 17,
+      "rooms": 44,
+      "tenants": 14,
+      "contracts": 13,
+      "deposits": 98,
+      "invoices": 16,
+      "ledgerEntries": 437,
+      "electricMeters": 10,
+      "paymentTransactions": 9
+    },
+    "financialTotals": {
+      "cashInVnd": 877100000,
+      "cashOutVnd": 255200000
     }
   },
   "assertions": [
     {
-      "name": "Backup Dump File Exists & Non-Zero",
+      "name": "Full Operational Backup Dump File Exists & Non-Zero",
       "passed": true,
       "details": {
-        "backupSize": 39927,
-        "minRequired": 25000
+        "backupSize": 265728,
+        "minRequired": 100000
       }
     },
     {
-      "name": "Isolated Test Database Created",
+      "name": "Isolated Randomly-Named Test Database Created Successfully",
       "passed": true,
       "details": {
-        "testDbName": "adhome_v2_test_restore"
+        "testDbName": "adhome_v2_rehearsal_c852edd7"
       }
     },
     {
@@ -55,64 +54,63 @@
       }
     },
     {
-      "name": "All Expected Schema Tables Restored (10/10)",
+      "name": "All 31 Operational Schema Tables Restored Successfully",
       "passed": true,
       "details": {
-        "restoredTables": [
-          "buildings",
-          "console_actors",
-          "console_login_audit",
-          "floors",
-          "lead_inquiries",
-          "organizations",
-          "public_room_listings",
-          "revoked_tokens",
-          "room_audit_logs",
-          "seo_sync_jobs"
-        ],
-        "expectedTables": [
-          "buildings",
-          "console_actors",
-          "console_login_audit",
-          "floors",
-          "lead_inquiries",
-          "organizations",
-          "public_room_listings",
-          "revoked_tokens",
-          "room_audit_logs",
-          "seo_sync_jobs"
-        ]
+        "totalRestoredTables": 31,
+        "coreTablesChecked": 20
       }
     },
     {
-      "name": "Data Integrity: Restored Record Counts Match Dump Baseline Exactly",
+      "name": "Full Operational Data Integrity: All 11 Table Counts Match Live Production Baseline",
       "passed": true,
       "details": {
-        "organizations": 2,
-        "buildings": 4,
-        "floors": 11,
-        "publicRoomListings": 13,
-        "consoleActors": 6,
-        "leadInquiries": 1
+        "restoredCounts": {
+          "organizations": 2,
+          "buildings": 7,
+          "floors": 14,
+          "rooms": 44,
+          "tenants": 32,
+          "contracts": 13,
+          "deposits": 98,
+          "invoices": 16,
+          "ledgerEntries": 437,
+          "electricMeters": 17,
+          "paymentTransactions": 9
+        },
+        "prodCountsBefore": {
+          "organizations": 2,
+          "buildings": 7,
+          "floors": 14,
+          "rooms": 44,
+          "tenants": 32,
+          "contracts": 13,
+          "deposits": 98,
+          "invoices": 16,
+          "ledgerEntries": 437,
+          "electricMeters": 17,
+          "paymentTransactions": 9
+        }
       }
     },
     {
-      "name": "Read Access & Relational Integrity on Restored Database",
+      "name": "Financial Ledger Balancing on Restored Database (Income 877.1M & Expense 255.2M Match Exactly)",
+      "passed": true,
+      "details": {
+        "restoredCashIn": 877100000,
+        "restoredCashOut": 255200000
+      }
+    },
+    {
+      "name": "Relational Integrity & Read Query Verification on Restored Database",
       "passed": true,
       "details": {
         "sampleOrg": "AdHome KĐT Ân Phú",
-        "sampleAdmin": "admin@adhome.vn"
+        "sampleContract": "HD-S4-401"
       }
     },
     {
-      "name": "Temporary Test Database Cleanly Destroyed After Rehearsal",
-      "passed": true,
-      "details": {
-        "testDbExistsAfterCleanup": false
-      }
-    },
-    {
-      "name": "Operational Database (adhome_v2) 100% Untouched (Zero Drift)",
+      "name": "Operational Production Database (adhome_v2) 100% Untouched (Zero Drift)",
       "passed": true,
       "details": {
         "prodDrift": [],
@@ -121,10 +119,13 @@
           "buildings": 7,
           "floors": 14,
           "rooms": 44,
+          "tenants": 32,
           "contracts": 13,
           "deposits": 98,
           "invoices": 16,
-          "ledgerEntries": 437
+          "ledgerEntries": 437,
+          "electricMeters": 17,
+          "paymentTransactions": 9
         }
       }
     }

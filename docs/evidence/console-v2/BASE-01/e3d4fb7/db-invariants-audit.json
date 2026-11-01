@@ -1,5 +1,5 @@
 {
-  "auditedAt": "2026-11-01T02:17:48.548Z",
+  "auditedAt": "2026-11-01T02:41:55.569Z",
   "databaseUrl": "postgresql://127.0.0.1:5432/adhome_v2 (local native, no Docker)",
   "primaryOrgId": "org-adhome-anphu",
   "organizations": [
@@ -79,19 +79,35 @@
     "zeroCashInLiabilityInvariantPreserved": true,
     "baselineGeneratedNoCashMovement": true
   },
-  "backupState": {
-    "backupFileExists": true,
-    "backupFileRelativePath": "backups/adhome_v2_rc1_backup.dump",
-    "backupSizeBytes": 39927
+  "financialFingerprints": {
+    "invoicesSha256": "de7ccc31b813f190aacce362a59db0bf58a1bcb349cc6c6b9779d7f3b01c2a47",
+    "depositsSha256": "4bb82625bcab314baf60f4e0ad25738b47bc73459e4c7e715c9479c41c9820f4",
+    "ledgerSha256": "058f307f5ae8372f9833539c22cbbee9423503c83a778892dd9e99d78016e3df",
+    "contractsSha256": "95b34e288e3b5ec7a69cf95dbe9e79e65ebd306895aa82ae9c7a60605f8bd054"
+  },
+  "financialSums": {
+    "totalInvoiced": 89071200,
+    "totalInvoicedPaid": 9600000,
+    "totalDeposits": 286500000,
+    "totalDepositsPaid": 280500000,
+    "totalDepositsRefunded": 106000000,
+    "totalLedgerIncome": 877100000,
+    "totalLedgerExpense": 255200000
   },
   "isolationStatus": {
     "multiTenantSafe": true,
+    "relationalConsistencyValid": true,
     "allFixturesScopedToOrg": "org-adhome-anphu",
     "noProductionCrossWrite": true
   },
+  "backupState": {
+    "backupFileExists": true,
+    "backupFileRelativePath": "backups/adhome_v2_full_operational_backup.dump",
+    "backupSizeBytes": 265728
+  },
   "assertions": [
     {
-      "name": "Multi-tenant Isolation Boundary (Zero Foreign/Unknown Org Leakage & Empty SaaS Tenant Cleanliness)",
+      "name": "Multi-tenant Isolation Boundary (Zero Foreign/Unknown Org Leakage & Empty SaaS Cleanliness)",
       "passed": true,
       "details": {
         "validOrgCount": 2,
@@ -104,6 +120,15 @@
         "leakedInvoices": 0,
         "leakedLedger": 0,
         "emptySaasTenantRoomCount": 0
+      }
+    },
+    {
+      "name": "Multi-tenant Relational Consistency (Zero Cross-Tenant Foreign Key Discrepancies)",
+      "passed": true,
+      "details": {
+        "totalRelationsChecked": 82,
+        "mismatchCount": 0,
+        "relationalMismatches": []
       }
     },
     {
@@ -137,18 +162,29 @@
       }
     },
     {
-      "name": "Zero Drift Invariant (No accidental mutation during baseline audit)",
+      "name": "Zero Drift Invariant: Row Counts, Financial Fingerprints & Sums Preserved (BASE-02-B)",
       "passed": true,
       "details": {
-        "driftRecords": []
+        "countDrifts": [],
+        "fingerprintDrifts": [],
+        "sumDrifts": []
       }
     },
     {
-      "name": "Backup Dump File Presence & Non-Zero Byte Size",
+      "name": "Negative Test Verification: Tampered Values with Constant Row Count Reliably Trigger Mismatch",
       "passed": true,
       "details": {
-        "backupFileRelativePath": "backups/adhome_v2_rc1_backup.dump",
-        "backupSizeBytes": 39927
+        "originalSha": "058f307f5ae8372f9833539c22cbbee9423503c83a778892dd9e99d78016e3df",
+        "mutatedSha": "a9cbb0d0787991d71587fa099cbc4c07feca505a567c2bec64948f34b6d5f1be",
+        "tamperingDetected": true
+      }
+    },
+    {
+      "name": "Full Operational Backup Dump Presence & Non-Zero Byte Size (BASE-02-D)",
+      "passed": true,
+      "details": {
+        "backupFileRelativePath": "backups/adhome_v2_full_operational_backup.dump",
+        "backupSizeBytes": 265728
       }
     }
   ],

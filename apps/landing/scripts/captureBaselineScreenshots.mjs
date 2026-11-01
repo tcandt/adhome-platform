@@ -7,7 +7,7 @@ import crypto from 'node:crypto';
 import { hashPassword } from '../server/passwordHash.ts';
 
 const prisma = new PrismaClient();
-const REPO_ROOT = path.resolve('d:\\AdHome-Platform');
+const REPO_ROOT = process.cwd();
 const LANDING_URL = 'http://127.0.0.1:8081';
 const CONSOLE_URL = 'http://127.0.0.1:5174';
 
@@ -15,7 +15,7 @@ const TASK_ID = 'BASE-01';
 const COMMIT_SHA = 'e3d4fb7';
 const EVIDENCE_DIR = path.join(REPO_ROOT, 'docs', 'evidence', 'console-v2', TASK_ID, COMMIT_SHA);
 const SCREENSHOTS_DIR = path.join(EVIDENCE_DIR, 'screenshots');
-const ARTIFACT_DIR = path.resolve('C:\\Users\\TINH-NGUYEN\\.gemini\\antigravity\\brain\\28c40a83-4f86-4432-98db-0577f31a9633');
+const ARTIFACT_DIR = process.env.ARTIFACT_DIR || path.join(REPO_ROOT, '.artifacts');
 
 fs.mkdirSync(SCREENSHOTS_DIR, { recursive: true });
 
@@ -32,19 +32,8 @@ function findBrowserExecutable() {
   throw new Error('No compatible browser executable found.');
 }
 
-function killPort(port) {
-  try {
-    const { execSync } = require('node:child_process');
-    const out = execSync(`netstat -ano | findstr :${port}`, { encoding: 'utf8' });
-    const lines = out.trim().split('\n');
-    for (const line of lines) {
-      const parts = line.trim().split(/\s+/);
-      const pid = parts[parts.length - 1];
-      if (pid && !isNaN(Number(pid))) {
-        try { execSync(`taskkill /F /PID ${pid}`); } catch {}
-      }
-    }
-  } catch {}
+function killPort(_port) {
+  // Safe no-op: child processes are tracked and cleanly terminated via Proc references
 }
 
 async function waitForHttpOk(url, maxTries = 40, intervalMs = 500) {

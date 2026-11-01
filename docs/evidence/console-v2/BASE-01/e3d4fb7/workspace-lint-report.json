@@ -1,5 +1,5 @@
 {
-  "auditedAt": "2026-11-01T08:44:20.000Z",
+  "auditedAt": "2026-11-01T09:38:15.000Z",
   "tool": "oxlint v1.90.0",
   "workspaceScope": [
     {
@@ -12,13 +12,14 @@
     },
     {
       "package": "@adhome/landing",
-      "command": "oxlint server scripts",
-      "filesAudited": 33,
+      "command": "oxlint src server scripts",
+      "filesAudited": 56,
       "errors": 0,
-      "warnings": 24,
+      "warnings": 25,
       "status": "PASS"
     }
   ],
+  "totalFilesAudited": 97,
   "overallErrors": 0,
   "overallStatus": "PASS"
 }

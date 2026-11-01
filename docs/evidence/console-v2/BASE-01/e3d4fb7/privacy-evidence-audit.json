@@ -1,0 +1,408 @@
+{
+  "auditedAt": "2026-11-01T02:41:54.936Z",
+  "repositoryScope": "Public Repository Privacy & Evidence Sanitation Audit",
+  "assertions": [
+    {
+      "name": "Zero Real Customer PII in Database (100% Synthetic Test Fixtures)",
+      "passed": true,
+      "details": {
+        "totalEntitiesAudited": 51,
+        "realPiiCount": 0
+      }
+    },
+    {
+      "name": "Zero Database Backups or Dumps Committed to Git Repository",
+      "passed": true,
+      "details": {
+        "gitTrackedDumps": []
+      }
+    },
+    {
+      "name": "Strict .gitignore Coverage for Backups & Environment Secrets",
+      "passed": true,
+      "details": {
+        "requiredPatterns": [
+          "*.dump",
+          "*.backup",
+          "backups/",
+          ".env*"
+        ],
+        "missingPatterns": []
+      }
+    },
+    {
+      "name": "Zero Exposed Secrets or Private Keys in Public Evidence Directory",
+      "passed": true,
+      "details": {
+        "exposedSecrets": []
+      }
+    }
+  ],
+  "summary": {
+    "totalEntitiesAudited": 51,
+    "realPiiCount": 0,
+    "allFixturesSynthetic": true,
+    "backupsCommittedToGit": 0,
+    "exposedSecretsCount": 0
+  },
+  "entityClassifications": [
+    {
+      "table": "tenants",
+      "id": "ad510f02-1ecb-4f86-a5a4-a76322632126",
+      "name": "Khách Meter Test",
+      "phoneMasked": "0977***999",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "tenants",
+      "id": "0820e56a-5fd3-4644-8102-66969b24c8de",
+      "name": "Khách Meter Test",
+      "phoneMasked": "0977***999",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "tenants",
+      "id": "7719158d-9ecc-49bc-8412-a17b862e658c",
+      "name": "Khách Meter Test",
+      "phoneMasked": "0977***999",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "tenants",
+      "id": "25e1873f-81d5-4686-ad2a-05878b818ba4",
+      "name": "Khách Meter Test",
+      "phoneMasked": "0977***999",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "tenants",
+      "id": "eddfbc93-f70c-448c-900a-ab6927056caf",
+      "name": "Khách Meter Test",
+      "phoneMasked": "0977***999",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "tenants",
+      "id": "c21b1d3d-e008-41f6-9e20-1acedd3296eb",
+      "name": "Khách Meter Test",
+      "phoneMasked": "0977***999",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "tenants",
+      "id": "10aa2234-b3aa-4462-97fe-2247226d96d6",
+      "name": "Khách Meter Test",
+      "phoneMasked": "0977***999",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "tenants",
+      "id": "634a415c-7aa9-4602-90a6-678d4bbdeb96",
+      "name": "Khách Meter Test",
+      "phoneMasked": "0977***999",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "tenants",
+      "id": "1a801146-15fa-4383-8803-5494b5d699f7",
+      "name": "Khách C Dư Cọc Cấn Tiền",
+      "phoneMasked": "0911***005",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "tenants",
+      "id": "4a3fe155-995e-4251-bdfe-229ee35997fa",
+      "name": "Khách Meter Test",
+      "phoneMasked": "0977***999",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "tenants",
+      "id": "16a15372-5d24-4f36-86ed-ccc06cde2dc3",
+      "name": "Khách Meter Test",
+      "phoneMasked": "0977***999",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "tenants",
+      "id": "3381c198-ccd4-49c7-9eff-7415b6ed8288",
+      "name": "Khách Meter Test",
+      "phoneMasked": "0977***999",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "tenants",
+      "id": "2dd601c3-07ee-48f8-a48b-6df96604d104",
+      "name": "Khách Meter Test",
+      "phoneMasked": "0977***999",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "tenants",
+      "id": "b38da791-b4c9-49e3-8466-e5f9736e33d3",
+      "name": "Khách Meter Test",
+      "phoneMasked": "0977***999",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "tenants",
+      "id": "dacdb2fa-8d6b-4931-aaf4-892b258f7380",
+      "name": "Khách Meter Test",
+      "phoneMasked": "0977***999",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "tenants",
+      "id": "f4bd0023-4315-4f94-ad1f-91b38fe235d7",
+      "name": "Khách Meter Test",
+      "phoneMasked": "0977***999",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "tenants",
+      "id": "42345c7b-8390-4971-bb0d-85c77299fa48",
+      "name": "Khách Meter Test",
+      "phoneMasked": "0977***999",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "tenants",
+      "id": "5577a6dd-0783-4548-b703-f6ff13092638",
+      "name": "Khách D Dư Cọc Hoàn Tiền",
+      "phoneMasked": "0911***006",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "tenants",
+      "id": "12c1f56d-d394-4105-b557-15e1973aa34f",
+      "name": "Trần Đình Trọng",
+      "phoneMasked": "0918***233",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "tenants",
+      "id": "tn-s2-00",
+      "name": "Nguyễn Văn Minh (S2 Test)",
+      "phoneMasked": "0911***000",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "tenants",
+      "id": "f1cb20d8-af20-441d-97c6-b255e63b5d62",
+      "name": "Khách A Chờ Cọc",
+      "phoneMasked": "0911***001",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "tenants",
+      "id": "4c61880a-ff17-4de8-aeb7-55e8d07b37e9",
+      "name": "Khách Meter Test",
+      "phoneMasked": "0977***999",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "tenants",
+      "id": "3c0bf689-e169-4c1b-a6e0-ef87729e9279",
+      "name": "Khách B Bằng C",
+      "phoneMasked": "0911***004",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "tenants",
+      "id": "06f83738-42cb-440a-ba6a-d3bccb41cf26",
+      "name": "Hoàng Kim Chi",
+      "phoneMasked": "0988***655",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "tenants",
+      "id": "1a6216b8-2c08-4139-9062-cf6c4de4bb8c",
+      "name": "Nguyễn Văn An",
+      "phoneMasked": "0912***678",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "tenants",
+      "id": "3c9d2fb6-02f6-48b3-b083-78c49c33aee6",
+      "name": "Lê Hoàng Long",
+      "phoneMasked": "0987***321",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "tenants",
+      "id": "56d65319-2f1d-406c-9f2e-3823062ed412",
+      "name": "Khách Meter Test",
+      "phoneMasked": "0977***999",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "tenants",
+      "id": "tnt-s4b-s4401",
+      "name": "Khách Thuê S4-401",
+      "phoneMasked": "0944***401",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "tenants",
+      "id": "tnt-s4b-s4402",
+      "name": "Khách Thuê S4-402",
+      "phoneMasked": "0944***402",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "tenants",
+      "id": "tnt-s4b-s4403",
+      "name": "Khách Thuê S4-403",
+      "phoneMasked": "0944***403",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "tenants",
+      "id": "tnt-s4b-s4404",
+      "name": "Khách Thuê S4-404",
+      "phoneMasked": "0944***404",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "tenants",
+      "id": "1c816b8a-4867-49bb-984d-4b0e81a8500f",
+      "name": "Khách Meter Test",
+      "phoneMasked": "0977***999",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "room_occupants",
+      "id": "a0d4a3f2-b1f6-45a7-967d-8c54e2674d34",
+      "name": "Trần Đình Trọng",
+      "phoneMasked": "0918***233",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "room_occupants",
+      "id": "bc8fb9fa-79c5-423a-a51e-9d22da7ffe95",
+      "name": "Hoàng Kim Chi",
+      "phoneMasked": "0988***655",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "room_occupants",
+      "id": "e0a41530-d984-4348-b4e2-d1712037f795",
+      "name": "Hoàng Minh Quân",
+      "phoneMasked": null,
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "room_occupants",
+      "id": "c3716e8e-ef1a-4d67-be61-00f7e6167f55",
+      "name": "Nguyễn Văn An",
+      "phoneMasked": "0912***678",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "room_occupants",
+      "id": "ba0b335e-f8eb-4728-ba84-18096d594b92",
+      "name": "Lê Hoàng Long",
+      "phoneMasked": "0987***321",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "room_occupants",
+      "id": "459ea084-92b8-41ee-87d1-4c23e490b8f4",
+      "name": "Phạm Thu Trang",
+      "phoneMasked": null,
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "room_occupants",
+      "id": "occ-rm-s4b-s4401-1",
+      "name": "Khách Thuê S4-401",
+      "phoneMasked": "0944***401",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "room_occupants",
+      "id": "55cc3360-5fa6-4a5b-a13b-e99732c1b801",
+      "name": "Khách A Chờ Cọc",
+      "phoneMasked": "0911***001",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "room_occupants",
+      "id": "385b5c69-1153-488f-865e-53554eb9e27c",
+      "name": "Khách B Bằng C",
+      "phoneMasked": "0911***004",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "room_occupants",
+      "id": "6c9b0083-5bad-4317-892c-01875c12dbfe",
+      "name": "Khách C Dư Cọc Cấn Tiền",
+      "phoneMasked": "0911***005",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "room_occupants",
+      "id": "579bce5e-6281-4594-ab83-8d8e159e8746",
+      "name": "Khách D Dư Cọc Hoàn Tiền",
+      "phoneMasked": "0911***006",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "room_occupants",
+      "id": "occ-rm-s4b-s4401-2",
+      "name": "Thành Viên 2 (S4-401)",
+      "phoneMasked": "0987***012",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "room_occupants",
+      "id": "occ-rm-s4b-s4401-3",
+      "name": "Thành Viên 3 (S4-401)",
+      "phoneMasked": "0987***013",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "room_occupants",
+      "id": "occ-rm-s4b-s4402-1",
+      "name": "Khách Thuê S4-402",
+      "phoneMasked": "0944***402",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "room_occupants",
+      "id": "occ-rm-s4b-s4402-2",
+      "name": "Thành Viên 2 (S4-402)",
+      "phoneMasked": "0987***022",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "room_occupants",
+      "id": "occ-rm-s4b-s4403-1",
+      "name": "Khách Thuê S4-403",
+      "phoneMasked": "0944***403",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "room_occupants",
+      "id": "occ-rm-s4b-s4404-1",
+      "name": "Khách Thuê S4-404",
+      "phoneMasked": "0944***404",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "room_occupants",
+      "id": "occ-rm-s4b-s4404-2",
+      "name": "Thành Viên 2 (S4-404)",
+      "phoneMasked": "0987***042",
+      "classification": "TEST_FIXTURE"
+    },
+    {
+      "table": "lead_inquiries",
+      "id": "e7180ee8-7378-4d51-8953-10b03f248ab2",
+      "name": "Nguyen Minh Khoa",
+      "phoneMasked": "0905***890",
+      "classification": "TEST_FIXTURE"
+    }
+  ],
+  "overallPrivacyStatus": "PASS"
+}

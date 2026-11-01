@@ -1,6 +1,7 @@
 {
-  "auditedAt": "2026-11-01T01:13:49.599Z",
+  "auditedAt": "2026-11-01T01:45:13.268Z",
   "databaseUrl": "postgresql://127.0.0.1:5432/adhome_v2 (local native, no Docker)",
+  "primaryOrgId": "org-adhome-anphu",
   "organizations": [
     {
       "id": "org-empty-saas",
@@ -87,5 +88,69 @@
     "multiTenantSafe": true,
     "allFixturesScopedToOrg": "org-adhome-anphu",
     "noProductionCrossWrite": true
-  }
+  },
+  "assertions": [
+    {
+      "name": "Multi-tenant Isolation Boundary (Zero Foreign/Unknown Org Leakage & Empty SaaS Tenant Cleanliness)",
+      "passed": true,
+      "details": {
+        "validOrgCount": 2,
+        "totalLeakage": 0,
+        "leakedBuildings": 0,
+        "leakedRooms": 0,
+        "leakedTenants": 0,
+        "leakedContracts": 0,
+        "leakedDeposits": 0,
+        "leakedInvoices": 0,
+        "leakedLedger": 0,
+        "emptySaasTenantRoomCount": 0
+      }
+    },
+    {
+      "name": "Invoice Line-Item Math Balancing Invariant (totalAmountVnd === sum of components)",
+      "passed": true,
+      "details": {
+        "totalInvoicesChecked": 16,
+        "unbalancedCount": 0,
+        "unbalancedInvoices": []
+      }
+    },
+    {
+      "name": "Deposit Domain Integrity & Non-Negative Amounts Invariant",
+      "passed": true,
+      "details": {
+        "totalDepositsChecked": 98,
+        "invalidDepositCount": 0,
+        "invalidDeposits": []
+      }
+    },
+    {
+      "name": "Ledger Entry Integrity & Positive Cash Movement Invariant",
+      "passed": true,
+      "details": {
+        "totalLedgerEntries": 437,
+        "negativeEntriesCount": 0,
+        "invalidTypeEntriesCount": 0,
+        "cashInTotalVnd": 877100000,
+        "cashOutTotalVnd": 255200000,
+        "openingBalancesVnd": 0
+      }
+    },
+    {
+      "name": "Zero Drift Invariant (No accidental mutation during baseline audit)",
+      "passed": true,
+      "details": {
+        "driftRecords": []
+      }
+    },
+    {
+      "name": "Backup Dump File Presence & Non-Zero Byte Size",
+      "passed": true,
+      "details": {
+        "backupFileRelativePath": "backups/adhome_v2_rc1_backup.dump",
+        "backupSizeBytes": 39927
+      }
+    }
+  ],
+  "overallAuditStatus": "PASS"
 }

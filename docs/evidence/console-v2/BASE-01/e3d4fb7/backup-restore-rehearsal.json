@@ -1,0 +1,133 @@
+{
+  "rehearsalTimestamp": "2026-11-01T01:45:15.315Z",
+  "engine": "PostgreSQL 18.4 (Native Windows, local socket/TCP, no Docker)",
+  "sourceDump": {
+    "relativePath": "backups/adhome_v2_rc1_backup.dump",
+    "byteSize": 39927,
+    "format": "PostgreSQL Custom Archive (pg_dump -Fc)"
+  },
+  "targetDatabase": "adhome_v2_test_restore",
+  "operationalDatabase": "adhome_v2",
+  "restoredSchema": {
+    "tables": [
+      "buildings",
+      "console_actors",
+      "console_login_audit",
+      "floors",
+      "lead_inquiries",
+      "organizations",
+      "public_room_listings",
+      "revoked_tokens",
+      "room_audit_logs",
+      "seo_sync_jobs"
+    ],
+    "counts": {
+      "organizations": 2,
+      "buildings": 4,
+      "floors": 11,
+      "publicRoomListings": 13,
+      "consoleActors": 6,
+      "leadInquiries": 1
+    }
+  },
+  "assertions": [
+    {
+      "name": "Backup Dump File Exists & Non-Zero",
+      "passed": true,
+      "details": {
+        "backupSize": 39927,
+        "minRequired": 25000
+      }
+    },
+    {
+      "name": "Isolated Test Database Created",
+      "passed": true,
+      "details": {
+        "testDbName": "adhome_v2_test_restore"
+      }
+    },
+    {
+      "name": "pg_restore Execution Returned Clean Exit Code (0)",
+      "passed": true,
+      "details": {
+        "restoreExitCode": 0,
+        "restoreError": null
+      }
+    },
+    {
+      "name": "All Expected Schema Tables Restored (10/10)",
+      "passed": true,
+      "details": {
+        "restoredTables": [
+          "buildings",
+          "console_actors",
+          "console_login_audit",
+          "floors",
+          "lead_inquiries",
+          "organizations",
+          "public_room_listings",
+          "revoked_tokens",
+          "room_audit_logs",
+          "seo_sync_jobs"
+        ],
+        "expectedTables": [
+          "buildings",
+          "console_actors",
+          "console_login_audit",
+          "floors",
+          "lead_inquiries",
+          "organizations",
+          "public_room_listings",
+          "revoked_tokens",
+          "room_audit_logs",
+          "seo_sync_jobs"
+        ]
+      }
+    },
+    {
+      "name": "Data Integrity: Restored Record Counts Match Dump Baseline Exactly",
+      "passed": true,
+      "details": {
+        "organizations": 2,
+        "buildings": 4,
+        "floors": 11,
+        "publicRoomListings": 13,
+        "consoleActors": 6,
+        "leadInquiries": 1
+      }
+    },
+    {
+      "name": "Read Access & Relational Integrity on Restored Database",
+      "passed": true,
+      "details": {
+        "sampleOrg": "AdHome KĐT Ân Phú",
+        "sampleAdmin": "admin@adhome.vn"
+      }
+    },
+    {
+      "name": "Temporary Test Database Cleanly Destroyed After Rehearsal",
+      "passed": true,
+      "details": {
+        "testDbExistsAfterCleanup": false
+      }
+    },
+    {
+      "name": "Operational Database (adhome_v2) 100% Untouched (Zero Drift)",
+      "passed": true,
+      "details": {
+        "prodDrift": [],
+        "prodCounts": {
+          "organizations": 2,
+          "buildings": 7,
+          "floors": 14,
+          "rooms": 44,
+          "contracts": 13,
+          "deposits": 98,
+          "invoices": 16,
+          "ledgerEntries": 437
+        }
+      }
+    }
+  ],
+  "rehearsalStatus": "PASS"
+}

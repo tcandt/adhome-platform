@@ -574,6 +574,7 @@ async function main() {
         roomRentVnd: BigInt(6000000),
         electricVnd: BigInt(760000), // 200 kWh * 3800
         waterVnd: BigInt(300000),
+        serviceFeeVnd: BigInt(180000),
         totalAmountVnd: BigInt(initialBilledVnd),
         status: 'ISSUED',
         policySnapshot: {

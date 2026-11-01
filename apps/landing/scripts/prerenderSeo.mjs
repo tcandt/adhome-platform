@@ -5,7 +5,6 @@ import { PrismaClient } from '@prisma/client';
 const SITE_ORIGIN = 'https://adhome.vn';
 const ROOT_DIR = process.cwd();
 const DIST_DIR = path.join(ROOT_DIR, 'dist');
-const PUBLIC_DIR = path.join(ROOT_DIR, 'public');
 
 const prisma = new PrismaClient({
   datasources: {
@@ -216,9 +215,8 @@ Allow: /
 Sitemap: ${SITE_ORIGIN}/sitemap.xml
 `;
 
-    fs.writeFileSync(path.join(PUBLIC_DIR, 'sitemap.xml'), sitemapXml, 'utf-8');
+    // 3. Generate sitemap.xml & robots.txt in dist/ for distribution (preserving frozen public/ source)
     fs.writeFileSync(path.join(DIST_DIR, 'sitemap.xml'), sitemapXml, 'utf-8');
-    fs.writeFileSync(path.join(PUBLIC_DIR, 'robots.txt'), robotsTxt, 'utf-8');
     fs.writeFileSync(path.join(DIST_DIR, 'robots.txt'), robotsTxt, 'utf-8');
 
     console.log(

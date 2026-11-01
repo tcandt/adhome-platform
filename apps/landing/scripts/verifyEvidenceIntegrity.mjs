@@ -1,14 +1,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { execSync } from 'node:child_process';
 
-const REPO_ROOT = path.resolve('d:\\AdHome-Platform');
-const EVIDENCE_DIR = path.join(REPO_ROOT, 'docs', 'evidence', 'console-v2', 'BASE-01', 'e3d4fb7');
+const REPO_ROOT = process.cwd();
+const REL_EVIDENCE_DIR = path.join('docs', 'evidence', 'console-v2', 'BASE-01', 'e3d4fb7');
+const EVIDENCE_DIR = path.join(REPO_ROOT, REL_EVIDENCE_DIR);
 const SCREENSHOTS_DIR = path.join(EVIDENCE_DIR, 'screenshots');
 const MANIFEST_PATH = path.join(EVIDENCE_DIR, 'screenshots-manifest.json');
 const OUTPUT_PATH = path.join(EVIDENCE_DIR, 'evidence-integrity-test.json');
 
-const SOURCE_COMMIT = '43c2c74';
+const SOURCE_COMMIT = 'e3d4fb7';
+const MIN_SCREENSHOT_BYTES = 25000;
 
 function parsePngDimensions(buf) {
   if (buf.length < 24) return null;
@@ -20,10 +23,33 @@ function parsePngDimensions(buf) {
   return { width, height };
 }
 
+function checkGitTracking(relScreenshotsDir) {
+  try {
+    const gitDirPosix = relScreenshotsDir.replace(/\\/g, '/');
+    const out = execSync(`git ls-tree -r HEAD ${gitDirPosix}`, {
+      cwd: REPO_ROOT,
+      encoding: 'utf-8',
+    });
+    const trackedFiles = new Map();
+    for (const line of out.trim().split('\n')) {
+      if (!line.trim()) continue;
+      const parts = line.trim().split(/\s+/);
+      const blobHash = parts[2];
+      const filePath = parts[3];
+      if (filePath) {
+        trackedFiles.set(path.basename(filePath), blobHash);
+      }
+    }
+    return { ok: true, trackedFiles };
+  } catch (err) {
+    return { ok: false, error: err.message, trackedFiles: new Map() };
+  }
+}
+
 async function main() {
   console.log('=================================================================');
-  console.log('AdHome Console V2 — BASE-01-FIX-01 Evidence Integrity Verifier');
-  console.log(`Commit: ${SOURCE_COMMIT} | Target Dir: ${SCREENSHOTS_DIR}`);
+  console.log('AdHome Console V2 — BASE-01-FIX-10 Evidence Integrity Verifier');
+  console.log(`Commit: ${SOURCE_COMMIT} | Target Dir: ${path.relative(REPO_ROOT, SCREENSHOTS_DIR)}`);
   console.log('=================================================================\n');
 
   if (!fs.existsSync(MANIFEST_PATH)) {
@@ -35,11 +61,16 @@ async function main() {
 
   const files = fs.readdirSync(SCREENSHOTS_DIR).filter((f) => f.endsWith('.png'));
   const results = [];
+  const shaSet = new Set();
+
+  const relScreenshotsDir = path.relative(REPO_ROOT, SCREENSHOTS_DIR);
+  const gitTracking = checkGitTracking(relScreenshotsDir);
 
   for (const filename of files) {
     const fullPath = path.join(SCREENSHOTS_DIR, filename);
     const buf = fs.readFileSync(fullPath);
     const sha256 = crypto.createHash('sha256').update(buf).digest('hex');
+    shaSet.add(sha256);
     const byteSize = buf.length;
     const dims = parsePngDimensions(buf);
 
@@ -57,59 +88,89 @@ async function main() {
 
     const shaMatches = manifestEntry ? manifestEntry.sha256.toLowerCase() === sha256.toLowerCase() : false;
     const sizeMatches = manifestEntry ? manifestEntry.sizeBytes === byteSize : false;
+    const sizeAboveMin = byteSize >= MIN_SCREENSHOT_BYTES;
+    const gitTracked = gitTracking.trackedFiles.has(filename);
 
     results.push({
       filename,
       byteSize,
+      sizeAboveMin,
       cssViewport,
       screenshotPixels: dims ? `${dims.width}x${dims.height}` : 'unknown',
+      expectedPixels: `${expectedWidth}x${expectedHeight}`,
       deviceScaleFactor,
       sha256,
       manifestSha256: manifestEntry?.sha256 || null,
       shaMatches,
       sizeMatches,
       pixelDimensionsValid,
+      gitTracked,
+      gitBlobSha: gitTracking.trackedFiles.get(filename) || null,
       sourceCommit: SOURCE_COMMIT,
     });
   }
 
-  const allShaMatch = results.every((r) => r.shaMatches);
-  const allPixelsValid = results.every((r) => r.pixelDimensionsValid);
-  const allSizesMatch = results.every((r) => r.sizeMatches);
+  const allShaMatch = results.length === 5 && results.every((r) => r.shaMatches);
+  const allPixelsValid = results.length === 5 && results.every((r) => r.pixelDimensionsValid);
+  const allSizesMatch = results.length === 5 && results.every((r) => r.sizeMatches);
+  const allAboveMinSize = results.length === 5 && results.every((r) => r.sizeAboveMin);
+  const allUnique = shaSet.size === results.length && results.length === 5;
+  const allGitTracked = results.length === 5 && results.every((r) => r.gitTracked);
+
+  const integrityPass =
+    allShaMatch &&
+    allSizesMatch &&
+    allPixelsValid &&
+    allAboveMinSize &&
+    allUnique &&
+    allGitTracked;
 
   const report = {
     verifiedAt: new Date().toISOString(),
     sourceCommit: SOURCE_COMMIT,
-    targetDirectory: 'docs/evidence/console-v2/BASE-01/e3d4fb7/screenshots',
+    targetDirectory: relScreenshotsDir.replace(/\\/g, '/'),
     totalScreenshots: results.length,
+    expectedScreenshots: 5,
     allShaMatch,
     allSizesMatch,
     allPixelsValid,
-    integrityStatus: allShaMatch && allSizesMatch && allPixelsValid ? 'PASS' : 'FAIL',
-    explanation: 'Đối chiếu trực tiếp byte gốc của 5 file PNG trong Git repository với manifest.json. Không sử dụng tệp ảnh đã qua xử lý nén/downscale từ giao diện chat bên ngoài.',
+    allAboveMinSize,
+    allUnique,
+    allGitTracked,
+    integrityStatus: integrityPass ? 'PASS' : 'FAIL',
+    explanation:
+      'Direct byte-level verification of raw PNG screenshot files in Git repository against manifest.json, pixel DPR=2 dimensions, zero SHA collisions, minimum size (>= 25KB), and git blob tracking.',
     details: results,
   };
 
   fs.writeFileSync(OUTPUT_PATH, JSON.stringify(report, null, 2), 'utf-8');
 
-  console.log('--- KẾT QUẢ ĐỐI CHIẾU BYTE GỐC TRONG REPO ---');
+  console.log('--- REPOSITORY RAW EVIDENCE INTEGRITY REPORT ---');
   results.forEach((r) => {
     console.log(`File: ${r.filename}`);
-    console.log(`  Bytes: ${r.byteSize} (Manifest: ${r.sizeMatches ? 'MATCH' : 'MISMATCH'})`);
-    console.log(`  Viewport CSS: ${r.cssViewport} | DPR: ${r.deviceScaleFactor} | Pixels PNG: ${r.screenshotPixels} (${r.pixelDimensionsValid ? 'VALID' : 'INVALID'})`);
+    console.log(`  Bytes: ${r.byteSize} (Manifest: ${r.sizeMatches ? 'MATCH' : 'MISMATCH'} | Min >=25KB: ${r.sizeAboveMin ? 'YES' : 'NO'})`);
+    console.log(`  Viewport CSS: ${r.cssViewport} | DPR: ${r.deviceScaleFactor} | Pixels: ${r.screenshotPixels} (${r.pixelDimensionsValid ? 'VALID' : 'INVALID'})`);
     console.log(`  SHA-256: ${r.sha256}`);
-    console.log(`  SHA Match: ${r.shaMatches ? 'MATCH (100% Khớp)' : 'MISMATCH'}\n`);
+    console.log(`  SHA Match: ${r.shaMatches ? 'MATCH (100% Khớp)' : 'MISMATCH'}`);
+    console.log(`  Git Tracked Blob: ${r.gitTracked ? `YES (${r.gitBlobSha})` : 'NO'}\n`);
   });
 
-  console.log(`>>> TRẠNG THÁI KIỂM TOÁN TÍNH NGUYÊN BẢN: ${report.integrityStatus} <<<`);
+  console.log('Summary Gates:');
+  console.log(`  5/5 Files Present & Checked: ${results.length === 5 ? 'PASS' : 'FAIL'}`);
+  console.log(`  All SHA-256 Match: ${allShaMatch ? 'PASS' : 'FAIL'}`);
+  console.log(`  All Byte Sizes Match: ${allSizesMatch ? 'PASS' : 'FAIL'}`);
+  console.log(`  All Pixel Dimensions Valid (DPR=2): ${allPixelsValid ? 'PASS' : 'FAIL'}`);
+  console.log(`  All Sizes >= 25,000 Bytes: ${allAboveMinSize ? 'PASS' : 'FAIL'}`);
+  console.log(`  Zero Hash Collisions (All 5 Unique): ${allUnique ? 'PASS' : 'FAIL'}`);
+  console.log(`  All Tracked in Git Blob Tree: ${allGitTracked ? 'PASS' : 'FAIL'}`);
+  console.log(`\n>>> GATE_EVIDENCE_INTEGRITY: ${report.integrityStatus} <<<\n`);
 
-  if (!allShaMatch || !allPixelsValid) {
+  if (!integrityPass) {
     process.exit(1);
   }
 }
 
 main().catch((err) => {
-  console.error('Lỗi kiểm toán tính nguyên bản:', err);
+  console.error('Fatal error in evidence integrity verification:', err);
   process.exit(1);
 });
-

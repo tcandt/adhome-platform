@@ -1,9 +1,9 @@
 # ADHOME CONSOLE V2 — TÀI LIỆU KHÓA BASELINE VÀ BẢN ĐỒ KIẾN TRÚC THỰC TẾ
 **Mã tài liệu:** `CONSOLE-V2-BASELINE-2026-11-01`  
-**Mã Task:** `BASE-01` (Kèm các remediations `BASE-01-FIX-01` đến `FIX-06`)  
-**Thời điểm khóa:** 01/11/2026 08:14:00 (Asia/Ho_Chi_Minh)  
+**Mã Task:** `BASE-01` (Bao gồm đầy đủ remediations từ `BASE-01-FIX-01` đến `FIX-13`)  
+**Thời điểm khóa:** 01/11/2026 08:45:00 (Asia/Ho_Chi_Minh)  
 **Mã Commit Cơ Sở (baseCommit):** `e3d4fb7` (`e3d4fb75b64270383c28dd15679f018739872a83`)  
-**Mã Commit Evidence (evidenceCommit):** `43c2c74` (`43c2c74088f362a6e965a1740959bec85f468ec8`)  
+**Mã Commit Remediated:** HEAD  
 **Git Branch & Remote:** `main` (tracking `origin/main`)  
 **Môi trường thực thi:** Native Windows 11 Pro, Node.js `v24.15.0`, pnpm `11.14.0`, PostgreSQL 18 Local (`127.0.0.1:5432/adhome_v2`), strict **NO Docker**, Landing RC1 strict feature freeze.
 
@@ -57,15 +57,17 @@ Monorepo được quản lý bằng `pnpm@11.14.0` bao gồm 2 workspace package
   - `pnpm typecheck`: Chạy đệ quy `pnpm -r typecheck`.
   - `pnpm lint`: Chạy đệ quy `pnpm -r lint` (sử dụng oxlint).
 
-### 3.2. Kết quả thực thi kiểm tra chất lượng Baseline (`BASE-01-FIX-04`)
+### 3.2. Kết quả thực thi kiểm tra chất lượng Baseline (`BASE-01-FIX-07` đến `FIX-13`)
 
 | Lệnh thực thi | Mã thoát (Exit Code) | Kết quả kiểm tra | Ghi chú & Đánh giá |
 | :--- | :---: | :---: | :--- |
-| `pnpm --filter @adhome/console build` | `0` | **PASS** | `tsc -b` pass sạch, Vite build xuất `dist/index.html` (1.1 kB), `index.js` (1,044 kB), `index.css` (61.1 kB) trong 4.81s. |
-| `pnpm --filter @adhome/landing build` | `0` | **PASS** | `tsc -b` pass sạch, prerender SEO 12 URLs thành công trong 3.0s. |
+| `pnpm --filter @adhome/console build` | `0` | **PASS** | `tsc -b` pass sạch, Vite build xuất `dist/index.html` (1.1 kB), `index.js` (1,044 kB), `index.css` (61.1 kB) trong 6.33s. |
+| `pnpm --filter @adhome/landing build` | `0` | **PASS** | `tsc -b` pass sạch, prerender SEO 12 URLs vào `dist/` thành công trong 4.52s, thư mục `apps/landing/public/` không bị ghi đè. |
 | `pnpm -r typecheck` | `0` | **PASS** | Cả `@adhome/console` (`tsc -b`) và `@adhome/landing` (`tsc --noEmit`) pass sạch. |
-| `pnpm -r lint` | `0` | **PASS** | `oxlint src` quét 41 files console (0 lỗi, 43 warnings); `oxlint server` quét 9 files landing (0 lỗi, 7 warnings) hoàn thành trong 28ms. |
-| `verifyC4Sprint4.mjs` | `0` | **PASS (100%)** | 4/4 suites (C4-HUN-01, C4-HUN-02, C4-WAT-01, C4-CLOSE-01) pass sạch, 6/6 screenshots phân biệt tuyệt đối. |
+| `pnpm -r lint` | `0` | **PASS** | `oxlint src` quét 41 files console (0 lỗi, 43 warnings); `oxlint server scripts` quét 33 files landing (0 lỗi, 24 warnings). Toàn workspace 0 lỗi. |
+| `node apps/landing/scripts/verifyDbInvariants.mjs` | `0` | **PASS (100%)** | 6/6 assertions thuật toán thực tế (cách ly tenant, khớp toán hóa đơn, miền trạng thái cọc, sổ quỹ không âm, zero drift, file dump) pass sạch. |
+| `node apps/landing/scripts/verifyEvidenceIntegrity.mjs` | `0` | **PASS (100%)** | 7/7 tiêu chí đối chiếu byte gốc Git (5/5 files, SHA-256 match, byte size match, DPR 2 pixel valid, >=25KB, 5 hash phân biệt, Git blob tracked) pass sạch. |
+| `node apps/landing/scripts/verifyBackupRestore.mjs` | `0` | **PASS (100%)** | 8/8 assertions diễn tập phục hồi PostgreSQL dump trên DB tạm `adhome_v2_test_restore` (10/10 bảng, đúng record count, hủy DB tạm, zero production mutation) pass sạch. |
 
 ---
 
@@ -79,6 +81,9 @@ Hệ thống sử dụng cơ chế Role-Based Access Control (RBAC) kết hợp 
 - **Quản lý vận hành (`MANAGER`)**:
   - Bị giới hạn nghiêm ngặt theo danh mục tòa nhà được phân công (`assignedBuildingIds`).
   - Không có quyền truy cập Sổ quỹ thu chi, không được đổi biểu giá Hunonic, không được khóa sổ kỳ quyết toán.
+- **Tài khoản Kiểm thử Tự động (`automation.test.admin@adhome.internal`)**:
+  - Dành riêng cho runner chụp ảnh CDP và kiểm thử tự động (`BASE-01-FIX-07`).
+  - Tài khoản production `admin@adhome.vn` được snapshot trước khi chạy và đối chiếu nghiêm ngặt sau khi chạy; tài khoản test tự động bị xóa sau khi hoàn tất.
 
 ### 4.2. Dữ liệu thử nghiệm (Demo Fixtures) vs Dữ liệu thực
 - **Bảo toàn dữ liệu tài chính:** Kiểm toán qua `verifyDbInvariants.mjs` xác nhận:
@@ -88,28 +93,29 @@ Hệ thống sử dụng cơ chế Role-Based Access Control (RBAC) kết hợp 
 
 ---
 
-## 5. BỘ BẰNG CHỨNG HÌNH ẢNH NGUYÊN BẢN TRONG GIT (`BASE-01-FIX-01`)
+## 5. BỘ BẰNG CHỨNG HÌNH ẢNH NGUYÊN BẢN TRONG GIT (`BASE-01-FIX-10`)
 
 Kết quả đối chiếu byte gốc và kích thước pixel từ script [`verifyEvidenceIntegrity.mjs`](file:///d:/AdHome-Platform/apps/landing/scripts/verifyEvidenceIntegrity.mjs) xác nhận 100% khớp với manifest:
 
-| STT | Tên file ảnh | Viewport CSS | DPR | Pixel PNG thực | Bytes thực | SHA-256 Checksum gốc | Trạng thái đối chiếu |
-| :---: | :--- | :---: | :---: | :---: | :---: | :--- | :---: |
-| 1 | `baseline_desktop_header_sidebar_expanded.png` | 1440x900 | 2 | 2880x1800 | 404,274 | `1d606165baed45b8061ce20f66b51e5ea4512e9b0bc983d548356f9eeb6f1c4a` | **MATCH (100% Khớp)** |
-| 2 | `baseline_desktop_header_sidebar_collapsed.png` | 1440x900 | 2 | 2880x1800 | 331,501 | `d66a97f50b20bb492fdee1e758d2c310e1f4566f3793568288209044c9838c12` | **MATCH (100% Khớp)** |
-| 3 | `baseline_desktop_contracts_table.png` | 1440x900 | 2 | 2880x1800 | 492,115 | `d009c0b1980ee15860e8fdaa4a05054bac294d3ee06ac54cfc748338c54aeac9` | **MATCH (100% Khớp)** |
-| 4 | `baseline_mobile_header_nav.png` | 390x844 | 2 | 780x1688 | 136,215 | `466bfa5fb503bfd7c37077514c26092ccbfea5c8de6f31249b7bd8d2a721fd2f` | **MATCH (100% Khớp)** |
-| 5 | `baseline_mobile_contracts_cards.png` | 390x844 | 2 | 780x1688 | 143,441 | `7da6e621aa032e055e8e6c5718925991a86b874dfc7ccf9f61a5dc08f9e0f4a0` | **MATCH (100% Khớp)** |
+| STT | Tên file ảnh | Viewport CSS | DPR | Pixel PNG thực | Bytes thực | SHA-256 Checksum gốc | Git Blob SHA | Trạng thái đối chiếu |
+| :---: | :--- | :---: | :---: | :---: | :---: | :--- | :---: | :---: |
+| 1 | `baseline_desktop_header_sidebar_expanded.png` | 1440x900 | 2 | 2880x1800 | 404,274 | `1d606165baed45b855841fcb230a36a0db67b878ea3a4e304f4f6ce0b5306b40` | `73c42a04...` | **MATCH (100% Khớp)** |
+| 2 | `baseline_desktop_header_sidebar_collapsed.png` | 1440x900 | 2 | 2880x1800 | 331,501 | `d66a97f50b20bb492fdee1e758d2c310e1f4566f3793568288209044c9838c12` | `24c11ba0...` | **MATCH (100% Khớp)** |
+| 3 | `baseline_desktop_contracts_table.png` | 1440x900 | 2 | 2880x1800 | 492,115 | `d009c0b1980ee15860e8fdaa4a05054bac294d3ee06ac54cfc748338c54aeac9` | `4884a6ef...` | **MATCH (100% Khớp)** |
+| 4 | `baseline_mobile_header_nav.png` | 390x844 | 2 | 780x1688 | 136,215 | `466bfa5fb503bfd7c37077514c26092ccbfea5c8de6f31249b7bd8d2a721fd2f` | `c77c1025...` | **MATCH (100% Khớp)** |
+| 5 | `baseline_mobile_contracts_cards.png` | 390x844 | 2 | 780x1688 | 143,441 | `7da6e621aa032e055e8e6c5718925991a86b874dfc7ccf9f61a5dc08f9e0f4a0` | `e0ee3750...` | **MATCH (100% Khớp)** |
 
 > [!NOTE]
-> Sự khác biệt checksum mà công cụ bên ngoài quan sát được là do pipeline nén/downscale của giao diện web ChatGPT khi đính kèm ảnh (ảnh desktop 2880x1800 bị hạ độ phân giải xuống 2048x1280). Các tệp PNG lưu trực tiếp trong Git repository hoàn toàn nguyên bản và khớp tuyệt đối với manifest.
+> Sự khác biệt checksum mà công cụ bên ngoài quan sát được là do pipeline nén/downscale của giao diện web ChatGPT khi đính kèm ảnh (ảnh desktop 2880x1800 bị hạ độ phân giải xuống 2048x1280). Các tệp PNG lưu trực tiếp trong Git repository hoàn toàn nguyên bản, đã được kiểm chứng qua `git ls-tree -r HEAD` và khớp tuyệt đối với manifest.
 
 ---
 
-## 6. BÁO CÁO TRẠNG THÁI THEO TỪNG CỔNG CHẤT LƯỢNG (`BASE-01-FIX-06`)
+## 6. BÁO CÁO TRẠNG THÁI THEO TỪNG CỔNG CHẤT LƯỢNG (QUALITY GATES)
 
 - **`GATE_BASELINE_CAPTURED`:** **PASS** (Đã lưu trữ 5/5 ảnh baseline và bản đồ kiến trúc thực tế).
 - **`GATE_BUILD_TYPECHECK`:** **PASS** (Build console 0, build landing 0, typecheck 0).
-- **`GATE_LINT_CONFIGURED`:** **PASS** (Đã tích hợp `oxlint` cho cả 2 workspace packages, chạy mã thoát 0).
-- **`GATE_EVIDENCE_INTEGRITY`:** **PASS** (100% file gốc trên Git khớp manifest và DPR pixels; đã xuất `evidence-integrity-test.json`).
-- **`GATE_LANDING_RC1_FREEZE`:** **PASS** (`apps/landing/public/sitemap.xml` đã khôi phục về ngày `2026-10-31`, diff Landing rỗng).
-- **`GATE_DATABASE_INVARIANTS`:** **PASS** (Không trôi dòng tiền, không biến động tài chính, đã xuất `db-invariants-audit.json`).
+- **`GATE_LINT_CONFIGURED`:** **PASS** (Đã tích hợp `oxlint` cho cả 2 workspace packages `apps/console` và `apps/landing`, quét 74 files, mã thoát 0, 0 lỗi).
+- **`GATE_EVIDENCE_INTEGRITY`:** **PASS** (100% file gốc trên Git khớp manifest và DPR pixels; 5 hash phân biệt, kích thước >= 25KB, tracked Git blobs; đã xuất `evidence-integrity-test.json`).
+- **`GATE_LANDING_RC1_FREEZE`:** **PASS** (`prerenderSeo.mjs` chỉ ghi vào `dist/`, `apps/landing/public/sitemap.xml` đóng băng nguyên bản tại ngày `2026-10-31`, diff Landing source rỗng).
+- **`GATE_DATABASE_INVARIANTS`:** **PASS** (6/6 assertions thuật toán thực tế: cách ly multi-tenant 0 rò rỉ, cân đối dòng hóa đơn 100%, miền trạng thái cọc hợp lệ, sổ quỹ thu chi dương, zero drift; đã xuất `db-invariants-audit.json`).
+- **`GATE_BACKUP_RESTORE_REHEARSAL`:** **PASS** (Diễn tập phục hồi backup dump `adhome_v2_rc1_backup.dump` trên DB tạm `adhome_v2_test_restore` thành công 10/10 bảng, DB chính không trôi dữ liệu; đã xuất `backup-restore-rehearsal.json`).

@@ -4,7 +4,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import http from 'node:http';
 import crypto from 'node:crypto';
-import { provisionProductionAdmin } from './provisionProductionAdmin.mjs';
+import { hashPassword } from '../server/passwordHash.ts';
 
 const prisma = new PrismaClient();
 const REPO_ROOT = path.resolve('d:\\AdHome-Platform');
@@ -142,20 +142,51 @@ async function main() {
   let landingProc = null;
   let consoleProc = null;
   let browserProc = null;
+  let prodAdminSnapshot = null;
   const manifest = [];
 
   try {
-    // 1. Provision Admin
-    console.log('[Step 1] Provisioning Admin Credentials...');
-    const ephemeralPassword = `AdminBase01@${crypto.randomBytes(4).toString('hex')}!`;
-    await provisionProductionAdmin({
-      email: 'admin@adhome.vn',
-      newPassword: ephemeralPassword,
-      forceActivate: true,
+    // 1. Snapshot Production Admin & Provision Dedicated Test Actor
+    console.log('[Step 1] Snapshotting Production Admin & Provisioning Test Actor...');
+    const PROD_ADMIN_EMAIL = 'admin@adhome.vn';
+    const TEST_ACTOR_EMAIL = 'automation.test.admin@adhome.internal';
+    const TEST_ACTOR_ID = 'usr-automation-test-admin';
+
+    const prodAdminBefore = await prisma.consoleActor.findUnique({
+      where: { email: PROD_ADMIN_EMAIL },
     });
-    const adminUser = await prisma.consoleActor.findFirst({ where: { email: 'admin@adhome.vn' } });
-    if (!adminUser) throw new Error('Admin user not found in DB');
-    console.log(`  Admin ready: ${adminUser.email}`);
+    if (!prodAdminBefore) {
+      throw new Error(`Production admin (${PROD_ADMIN_EMAIL}) does not exist in database.`);
+    }
+    prodAdminSnapshot = JSON.stringify(prodAdminBefore);
+    console.log(`  Production admin verified: ${prodAdminBefore.email} (sessionVersion: ${prodAdminBefore.sessionVersion})`);
+
+    const ephemeralPassword = `TestAdminBase01@${crypto.randomBytes(6).toString('hex')}!`;
+    const passwordHash = await hashPassword(ephemeralPassword);
+
+    const testActor = await prisma.consoleActor.upsert({
+      where: { email: TEST_ACTOR_EMAIL },
+      update: {
+        passwordHash,
+        passwordUpdatedAt: new Date(),
+        isActive: true,
+        sessionVersion: { increment: 1 },
+      },
+      create: {
+        id: TEST_ACTOR_ID,
+        email: TEST_ACTOR_EMAIL,
+        displayName: 'Automation Test Runner Admin',
+        orgId: prodAdminBefore.orgId,
+        role: 'ADMIN',
+        permissions: prodAdminBefore.permissions,
+        buildingScopes: prodAdminBefore.buildingScopes,
+        isActive: true,
+        passwordHash,
+        passwordUpdatedAt: new Date(),
+        sessionVersion: 1,
+      },
+    });
+    console.log(`  Isolated test actor ready: ${testActor.email}`);
 
     // 2. Start Servers
     console.log('\n[Step 2] Starting Servers...');
@@ -285,7 +316,7 @@ async function main() {
     const hasLogin = await waitForSelector('[data-testid="console-login-email"]');
     if (!hasLogin) throw new Error('Console login page did not load.');
 
-    await setControlledInput('[data-testid="console-login-email"]', adminUser.email);
+    await setControlledInput('[data-testid="console-login-email"]', testActor.email);
     await setControlledInput('[data-testid="console-login-password"]', ephemeralPassword);
     await cdp.eval(`document.querySelector('[data-testid="console-login-submit"]')?.click()`);
 
@@ -398,6 +429,33 @@ async function main() {
     console.log(`Captured ${manifest.length} baseline screenshots. Zero collisions: ${new Set(manifest.map(m => m.sha256)).size === manifest.length}`);
 
   } finally {
+    // Check production admin isolation
+    try {
+      const prodAdminAfter = await prisma.consoleActor.findUnique({
+        where: { email: 'admin@adhome.vn' },
+      });
+      const prodAdminAfterJson = JSON.stringify(prodAdminAfter);
+      if (typeof prodAdminSnapshot !== 'undefined' && prodAdminSnapshot !== prodAdminAfterJson) {
+        console.error('CRITICAL VIOLATION: Production admin (admin@adhome.vn) was modified!');
+        process.exitCode = 1;
+      } else {
+        console.log('\n[Security Invariant] PASS: Production admin (admin@adhome.vn) is 100% untouched.');
+      }
+    } catch (secErr) {
+      console.error('Security invariant check error:', secErr);
+      process.exitCode = 1;
+    }
+
+    // Clean up test actor
+    try {
+      await prisma.consoleActor.deleteMany({
+        where: { email: 'automation.test.admin@adhome.internal' },
+      });
+      console.log('[Cleanup] Ephemeral test actor deleted.');
+    } catch (cleanupErr) {
+      console.warn('[Cleanup Warning] Failed to delete test actor:', cleanupErr);
+    }
+
     if (browserProc) {
       try { browserProc.kill(); } catch {}
     }

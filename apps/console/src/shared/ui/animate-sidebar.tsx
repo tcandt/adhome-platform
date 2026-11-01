@@ -284,9 +284,9 @@ export function SidebarRail() {
           ? 'Thu gọn thanh điều hướng'
           : 'Mở rộng thanh điều hướng'
       }
-      className="absolute inset-y-0 -right-2 z-40 hidden w-3.5 cursor-ew-resize lg:flex items-center justify-center group/rail focus:outline-none"
+      className="absolute inset-y-0 -right-2 z-40 hidden w-4 cursor-pointer lg:flex items-center justify-center group/rail focus:outline-none select-none"
     >
-      <span className="h-full w-[2px] bg-transparent transition-colors group-hover/rail:bg-brand-primary/50" />
+      <span className="h-full w-[2px] bg-transparent transition-colors group-hover/rail:bg-brand-primary/60 group-focus-visible/rail:bg-brand-primary" />
     </button>
   );
 }

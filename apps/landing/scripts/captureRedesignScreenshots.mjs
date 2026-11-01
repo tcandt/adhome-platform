@@ -527,6 +527,62 @@ async function main() {
       throw new Error(`QA-04-FIX-02 Failure at 125% zoom: ${JSON.stringify(zoom125Result)}`);
     }
 
+    // C2-00: Full Horizontal Scroll Range Verification across scrollLeft = 0, mid, max
+    console.log('\n[C2-00] Full Horizontal Scroll Range Verification (0 -> mid -> max scrollLeft)...');
+    for (const testSidebar of ['expanded', 'collapsed']) {
+      await setSidebarState(testSidebar);
+      const scrollSweepResult = await cdp.eval(`(() => {
+        const table = document.querySelector('[data-testid="contracts-table"]');
+        const container = table?.closest('.overflow-x-auto');
+        if (!container) return { error: 'No table scroll container' };
+
+        const maxScroll = container.scrollWidth - container.clientWidth;
+        const testPositions = [0, Math.round(maxScroll / 2), maxScroll];
+        const stepResults = [];
+
+        for (const pos of testPositions) {
+          container.scrollLeft = pos;
+          const containerRect = container.getBoundingClientRect();
+          const stickyTh = table.querySelector('th.sticky');
+          const thRect = stickyTh?.getBoundingClientRect();
+          const triggers = Array.from(table.querySelectorAll('[data-testid="action-menu-trigger"]'));
+          const firstTrigger = triggers[0];
+          const trgRect = firstTrigger?.getBoundingClientRect();
+
+          let hitTestPassed = false;
+          let topTag = null;
+          if (trgRect) {
+            const cx = Math.round(trgRect.left + trgRect.width / 2);
+            const cy = Math.round(trgRect.top + trgRect.height / 2);
+            const topEl = document.elementFromPoint(cx, cy);
+            hitTestPassed = topEl === firstTrigger || firstTrigger?.contains(topEl);
+            topTag = topEl?.tagName;
+          }
+
+          const isPinned = thRect && Math.abs(thRect.right - containerRect.right) <= 2 && thRect.right <= window.innerWidth;
+          stepResults.push({
+            pos,
+            maxScroll,
+            isPinned,
+            hitTestPassed,
+            topTag,
+            thRight: thRect ? Math.round(thRect.right) : null,
+            containerRight: Math.round(containerRect.right)
+          });
+        }
+
+        container.scrollLeft = 0;
+        return {
+          allPassed: stepResults.every(s => s.isPinned && s.hitTestPassed),
+          steps: stepResults
+        };
+      })()`);
+      console.log(`     [Scroll Sweep | Sidebar ${testSidebar}]: allPassed=${scrollSweepResult.allPassed}`);
+      if (!scrollSweepResult.allPassed) {
+        throw new Error(`C2-00 Full horizontal scroll test failed for sidebar ${testSidebar}: ${JSON.stringify(scrollSweepResult)}`);
+      }
+    }
+
     // Capture Table at 1280x720 with Sidebar EXPANDED (QA-04-FIX-01 Visual Proof)
     await cdp.send('Emulation.setDeviceMetricsOverride', {
       width: 1280,
@@ -626,34 +682,46 @@ async function main() {
     })()`);
     await new Promise((r) => setTimeout(r, 600));
 
-    // Assert QA-03 / UI-07-FIX-01: Mobile ActionMenu triggers MUST strictly be >= 44x44px touch targets
+    // Assert QA-03 / C2-00: Comprehensive Mobile Touch Targets Audit (Header, Navigation, Triggers >= 44x44px)
     const mobileTriggerCheck = await cdp.eval(`(() => {
-      const triggers = Array.from(document.querySelectorAll('[data-testid="action-menu-trigger"]')).filter(
-        (t) => t.getBoundingClientRect().height > 0
+      const selectors = [
+        '[data-testid="console-mobile-menu-trigger"]',
+        '[data-testid="console-mobile-building-scope"]',
+        '[data-testid="console-mobile-search-trigger"]',
+        '[data-testid="console-mobile-notifications-trigger"]',
+        '[data-testid="console-mobile-bottom-nav"] button',
+        '[data-testid="action-menu-trigger"]',
+        '[data-testid="btn-open-handover-mobile"]'
+      ];
+      const allButtons = Array.from(document.querySelectorAll(selectors.join(','))).filter(
+        (t) => t.getBoundingClientRect().height > 0 && t.getBoundingClientRect().width > 0
       );
-      if (triggers.length === 0) {
-        return { count: 0, passed: false, error: 'No visible mobile action triggers found' };
+      if (allButtons.length === 0) {
+        return { count: 0, passed: false, error: 'No visible mobile interactive targets found' };
       }
       const nonCompliant = [];
-      for (const t of triggers) {
+      const inspected = [];
+      for (const t of allButtons) {
         const r = t.getBoundingClientRect();
         const w = Math.round(r.width);
         const h = Math.round(r.height);
+        const testId = t.getAttribute('data-testid') || t.getAttribute('aria-label') || t.tagName;
+        inspected.push({ testId, width: w, height: h });
         if (w < 44 || h < 44) {
-          nonCompliant.push({ width: w, height: h });
+          nonCompliant.push({ testId, width: w, height: h });
         }
       }
       return {
-        count: triggers.length,
-        sampleTarget: { width: Math.round(triggers[0].getBoundingClientRect().width), height: Math.round(triggers[0].getBoundingClientRect().height) },
+        count: allButtons.length,
         passed: nonCompliant.length === 0,
         nonCompliantCount: nonCompliant.length,
         nonCompliant,
+        sampleTargets: inspected.slice(0, 6),
       };
     })()`);
-    console.log('     [QA-03 Touch Target Quality Gate]:', mobileTriggerCheck);
+    console.log('     [QA-03/C2-00 Comprehensive Touch Target Quality Gate]:', mobileTriggerCheck);
     if (!mobileTriggerCheck.passed) {
-      throw new Error(`QA-03 Assertion Failed: Touch targets below 44x44px: ${JSON.stringify(mobileTriggerCheck)}`);
+      throw new Error(`QA-03/C2-00 Assertion Failed: Mobile controls below 44x44px: ${JSON.stringify(mobileTriggerCheck)}`);
     }
 
     await capture({
@@ -766,6 +834,107 @@ async function main() {
       scenario: 'UI-07/QA-06: Action Bottom Sheet trên Mobile mở từ thẻ hợp đồng với grab-bar, contextual header (tòa/phòng, mã HĐ, trạng thái), safe-area padding và touch targets 44px+',
     });
 
+    // Close action sheet
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await new Promise((r) => setTimeout(r, 400));
+
+    // C2-00 / P1: Testing Building Scope Bottom Sheet A11y & Focus Management
+    console.log('\n[C2-00/P1] Testing Building Scope Bottom Sheet Focus Trap & Escape...');
+    await cdp.eval(`(() => {
+      const scopeBtn = document.querySelector('[data-testid="console-mobile-building-scope"]');
+      if (scopeBtn) scopeBtn.click();
+    })()`);
+    await new Promise((r) => setTimeout(r, 400));
+
+    const scopeSheetCheck = await cdp.eval(`(() => {
+      const sheet = document.querySelector('[data-testid="console-mobile-scope-sheet"]');
+      if (!sheet) return { found: false, error: 'Scope sheet not found' };
+      const bodyOverflow = document.body.style.overflow;
+      const role = sheet.getAttribute('role');
+      const ariaModal = sheet.getAttribute('aria-modal');
+      const focusInside = sheet.contains(document.activeElement);
+      return {
+        found: true,
+        bodyLocked: bodyOverflow === 'hidden',
+        role,
+        ariaModal,
+        focusInside,
+      };
+    })()`);
+    console.log('     [Scope Sheet Verification]:', scopeSheetCheck);
+    if (!scopeSheetCheck.found || !scopeSheetCheck.bodyLocked || scopeSheetCheck.role !== 'dialog' || scopeSheetCheck.ariaModal !== 'true') {
+      throw new Error(`C2-00 Scope Sheet A11y Failed: ${JSON.stringify(scopeSheetCheck)}`);
+    }
+
+    // Escape closes scope sheet
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await new Promise((r) => setTimeout(r, 400));
+
+    const scopeClosedCheck = await cdp.eval(`(() => {
+      const sheet = document.querySelector('[data-testid="console-mobile-scope-sheet"]');
+      const bodyOverflow = document.body.style.overflow;
+      const activeTrigger = document.activeElement?.getAttribute('data-testid') === 'console-mobile-building-scope';
+      return {
+        sheetClosed: sheet === null,
+        scrollLockRestored: bodyOverflow !== 'hidden',
+        focusRestoredToTrigger: activeTrigger,
+      };
+    })()`);
+    console.log('     [Scope Sheet Escape & Restore]:', scopeClosedCheck);
+    if (!scopeClosedCheck.sheetClosed || !scopeClosedCheck.scrollLockRestored || !scopeClosedCheck.focusRestoredToTrigger) {
+      throw new Error(`C2-00 Scope Sheet Escape Failed: ${JSON.stringify(scopeClosedCheck)}`);
+    }
+
+    // C2-00 / P1: Testing Notifications Bottom Sheet A11y & Focus Management
+    console.log('\n[C2-00/P1] Testing Notifications Bottom Sheet Focus Trap & Escape...');
+    await cdp.eval(`(() => {
+      const notifBtn = document.querySelector('[data-testid="console-mobile-notifications-trigger"]');
+      if (notifBtn) notifBtn.click();
+    })()`);
+    await new Promise((r) => setTimeout(r, 400));
+
+    const notifSheetCheck = await cdp.eval(`(() => {
+      const sheet = document.querySelector('[data-testid="console-mobile-notifications-sheet"]');
+      if (!sheet) return { found: false, error: 'Notifications sheet not found' };
+      const bodyOverflow = document.body.style.overflow;
+      const role = sheet.getAttribute('role');
+      const ariaModal = sheet.getAttribute('aria-modal');
+      const focusInside = sheet.contains(document.activeElement);
+      return {
+        found: true,
+        bodyLocked: bodyOverflow === 'hidden',
+        role,
+        ariaModal,
+        focusInside,
+      };
+    })()`);
+    console.log('     [Notifications Sheet Verification]:', notifSheetCheck);
+    if (!notifSheetCheck.found || !notifSheetCheck.bodyLocked || notifSheetCheck.role !== 'dialog' || notifSheetCheck.ariaModal !== 'true') {
+      throw new Error(`C2-00 Notifications Sheet A11y Failed: ${JSON.stringify(notifSheetCheck)}`);
+    }
+
+    // Escape closes notifications sheet
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await new Promise((r) => setTimeout(r, 400));
+
+    const notifClosedCheck = await cdp.eval(`(() => {
+      const sheet = document.querySelector('[data-testid="console-mobile-notifications-sheet"]');
+      const bodyOverflow = document.body.style.overflow;
+      const activeTrigger = document.activeElement?.getAttribute('data-testid') === 'console-mobile-notifications-trigger';
+      return {
+        sheetClosed: sheet === null,
+        scrollLockRestored: bodyOverflow !== 'hidden',
+        focusRestoredToTrigger: activeTrigger,
+      };
+    })()`);
+    console.log('     [Notifications Sheet Escape & Restore]:', notifClosedCheck);
+    if (!notifClosedCheck.sheetClosed || !notifClosedCheck.scrollLockRestored || !notifClosedCheck.focusRestoredToTrigger) {
+      throw new Error(`C2-00 Notifications Sheet Escape Failed: ${JSON.stringify(notifClosedCheck)}`);
+    }
+
     cdp.close();
 
     // 6. Write Manifest & Checksums
@@ -775,7 +944,7 @@ async function main() {
     const checkLines = manifest.map((m) => `${m.sha256}  ${m.relativePath} (${m.sizeBytes} bytes, ${m.viewport})`);
     fs.writeFileSync(path.join(EVIDENCE_DIR, 'checksums-verified.txt'), checkLines.join('\n'));
 
-    // QA-07: Direct Disk Verification of Evidence Integrity
+    // QA-07: Direct Disk Verification of Evidence Integrity & Unmanaged File Detection
     console.log('\n[QA-07] Verifying Image Files on Disk against SHA-256 Manifest...');
     let qa07Passed = true;
     for (const item of manifest) {
@@ -791,6 +960,19 @@ async function main() {
       console.log(`  File: ${item.filename.padEnd(46)} | Disk Bytes: ${diskBuf.length} | SHA: ${diskSha.slice(0, 16)}... [${matches ? 'PASS' : 'FAIL'}]`);
       if (!matches) qa07Passed = false;
     }
+
+    // C2-00: Unmanaged files verification
+    const diskPngFiles = fs.readdirSync(path.join(EVIDENCE_DIR, 'screenshots'))
+      .filter((f) => f.endsWith('.png'));
+    const manifestFilenames = new Set(manifest.map((m) => m.filename));
+    const unmanagedFiles = diskPngFiles.filter((f) => !manifestFilenames.has(f));
+    if (unmanagedFiles.length > 0) {
+      console.error(`  [QA-07 FAIL] Found unmanaged PNG files in screenshots folder: ${JSON.stringify(unmanagedFiles)}`);
+      qa07Passed = false;
+    } else {
+      console.log(`  [QA-07] Zero unmanaged PNG files: 100% of ${diskPngFiles.length} files in screenshots folder are tracked in manifest. [PASS]`);
+    }
+
     if (!qa07Passed) {
       throw new Error('QA-07 Assertion Failed: Discrepancy detected between disk evidence and manifest');
     }

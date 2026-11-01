@@ -46,7 +46,7 @@ export const MobileDrawer: React.FC<MobileDrawerProps> = ({
           data-testid="console-mobile-drawer-close"
           onClick={onClose}
           aria-label="Đóng menu"
-          className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+          className="inline-flex h-11 w-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
         >
           <X className="h-5 w-5" />
         </button>
@@ -131,7 +131,7 @@ export const MobileDrawer: React.FC<MobileDrawerProps> = ({
           <button
             type="button"
             onClick={toggleTheme}
-            className="flex min-h-[42px] items-center justify-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200"
+            className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700"
           >
             {theme === 'light' ? (
               <Moon className="h-3.5 w-3.5" />
@@ -147,7 +147,7 @@ export const MobileDrawer: React.FC<MobileDrawerProps> = ({
               onClose();
               void logout();
             }}
-            className="flex min-h-[42px] items-center justify-center gap-1.5 rounded-xl border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/30 text-xs font-semibold text-red-600 dark:text-red-400"
+            className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/30 text-xs font-semibold text-red-600 dark:text-red-400 active:bg-red-100 dark:active:bg-red-900/50"
           >
             <LogOut className="h-3.5 w-3.5" />
             <span>Đăng xuất</span>

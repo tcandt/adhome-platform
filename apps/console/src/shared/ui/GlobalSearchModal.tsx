@@ -126,9 +126,10 @@ export const GlobalSearchModal: React.FC = () => {
           <button
             type="button"
             onClick={() => setIsSearchOpen(false)}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+            aria-label="Đóng tìm kiếm"
+            className="inline-flex h-11 w-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
           >
-            <X className="h-4 w-4" />
+            <X className="h-5 w-5" />
           </button>
         </div>
 
@@ -150,7 +151,7 @@ export const GlobalSearchModal: React.FC = () => {
                       openTenantsWorkspace(t.id);
                       setIsSearchOpen(false);
                     }}
-                    className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800/70"
+                    className="flex w-full min-h-[44px] items-center justify-between rounded-xl px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800/70"
                   >
                     <div>
                       <div className="text-xs font-bold text-slate-900 dark:text-white">
@@ -189,7 +190,7 @@ export const GlobalSearchModal: React.FC = () => {
                       setBuildingsSubTab('rooms');
                       setIsSearchOpen(false);
                     }}
-                    className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800/70"
+                    className="flex w-full min-h-[44px] items-center justify-between rounded-xl px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800/70"
                   >
                     <div>
                       <div className="text-xs font-bold text-slate-900 dark:text-white">
@@ -227,7 +228,7 @@ export const GlobalSearchModal: React.FC = () => {
                       setBuildingsSubTab('rooms');
                       setIsSearchOpen(false);
                     }}
-                    className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800/70"
+                    className="flex w-full min-h-[44px] items-center justify-between rounded-xl px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800/70"
                   >
                     <div>
                       <div className="text-xs font-bold text-slate-900 dark:text-white">
@@ -264,7 +265,7 @@ export const GlobalSearchModal: React.FC = () => {
                         setActiveModule(m.id);
                         setIsSearchOpen(false);
                       }}
-                      className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800/70"
+                      className="flex w-full min-h-[44px] items-center gap-2.5 rounded-xl px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800/70"
                     >
                       <Icon className="h-4 w-4 text-brand-primary dark:text-blue-400" />
                       <div>

@@ -1,0 +1,47 @@
+[
+  {
+    "filename": "baseline_desktop_header_sidebar_expanded.png",
+    "scenario": "Desktop Header & Sidebar trạng thái mở rộng (Expanded) với Scope tòa nhà, Search, Notifications và User profile",
+    "viewport": "1440x900",
+    "sizeBytes": 404274,
+    "sha256": "1d606165baed45b855841fcb230a36a0db67b878ea3a4e304f4f6ce0b5306b40",
+    "relativePath": "screenshots/baseline_desktop_header_sidebar_expanded.png",
+    "capturedAt": "2026-11-01T00:56:38.398Z"
+  },
+  {
+    "filename": "baseline_desktop_header_sidebar_collapsed.png",
+    "scenario": "Desktop Header & Sidebar trạng thái thu gọn (Collapsed, Ctrl+B) và nút thu phóng sidebar hiện trạng",
+    "viewport": "1440x900",
+    "sizeBytes": 331501,
+    "sha256": "d66a97f50b20bb492fdee1e758d2c310e1f4566f3793568288209044c9838c12",
+    "relativePath": "screenshots/baseline_desktop_header_sidebar_collapsed.png",
+    "capturedAt": "2026-11-01T00:56:39.607Z"
+  },
+  {
+    "filename": "baseline_desktop_contracts_table.png",
+    "scenario": "Desktop Phân hệ Hợp đồng: Bảng danh sách hợp đồng hiện trạng, mã hợp đồng dài, nút hành động và các cột dữ liệu",
+    "viewport": "1440x900",
+    "sizeBytes": 492115,
+    "sha256": "d009c0b1980ee15860e8fdaa4a05054bac294d3ee06ac54cfc748338c54aeac9",
+    "relativePath": "screenshots/baseline_desktop_contracts_table.png",
+    "capturedAt": "2026-11-01T00:56:48.000Z"
+  },
+  {
+    "filename": "baseline_mobile_header_nav.png",
+    "scenario": "Giao diện Mobile: Header di động, chuyển đổi chế độ xem, điều hướng dưới chân trang (Bottom Navigation)",
+    "viewport": "390x844",
+    "sizeBytes": 136215,
+    "sha256": "466bfa5fb503bfd7c37077514c26092ccbfea5c8de6f31249b7bd8d2a721fd2f",
+    "relativePath": "screenshots/baseline_mobile_header_nav.png",
+    "capturedAt": "2026-11-01T00:56:49.948Z"
+  },
+  {
+    "filename": "baseline_mobile_contracts_cards.png",
+    "scenario": "Giao diện Mobile: Danh sách hợp đồng dạng thẻ (Mobile Cards), định dạng tiền tệ và các nút hành động hiện trạng",
+    "viewport": "390x844",
+    "sizeBytes": 143441,
+    "sha256": "7da6e621aa032e055e8e6c5718925991a86b874dfc7ccf9f61a5dc08f9e0f4a0",
+    "relativePath": "screenshots/baseline_mobile_contracts_cards.png",
+    "capturedAt": "2026-11-01T00:56:51.895Z"
+  }
+]

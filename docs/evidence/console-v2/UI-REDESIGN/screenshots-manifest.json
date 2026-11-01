@@ -6,7 +6,7 @@
     "sizeBytes": 407060,
     "sha256": "7aa90e22ef34bc7238a58bbf2997db12040bf563510b09b1556bf84e03033d41",
     "relativePath": "screenshots/redesign_desktop_1440_header_expanded.png",
-    "capturedAt": "2026-11-01T03:25:18.119Z"
+    "capturedAt": "2026-11-01T04:59:13.535Z"
   },
   {
     "filename": "redesign_desktop_1440_header_collapsed.png",
@@ -15,7 +15,7 @@
     "sizeBytes": 334092,
     "sha256": "f69f41bd30b4d0054cb3ed6c6abed6d0ca85e3b9a0a6989049ab4aa2c7d14750",
     "relativePath": "screenshots/redesign_desktop_1440_header_collapsed.png",
-    "capturedAt": "2026-11-01T03:25:19.468Z"
+    "capturedAt": "2026-11-01T04:59:14.876Z"
   },
   {
     "filename": "redesign_desktop_1280_header_contracts.png",
@@ -24,7 +24,7 @@
     "sizeBytes": 348720,
     "sha256": "63a2ad057311b8942e854d651cec9c6ad20566edb4093dec81405072718810d9",
     "relativePath": "screenshots/redesign_desktop_1280_header_contracts.png",
-    "capturedAt": "2026-11-01T03:25:20.797Z"
+    "capturedAt": "2026-11-01T04:59:16.228Z"
   },
   {
     "filename": "redesign_desktop_1920_header_overview.png",
@@ -33,34 +33,43 @@
     "sizeBytes": 447942,
     "sha256": "8a725f482116708317e5b6661fd649974b5424efdf3e919479faa6fdfbf60439",
     "relativePath": "screenshots/redesign_desktop_1920_header_overview.png",
-    "capturedAt": "2026-11-01T03:25:21.622Z"
+    "capturedAt": "2026-11-01T04:59:17.035Z"
+  },
+  {
+    "filename": "redesign_desktop_1280_contracts_table_polished.png",
+    "scenario": "QA-04: Bảng hợp đồng Desktop tại độ phân giải 1280x720 khi Sidebar mở rộng: 6 cột cân đối, không tràn ngang, cột Thao tác sticky-right luôn nhìn thấy",
+    "viewport": "1280x720",
+    "sizeBytes": 327589,
+    "sha256": "b7654819f1c0aaccf817e6ecee7a5e4bebdad17d1da9cc136e8a266b2ef9f4a8",
+    "relativePath": "screenshots/redesign_desktop_1280_contracts_table_polished.png",
+    "capturedAt": "2026-11-01T04:59:22.445Z"
   },
   {
     "filename": "redesign_desktop_contracts_table_polished.png",
-    "scenario": "UI-04/05: Bảng danh sách hợp đồng Desktop: Mã HĐ ngắn (HD-WF-010A, HD-S2R-105), badge \"Từ sổ cũ\", định dạng tiền tệ nowrap, điện nước chuẩn hóa, cột Thao tác sticky-right",
+    "scenario": "UI-04/05/FIN-UI-03: Bảng danh sách hợp đồng Desktop: Mã HĐ ngắn (HD-WF-010A, HD-S2R-105), badge \"Từ sổ cũ\", định dạng tiền tệ nowrap, phân rã cọc cam kết và thực thu chuẩn hóa, cột Thao tác sticky-right",
     "viewport": "1440x900",
-    "sizeBytes": 484040,
-    "sha256": "8fd353bf04a23609dcac020ee6fa3e23e7043586ddc621424a988ea2fc779869",
+    "sizeBytes": 422901,
+    "sha256": "0aa937289518d2b11f22e03243504346107ff38eda1a6eb0003b2531519fa7c4",
     "relativePath": "screenshots/redesign_desktop_contracts_table_polished.png",
-    "capturedAt": "2026-11-01T03:25:23.224Z"
+    "capturedAt": "2026-11-01T04:59:23.632Z"
   },
   {
     "filename": "redesign_desktop_contracts_menu_open.png",
     "scenario": "UI-06: Menu ba chấm mở bằng Portal tại dòng hợp đồng, hiển thị đầy đủ trong viewport, không bị cắt bởi table container",
     "viewport": "1440x900",
-    "sizeBytes": 500011,
-    "sha256": "32bc98b4660a46a73c0f65de35308a94a3627f8840d79f743a693a510d35f41a",
+    "sizeBytes": 439917,
+    "sha256": "b574708639628790b70c2e8c1494f2844cc0c917f3e6c4a4c504be42a967d637",
     "relativePath": "screenshots/redesign_desktop_contracts_menu_open.png",
-    "capturedAt": "2026-11-01T03:25:24.802Z"
+    "capturedAt": "2026-11-01T04:59:25.209Z"
   },
   {
     "filename": "redesign_mobile_390x844_contracts_cards.png",
-    "scenario": "UI-07: Thẻ hợp đồng Mobile (390x844): Giá thuê nowrap không bị xuống dòng, mã HĐ ngắn, bố cục 2 cột gọn gàng, nút Bàn giao 44px+",
+    "scenario": "UI-07/FIN-UI-03: Thẻ hợp đồng Mobile (390x844): Giá thuê nowrap không bị xuống dòng, mã HĐ ngắn, cọc thực thu chuẩn hóa, nút Bàn giao 44px+",
     "viewport": "390x844",
-    "sizeBytes": 134509,
-    "sha256": "6fc654dbc31ad8d858d6f9125987d6c52f938ba217568bd0346589267ddf0e22",
+    "sizeBytes": 134606,
+    "sha256": "f23e98b06bb2377ccd28b97a38dca181cf14cddd5972e5af060cd01d66a977de",
     "relativePath": "screenshots/redesign_mobile_390x844_contracts_cards.png",
-    "capturedAt": "2026-11-01T03:25:26.512Z"
+    "capturedAt": "2026-11-01T04:59:26.927Z"
   },
   {
     "filename": "redesign_mobile_390x844_actions_bottom_sheet.png",
@@ -69,6 +78,6 @@
     "sizeBytes": 103745,
     "sha256": "9a7bd56130f257769b0a22d1a9774a8e224def61b18da3addc9b3e5031feede1",
     "relativePath": "screenshots/redesign_mobile_390x844_actions_bottom_sheet.png",
-    "capturedAt": "2026-11-01T03:25:27.845Z"
+    "capturedAt": "2026-11-01T04:59:28.241Z"
   }
 ]

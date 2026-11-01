@@ -55,6 +55,9 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({
     typeof window !== 'undefined' ? window.innerWidth < 768 : false
   );
 
+  const triggerButtonRef = React.useRef<HTMLButtonElement | null>(null);
+  const sheetRef = React.useRef<HTMLDivElement | null>(null);
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const handleResize = () => {
@@ -64,6 +67,66 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  // UI-07-FIX-03: Mobile Bottom Sheet Focus Trap, Keyboard Escape, Background Scroll Lock & Focus Restoration
+  useEffect(() => {
+    if (!isOpen || !isMobile) return;
+
+    // 1. Lock background body scrolling
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    // 2. Auto-focus first interactive element inside sheet
+    const timer = setTimeout(() => {
+      if (sheetRef.current) {
+        const focusables = sheetRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        );
+        if (focusables.length > 0) {
+          focusables[0].focus();
+        }
+      }
+    }, 50);
+
+    // 3. Focus trap and Escape listener
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setIsOpen(false);
+        return;
+      }
+
+      if (e.key === 'Tab' && sheetRef.current) {
+        const focusables = Array.from(
+          sheetRef.current.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+          )
+        );
+        if (focusables.length === 0) return;
+
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      clearTimeout(timer);
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+      // Restore focus to trigger button
+      triggerButtonRef.current?.focus();
+    };
+  }, [isOpen, isMobile]);
 
   const visibleItems = items.filter((item) => !item.hidden);
 
@@ -82,6 +145,14 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({
     ],
   });
 
+  const setTriggerRef = React.useCallback(
+    (node: HTMLButtonElement | null) => {
+      triggerButtonRef.current = node;
+      refs.setReference(node);
+    },
+    [refs]
+  );
+
   const dismiss = useDismiss(context, { outsidePress: true, escapeKey: true });
   const role = useRole(context, { role: 'menu' });
   const { getReferenceProps, getFloatingProps } = useInteractions([dismiss, role]);
@@ -97,7 +168,7 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({
       {/* Trigger Button: >= 40px on Desktop, >= 44px on Mobile */}
       <button
         type="button"
-        ref={refs.setReference}
+        ref={setTriggerRef}
         data-testid="action-menu-trigger"
         aria-label={ariaLabel}
         aria-expanded={isOpen}
@@ -118,7 +189,7 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({
       {isOpen && (
         <FloatingPortal id="adhome-action-menu-portal">
           {isMobile ? (
-            /* Mobile View: Contextual Bottom Action Sheet */
+            /* Mobile View: Contextual Bottom Action Sheet (UI-07-FIX-02 / UI-07-FIX-03) */
             <div
               data-testid="action-menu-bottom-sheet-container"
               className="fixed inset-0 z-[100] flex flex-col justify-end"
@@ -133,24 +204,30 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({
                 }}
               />
 
-              {/* Bottom Sheet Modal with Context Header */}
+              {/* Bottom Sheet Modal with Context Header & Accessibility */}
               <div
+                ref={sheetRef}
                 data-testid="action-menu-bottom-sheet"
-                className="relative z-10 w-full rounded-t-2xl bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 shadow-2xl p-4 pb-8 max-h-[85vh] overflow-y-auto animate-in slide-in-from-bottom duration-200"
+                className="relative z-10 w-full rounded-t-2xl bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 shadow-2xl p-4 pb-8 max-h-[85vh] overflow-y-auto animate-in slide-in-from-bottom duration-200 focus:outline-none"
                 onClick={(e) => e.stopPropagation()}
                 role="dialog"
                 aria-modal="true"
-                aria-label={contextTitle || ariaLabel}
+                aria-labelledby="action-menu-sheet-title"
+                aria-describedby={contextSubtitle ? 'action-menu-sheet-subtitle' : undefined}
+                tabIndex={-1}
               >
                 {/* Mobile Grab Bar */}
-                <div className="w-12 h-1.5 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto mb-3" />
+                <div className="w-12 h-1.5 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto mb-3" aria-hidden="true" />
 
                 {/* Contextual Header (UI-07-FIX-02) */}
                 <div className="px-2 pb-2.5 mb-2.5 border-b border-slate-100 dark:border-slate-800">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                    <h3
+                      id="action-menu-sheet-title"
+                      className="text-sm font-bold text-slate-900 dark:text-white truncate"
+                    >
                       {contextTitle || ariaLabel}
-                    </span>
+                    </h3>
                     {contextBadge && (
                       <span className="shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700">
                         {contextBadge}
@@ -158,7 +235,10 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({
                     )}
                   </div>
                   {contextSubtitle && (
-                    <div className="text-xs font-mono text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                    <div
+                      id="action-menu-sheet-subtitle"
+                      className="text-xs font-mono text-slate-500 dark:text-slate-400 truncate mt-0.5"
+                    >
                       {contextSubtitle}
                     </div>
                   )}

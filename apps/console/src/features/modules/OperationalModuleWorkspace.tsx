@@ -1906,14 +1906,20 @@ export const OperationalModuleWorkspace: React.FC<
                             </div>
                             <div className="flex items-center justify-between gap-2 text-[10.5px]">
                               <span className="text-slate-500 shrink-0">Thực thu:</span>
-                              <span className="font-bold text-emerald-600 dark:text-emerald-400 tabular-nums whitespace-nowrap">
-                                {(c.collectedDepositVnd ?? c.depositVnd).toLocaleString('vi-VN')} đ
-                                {c.remainingDepositVnd && c.remainingDepositVnd > 0 ? (
-                                  <span className="text-rose-500 font-bold ml-1 whitespace-nowrap">(thiếu {c.remainingDepositVnd.toLocaleString('vi-VN')} đ)</span>
-                                ) : (
-                                  <span className="text-emerald-600 font-semibold ml-1 whitespace-nowrap">(đủ)</span>
-                                )}
-                              </span>
+                              {c.remainingDepositVnd && c.remainingDepositVnd > 0 ? (
+                                <span className="tabular-nums whitespace-nowrap">
+                                  <span className="font-medium text-slate-700 dark:text-slate-300">
+                                    {(c.collectedDepositVnd ?? 0).toLocaleString('vi-VN')} đ
+                                  </span>
+                                  <span className="text-rose-600 dark:text-rose-400 font-bold ml-1">
+                                    (thiếu {c.remainingDepositVnd.toLocaleString('vi-VN')} đ)
+                                  </span>
+                                </span>
+                              ) : (
+                                <span className="font-bold text-emerald-600 dark:text-emerald-400 tabular-nums whitespace-nowrap">
+                                  {(c.collectedDepositVnd ?? c.depositVnd).toLocaleString('vi-VN')} đ (đủ)
+                                </span>
+                              )}
                             </div>
                             {c.status === 'DRAFT' && (
                               <button
@@ -2003,16 +2009,22 @@ export const OperationalModuleWorkspace: React.FC<
                                 {c.monthlyRentVnd.toLocaleString('vi-VN')} đ/tháng
                               </div>
                               <div className="text-[11px] text-slate-500">
-                                Cọc: {c.depositVnd.toLocaleString('vi-VN')} đ
+                                <div>Cọc cam kết: {c.depositVnd.toLocaleString('vi-VN')} đ</div>
                                 {c.collectedDepositVnd !== undefined && (
-                                  <span className="block text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold whitespace-nowrap">
-                                    Đã thu: {c.collectedDepositVnd.toLocaleString('vi-VN')} đ
-                                    {c.remainingDepositVnd && c.remainingDepositVnd > 0 ? (
-                                      <span className="text-rose-500 font-bold whitespace-nowrap"> (thiếu {c.remainingDepositVnd.toLocaleString('vi-VN')} đ)</span>
-                                    ) : (
-                                      <span className="whitespace-nowrap"> (đủ)</span>
-                                    )}
-                                  </span>
+                                  c.remainingDepositVnd && c.remainingDepositVnd > 0 ? (
+                                    <div className="text-[10px] whitespace-nowrap mt-0.5">
+                                      <span className="text-slate-600 dark:text-slate-400">
+                                        Đã thu: {c.collectedDepositVnd.toLocaleString('vi-VN')} đ
+                                      </span>
+                                      <span className="text-rose-600 dark:text-rose-400 font-bold ml-1">
+                                        (thiếu {c.remainingDepositVnd.toLocaleString('vi-VN')} đ)
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold whitespace-nowrap mt-0.5">
+                                      Đã thu đủ: {c.collectedDepositVnd.toLocaleString('vi-VN')} đ
+                                    </div>
+                                  )
                                 )}
                               </div>
                             </td>

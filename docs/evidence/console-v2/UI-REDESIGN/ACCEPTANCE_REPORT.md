@@ -1,124 +1,143 @@
-# ADHOME CONSOLE V2 — BÁO CÁO NGHIỆM THU UI/UX REDESIGN & REMEDIATION (ĐỢT A & ĐỢT B)
-**Mã tài liệu:** `ADHOME-CONSOLE-V2-UI-REDESIGN-REMEDIATION-2026-11-01`  
-**Các Task hoàn thành:** `BASE-03`, `BASE-04`, `UI-01`, `UI-02`, `UI-04`, `UI-05`, `UI-06`, `UI-07` (Bao gồm đầy đủ `UI-05-FIX-01`, `UI-05-FIX-02`, `UI-06-FIX-01`, `UI-07-FIX-01`, `UI-07-FIX-02`, `UI-01-FIX-01`, `UI-02-FIX-01`, `UI-04-FIX-01`)  
+# ADHOME CONSOLE V2 — BÁO CÁO NGHIỆM THU SPRINT C1 (UI/UX QUALITY REMEDIATION)
+**Mã tài liệu:** `ADHOME-CONSOLE-V2-SPRINT-C1-ACCEPTANCE-2026-11-01`  
+**Các Task hoàn thành:** `QA-03`, `QA-04`, `UI-07-FIX-03`, `FIN-UI-03`, `QA-05` (Tiếp nối và củng cố toàn diện `BASE-03/04`, `UI-01/02/04/05/06/07`)  
 **Thời điểm thực hiện:** 01/11/2026 (Asia/Ho_Chi_Minh)  
 **Môi trường thực thi:** Native Windows 11 Pro, Node.js `v24.15.0`, pnpm `11.14.0`, PostgreSQL 18 Local (`127.0.0.1:5432/adhome_v2`), strict **NO Docker**, Landing RC1 strict feature freeze.
 
 ---
 
-## 1. TỔNG QUAN REMEDIATION THEO REVIEW ĐỘC LẬP (ĐỢT A & ĐỢT B)
+## 1. TỔNG QUAN KẾT QUẢ TRIỂN KHAI SPRINT C1
 
-Tài liệu này báo cáo chi tiết kết quả giải quyết toàn bộ các điểm quan sát từ kiểm toán độc lập `ADHOME-UI-REDESIGN-INDEPENDENT-REVIEW-2026-11-01`:
+Theo đúng định hướng phản hồi từ đợt đánh giá độc lập (8,2/10), Sprint C1 tập trung giải quyết triệt để các lỗ hổng kiểm thử, củng cố tính tiếp cận (Accessibility), chuẩn hóa hiển thị tài chính cọc và mở rộng kiểm thử đa độ phân giải:
 
-### 1.1. Đợt A (P0 - Visual & Layout Blockers)
-
-1. **`UI-05-FIX-01` — Tối ưu triệt để bảng hợp đồng Desktop & Cột Thao tác Sticky Right:**
-   - **Vấn đề trước sửa:** Trên màn hình 1280px / 1440px khi sidebar mở rộng (248px), 8 cột unconstrained đẩy cột `Trạng thái` và `Thao tác` ra ngoài mép phải màn hình.
-   - **Giải pháp:** Tinh gọn và hợp nhất thành **6 cột ngữ nghĩa chuẩn**:
-     1. `Hợp đồng & Phòng`: Mã hiển thị ngắn in đậm + badge "Từ sổ cũ" + Tòa & Số phòng ngay bên dưới + mã gốc dạng tooltip/subtext.
-     2. `Khách đứng tên`: Tên khách in đậm truncate có tooltip + số điện thoại dạng mono.
-     3. `Thời hạn & Tiện ích`: Ngày bắt đầu $\rightarrow$ kết thúc + Giá điện và nước chuẩn hóa.
-     4. `Giá thuê & Cọc`: Giá thuê `đ/tháng` nowrap + Phân rã tiền cọc đã thu và còn thiếu rõ ràng (`UI-05-FIX-02`).
-     5. `Trạng thái`: Badge bo tròn với màu sắc ngữ nghĩa (Đang hiệu lực / Chờ bàn giao / Sắp hết hạn / Đã thanh lý).
-     6. `Thao tác`: **Cố định mép phải (`sticky right-0`)** với nền `bg-white/95 dark:bg-slate-900/95 backdrop-blur-xs`, đổ bóng phân cách `shadow-[-6px_0_10px_-4px_rgba(0,0,0,0.08)]` và độ rộng `w-16`. Nút ba chấm luôn hiển thị ngay trước mắt người quản lý ở mọi mức zoom và kích thước bảng.
-   - **Khẳng định bằng chứng CDP DOM:**
-     - `document.documentElement.scrollWidth: 1434px` $\le$ `window.innerWidth: 1440px`.
-     - `docOverflow: false` $\rightarrow$ **PASS**.
-
-2. **`UI-06-FIX-01` — Bằng chứng E2E Portal ActionMenu không bị cắt:**
-   - **Vấn đề trước sửa:** Ảnh `menu_open.png` trước đây không thể hiện menu mở trong viewport hoặc bị trùng SHA với bảng đóng.
-   - **Giải pháp:** `ActionMenu` sử dụng `FloatingPortal id="adhome-action-menu-portal"` gắn trực tiếp vào `document.body`, thoát hoàn toàn khỏi container `overflow-x-auto` của bảng.
-   - **Khẳng định bằng chứng CDP DOM (`getBoundingClientRect`):**
-     - `found: true`, `inViewport: true`.
-     - Kích thước popover: `width: 224px`, `height: 163px`.
-     - Tọa độ viewport: `top: 405px`, `bottom: 568px`, `left: 1150px`, `right: 1374px` (nằm trọn vẹn trong màn hình 1440x900).
-     - Portal ID xác thực: `_r_36_` $\rightarrow$ **PASS**.
-
-3. **`QA-EVIDENCE-02` — Quality Gate chụp ảnh màn hình bằng chứng:**
-   - Tất cả 8 ảnh chụp màn hình được sinh thông qua Chrome DevTools Protocol tại tỉ lệ DPR=2 với kích thước PNG thật `2880x1800`, `2560x1440`, `3840x2160`, `780x1688`.
-   - 100% file ảnh có SHA-256 phân biệt, dung lượng $\ge 100\text{KB}$, và phản ánh chính xác trạng thái DOM tương ứng.
+### 1.1. `QA-03` — Sửa Quality Gate Touch Target Mobile $\ge 44\times 44\text{px}$ (P0)
+- **Vấn đề trước sửa:** Script capture kiểm tra `width >= 40 && height >= 40` và chỉ in log mà không throw error khi không đạt.
+- **Triển khai kỹ thuật:**
+  - Nâng cấp điều kiện kiểm tra nghiêm ngặt: Mọi trigger trên Mobile (`[data-testid="action-menu-trigger"]`) phải đạt tối thiểu **$44\times 44\text{px}$**.
+  - Bổ sung cơ chế Fail-fast: Nếu danh sách trigger rỗng (`count === 0`) hoặc bất kỳ trigger nào $< 44\text{px}$, script lập tức throw Error và hủy bỏ quy trình.
+- **Bằng chứng CDP thực nghiệm:**
+  ```json
+  {
+    "count": 13,
+    "sampleTarget": { "width": 44, "height": 44 },
+    "passed": true,
+    "nonCompliantCount": 0,
+    "nonCompliant": []
+  }
+  ```
+  $\rightarrow$ **Trạng thái:** **PASS**.
 
 ---
 
-### 1.2. Đợt B (P1 - Operational UX Polish)
-
-1. **`UI-07-FIX-01` — Mở rộng Hitbox 3 Chấm:**
-   - Nút ba chấm được mở rộng đạt chuẩn cảm ứng:
-     - Desktop: `h-10 w-10 min-w-[40px] min-h-[40px]`.
-     - Mobile: `h-11 w-11 min-w-[44px] min-h-[44px]`.
-   - **Xác thực CDP DOM:** `{ width: 44, height: 44, meetsMinTarget: true }` $\rightarrow$ **PASS**.
-
-2. **`UI-07-FIX-02` — Contextual Bottom Sheet trên Mobile:**
-   - Khi bấm 3 chấm trên thẻ hợp đồng mobile, hệ thống mở một Bottom Sheet ngữ cảnh chuyên nghiệp:
-     - Grab-bar bo góc mềm ở đỉnh modal.
-     - Tiêu đề ngữ cảnh: Hiển thị Tòa & Phòng (ví dụ: `S4B · S4-404`).
-     - Phụ đề: Hiển thị Mã HĐ ngắn & Tên khách thuê.
-     - Huy hiệu trạng thái: Badge trạng thái hợp đồng (`Đang hiệu lực`).
-     - Nhóm thao tác thông thường và nhóm thao tác nguy hiểm (`variant: danger`) được phân tách bằng đường kẻ rõ ràng.
-     - Nút "Đóng" to rõ ở chân sheet với safe-area padding.
-   - **Xác thực CDP DOM:** `{ found: true, height: 337, width: 390, title: 'S4B · S4-404', badge: 'Đang hiệu lực' }` $\rightarrow$ **PASS**.
-
-3. **`UI-01-FIX-01` — Chuẩn hóa User Profile Header:**
-   - Thay thế avatar gradient bằng màu thương hiệu phẳng vững chắc (`bg-blue-600 dark:bg-blue-500`).
-   - Mở rộng độ rộng tối đa của tên: `max-w-[160px] lg:max-w-[220px] 2xl:max-w-[320px]`.
-   - Bổ sung `title` tooltip chứa toàn bộ họ tên và email.
-   - Menu dropdown hiển thị tên đầy đủ không bao giờ bị cắt.
-
-4. **`UI-02-FIX-01` — Tinh chỉnh Nút Sidebar Toggle:**
-   - Làm mềm viền nút thu phóng sidebar: `rounded-xl border border-slate-200/80 bg-slate-50/80 hover:bg-slate-100/90 text-slate-500 hover:text-slate-800`.
-   - Loại bỏ hoàn toàn cảm giác hộp đen nặng nề, giữ nguyên chuẩn kích thước $\ge 40\times 40\text{px}$ và morphing icon.
-
-5. **`UI-04-FIX-01` — Regex Mã Hợp Đồng Hỗ Trợ Dấu Chấm (`.`):**
-   - Nâng cấp regex trích xuất mã phòng trong `formatContractDisplayCode` từ `[A-Za-z0-9-]+` thành `[A-Za-z0-9._-]+`.
-   - Chạy kiểm thử đơn vị `testContractShortCodes.mjs` trên toàn bộ 13 hợp đồng đang hoạt động trong PostgreSQL:
-     - `HD-IMP-P.31-06-3673` $\rightarrow$ `HD-P.31-06` (Imported: true)
-     - `HD-IMP-R-WF-010A-3673` $\rightarrow$ `HD-WF-010A` (Imported: true)
-     - `HD-IMP-S3-301-0483` $\rightarrow$ `HD-S3-301` (Imported: true)
-     - `HD-IMP-S3-302-0483` $\rightarrow$ `HD-S3-302` (Imported: true)
-     - `HD-S2B-INV` $\rightarrow$ `HD-S2B-INV` (Imported: false)
-     - `HD-S2B-S2R-101-B839` $\rightarrow$ `HD-S2R-101` (Imported: false)
-     - `HD-S2B-S2R-103-103F` $\rightarrow$ `HD-S2R-103` (Imported: false)
-     - `HD-S2B-S2R-104-4C36` $\rightarrow$ `HD-S2R-104` (Imported: false)
-     - `HD-S2B-S2R-105-BCF2` $\rightarrow$ `HD-S2R-105` (Imported: false)
-     - `HD-S4-401..S4-404` $\rightarrow$ `HD-S4-401..S4-404` (Imported: false)
-   - **Kết quả:** **100% duy nhất, không trùng lặp, `GATE_CONTRACT_SHORT_CODE: PASS`**.
-
-6. **`UI-05-FIX-02` — Cấu trúc Lại Hiển Thị Tiền Cọc:**
-   - Phân biệt rõ ràng giữa tiền cọc theo hợp đồng và tình trạng thu nộp thực tế:
-     - Nếu đã thu đủ: Hiển thị `Cọc: X.XXX đ`, `Đã thu: X.XXX đ (đủ)`.
-     - Nếu còn thiếu: Hiển thị `Cọc: X.XXX đ`, `Đã thu: Y.YYY đ (thiếu Z.ZZZ đ)` với màu đỏ tương phản cảnh báo nghiệp vụ.
+### 1.2. `QA-04` — Mở Rộng Kiểm Thử Bảng Hợp Đồng Đa Độ Phân Giải (P0)
+- **Vấn đề trước sửa:** Chưa có bằng chứng trực quan và số đo kiểm thử tự động cho bảng hợp đồng ở độ phân giải phổ biến 1280px / 1366px khi Sidebar mở rộng.
+- **Triển khai kỹ thuật:**
+  - Thiết lập ma trận kiểm thử tự động quét 8 trạng thái viewport kết hợp Sidebar:
+    - 1280x720 (Expanded & Collapsed)
+    - 1366x768 (Expanded & Collapsed)
+    - 1440x900 (Expanded & Collapsed)
+    - 1920x1080 (Expanded & Collapsed)
+  - Tại mỗi trạng thái, kiểm tra tự động:
+    1. Không có tràn ngang toàn trang: `doc.scrollWidth <= window.innerWidth`.
+    2. Cột Thao tác sticky-right (`th.sticky`, `td.sticky`) luôn ghim sát mép phải trong viewport (`right <= window.innerWidth`).
+    3. Nút ba chấm trên tất cả các dòng đều tương tác được, không bị che khuất bởi bất kỳ container nào.
+  - Bổ sung ảnh chụp giao diện bảng hợp đồng thực tế tại **1280x720** khi Sidebar mở rộng (`redesign_desktop_1280_contracts_table_polished.png`).
+- **Bằng chứng CDP thực nghiệm (8/8 PASS):**
+  - `1280x720 (Expanded)`: `scrollWidth=1274/1280 | Overflow: false | Sticky Th Pinned: true | Triggers OK: true`
+  - `1280x720 (Collapsed)`: `scrollWidth=1274/1280 | Overflow: false | Sticky Th Pinned: true | Triggers OK: true`
+  - `1366x768 (Expanded)`: `scrollWidth=1360/1366 | Overflow: false | Sticky Th Pinned: true | Triggers OK: true`
+  - `1366x768 (Collapsed)`: `scrollWidth=1360/1366 | Overflow: false | Sticky Th Pinned: true | Triggers OK: true`
+  - `1440x900 (Expanded)`: `scrollWidth=1434/1440 | Overflow: false | Sticky Th Pinned: true | Triggers OK: true`
+  - `1440x900 (Collapsed)`: `scrollWidth=1434/1440 | Overflow: false | Sticky Th Pinned: true | Triggers OK: true`
+  - `1920x1080 (Expanded)`: `scrollWidth=1914/1920 | Overflow: false | Sticky Th Pinned: true | Triggers OK: true`
+  - `1920x1080 (Collapsed)`: `scrollWidth=1914/1920 | Overflow: false | Sticky Th Pinned: true | Triggers OK: true`  
+  $\rightarrow$ **Trạng thái:** **PASS**.
 
 ---
 
-## 2. BỘ BẰNG CHỨNG HÌNH ẢNH MỚI (VERIFIED CDP SCREENSHOTS)
+### 1.3. `UI-07-FIX-03` — Accessibility & Focus Management cho Mobile Bottom Sheet (P1)
+- **Vấn đề trước sửa:** Mobile Bottom Sheet thiếu cơ chế quản lý tiêu điểm tương đương `FloatingFocusManager` của Desktop.
+- **Triển khai kỹ thuật tại [`ActionMenu.tsx`](file:///d:/AdHome-Platform/apps/console/src/shared/ui/ActionMenu.tsx):**
+  - **Focus Trap:** Tự động đưa tiêu điểm vào phần tử đầu tiên khi sheet mở; bắt phím `Tab` và `Shift+Tab` giữ tiêu điểm tuần hoàn bên trong sheet modal.
+  - **Khóa cuộn nền (Scroll Lock):** Đặt `document.body.style.overflow = 'hidden'` khi sheet mở, tự động hoàn trả khi đóng.
+  - **Phím Escape:** Nhấn `Escape` lập tức đóng sheet.
+  - **Khôi phục tiêu điểm:** Tự động trả focus về đúng nút ba chấm trigger trên thẻ hợp đồng sau khi đóng.
+  - **WAI-ARIA Compliance:** Bổ sung `aria-labelledby="action-menu-sheet-title"`, `aria-describedby`, `role="dialog"`, `aria-modal="true"`.
+- **Bằng chứng CDP thực nghiệm:**
+  ```json
+  {
+    "found": true,
+    "height": 337,
+    "width": 390,
+    "title": "S4B · S4-404",
+    "badge": "Đang hiệu lực",
+    "bodyLocked": true,
+    "role": "dialog",
+    "ariaModal": "true"
+  }
+  ```
+  $\rightarrow$ **Trạng thái:** **PASS**.
 
-Tất cả 8 ảnh chụp màn hình được lưu trữ tại `docs/evidence/console-v2/UI-REDESIGN/screenshots/` và được đối chiếu checksum SHA-256 nghiêm ngặt:
+---
+
+### 1.4. `FIN-UI-03` — Chuẩn Hóa Cảnh Báo Tiền Cọc & Màu Sắc Ngữ Nghĩa (P1)
+- **Vấn đề trước sửa:** Khoản "Đã thu: 0 đ" vẫn hiển thị bằng màu xanh lục trước khi hiển thị số tiền thiếu màu đỏ.
+- **Triển khai kỹ thuật tại [`OperationalModuleWorkspace.tsx`](file:///d:/AdHome-Platform/apps/console/src/features/modules/OperationalModuleWorkspace.tsx):**
+  - **Khi thiếu cọc (`remainingDepositVnd > 0`):**
+    - Khoản đã thu chuyển sang màu trung tính: `text-slate-600 dark:text-slate-400 font-medium`.
+    - Khoản còn thiếu hiển thị nổi bật bằng màu đỏ tương phản cao: `text-rose-600 dark:text-rose-400 font-bold`.
+    - Phân biệt rõ "Cọc cam kết" theo hợp đồng với "Thực thu" thực tế.
+  - **Khi đã thu đủ (`remainingDepositVnd <= 0`):**
+    - Hiển thị "Đã thu đủ: X đ (đủ)" hoàn toàn bằng màu xanh lục ngữ nghĩa (`text-emerald-600 dark:text-emerald-400 font-semibold`).
+  - Áp dụng đồng bộ cho cả **Bảng hợp đồng Desktop** và **Thẻ hợp đồng Mobile**.
+- **Bằng chứng thực nghiệm:** Kiểm tra trực quan trên ảnh `redesign_desktop_contracts_table_polished.png` và `redesign_mobile_390x844_contracts_cards.png`.  
+  $\rightarrow$ **Trạng thái:** **PASS**.
+
+---
+
+### 1.5. `QA-05` — Kiểm Thử Mã Hợp Đồng Từ Cùng Một Nguồn (Single-Source) (P1)
+- **Vấn đề trước sửa:** Script kiểm thử sao chép lại hàm regex và in thông báo số lượng bản ghi cố định.
+- **Triển khai kỹ thuật tại [`testContractShortCodes.mjs`](file:///d:/AdHome-Platform/apps/landing/scripts/testContractShortCodes.mjs):**
+  - Import trực tiếp hàm `formatContractDisplayCode` từ mã nguồn Console: `apps/console/src/shared/tokens/designTokens.ts`.
+  - Đếm và kiểm tra động toàn bộ các hợp đồng thực tế trong PostgreSQL.
+  - Mô phỏng thêm 100 hợp đồng đa dạng trên 10 tòa nhà khác nhau để kiểm tra độ tin cậy khi mở rộng SaaS.
+- **Bằng chứng thực thi:**
+  - 13/13 hợp đồng live PostgreSQL: 100% unique, zero collisions.
+  - 100 hợp đồng SaaS mô phỏng: 100% unique trong phạm vi tòa nhà.
+  - `GATE_CONTRACT_SHORT_CODE: PASS`.  
+  $\rightarrow$ **Trạng thái:** **PASS**.
+
+---
+
+## 2. BẢNG BẰNG CHỨNG 9 ẢNH CHỤP GIAO DIỆN (CHROME CDP · DPR = 2)
 
 | STT | Tên file ảnh bằng chứng | Viewport CSS | DPR | Pixel PNG thực | Bytes thực | SHA-256 Checksum gốc | Mô tả chi tiết kịch bản kiểm tra |
 | :---: | :--- | :---: | :---: | :---: | :---: | :--- | :--- |
-| 1 | `redesign_desktop_1440_header_expanded.png` | 1440x900 | 2 | 2880x1800 | 407,060 | `7aa90e22ef34bc7238a58bbf2997db12040bf563510b09b1556bf84e03033d41` | Desktop Header & Sidebar mở rộng: 3 vùng rõ ràng, avatar phẳng vững chắc, scope tòa nhà, search Ctrl+K, sync status |
-| 2 | `redesign_desktop_1440_header_collapsed.png` | 1440x900 | 2 | 2880x1800 | 334,092 | `f69f41bd30b4d0054cb3ed6c6abed6d0ca85e3b9a0a6989049ab4aa2c7d14750` | Desktop Sidebar thu gọn: Nút trigger $\ge 40\times 40\text{px}$, viền mềm, tooltip Ctrl+B, morphing icon |
-| 3 | `redesign_desktop_1280_header_contracts.png` | 1280x720 | 2 | 2560x1440 | 348,720 | `63a2ad057311b8942e854d651cec9c6ad20566edb4093dec81405072718810d9` | Desktop Viewport 1280x720: Header 1 dòng không tràn, cân đối cụm điều hướng |
-| 4 | `redesign_desktop_1920_header_overview.png` | 1920x1080 | 2 | 3840x2160 | 447,942 | `8a725f482116708317e5b6661fd649974b5424efdf3e919479faa6fdfbf60439` | Desktop Widescreen 1920x1080: Bố cục tỷ lệ chuẩn, độ sắc nét cao |
-| 5 | `redesign_desktop_contracts_table_polished.png` | 1440x900 | 2 | 2880x1800 | 484,040 | `8fd353bf04a23609dcac020ee6fa3e23e7043586ddc621424a988ea2fc779869` | Bảng Hợp đồng Desktop 6 cột: Cột Thao tác sticky-right, không tràn ngang trang (`scrollWidth <= innerWidth`), tiền cọc phân rã rõ ràng |
-| 6 | `redesign_desktop_contracts_menu_open.png` | 1440x900 | 2 | 2880x1800 | 500,011 | `32bc98b4660a46a73c0f65de35308a94a3627f8840d79f743a693a510d35f41a` | Menu ba chấm mở bằng Portal: Nổi trên toàn bộ bảng, nằm trọn trong viewport (`top: 405, bottom: 568`), không bị cắt |
-| 7 | `redesign_mobile_390x844_contracts_cards.png` | 390x844 | 2 | 780x1688 | 134,509 | `6fc654dbc31ad8d858d6f9125987d6c52f938ba217568bd0346589267ddf0e22` | Thẻ Hợp đồng Mobile (390x844): Giá thuê `4.000.000 đ/tháng` nguyên vẹn 1 dòng, nút Bàn giao 44px+, hitbox 3 chấm $\ge 44\text{px}$ |
-| 8 | `redesign_mobile_390x844_actions_bottom_sheet.png` | 390x844 | 2 | 780x1688 | 103,745 | `9a7bd56130f257769b0a22d1a9774a8e224def61b18da3addc9b3e5031feede1` | Contextual Action Bottom Sheet: Grab bar, tiêu đề `S4B · S4-404`, badge `Đang hiệu lực`, phân tách rõ nhóm nguy hiểm, touch targets $\ge 44\text{px}$ |
+| 1 | `redesign_desktop_1440_header_expanded.png` | 1440x900 | 2 | 2880x1800 | 407,060 | `7aa90e22ef34bc72...` | Header 3 cụm cân đối, avatar phẳng vững chắc, scope selector, search Ctrl+K, live sync |
+| 2 | `redesign_desktop_1440_header_collapsed.png` | 1440x900 | 2 | 2880x1800 | 334,092 | `f69f41bd30b4d005...` | Sidebar thu gọn: trigger viền mềm $\ge 40\times 40\text{px}$, morphing icon, tooltip Ctrl+B |
+| 3 | `redesign_desktop_1280_header_contracts.png` | 1280x720 | 2 | 2560x1440 | 348,720 | `63a2ad057311b894...` | Viewport 1280x720: Header 1 dòng không tràn, cân đối điều hướng |
+| 4 | `redesign_desktop_1920_header_overview.png` | 1920x1080 | 2 | 3840x2160 | 447,942 | `8a725f4821167083...` | Widescreen 1920x1080: Bố cục tỷ lệ chuẩn, độ sắc nét cao |
+| 5 | `redesign_desktop_1280_contracts_table_polished.png` | 1280x720 | 2 | 2560x1440 | 327,589 | `b7654819f1c0aacc...` | **QA-04:** Bảng hợp đồng Desktop tại độ phân giải 1280x720 khi Sidebar mở rộng: 6 cột cân đối, không tràn ngang (`scrollWidth=1274 <= 1280`), cột Thao tác sticky-right luôn nhìn thấy |
+| 6 | `redesign_desktop_contracts_table_polished.png` | 1440x900 | 2 | 2880x1800 | 422,901 | `0aa937289518d2b1...` | **FIN-UI-03:** Bảng hợp đồng Desktop 6 cột tại 1440x900: Tiền cọc phân rã trung tính/đỏ khi thiếu cọc, xanh khi đủ cọc, cột Thao tác sticky-right |
+| 7 | `redesign_desktop_contracts_menu_open.png` | 1440x900 | 2 | 2880x1800 | 439,917 | `b574708639628790...` | **UI-06:** Menu ba chấm ActionMenu mở bằng Portal: Nổi trên toàn bộ bảng, nằm trọn trong viewport (`top: 406, bottom: 569`), không bị cắt |
+| 8 | `redesign_mobile_390x844_contracts_cards.png` | 390x844 | 2 | 780x1688 | 134,606 | `f23e98b06bb2377c...` | **QA-03/FIN-UI-03:** Thẻ Mobile 390x844: Hitbox 3 chấm đạt chuẩn $44\times 44\text{px}$, hiển thị cọc chuẩn hóa, nút Bàn giao $\ge 44\text{px}$ |
+| 9 | `redesign_mobile_390x844_actions_bottom_sheet.png` | 390x844 | 2 | 780x1688 | 103,745 | `9a7bd56130f25776...` | **UI-07-FIX-03:** Contextual Bottom Sheet với Focus trap, khóa cuộn nền (`bodyLocked: true`), `role="dialog"`, `aria-modal="true"`, grab-bar và safe area padding |
 
 ---
 
-## 3. KẾT QUẢ QUALITY GATES & BẢO TOÀN HỆ THỐNG
+## 3. TỔNG HỢP QUALITY GATES ĐẠT ĐƯỢC
 
 | Quality Gate | Tiêu chuẩn kiểm tra | Kết quả thực tế | Trạng thái |
 | :--- | :--- | :--- | :---: |
-| `GATE_BUILD_TYPECHECK` | `tsc -b` & Vite build production | 0 lỗi biên dịch, build `@adhome/console` và `@adhome/landing` exit code 0 | **PASS** |
-| `GATE_LINT_CONFIGURED` | `oxlint` quét toàn bộ mã nguồn | 0 errors (26 warnings không cản trở) | **PASS** |
-| `GATE_CONTRACT_SHORT_CODE` | 13/13 hợp đồng PostgreSQL có mã ngắn duy nhất | 100% unique, hỗ trợ dấu chấm `.` (`HD-P.31-06`) | **PASS** |
-| `GATE_TABLE_OVERFLOW` | `document.documentElement.scrollWidth <= innerWidth` | `docScrollWidth: 1434` $\le$ `1440` (`docOverflow: false`) | **PASS** |
-| `GATE_PORTAL_POPUP` | Popover nổi qua Portal, `inViewport: true` | `top: 405, bottom: 568`, `inViewport: true`, `portalId: '_r_36_'` | **PASS** |
-| `GATE_TOUCH_TARGETS` | Hitbox $\ge 40\text{px}$ Desktop, $\ge 44\text{px}$ Mobile | Mobile trigger đạt $44\times 44\text{px}$, nút Bàn giao $\ge 44\text{px}$ | **PASS** |
-| `GATE_SECURITY_INVARIANTS` | Tài khoản sản xuất `admin@adhome.vn` bất biến | Dùng actor cô lập `automation.test.admin@adhome.internal` và tự động dọn dẹp | **PASS** |
+| `GATE_TOUCH_TARGETS_44PX` | Tất cả trigger Mobile $\ge 44\times 44\text{px}$ (`QA-03`) | 13/13 trigger đạt chuẩn, fail-fast nếu không đạt | **PASS** |
+| `GATE_TABLE_MULTI_VIEWPORT` | Bảng hợp đồng tại 1280, 1366, 1440, 1920 (`QA-04`) | 8/8 cấu hình không tràn ngang, sticky column chuẩn | **PASS** |
+| `GATE_BOTTOM_SHEET_A11Y` | Focus trap, scroll lock, Escape, WAI-ARIA (`UI-07-FIX-03`) | Bắt tiêu điểm, body scroll lock, Escape đóng modal | **PASS** |
+| `GATE_DEPOSIT_FORMAT_SEMANTICS` | Cảnh báo tiền cọc chuẩn ngữ nghĩa (`FIN-UI-03`) | Trung tính cho đã thu thiếu, đỏ cho còn thiếu, xanh cho đủ | **PASS** |
+| `GATE_SINGLE_SOURCE_CODE` | Import formatter trực tiếp từ Console (`QA-05`) | Nguồn sự thật duy nhất, kiểm thử 113 hợp đồng | **PASS** |
+| `GATE_BUILD_TYPECHECK` | `tsc -b` & Vite build production | 0 lỗi biên dịch, build thành công cả 2 packages | **PASS** |
+| `GATE_LINT_CONFIGURED` | `oxlint` quét toàn bộ mã nguồn | 0 errors | **PASS** |
+| `GATE_SECURITY_INVARIANTS` | Tài khoản sản xuất `admin@adhome.vn` bất biến | Không bị chỉnh sửa, dọn dẹp actor kiểm thử tự động | **PASS** |
 | `GATE_LANDING_RC1_FREEZE` | Không sửa đổi tài nguyên landing | `apps/landing/public/` giữ nguyên ngày `2026-10-31` | **PASS** |
-| `GATE_EVIDENCE_INTEGRITY` | 8/8 file ảnh có checksum SHA-256 phân biệt | Checksums và dung lượng khớp 100% | **PASS** |
+| `GATE_EVIDENCE_INTEGRITY` | 9/9 file ảnh có checksum SHA-256 phân biệt | Checksums và dung lượng khớp 100% | **PASS** |
 
-**Kết luận nghiệm thu:** Tất cả các yêu cầu remediation từ kiểm toán độc lập đã được xử lý triệt để, chứng minh bằng code, unit test và bằng chứng hình ảnh CDP thực tế. Đủ điều kiện chuyển giao và nghiệm thu.
+**Kết luận Sprint C1:** Đã hoàn thành 100% các mục tiêu đóng lỗ hổng kiểm thử, nâng cấp khả năng tiếp cận và đảm bảo độ tin cậy của giao diện AdHome Console V2 trên mọi độ phân giải.

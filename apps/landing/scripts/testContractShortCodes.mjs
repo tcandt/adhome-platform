@@ -1,39 +1,26 @@
 import { PrismaClient } from '@prisma/client';
+// QA-05: Direct import from the exact source of truth in Console
+import { formatContractDisplayCode } from '../../console/src/shared/tokens/designTokens.ts';
 
 const prisma = new PrismaClient();
 
-export function formatContractDisplayCode(rawCode) {
-  if (!rawCode) return { displayCode: '—', isImported: false, rawCode: '' };
-
-  const isImported = rawCode.includes('-IMP-') || rawCode.startsWith('IMP-');
-
-  let displayCode = rawCode;
-  if (isImported) {
-    const match = rawCode.match(/HD-IMP-(?:R-)?([A-Za-z0-9._-]+?)(?:-[0-9a-fA-F]{4})?$/);
-    if (match && match[1]) {
-      displayCode = `HD-${match[1]}`;
-    }
-  } else {
-    const match = rawCode.match(/^HD-[A-Za-z0-9._]+-([A-Za-z0-9._-]+)-[0-9a-fA-F]{4}$/);
-    if (match && match[1]) {
-      displayCode = `HD-${match[1]}`;
-    }
-  }
-
-  return { displayCode, isImported, rawCode };
-}
-
 async function main() {
   console.log('=================================================================');
-  console.log('AdHome Console V2 — UI-04-FIX-01 Contract Code Formatter Test');
+  console.log('AdHome Console V2 — QA-05 Contract Code Formatter Single-Source Test');
+  console.log('Source of truth: apps/console/src/shared/tokens/designTokens.ts');
   console.log('=================================================================\n');
 
+  // 1. Fetch live records from database
   const contracts = await prisma.contract.findMany({
     select: { id: true, contractCode: true, status: true, roomId: true },
     orderBy: { contractCode: 'asc' },
   });
 
-  console.log(`Fetched ${contracts.length} live contracts from PostgreSQL adhome_v2.\n`);
+  if (contracts.length === 0) {
+    throw new Error('QA-05 Violation: No contract records found in database to verify.');
+  }
+
+  console.log(`Fetched ${contracts.length} live contracts dynamically from PostgreSQL adhome_v2.\n`);
 
   const seen = new Map();
   let hasCollision = false;
@@ -50,29 +37,52 @@ async function main() {
     }
   }
 
-  // Property tests with edge cases
-  console.log('\n--- PROPERTY TESTS WITH EDGE CASES ---');
+  // 2. Comprehensive edge cases & SaaS scale simulation
+  console.log('\n--- PROPERTY TESTS WITH EDGE CASES & SAAS VARIATIONS ---');
   const edgeCases = [
     { input: 'HD-IMP-P.31-06-3673', expectedDisplay: 'HD-P.31-06', expectedImported: true },
     { input: 'HD-IMP-R-WF-010A-3673', expectedDisplay: 'HD-WF-010A', expectedImported: true },
+    { input: 'HD-IMP-S3-301-0483', expectedDisplay: 'HD-S3-301', expectedImported: true },
     { input: 'HD-S2B-S2R-105-BCF2', expectedDisplay: 'HD-S2R-105', expectedImported: false },
     { input: 'HD-S4-401', expectedDisplay: 'HD-S4-401', expectedImported: false },
     { input: 'HD-CUSTOM.DOT.01-1234', expectedDisplay: 'HD-CUSTOM.DOT.01-1234', expectedImported: false },
+    { input: 'HD-IMP-A1.12-08-9999', expectedDisplay: 'HD-A1.12-08', expectedImported: true },
+    { input: 'HD-TWR1-R-305B-ABCD', expectedDisplay: 'HD-R-305B', expectedImported: false },
   ];
 
   let edgeCasesPassed = true;
   for (const ec of edgeCases) {
     const res = formatContractDisplayCode(ec.input);
     const pass = res.displayCode === ec.expectedDisplay && res.isImported === ec.expectedImported;
-    console.log(`  Case: ${ec.input.padEnd(24)} -> ${res.displayCode.padEnd(16)} [${pass ? 'PASS' : 'FAIL'}]`);
+    console.log(`  Case: ${ec.input.padEnd(24)} -> ${res.displayCode.padEnd(18)} [${pass ? 'PASS' : 'FAIL'}]`);
     if (!pass) edgeCasesPassed = false;
   }
 
-  if (hasCollision || !edgeCasesPassed) {
+  // 3. SaaS scale dynamic collision check (simulate 100 contracts across 10 buildings)
+  console.log('\n--- SAAS SCALE SYNTHETIC COLLISION TEST (100 CONTRACTS) ---');
+  const syntheticSeen = new Map();
+  let saasCollision = false;
+  for (let b = 1; b <= 10; b++) {
+    for (let r = 1; r <= 10; r++) {
+      const roomStr = `P.${b}0${r}`;
+      const code = `HD-BLD${b}-${roomStr}-A1B2`;
+      const { displayCode } = formatContractDisplayCode(code);
+      // In scoped building context, display codes are mapped cleanly
+      const key = `B${b}:${displayCode}`;
+      if (syntheticSeen.has(key)) {
+        saasCollision = true;
+      } else {
+        syntheticSeen.set(key, code);
+      }
+    }
+  }
+  console.log(`  Simulated 100 contracts across 10 buildings: zero scoped collisions [${!saasCollision ? 'PASS' : 'FAIL'}]`);
+
+  if (hasCollision || !edgeCasesPassed || saasCollision) {
     console.error('\n>>> GATE_CONTRACT_SHORT_CODE: FAIL <<<');
     process.exit(1);
   } else {
-    console.log('\nAll 13 contracts have 100% unique short display codes!');
+    console.log(`\nAll ${contracts.length} live database contracts and 100 SaaS synthetic contracts verified unique!`);
     console.log('>>> GATE_CONTRACT_SHORT_CODE: PASS <<<');
   }
 
@@ -83,4 +93,3 @@ main().catch((err) => {
   console.error(err);
   process.exit(1);
 });
-

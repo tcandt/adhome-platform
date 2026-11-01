@@ -389,25 +389,107 @@ async function main() {
     await navigateModule('contracts');
     await waitForSelector('[data-testid="contracts-table"]', 30, 200);
 
-    // Assert UI-05-FIX-01: Document has no horizontal overflow
-    const tableOverflowProof = await cdp.eval(`(() => {
-      const doc = document.documentElement;
-      return {
-        docScrollWidth: doc.scrollWidth,
-        windowInnerWidth: window.innerWidth,
-        docOverflow: doc.scrollWidth > window.innerWidth,
-      };
-    })()`);
-    console.log('     [UI-05-FIX-01 Assertion] Page width check:', tableOverflowProof);
-    if (tableOverflowProof.docOverflow) {
-      throw new Error(`UI-05-FIX-01 Assertion Failed: Document scrollWidth (${tableOverflowProof.docScrollWidth}) exceeds innerWidth (${tableOverflowProof.windowInnerWidth})`);
+    // QA-04: Multi-viewport & Sidebar state matrix for Contracts Table
+    console.log('\n[QA-04] Executing Multi-Viewport Table & Sticky Column Assertions...');
+    const tableTestMatrix = [
+      { width: 1280, height: 720, label: '1280x720' },
+      { width: 1366, height: 768, label: '1366x768' },
+      { width: 1440, height: 900, label: '1440x900' },
+      { width: 1920, height: 1080, label: '1920x1080' },
+    ];
+
+    for (const vp of tableTestMatrix) {
+      for (const sidebarState of ['expanded', 'collapsed']) {
+        await cdp.send('Emulation.setDeviceMetricsOverride', {
+          width: vp.width,
+          height: vp.height,
+          deviceScaleFactor: 2,
+          mobile: false,
+        });
+        await cdp.eval(`(() => {
+          window.dispatchEvent(new Event('resize'));
+          const trigger = document.querySelector('[data-testid="console-sidebar-trigger"]');
+          const isCurrentlyOpen = document.querySelector('[data-sidebar="sidebar"]')?.getAttribute('data-state') === 'expanded';
+          if (${sidebarState === 'collapsed'} && isCurrentlyOpen) trigger?.click();
+          else if (${sidebarState === 'expanded'} && !isCurrentlyOpen) trigger?.click();
+        })()`);
+        await new Promise((r) => setTimeout(r, 400));
+
+        const matrixResult = await cdp.eval(`(() => {
+          const doc = document.documentElement;
+          const table = document.querySelector('[data-testid="contracts-table"]');
+          const stickyTh = table?.querySelector('th.sticky');
+          const stickyTds = Array.from(table?.querySelectorAll('td.sticky') || []);
+          const triggers = Array.from(table?.querySelectorAll('[data-testid="action-menu-trigger"]') || []);
+
+          const overflow = doc.scrollWidth > window.innerWidth;
+          const thRect = stickyTh ? stickyTh.getBoundingClientRect() : null;
+          const allTdsVisible = stickyTds.every((td) => {
+            const r = td.getBoundingClientRect();
+            return r.right <= window.innerWidth && r.right > window.innerWidth - 120;
+          });
+          const allTriggersAccessible = triggers.every((t) => {
+            const r = t.getBoundingClientRect();
+            return r.right <= window.innerWidth && r.left >= 0 && r.width >= 40 && r.height >= 40;
+          });
+
+          return {
+            docScrollWidth: doc.scrollWidth,
+            windowInnerWidth: window.innerWidth,
+            overflow,
+            hasTable: !!table,
+            stickyThPinned: thRect ? thRect.right <= window.innerWidth : false,
+            allTdsVisible,
+            allTriggersAccessible,
+            triggerCount: triggers.length,
+          };
+        })()`);
+
+        console.log(`     [QA-04 ${vp.label} | Sidebar ${sidebarState}] scrollWidth=${matrixResult.docScrollWidth}/${matrixResult.windowInnerWidth} | Overflow: ${matrixResult.overflow} | Sticky Th Pinned: ${matrixResult.stickyThPinned} | Triggers OK: ${matrixResult.allTriggersAccessible}`);
+
+        if (matrixResult.overflow) {
+          throw new Error(`QA-04 Failure at ${vp.label} (${sidebarState}): Whole-page horizontal overflow detected (scrollWidth=${matrixResult.docScrollWidth} > innerWidth=${matrixResult.windowInnerWidth})`);
+        }
+        if (!matrixResult.stickyThPinned || !matrixResult.allTdsVisible || !matrixResult.allTriggersAccessible) {
+          throw new Error(`QA-04 Failure at ${vp.label} (${sidebarState}): Sticky action column or triggers obscured: ${JSON.stringify(matrixResult)}`);
+        }
+      }
     }
+
+    // Capture Table at 1280x720 with sidebar expanded (QA-04 Visual Proof)
+    await cdp.send('Emulation.setDeviceMetricsOverride', {
+      width: 1280,
+      height: 720,
+      deviceScaleFactor: 2,
+      mobile: false,
+    });
+    await cdp.eval(`(() => {
+      const trigger = document.querySelector('[data-testid="console-sidebar-trigger"]');
+      const isCurrentlyOpen = document.querySelector('[data-sidebar="sidebar"]')?.getAttribute('data-state') === 'expanded';
+      if (!isCurrentlyOpen) trigger?.click();
+    })()`);
+    await new Promise((r) => setTimeout(r, 400));
+    await capture({
+      filename: 'redesign_desktop_1280_contracts_table_polished.png',
+      width: 1280,
+      height: 720,
+      scenario: 'QA-04: Bảng hợp đồng Desktop tại độ phân giải 1280x720 khi Sidebar mở rộng: 6 cột cân đối, không tràn ngang, cột Thao tác sticky-right luôn nhìn thấy',
+    });
+
+    // Reset to 1440x900
+    await cdp.send('Emulation.setDeviceMetricsOverride', {
+      width: 1440,
+      height: 900,
+      deviceScaleFactor: 2,
+      mobile: false,
+    });
+    await new Promise((r) => setTimeout(r, 400));
 
     await capture({
       filename: 'redesign_desktop_contracts_table_polished.png',
       width: 1440,
       height: 900,
-      scenario: 'UI-04/05: Bảng danh sách hợp đồng Desktop: Mã HĐ ngắn (HD-WF-010A, HD-S2R-105), badge "Từ sổ cũ", định dạng tiền tệ nowrap, điện nước chuẩn hóa, cột Thao tác sticky-right',
+      scenario: 'UI-04/05/FIN-UI-03: Bảng danh sách hợp đồng Desktop: Mã HĐ ngắn (HD-WF-010A, HD-S2R-105), badge "Từ sổ cũ", định dạng tiền tệ nowrap, phân rã cọc cam kết và thực thu chuẩn hóa, cột Thao tác sticky-right',
     });
 
     // 6. Action Menu Open in Portal (no clipping)
@@ -470,27 +552,41 @@ async function main() {
     })()`);
     await new Promise((r) => setTimeout(r, 600));
 
-    // Assert UI-07-FIX-01: Mobile ActionMenu triggers are >= 44x44px touch targets
+    // Assert QA-03 / UI-07-FIX-01: Mobile ActionMenu triggers MUST strictly be >= 44x44px touch targets
     const mobileTriggerCheck = await cdp.eval(`(() => {
       const triggers = Array.from(document.querySelectorAll('[data-testid="action-menu-trigger"]')).filter(
         (t) => t.getBoundingClientRect().height > 0
       );
-      return triggers.map((t) => {
+      if (triggers.length === 0) {
+        return { count: 0, passed: false, error: 'No visible mobile action triggers found' };
+      }
+      const nonCompliant = [];
+      for (const t of triggers) {
         const r = t.getBoundingClientRect();
-        return {
-          width: Math.round(r.width),
-          height: Math.round(r.height),
-          meetsMinTarget: r.width >= 40 && r.height >= 40,
-        };
-      });
+        const w = Math.round(r.width);
+        const h = Math.round(r.height);
+        if (w < 44 || h < 44) {
+          nonCompliant.push({ width: w, height: h });
+        }
+      }
+      return {
+        count: triggers.length,
+        sampleTarget: { width: Math.round(triggers[0].getBoundingClientRect().width), height: Math.round(triggers[0].getBoundingClientRect().height) },
+        passed: nonCompliant.length === 0,
+        nonCompliantCount: nonCompliant.length,
+        nonCompliant,
+      };
     })()`);
-    console.log('     [UI-07-FIX-01 Assertion] Mobile trigger touch targets:', mobileTriggerCheck[0]);
+    console.log('     [QA-03 Touch Target Quality Gate]:', mobileTriggerCheck);
+    if (!mobileTriggerCheck.passed) {
+      throw new Error(`QA-03 Assertion Failed: Touch targets below 44x44px: ${JSON.stringify(mobileTriggerCheck)}`);
+    }
 
     await capture({
       filename: 'redesign_mobile_390x844_contracts_cards.png',
       width: 390,
       height: 844,
-      scenario: 'UI-07: Thẻ hợp đồng Mobile (390x844): Giá thuê nowrap không bị xuống dòng, mã HĐ ngắn, bố cục 2 cột gọn gàng, nút Bàn giao 44px+',
+      scenario: 'UI-07/FIN-UI-03: Thẻ hợp đồng Mobile (390x844): Giá thuê nowrap không bị xuống dòng, mã HĐ ngắn, cọc thực thu chuẩn hóa, nút Bàn giao 44px+',
     });
 
     // 8. Mobile Action Bottom Sheet
@@ -504,24 +600,31 @@ async function main() {
     })()`);
     await new Promise((r) => setTimeout(r, 700));
 
-    // Assert UI-07-FIX-02: Bottom Sheet exists with contextual header and safe area padding
+    // Assert UI-07-FIX-02 & UI-07-FIX-03: Bottom Sheet with contextual header and accessibility
     const sheetProof = await cdp.eval(`(() => {
       const sheet = document.querySelector('[data-testid="action-menu-bottom-sheet"]');
       if (!sheet) return { found: false, error: 'Bottom sheet not found' };
       const r = sheet.getBoundingClientRect();
-      const titleEl = sheet.querySelector('.truncate');
+      const titleEl = document.getElementById('action-menu-sheet-title');
       const badgeEl = sheet.querySelector('span.rounded-full');
+      const bodyLocked = document.body.style.overflow === 'hidden';
+      const role = sheet.getAttribute('role');
+      const ariaModal = sheet.getAttribute('aria-modal');
+
       return {
         found: true,
         height: Math.round(r.height),
         width: Math.round(r.width),
         title: titleEl ? titleEl.textContent?.trim() : null,
         badge: badgeEl ? badgeEl.textContent?.trim() : null,
+        bodyLocked,
+        role,
+        ariaModal,
       };
     })()`);
-    console.log('     [UI-07-FIX-02 Assertion] Contextual Bottom Sheet check:', sheetProof);
-    if (!sheetProof?.found || sheetProof.height < 100) {
-      throw new Error(`UI-07-FIX-02 Assertion Failed: Bottom sheet not properly displayed: ${JSON.stringify(sheetProof)}`);
+    console.log('     [UI-07-FIX-02/03 Contextual Bottom Sheet & A11y check]:', sheetProof);
+    if (!sheetProof?.found || sheetProof.height < 100 || !sheetProof.bodyLocked || sheetProof.role !== 'dialog' || sheetProof.ariaModal !== 'true') {
+      throw new Error(`UI-07-FIX-02/03 Assertion Failed: Bottom sheet accessibility contract violated: ${JSON.stringify(sheetProof)}`);
     }
 
     await capture({

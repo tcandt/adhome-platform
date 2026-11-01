@@ -337,8 +337,358 @@ async function main() {
       return meta;
     }
 
+    // Helper to reliably set and verify sidebar state (QA-04-FIX-01 / QA-HEADER-01)
+    async function setSidebarState(targetState) {
+      const getState = () => cdp.eval(`(() => {
+        const sidebar = document.querySelector('[data-testid="console-desktop-sidebar"]');
+        return sidebar ? sidebar.getAttribute('data-state') : null;
+      })()`);
+
+      let current = await getState();
+      if (current !== targetState) {
+        await cdp.eval(`(() => {
+          const btn = document.querySelector('[data-sidebar="header"] [data-testid="console-sidebar-toggle"]') ||
+                      document.querySelector('[data-testid="console-sidebar-trigger"]') ||
+                      document.querySelector('[data-sidebar="trigger"]');
+          if (btn) btn.click();
+        })()`);
+        await new Promise((r) => setTimeout(r, 600));
+        current = await getState();
+      }
+      if (current !== targetState) {
+        throw new Error(`QA-04-FIX-01 Assertion Failed: Expected sidebar '${targetState}', but got '${current}'`);
+      }
+      return current;
+    }
+
     // 5. Capture Redesigned Views
     console.log('\n[Step 5] Capturing Redesigned Visual Evidence (AFTER_REDESIGN)...');
+
+    // =========================================================================
+    // [QA-HEADER-01] Desktop Header & Sidebar Redesign Formal Quality Gate
+    // =========================================================================
+    console.log('\n[QA-HEADER-01] Executing Header & Sidebar UX Verification Quality Gate...');
+
+    // Assertion 1: Sidebar Toggle Location
+    const toggleLocation = await cdp.eval(`(() => {
+      const sidebar = document.querySelector('[data-testid="console-desktop-sidebar"]');
+      const header = document.querySelector('[data-testid="console-desktop-header"]');
+      const sidebarHeader = sidebar?.querySelector('[data-sidebar="header"]');
+      const toggleBtn = sidebarHeader?.querySelector('[data-testid="console-sidebar-toggle"]') ||
+                        sidebarHeader?.querySelector('[data-sidebar="trigger"]');
+
+      const inSidebarHeader = !!toggleBtn;
+      const inDesktopHeader = header ? !!header.querySelector('[data-sidebar="trigger"], [data-testid="console-sidebar-trigger"], [data-testid="console-sidebar-toggle"]') : false;
+
+      // Verify DesktopHeader cleanliness (no cluttered controls)
+      const headerClutters = {
+        hasTrigger: !!header?.querySelector('[data-sidebar="trigger"], [data-testid="console-sidebar-trigger"], [data-testid="console-sidebar-toggle"]'),
+        hasScope: !!header?.querySelector('[data-testid="console-building-scope-selector"]'),
+        hasNotifications: !!header?.querySelector('[data-testid="console-notifications-trigger"]'),
+        hasUserMenu: !!header?.querySelector('[data-testid="console-user-menu-trigger"]'),
+        hasSync: !!header?.querySelector('[data-testid="console-sync-status"]'),
+      };
+
+      const headerHeight = header ? header.getBoundingClientRect().height : 0;
+      const hasTitle = !!header?.querySelector('[data-testid="console-header-title"]');
+      const hasSearch = !!header?.querySelector('[data-testid="console-global-search-trigger"]');
+
+      return {
+        inSidebarHeader,
+        inDesktopHeader,
+        headerClutters,
+        headerHeight: Math.round(headerHeight),
+        cleanHeaderPassed: !Object.values(headerClutters).some(Boolean) && hasTitle && hasSearch,
+      };
+    })()`);
+
+    console.log('  [QA-HEADER-01 Assertion 1] Toggle Location & Clean Header:', toggleLocation);
+    if (!toggleLocation.inSidebarHeader || toggleLocation.inDesktopHeader || !toggleLocation.cleanHeaderPassed) {
+      throw new Error(`QA-HEADER-01 Failed: Sidebar toggle button misplaced or header cluttered: ${JSON.stringify(toggleLocation)}`);
+    }
+
+    // Assertion 2: Expanded -> Collapsed -> Expanded Pointer Transition & Widths
+    console.log('  [QA-HEADER-01 Assertion 2] Testing Pointer Event Collapse & Expand...');
+    const initialSidebar = await cdp.eval(`(() => {
+      const sb = document.querySelector('[data-testid="console-desktop-sidebar"]');
+      const r = sb ? sb.getBoundingClientRect() : null;
+      return { state: sb?.getAttribute('data-state'), width: Math.round(r?.width || 0) };
+    })()`);
+    if (initialSidebar.state !== 'expanded' || Math.abs(initialSidebar.width - 248) > 2) {
+      throw new Error(`QA-HEADER-01 Failed: Initial sidebar not expanded (248px): ${JSON.stringify(initialSidebar)}`);
+    }
+
+    // Click toggle button to collapse
+    await cdp.eval(`(document.querySelector('[data-sidebar="header"] [data-testid="console-sidebar-toggle"]') || document.querySelector('[data-sidebar="header"] [data-sidebar="trigger"]'))?.click()`);
+    await new Promise((r) => setTimeout(r, 600));
+
+    const collapsedCheck = await cdp.eval(`(() => {
+      const sb = document.querySelector('[data-testid="console-desktop-sidebar"]');
+      const r = sb ? sb.getBoundingClientRect() : null;
+      const toggle = sb?.querySelector('[data-sidebar="header"] [data-testid="console-sidebar-toggle"], [data-sidebar="header"] [data-sidebar="trigger"]');
+      return {
+        state: sb?.getAttribute('data-state'),
+        width: Math.round(r?.width || 0),
+        ariaExpanded: toggle?.getAttribute('aria-expanded'),
+      };
+    })()`);
+    console.log('  [QA-HEADER-01 Collapsed Check]:', collapsedCheck);
+    if (collapsedCheck.state !== 'collapsed' || Math.abs(collapsedCheck.width - 72) > 2 || collapsedCheck.ariaExpanded !== 'false') {
+      throw new Error(`QA-HEADER-01 Failed: Collapse transition failed: ${JSON.stringify(collapsedCheck)}`);
+    }
+
+    // Hover stability test: Dispatch mouseenter / mousemove on collapsed sidebar
+    await cdp.eval(`(() => {
+      const sb = document.querySelector('[data-testid="console-desktop-sidebar"]');
+      if (sb) {
+        sb.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+        sb.dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
+      }
+    })()`);
+    await new Promise((r) => setTimeout(r, 400));
+    const hoverCheck = await cdp.eval(`(() => {
+      const sb = document.querySelector('[data-testid="console-desktop-sidebar"]');
+      const r = sb ? sb.getBoundingClientRect() : null;
+      return { state: sb?.getAttribute('data-state'), width: Math.round(r?.width || 0) };
+    })()`);
+    console.log('  [QA-HEADER-01 Hover Stability Check]:', hoverCheck);
+    if (hoverCheck.state !== 'collapsed' || Math.abs(hoverCheck.width - 72) > 2) {
+      throw new Error(`QA-HEADER-01 Failed: Sidebar auto-expanded on hover! State: ${JSON.stringify(hoverCheck)}`);
+    }
+
+    // Click toggle button again to re-expand
+    await cdp.eval(`(document.querySelector('[data-sidebar="header"] [data-testid="console-sidebar-toggle"]') || document.querySelector('[data-sidebar="header"] [data-sidebar="trigger"]'))?.click()`);
+    await new Promise((r) => setTimeout(r, 600));
+    const reExpandedCheck = await cdp.eval(`(() => {
+      const sb = document.querySelector('[data-testid="console-desktop-sidebar"]');
+      const r = sb ? sb.getBoundingClientRect() : null;
+      return { state: sb?.getAttribute('data-state'), width: Math.round(r?.width || 0) };
+    })()`);
+    if (reExpandedCheck.state !== 'expanded' || Math.abs(reExpandedCheck.width - 248) > 2) {
+      throw new Error(`QA-HEADER-01 Failed: Re-expand failed: ${JSON.stringify(reExpandedCheck)}`);
+    }
+
+    // Assertion 3: Keyboard Shortcut Ctrl+B & Input Tag Exclusion
+    console.log('  [QA-HEADER-01 Assertion 3] Testing Keyboard Shortcut Ctrl+B...');
+    await cdp.send('Input.dispatchKeyEvent', {
+      type: 'keyDown',
+      key: 'b',
+      code: 'KeyB',
+      windowsVirtualKeyCode: 66,
+      modifiers: 2, // Ctrl
+    });
+    await cdp.send('Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key: 'b',
+      code: 'KeyB',
+      windowsVirtualKeyCode: 66,
+      modifiers: 2,
+    });
+    await new Promise((r) => setTimeout(r, 600));
+
+    const ctrlBCheck = await cdp.eval(`(() => {
+      const sb = document.querySelector('[data-testid="console-desktop-sidebar"]');
+      return sb?.getAttribute('data-state');
+    })()`);
+    console.log('  [QA-HEADER-01 Ctrl+B Result]:', ctrlBCheck);
+    if (ctrlBCheck !== 'collapsed') {
+      throw new Error(`QA-HEADER-01 Failed: Ctrl+B did not collapse sidebar (got '${ctrlBCheck}')`);
+    }
+
+    // Test input tag exclusion: when typing in an input, Ctrl+B must NOT toggle
+    await cdp.eval(`(() => {
+      const input = document.createElement('input');
+      input.id = 'temp-test-input';
+      document.body.appendChild(input);
+      input.focus();
+    })()`);
+    await cdp.send('Input.dispatchKeyEvent', {
+      type: 'keyDown',
+      key: 'b',
+      code: 'KeyB',
+      windowsVirtualKeyCode: 66,
+      modifiers: 2,
+    });
+    await new Promise((r) => setTimeout(r, 200));
+    const inputExclusionCheck = await cdp.eval(`(() => {
+      const sb = document.querySelector('[data-testid="console-desktop-sidebar"]');
+      const input = document.getElementById('temp-test-input');
+      if (input) input.remove();
+      return sb?.getAttribute('data-state');
+    })()`);
+    console.log('  [QA-HEADER-01 Input Exclusion Check]:', inputExclusionCheck);
+    if (inputExclusionCheck !== 'collapsed') {
+      throw new Error(`QA-HEADER-01 Failed: Ctrl+B triggered inside an input tag!`);
+    }
+
+    // Re-expand via Ctrl+B
+    await cdp.send('Input.dispatchKeyEvent', {
+      type: 'keyDown',
+      key: 'b',
+      code: 'KeyB',
+      windowsVirtualKeyCode: 66,
+      modifiers: 2,
+    });
+    await cdp.send('Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key: 'b',
+      code: 'KeyB',
+      windowsVirtualKeyCode: 66,
+      modifiers: 2,
+    });
+    await new Promise((r) => setTimeout(r, 600));
+
+    // Assertion 4: LocalStorage Persistence across Reload
+    console.log('  [QA-HEADER-01 Assertion 4] Testing LocalStorage Persistence across Reload...');
+    // Set to collapsed and verify localStorage
+    await cdp.eval(`(document.querySelector('[data-sidebar="header"] [data-testid="console-sidebar-toggle"]') || document.querySelector('[data-sidebar="header"] [data-sidebar="trigger"]'))?.click()`);
+    await new Promise((r) => setTimeout(r, 500));
+    const savedPref = await cdp.eval(`localStorage.getItem('adhome_ui_sidebar_open')`);
+    if (savedPref !== 'false') {
+      throw new Error(`QA-HEADER-01 Failed: Expected localStorage 'adhome_ui_sidebar_open' to be 'false', got '${savedPref}'`);
+    }
+
+    // Reload page
+    await cdp.send('Page.reload');
+    await waitForSelector('[data-testid="console-desktop-header"]', 50, 250);
+    await new Promise((r) => setTimeout(r, 1000));
+
+    const reloadedState = await cdp.eval(`(() => {
+      const sb = document.querySelector('[data-testid="console-desktop-sidebar"]');
+      const r = sb ? sb.getBoundingClientRect() : null;
+      return { state: sb?.getAttribute('data-state'), width: Math.round(r?.width || 0) };
+    })()`);
+    console.log('  [QA-HEADER-01 Reload Persistence Check]:', reloadedState);
+    if (reloadedState.state !== 'collapsed' || Math.abs(reloadedState.width - 72) > 2) {
+      throw new Error(`QA-HEADER-01 Failed: Sidebar did not persist collapsed state across reload: ${JSON.stringify(reloadedState)}`);
+    }
+
+    // Re-expand sidebar after reload
+    await cdp.eval(`(document.querySelector('[data-sidebar="header"] [data-testid="console-sidebar-toggle"]') || document.querySelector('[data-sidebar="header"] [data-sidebar="trigger"]'))?.click()`);
+    await new Promise((r) => setTimeout(r, 600));
+
+    // Assertion 5: Relocated Controls Verification (Scope, Notifications, User Menu, Sync)
+    console.log('  [QA-HEADER-01 Assertion 5] Testing Relocated Controls (Scope, Notifications, User Menu, Sync)...');
+    // 5a. Scope in Overview
+    const overviewScopeCheck = await cdp.eval(`(() => {
+      const scopeBtn = document.querySelector('[data-testid="console-overview-portfolio-summary"] [data-testid="console-building-scope-selector"]');
+      return { found: !!scopeBtn };
+    })()`);
+    console.log('  [Overview Scope Check]:', overviewScopeCheck);
+    if (!overviewScopeCheck.found) {
+      throw new Error(`QA-HEADER-01 Failed: BuildingScopeSelector not found in Overview summary banner`);
+    }
+
+    // 5b. Sync in Sidebar Footer
+    const syncCheck = await cdp.eval(`(() => {
+      const syncBtn = document.querySelector('[data-sidebar="footer"] [data-testid="console-sync-status"]');
+      return { found: !!syncBtn };
+    })()`);
+    if (!syncCheck.found) {
+      throw new Error(`QA-HEADER-01 Failed: Sync Status not found in Sidebar Footer`);
+    }
+
+    // 5c. Notifications in Sidebar Footer
+    await cdp.eval(`document.querySelector('[data-sidebar="footer"] [data-testid="console-notifications-trigger"]')?.click()`);
+    await new Promise((r) => setTimeout(r, 400));
+    const notifPopoverCheck = await cdp.eval(`(() => {
+      const popover = document.querySelector('[data-testid="console-notifications-popover"]');
+      return { found: !!popover };
+    })()`);
+    if (!notifPopoverCheck.found) {
+      throw new Error(`QA-HEADER-01 Failed: Notifications popover failed to open from Sidebar Footer`);
+    }
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await new Promise((r) => setTimeout(r, 300));
+
+    // 5d. User Menu in Sidebar Footer
+    await cdp.eval(`document.querySelector('[data-sidebar="footer"] [data-testid="console-user-menu-trigger"]')?.click()`);
+    await new Promise((r) => setTimeout(r, 400));
+    const userMenuCheck = await cdp.eval(`(() => {
+      const popover = document.querySelector('[data-testid="console-user-menu-popover"]');
+      const roleBadge = popover?.querySelector('[data-testid="console-actor-role-badge"]') ||
+                        document.querySelector('[data-testid="console-actor-role-badge"]');
+      const scopeBadge = popover?.querySelector('[data-testid="console-actor-scope-badge"]');
+      const themeToggle = popover?.querySelector('[data-testid="console-theme-toggle"]');
+      const logoutBtn = popover?.querySelector('[data-testid="console-logout-button"]');
+      return {
+        popoverFound: !!popover,
+        roleBadgeFound: !!roleBadge,
+        scopeBadgeFound: !!scopeBadge,
+        themeToggleFound: !!themeToggle,
+        logoutBtnFound: !!logoutBtn,
+      };
+    })()`);
+    console.log('  [User Menu Check]:', userMenuCheck);
+    if (!userMenuCheck.popoverFound || !userMenuCheck.roleBadgeFound || !userMenuCheck.scopeBadgeFound || !userMenuCheck.themeToggleFound || !userMenuCheck.logoutBtnFound) {
+      throw new Error(`QA-HEADER-01 Failed: User Menu items incomplete: ${JSON.stringify(userMenuCheck)}`);
+    }
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await new Promise((r) => setTimeout(r, 300));
+
+    // Assertion 6: Multi-Viewport Header Stability & Zoom Simulation
+    console.log('  [QA-HEADER-01 Assertion 6] Testing Multi-Viewport Header Stability & Zoom Simulation...');
+    const headerMatrix = [1024, 1280, 1366, 1440, 1920];
+    for (const w of headerMatrix) {
+      await cdp.send('Emulation.setDeviceMetricsOverride', {
+        width: w,
+        height: 900,
+        deviceScaleFactor: 2,
+        mobile: false,
+      });
+      await cdp.eval(`window.dispatchEvent(new Event('resize'))`);
+      await new Promise((r) => setTimeout(r, 150));
+
+      const vpCheck = await cdp.eval(`(() => {
+        const header = document.querySelector('[data-testid="console-desktop-header"]');
+        const h = header ? header.getBoundingClientRect().height : 0;
+        const overflow = document.documentElement.scrollWidth > window.innerWidth;
+        return { height: Math.round(h), overflow };
+      })()`);
+      console.log(`    Viewport ${w}px: Header Height = ${vpCheck.height}px | Overflow = ${vpCheck.overflow}`);
+      if (vpCheck.overflow || vpCheck.height > 66 || vpCheck.height < 54) {
+        throw new Error(`QA-HEADER-01 Failed at ${w}px: Header height (${vpCheck.height}px) or overflow (${vpCheck.overflow})`);
+      }
+    }
+
+    // Zoom Simulations (1280px @ 125% zoom = 1024px, 1440px @ 125% zoom = 1152px, 1920px @ 150% zoom = 1280px)
+    const zoomTestMatrix = [
+      { label: '1280px @ 125% zoom', width: 1024, height: 768 },
+      { label: '1440px @ 125% zoom', width: 1152, height: 800 },
+      { label: '1920px @ 150% zoom', width: 1280, height: 720 },
+    ];
+    for (const zt of zoomTestMatrix) {
+      await cdp.send('Emulation.setDeviceMetricsOverride', {
+        width: zt.width,
+        height: zt.height,
+        deviceScaleFactor: 2,
+        mobile: false,
+      });
+      await cdp.eval(`window.dispatchEvent(new Event('resize'))`);
+      await new Promise((r) => setTimeout(r, 150));
+      const ztCheck = await cdp.eval(`(() => {
+        const header = document.querySelector('[data-testid="console-desktop-header"]');
+        const h = header ? header.getBoundingClientRect().height : 0;
+        return { height: Math.round(h), overflow: document.documentElement.scrollWidth > window.innerWidth };
+      })()`);
+      console.log(`  [QA-HEADER-01 ${zt.label} Simulation]: height = ${ztCheck.height}px | overflow = ${ztCheck.overflow}`);
+      if (ztCheck.overflow || ztCheck.height > 66 || ztCheck.height < 54) {
+        throw new Error(`QA-HEADER-01 Failed at ${zt.label}: Header height (${ztCheck.height}px) or overflow (${ztCheck.overflow})`);
+      }
+    }
+
+    // Reset back to standard 1440x900
+    await cdp.send('Emulation.setDeviceMetricsOverride', {
+      width: 1440,
+      height: 900,
+      deviceScaleFactor: 2,
+      mobile: false,
+    });
+    await cdp.eval(`window.dispatchEvent(new Event('resize'))`);
+    await new Promise((r) => setTimeout(r, 300));
+    console.log('[QA-HEADER-01] ALL ASSERTIONS PASSED (100% PASS).\n');
 
     // 1. Desktop 1440x900 Header & Sidebar Expanded
     await navigateModule('overview');
@@ -346,22 +696,20 @@ async function main() {
       filename: 'redesign_desktop_1440_header_expanded.png',
       width: 1440,
       height: 900,
-      scenario: 'UI-01/02: Desktop 1440x900 Header mới (3 vùng rõ ràng, building selector, search Ctrl+K, sync status, user profile) & Sidebar mở rộng',
+      scenario: 'UI-HEADER-01/UI-SIDEBAR-01: Desktop 1440x900 Header tối giản 2 vùng (Breadcrumb/Tiêu đề + Search Ctrl+K) & Sidebar mở rộng với nút Toggle cạnh Logo, Scope chuyển về Workspace, Sync/Thông báo/User Profile trong Sidebar',
     });
 
     // 2. Desktop 1440x900 Header & Sidebar Collapsed
-    await cdp.eval(`document.querySelector('[data-testid="console-sidebar-trigger"]')?.click()`);
-    await new Promise((r) => setTimeout(r, 600));
+    await setSidebarState('collapsed');
     await capture({
       filename: 'redesign_desktop_1440_header_collapsed.png',
       width: 1440,
       height: 900,
-      scenario: 'UI-02: Desktop 1440x900 Sidebar thu gọn với trigger 40x40px, icon morphing, tooltip Ctrl+B và focus ring',
+      scenario: 'UI-SIDEBAR-01: Desktop 1440x900 Sidebar thu gọn (72px) với nút Toggle cạnh Logo, icon PanelLeftOpen, tooltip Ctrl+B',
     });
 
     // Re-expand sidebar
-    await cdp.eval(`document.querySelector('[data-testid="console-sidebar-trigger"]')?.click()`);
-    await new Promise((r) => setTimeout(r, 600));
+    await setSidebarState('expanded');
 
     // 3. Desktop 1280x720 Viewport Responsiveness
     await capture({
@@ -378,25 +726,6 @@ async function main() {
       height: 1080,
       scenario: 'UI-01: Desktop 1920x1080 Header trên màn hình rộng 1080p, bố cục sắc nét không vỡ tỷ lệ',
     });
-
-    // Helper to reliably set and verify sidebar state (QA-04-FIX-01)
-    async function setSidebarState(targetState) {
-      const getState = () => cdp.eval(`(() => {
-        const sidebar = document.querySelector('[data-testid="console-desktop-sidebar"]');
-        return sidebar ? sidebar.getAttribute('data-state') : null;
-      })()`);
-
-      let current = await getState();
-      if (current !== targetState) {
-        await cdp.eval(`document.querySelector('[data-testid="console-sidebar-trigger"]')?.click()`);
-        await new Promise((r) => setTimeout(r, 600));
-        current = await getState();
-      }
-      if (current !== targetState) {
-        throw new Error(`QA-04-FIX-01 Assertion Failed: Expected sidebar '${targetState}', but got '${current}'`);
-      }
-      return current;
-    }
 
     // 5. Desktop Contracts Table Multi-Viewport Matrix (QA-04, QA-04-FIX-01, QA-04-FIX-02)
     await cdp.send('Emulation.setDeviceMetricsOverride', {

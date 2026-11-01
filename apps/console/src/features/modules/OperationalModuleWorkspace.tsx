@@ -44,6 +44,7 @@ import { ContractCreationWizardModal } from './modals/ContractCreationWizardModa
 import { LegacyImportWizardModal } from './modals/LegacyImportWizardModal';
 import { HunonicSettingsModal } from './modals/HunonicSettingsModal';
 import { ActionMenu } from '@/shared/ui/ActionMenu';
+import { BuildingScopeSelector } from '@/shared/ui/BuildingScopeSelector';
 import {
   formatContractDisplayCode,
   formatWaterBillingLabel,
@@ -1081,6 +1082,10 @@ export const OperationalModuleWorkspace: React.FC<
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {currentNavConfig.supportsBuildingScope && (
+            <BuildingScopeSelector />
+          )}
+
           {currentNavConfig.hasPeriodToolbar && (
             <div
               data-testid="period-selector-toolbar"

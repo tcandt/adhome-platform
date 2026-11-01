@@ -268,7 +268,7 @@ function killProcessTreeWindows(proc) {
   });
 }
 
-async function waitForHttp200(url, maxTries = 45) {
+async function waitForHttp200(url, maxTries = 60) {
   for (let i = 0; i < maxTries; i++) {
     try {
       const r = await fetch(url);
@@ -418,9 +418,12 @@ async function runVerification() {
 
   try {
     console.log('\n[1/5] Starting Landing (8081) & Console V2 (5174) preview servers...');
-    const repoRoot = path.resolve(process.cwd(), '..', '..');
+    const repoRoot = fs.existsSync(path.join(process.cwd(), 'pnpm-workspace.yaml'))
+      ? process.cwd()
+      : path.resolve(process.cwd(), '..', '..');
+    const pnpmBin = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
     landingProc = spawn(
-      'pnpm',
+      pnpmBin,
       ['--filter', '@adhome/landing', 'preview', '--host', '127.0.0.1', '--port', '8081'],
       {
         cwd: repoRoot,
@@ -433,7 +436,7 @@ async function runVerification() {
       }
     );
     consoleProc = spawn(
-      'pnpm',
+      pnpmBin,
       ['--filter', '@adhome/console', 'preview', '--host', '127.0.0.1', '--port', '5174'],
       {
         cwd: repoRoot,

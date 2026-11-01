@@ -41,7 +41,7 @@ export function SidebarProvider({
         defaultOpen={defaultOpen}
         open={open}
         onOpenChange={onOpenChange}
-        animateOnHover={true}
+        animateOnHover={false}
         className={`flex min-h-screen w-full bg-[#F7F9FC] dark:bg-[#0B0F19] text-slate-900 dark:text-slate-100 ${className}`}
       >
         {children}
@@ -91,10 +91,11 @@ export function SidebarHeader({
   children: React.ReactNode;
   className?: string;
 }) {
+  const hasCustomHeight = className.includes('h-');
   return (
     <div
       data-sidebar="header"
-      className={`flex h-16 shrink-0 items-center border-b border-slate-100 dark:border-slate-800/80 ${className}`}
+      className={`flex ${hasCustomHeight ? '' : 'h-16'} shrink-0 items-center border-b border-slate-100 dark:border-slate-800/80 ${className}`}
     >
       {children}
     </div>

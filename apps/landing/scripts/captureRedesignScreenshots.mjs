@@ -11,7 +11,7 @@ const REPO_ROOT = process.cwd();
 const LANDING_URL = 'http://127.0.0.1:8081';
 const CONSOLE_URL = 'http://127.0.0.1:5174';
 
-const TASK_ID = 'UI-ALIGNMENT-HEADER-SIDEBAR';
+const TASK_ID = 'UI-POLISH-HEADER-SIDEBAR';
 const EVIDENCE_DIR = path.join(REPO_ROOT, 'docs', 'evidence', 'console-v2', TASK_ID);
 const SCREENSHOTS_DIR = path.join(EVIDENCE_DIR, 'screenshots');
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || 'C:\\Users\\TINH-NGUYEN\\.gemini\\antigravity\\brain\\28c40a83-4f86-4432-98db-0577f31a9633';
@@ -752,7 +752,7 @@ async function main() {
       filename: 'redesign_desktop_1440_header_expanded.png',
       width: 1440,
       height: 900,
-      scenario: 'UI-ALIGNMENT: Desktop 1440x900 Header với Sidebar Toggle [≡] (44x44px), Tìm kiếm Ctrl+K pill, Thông báo hệ thống có badge, Profile Admin [RA], Sidebar mở rộng (248px) với Logo AdHome đầy đủ',
+      scenario: 'UI-POLISH: Desktop 1440x900 Header với Sidebar Toggle [≡], Tìm kiếm Ctrl+K căn giữa, Thông báo và Profile Admin cân đối, Logo AdHome hài hòa, không viền giao cắt, hiệu ứng Animate UI mượt mà',
     });
 
     // 2. Desktop 1440x900 Header & Sidebar Collapsed
@@ -761,7 +761,7 @@ async function main() {
       filename: 'redesign_desktop_1440_header_collapsed.png',
       width: 1440,
       height: 900,
-      scenario: 'UI-ALIGNMENT: Desktop 1440x900 Sidebar thu gọn (72px) chỉ hiển thị icon điều hướng và Logo icon mark, Header giữ nguyên 64px với Toggle [≡], Search, Notifications, Profile Admin',
+      scenario: 'UI-POLISH: Desktop 1440x900 Sidebar thu gọn (72px) mượt mà không giật cục, icon mark cân đối, Header 64px không viền giao cắt, Tìm kiếm căn giữa',
     });
 
     // Re-expand sidebar

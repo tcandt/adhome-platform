@@ -96,10 +96,10 @@ export const DesktopHeader: React.FC = () => {
   return (
     <header
       data-testid="console-desktop-header"
-      className="sticky top-0 z-20 flex h-16 w-full shrink-0 items-center justify-between gap-3 border-b border-slate-200/90 dark:border-slate-800/90 bg-white dark:bg-[#111827] px-4 lg:px-6 backdrop-blur-md select-none transition-colors"
+      className="sticky top-0 z-20 flex h-16 w-full shrink-0 items-center justify-between border-b border-slate-200/90 dark:border-slate-800/90 bg-white dark:bg-[#111827] px-4 lg:px-6 backdrop-blur-md select-none transition-colors"
     >
-      {/* ZONE 1 (LEFT): Sidebar Toggle + Search bar */}
-      <div className="flex items-center gap-3 min-w-0">
+      {/* ZONE 1 (LEFT): Sidebar Toggle */}
+      <div className="flex items-center gap-3 flex-1 justify-start min-w-0">
         {/* Sidebar Toggle Button (44x44px minimum target) */}
         <Tooltip side="bottom" sideOffset={6} align="start">
           <TooltipTrigger asChild>
@@ -126,21 +126,6 @@ export const DesktopHeader: React.FC = () => {
           </TooltipContent>
         </Tooltip>
 
-        {/* Global Command Search Bar (Ctrl+K) */}
-        <button
-          type="button"
-          data-testid="console-global-search-trigger"
-          onClick={() => setIsSearchOpen(true)}
-          className="inline-flex h-11 min-h-[44px] items-center gap-2.5 rounded-full border border-slate-200/90 dark:border-slate-700/80 bg-slate-50/90 dark:bg-slate-800/60 px-4 text-xs text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-800 dark:hover:text-slate-200 transition-all w-72 sm:w-80 md:w-96 lg:w-[420px] max-w-lg shadow-2xs text-left"
-          title="Tìm kiếm nhanh toàn hệ thống (Ctrl + K)"
-        >
-          <Search className="h-4 w-4 shrink-0 text-slate-400" />
-          <span className="font-medium truncate flex-1">Tìm phòng, khách, hợp đồng...</span>
-          <kbd className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-0.5 font-mono text-[10px] font-medium text-slate-400 shadow-2xs shrink-0">
-            Ctrl + K
-          </kbd>
-        </button>
-
         {/* Header Title & Breadcrumb for screen readers & test query */}
         <span data-testid="console-header-title" className="sr-only">
           {activeSubBreadcrumb
@@ -149,8 +134,25 @@ export const DesktopHeader: React.FC = () => {
         </span>
       </div>
 
-      {/* ZONE 2 (RIGHT): Notifications + Profile Admin */}
-      <div className="flex shrink-0 items-center gap-3">
+      {/* ZONE 2 (CENTER): Global Command Search Bar (Ctrl+K) */}
+      <div className="flex-1 flex items-center justify-center max-w-xl mx-auto px-2">
+        <button
+          type="button"
+          data-testid="console-global-search-trigger"
+          onClick={() => setIsSearchOpen(true)}
+          className="inline-flex h-10 w-full max-w-[440px] items-center gap-2.5 rounded-full border border-slate-200/90 dark:border-slate-700/80 bg-slate-50/90 dark:bg-slate-800/60 px-4 text-xs text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-800 dark:hover:text-slate-200 transition-all shadow-2xs text-left cursor-pointer"
+          title="Tìm kiếm nhanh toàn hệ thống (Ctrl + K)"
+        >
+          <Search className="h-4 w-4 shrink-0 text-slate-400" />
+          <span className="font-medium truncate flex-1">Tìm phòng, khách, hợp đồng...</span>
+          <kbd className="rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-1.5 py-0.5 font-mono text-[10px] font-medium text-slate-400 shadow-2xs shrink-0">
+            Ctrl + K
+          </kbd>
+        </button>
+      </div>
+
+      {/* ZONE 3 (RIGHT): Notifications + Profile Admin */}
+      <div className="flex flex-1 items-center justify-end gap-2.5 shrink-0">
         {/* Notifications Bell */}
         <div ref={notifRef} className="relative">
           <Tooltip side="bottom" sideOffset={6} align="end">
@@ -161,13 +163,13 @@ export const DesktopHeader: React.FC = () => {
                 onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
                 aria-expanded={isNotificationsOpen}
                 aria-label="Thông báo hệ thống"
-                className="relative inline-flex h-11 w-11 min-w-[44px] min-h-[44px] items-center justify-center rounded-full border border-slate-200/90 dark:border-slate-700/80 bg-white dark:bg-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 shadow-2xs transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/50"
+                className="relative inline-flex h-9 w-9 min-w-[36px] min-h-[36px] items-center justify-center rounded-full border border-slate-200/90 dark:border-slate-700/80 bg-white dark:bg-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 shadow-2xs transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/50 before:absolute before:-inset-1 before:content-['']"
               >
-                <Bell className="h-4.5 w-4.5" />
+                <Bell className="h-4 w-4" />
                 {unreadNotificationsCount > 0 && (
                   <span
                     data-testid="console-notifications-unread-badge"
-                    className="absolute -top-0.5 -right-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white ring-2 ring-white dark:ring-[#111827]"
+                    className="absolute -top-0.5 -right-0.5 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-red-600 px-1 text-[9px] font-bold text-white ring-2 ring-white dark:ring-[#111827]"
                   >
                     {unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}
                   </span>
@@ -268,7 +270,7 @@ export const DesktopHeader: React.FC = () => {
                 aria-expanded={isUserMenuOpen}
                 aria-haspopup="menu"
                 aria-label="Tài khoản quản trị"
-                className="inline-flex h-11 w-11 min-w-[44px] min-h-[44px] items-center justify-center rounded-full bg-blue-600 dark:bg-blue-500 text-xs font-bold text-white shadow-2xs hover:opacity-90 transition-opacity cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/50"
+                className="relative inline-flex h-9 w-9 min-w-[36px] min-h-[36px] items-center justify-center rounded-full bg-blue-600 dark:bg-blue-500 text-[11px] font-bold text-white shadow-2xs hover:opacity-90 ring-1 ring-white/20 transition-opacity cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/50 before:absolute before:-inset-1 before:content-['']"
               >
                 {initials}
               </button>

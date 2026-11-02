@@ -69,10 +69,21 @@ export function Sidebar({
       data-collapsible={state === 'collapsed' ? 'icon' : ''}
       data-testid="console-desktop-sidebar"
     >
-      <Gap style={{ width: widthPx }} className="shrink-0" />
+      <Gap
+        style={{
+          width: widthPx,
+          transition: 'width 280ms cubic-bezier(0.77, 0, 0.175, 1)',
+          willChange: 'width',
+        }}
+        className="shrink-0"
+      />
       <Container
         id="console-desktop-sidebar-panel"
-        style={{ width: widthPx }}
+        style={{
+          width: widthPx,
+          transition: 'width 280ms cubic-bezier(0.77, 0, 0.175, 1)',
+          willChange: 'width',
+        }}
         data-state={state}
         data-collapsible={state === 'collapsed' ? 'icon' : ''}
         className={`fixed inset-y-0 left-0 z-30 flex h-screen flex-col border-r border-slate-200/90 dark:border-slate-800/90 bg-white dark:bg-[#111827] select-none ${className}`}
@@ -93,7 +104,7 @@ export function SidebarHeader({
   return (
     <div
       data-sidebar="header"
-      className={`flex h-16 shrink-0 items-center border-b border-slate-100 dark:border-slate-800/80 ${className}`}
+      className={`flex h-16 shrink-0 items-center transition-colors ${className}`}
     >
       {children}
     </div>
@@ -159,21 +170,22 @@ export function SidebarGroupLabel({
   className?: string;
 }) {
   const { state } = useSidebar();
-  if (state === 'collapsed') {
-    return (
-      <div
-        data-sidebar="group-label"
-        className="mx-auto my-1.5 h-px w-7 bg-slate-200 dark:bg-slate-800"
-        aria-hidden="true"
-      />
-    );
-  }
+  const isCollapsed = state === 'collapsed';
+
   return (
     <div
       data-sidebar="group-label"
-      className={`px-2.5 pb-1.5 pt-1 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400 dark:text-slate-500 truncate ${className}`}
+      className={`relative overflow-hidden transition-all duration-280 ease-[cubic-bezier(0.77,0,0.175,1)] ${
+        isCollapsed
+          ? 'h-3 flex items-center justify-center my-1'
+          : 'h-6 px-2.5 pt-1.5 pb-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400 dark:text-slate-500'
+      } ${className}`}
     >
-      {children}
+      {isCollapsed ? (
+        <span className="h-px w-6 rounded-full bg-slate-200/90 dark:bg-slate-800/90" aria-hidden="true" />
+      ) : (
+        <span className="truncate">{children}</span>
+      )}
     </div>
   );
 }
@@ -233,11 +245,11 @@ export function SidebarMenuButton({
       onClick={onClick}
       aria-current={isActive ? 'page' : undefined}
       aria-label={isCollapsed && tooltip ? tooltip : undefined}
-      className={`relative z-10 flex w-full items-center rounded-lg text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40 ${
-        isCollapsed ? 'h-10 justify-center px-0' : 'h-9.5 gap-2.5 px-2.5 py-2'
+      className={`relative z-10 flex w-full items-center rounded-xl text-[13px] transition-all duration-280 ease-[cubic-bezier(0.77,0,0.175,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40 ${
+        isCollapsed ? 'h-10 justify-center px-0' : 'h-10 gap-2.5 px-3 py-2'
       } ${
         isActive
-          ? 'bg-blue-50/95 dark:bg-blue-500/15 text-brand-primary dark:text-blue-400 font-semibold'
+          ? 'bg-blue-50/95 dark:bg-blue-500/15 text-brand-primary dark:text-blue-400 font-semibold shadow-2xs'
           : 'text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-100/80 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-white'
       } ${className}`}
     >

@@ -204,7 +204,10 @@ async function main() {
         cwd: REPO_ROOT,
         shell: true,
         stdio: 'ignore',
-        env: { ...process.env },
+        env: {
+          ...process.env,
+          ADHOME_API_TARGET: 'http://127.0.0.1:8081',
+        },
       }
     );
     const consoleOk = await waitForHttpOk(CONSOLE_URL, 40, 500);

@@ -41,7 +41,7 @@ function legacyDomainRedirectPlugin(): Plugin {
   };
 }
 
-const apiTarget = process.env.ADHOME_API_TARGET || 'http://127.0.0.1:8081';
+const apiTarget = process.env.ADHOME_API_TARGET || 'http://127.0.0.1:5173';
 
 // https://vite.dev/config/
 export default defineConfig({

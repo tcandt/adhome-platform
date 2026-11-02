@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Menu, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
+import { BrandWordmark } from './BrandWordmark';
 
 interface HeaderProps {
   currentPath: string;
@@ -51,12 +52,14 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate }) => {
       <div className="max-w-[1220px] mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between gap-6">
         {/* Brand Logo — generous spacing, never squeezed */}
         <a
+          data-brand-dock="landing-header"
           href="/"
           onClick={(e) => handleNavClick(e, '/', '#trang-chu')}
           className="flex items-center gap-3 shrink-0 focus:outline-none"
           aria-label="AdHome — Trang chủ"
         >
           <img
+            data-brand-part="icon"
             data-testid="header-brand-logo-img"
             src="/brand/adhome-icon.svg"
             alt="AdHome"
@@ -64,14 +67,7 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate }) => {
             height={40}
             className="w-9 h-9 sm:w-10 sm:h-10 object-contain transition-transform duration-300"
           />
-          <div className="flex flex-col">
-            <span className="text-lg sm:text-xl font-bold tracking-tight text-ink leading-none">
-              AdHome
-            </span>
-            <span className="text-[11px] text-ink-muted mt-1 leading-none">
-              KĐT Ân Phú · Đắk Lắk
-            </span>
-          </div>
+          <BrandWordmark className="h-auto w-[106px] sm:w-[118px]" />
         </a>
 
         {/* Desktop Navigation — 5 concise items */}

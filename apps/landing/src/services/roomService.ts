@@ -152,6 +152,7 @@ export async function fetchPublicRoomCatalog(): Promise<RoomCatalogResponse> {
     const failParam = shouldSimulateApiError() ? '?fail=1' : '';
     const response = await fetch(`${PUBLIC_API_BASE}/public/rooms${failParam}`, {
       headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(10000),
     });
 
     if (!response.ok) {

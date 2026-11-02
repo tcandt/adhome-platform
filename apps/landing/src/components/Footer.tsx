@@ -1,5 +1,5 @@
 import React from 'react';
-import { MapPin, ExternalLink } from 'lucide-react';
+import { MapPin, ExternalLink, Phone, Mail, MessageCircle, Music2 } from 'lucide-react';
 
 interface FooterProps {
   onNavigate: (path: string, hash?: string) => void;
@@ -44,9 +44,9 @@ export const Footer: React.FC<FooterProps> = ({
             </div>
 
             <p className="text-sm text-white/80 leading-relaxed max-w-md pt-1">
-              Hệ thống quản lý và giới thiệu căn hộ dịch vụ Studio, 1 phòng ngủ
-              và 2 phòng ngủ mini full nội thất tại Khu đô thị Ân Phú, Phường
-              Tân An, Đắk Lắk.
+              AdHome phát triển và cho thuê nền tảng quản lý cơ sở lưu trú, đồng thời
+              kinh doanh căn hộ dịch vụ cao cấp, đầy đủ nội thất tại Khu đô thị
+              Ân Phú, phường Tân An, tỉnh Đắk Lắk.
             </p>
           </div>
 
@@ -113,6 +113,13 @@ export const Footer: React.FC<FooterProps> = ({
               <MapPin className="w-4 h-4 text-white/70 shrink-0 mt-1" />
               <span>Khu đô thị Ân Phú, Phường Tân An, Đắk Lắk</span>
             </p>
+
+            <ul className="space-y-2.5 text-sm text-white/85">
+              <li><a href="tel:0567867889" className="inline-flex items-center gap-2 hover:text-white transition-colors"><Phone className="h-4 w-4 shrink-0" /><span>Điện thoại: 05678.67889</span></a></li>
+              <li><a href="https://zalo.me/0567867889" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 hover:text-white transition-colors"><MessageCircle className="h-4 w-4 shrink-0" /><span>Zalo: 05678.67889</span></a></li>
+              <li><a href="https://www.tiktok.com/@homeland.anphu" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 hover:text-white transition-colors"><Music2 className="h-4 w-4 shrink-0" /><span>TikTok: @homeland.anphu</span></a></li>
+              <li><a href="mailto:admin@adhome.vn" className="inline-flex items-center gap-2 hover:text-white transition-colors"><Mail className="h-4 w-4 shrink-0" /><span>admin@adhome.vn</span></a></li>
+            </ul>
 
             <div className="pt-2 flex flex-wrap items-center gap-3">
               <button

@@ -1,3 +1,5 @@
+import { motion } from 'motion/react';
+import { useAppReducedMotion } from './motionPreference';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Header } from './components/Header';
 import { HeroSection } from './components/HeroSection';
@@ -32,6 +34,8 @@ function normalizePathname(rawPathname: string): string {
 }
 
 export function App() {
+  const reduceMotion = useAppReducedMotion();
+  const [isPageRevealed, setIsPageRevealed] = useState(false);
   const [currentPath, setCurrentPath] = useState<string>(() =>
     normalizePathname(window.location.pathname)
   );
@@ -58,6 +62,7 @@ export function App() {
         setSourceVerified(res.sourceVerified);
         setCatalogError(res.error);
         if (res.error) {
+          setBootProgress(100);
           setIsLoading(false);
         } else {
           setBootProgress(70);
@@ -68,6 +73,7 @@ export function App() {
         }
       })
       .catch((err) => {
+        setBootProgress(100);
         setCatalogError(err.message || 'Lỗi không xác định');
         setIsLoading(false);
       });
@@ -158,7 +164,7 @@ export function App() {
 
   return (
     <>
-      <div className="min-h-screen flex flex-col bg-canvas text-ink">
+      <motion.div initial={false} animate={{ opacity: isPageRevealed ? 1 : 0 }} transition={{ duration: reduceMotion ? 0.12 : 0.7, ease: [0.22, 1, 0.36, 1] }} className="min-h-screen flex flex-col bg-canvas text-ink">
         {/* Sticky Header */}
         <Header currentPath={currentPath} onNavigate={navigateTo} />
 
@@ -246,15 +252,16 @@ export function App() {
         selectedRoom={inquiryRoom}
         onClose={() => setInquiryModalOpen(false)}
       />
-    </div>
+    </motion.div>
 
     {/* Hero Shared-Element Docking Logo Fill Loader Overlay */}
     {!isBootComplete && (
       <LogoFillLoader
         progress={bootProgress}
-        error={catalogError}
+        error={null}
         onRetry={loadCatalog}
-        onComplete={() => setIsBootComplete(true)}
+        onReveal={() => setIsPageRevealed(true)}
+        onComplete={() => { setIsPageRevealed(true); setIsBootComplete(true); }}
       />
     )}
   </>

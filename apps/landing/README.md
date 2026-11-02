@@ -81,3 +81,16 @@ pnpm build:landing
 # 3. Chạy kiểm thử tự động E2E, Accessibility & Core Web Vitals Gate 03
 cd apps/landing && node scripts/e2eGate03.mjs
 ```
+
+
+## Cloudflare Worker — adhome.vn
+
+- Worker: `adhome-platform`; cấu hình ở `/wrangler.jsonc` của monorepo.
+- Cloudflare Builds: root `/`, build `pnpm run build:worker`, deploy `npx wrangler deploy`.
+- Bản build Worker chỉ đóng gói frontend; không chạy Prisma hoặc kết nối PostgreSQL trong CI.
+- Worker phục vụ `apps/landing/dist` và fallback SPA cho các URL frontend.
+- Backend hiện nằm trong `server/publicApiPlugin.ts`, chạy cùng Vite/preview trên máy chủ Node và PostgreSQL native. Console dev proxy tới `127.0.0.1:5173`, preview tới `127.0.0.1:8081`; các địa chỉ này không thể dùng làm API origin trên Cloudflare.
+- Đặt biến runtime `PUBLIC_API_ORIGIN` thành HTTPS origin của backend đang chạy (không kèm `/api/v1`). Worker chỉ chuyển tiếp GET/HEAD rooms và POST inquiries/rum, không công khai các endpoint quản trị console.
+- Khi chưa nối backend, API trả 503 minh bạch; thông tin giới thiệu và các kênh liên hệ vẫn dùng được, danh sách phòng không thay bằng dữ liệu demo và biểu mẫu không giả lập đã lưu thành công.
+- Custom domain `adhome.vn` được khai báo trong Wrangler. Không đổi DNS mail hoặc domain console.
+- Liên hệ công khai: 05678.67889; Zalo cùng số; TikTok @homeland.anphu; admin@adhome.vn.

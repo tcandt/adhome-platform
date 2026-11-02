@@ -13,7 +13,9 @@
     "build:landing": "pnpm --filter @adhome/landing build",
     "build:console": "pnpm --filter @adhome/console build",
     "typecheck": "pnpm -r typecheck",
-    "lint": "pnpm -r lint"
+    "lint": "pnpm -r lint",
+    "build:worker": "pnpm --filter @adhome/landing build:worker",
+    "deploy:worker": "pnpm run build:worker && npx wrangler deploy"
   },
   "packageManager": "pnpm@11.14.0",
   "devDependencies": {

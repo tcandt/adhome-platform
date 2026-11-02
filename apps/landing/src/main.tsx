@@ -1,6 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { MotionConfig } from 'motion/react';
+import { AppMotionProvider } from './motionPreference';
 import './index.css';
 import App from './App';
 import { initRealUserMonitoring } from './services/rumService';
@@ -9,9 +9,9 @@ initRealUserMonitoring();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <MotionConfig reducedMotion="user">
+    <AppMotionProvider>
       <App />
-    </MotionConfig>
+    </AppMotionProvider>
   </StrictMode>
 );
 

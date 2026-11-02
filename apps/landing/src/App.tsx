@@ -165,8 +165,6 @@ export function App() {
         progress={bootProgress}
         error={catalogError}
         onRetry={loadCatalog}
-        brandTitle="AdHome"
-        subtitle="Căn hộ dịch vụ & Studio cao cấp tại KĐT Ân Phú"
       />
     );
   }

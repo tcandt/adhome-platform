@@ -73,8 +73,6 @@ export default function App() {
           void refreshSession();
           void refreshPortfolio();
         }}
-        brandTitle="AdHome"
-        subtitle="Smart Property Management"
       />
     );
   }

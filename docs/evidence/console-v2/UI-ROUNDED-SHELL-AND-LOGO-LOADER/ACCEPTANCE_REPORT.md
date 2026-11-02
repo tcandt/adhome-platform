@@ -37,8 +37,8 @@ Thư mục lưu trữ bằng chứng: `docs/evidence/console-v2/UI-ROUNDED-SHELL
 
 | Tệp hình ảnh | Viewport | Kích thước (bytes) | Mã băm SHA-256 |
 | :--- | :---: | :---: | :--- |
-| `minimalist_logo_loader_mobile_390x844.png` | 390×844 | 32,832 | `a836d6f85ad217c397ed2e52d095000f3a75485c20eaebd3e4e772f1687e3855` |
-| `minimalist_logo_loader_console_mobile.png` | 390×844 | 30,726 | `1a13a6ab456fce62ce21b25ef96bf631bba53b518fed2e9c45325412d9773893` |
+| `minimalist_logo_loader_mobile_390x844.png` | 390×844 | 68,258 | `c6957a8f5199b4eed9c1fa6195f3daee151868dd6042ba29d78f145275ab5f8c` |
+| `minimalist_logo_loader_console_mobile.png` | 390×844 | 56,081 | `60f0af55a2ed29b38f5981ebc1371e10a1a96489228ccc52477e5a402bacc8e8` |
 | `redesign_desktop_1440_header_expanded.png` | 1440×900 | 384,936 | `178fc177666dca163982c2443b8eea0e500f78a489847b1cb9d0a86bd6281a27` |
 | `redesign_desktop_1440_header_collapsed.png` | 1440×900 | 344,536 | `9fad85f9c5b3eaee6a5ddcef8ec017fedb9af748133191caf7f43af15c81ce15` |
 | `redesign_desktop_1280_header_contracts.png` | 1280×720 | 342,116 | `6c347acc581756122be12c07e470032b929b9bab5f7a2fb6ab12409d8b1094dc` |

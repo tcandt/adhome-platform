@@ -1,15 +1,15 @@
 [
   {
     "filename": "minimalist_logo_loader_console_mobile.png",
-    "sizeBytes": 30726,
-    "sha256": "1a13a6ab456fce62ce21b25ef96bf631bba53b518fed2e9c45325412d9773893",
+    "sizeBytes": 56081,
+    "sha256": "60f0af55a2ed29b38f5981ebc1371e10a1a96489228ccc52477e5a402bacc8e8",
     "relativePath": "screenshots/minimalist_logo_loader_console_mobile.png",
     "capturedAt": "2026-11-02T04:15:56.705Z"
   },
   {
     "filename": "minimalist_logo_loader_mobile_390x844.png",
-    "sizeBytes": 32832,
-    "sha256": "a836d6f85ad217c397ed2e52d095000f3a75485c20eaebd3e4e772f1687e3855",
+    "sizeBytes": 68258,
+    "sha256": "c6957a8f5199b4eed9c1fa6195f3daee151868dd6042ba29d78f145275ab5f8c",
     "relativePath": "screenshots/minimalist_logo_loader_mobile_390x844.png",
     "capturedAt": "2026-11-02T04:15:56.707Z"
   },

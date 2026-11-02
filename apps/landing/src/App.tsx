@@ -41,7 +41,7 @@ export function App() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [bootProgress, setBootProgress] = useState<number>(25);
-  const [isBootReady, setIsBootReady] = useState<boolean>(false);
+  const [isBootComplete, setIsBootComplete] = useState<boolean>(false);
   const [quickViewRoom, setQuickViewRoom] = useState<RoomListing | null>(null);
   const [inquiryModalOpen, setInquiryModalOpen] = useState<boolean>(false);
   const [inquiryRoom, setInquiryRoom] = useState<RoomListing | null>(null);
@@ -60,14 +60,11 @@ export function App() {
         if (res.error) {
           setIsLoading(false);
         } else {
-          setBootProgress(80);
+          setBootProgress(70);
           setTimeout(() => {
             setBootProgress(100);
-            setTimeout(() => {
-              setIsLoading(false);
-              setIsBootReady(true);
-            }, 180);
-          }, 120);
+            setIsLoading(false);
+          }, 160);
         }
       })
       .catch((err) => {
@@ -159,20 +156,11 @@ export function App() {
     setInquiryModalOpen(true);
   };
 
-  if (!isBootReady) {
-    return (
-      <LogoFillLoader
-        progress={bootProgress}
-        error={catalogError}
-        onRetry={loadCatalog}
-      />
-    );
-  }
-
   return (
-    <div className="min-h-screen flex flex-col bg-canvas text-ink">
-      {/* Sticky Header */}
-      <Header currentPath={currentPath} onNavigate={navigateTo} />
+    <>
+      <div className="min-h-screen flex flex-col bg-canvas text-ink">
+        {/* Sticky Header */}
+        <Header currentPath={currentPath} onNavigate={navigateTo} />
 
       <main className="flex-1">
         {activeRoomSlug ? (
@@ -259,6 +247,17 @@ export function App() {
         onClose={() => setInquiryModalOpen(false)}
       />
     </div>
+
+    {/* Hero Shared-Element Docking Logo Fill Loader Overlay */}
+    {!isBootComplete && (
+      <LogoFillLoader
+        progress={bootProgress}
+        error={catalogError}
+        onRetry={loadCatalog}
+        onComplete={() => setIsBootComplete(true)}
+      />
+    )}
+  </>
   );
 }
 

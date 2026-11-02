@@ -28,7 +28,7 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
         <img
           src="/brand/adhome-icon.svg"
           alt="AdHome"
-          data-testid="brand-logo-icon-img"
+          data-testid="brand-logo-icon-img header-brand-logo-img"
           className="h-full w-full shrink-0 object-contain select-none"
           draggable={false}
         />

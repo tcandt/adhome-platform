@@ -57,11 +57,12 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate }) => {
           aria-label="AdHome — Trang chủ"
         >
           <img
+            data-testid="header-brand-logo-img"
             src="/brand/adhome-icon.svg"
             alt="AdHome"
             width={40}
             height={40}
-            className="w-9 h-9 sm:w-10 sm:h-10 object-contain"
+            className="w-9 h-9 sm:w-10 sm:h-10 object-contain transition-transform duration-300"
           />
           <div className="flex flex-col">
             <span className="text-lg sm:text-xl font-bold tracking-tight text-ink leading-none">

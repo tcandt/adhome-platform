@@ -11,6 +11,10 @@
    - Bổ sung pre-hydration inline SVG splash trong thẻ `<div id="root">` tại cả `apps/console/index.html` và `apps/landing/index.html`, hiển thị ngay lập tức trong 0ms trước khi JavaScript tải xong.
    - **Tối giản hóa theo chuẩn Animate UI:** Loại bỏ hoàn toàn thanh tiến độ ngang (`horizontal progress bar`) và dòng trạng thái chữ dài dòng (`statusText / percentage`).
    - Logo chuyển đổi từ lớp nền trắng xám (0%) lên màu logo thực (100%) theo tiến trình đo lường thực tế (`UI-12` & `UI-13`) bám sát các pha kết nối thực: PostgreSQL, xác thực Admin, đồng bộ danh mục bất động sản, không dùng timer ảo.
+3. **Hiệu ứng Motion Bay Lên Góc Header (Shared-Element Docking Transition — UI-14):**
+   - Loại bỏ hoàn toàn việc unmount đột ngột gây thô cứng; thay vào đó là hiệu ứng lướt bay mượt mà chuẩn xác từ giữa màn hình lên vị trí Logo ở góc trên bên trái Header theo đúng sơ đồ phác thảo của người dùng.
+   - Tự động đo lường tọa độ DOM thực tế của Logo Header (`header-brand-logo-img`), áp dụng GPU-accelerated `translate3d(deltaX, deltaY, 0) scale(scale)` với đường cong spring `cubic-bezier(0.16, 1, 0.3, 1)` kéo dài 780ms.
+   - Nền backdrop mờ dần (`opacity 650ms`) để lộ website trong khi Logo vẫn giữ nguyên độ hiển thị để hạ cánh chính xác vào khớp Header Logo.
 
 ---
 
@@ -23,6 +27,7 @@
 | **QA-LOADER-01** | Khử thanh đen khi refresh (Pre-hydration) | Inline SVG splash trong `<div id="root">` ở cả Console & Landing | 0ms render không flash, không thanh đen unstyled | **PASS** |
 | **QA-LOADER-02** | Boot Progress Orchestrator (`UI-12`) | Đo lường tiến độ các pha mạng thực: Auth $\rightarrow$ Portfolio $\rightarrow$ Ready | Phản ánh chính xác pha vận hành thực, không timer giả | **PASS** |
 | **QA-LOADER-03** | AdHome Logo Fill Loader Tối Giản (`UI-13`) | 2 lớp SVG (Silhouette trắng xám + Gradient Fill) từ đáy lên đỉnh | Logo chuyển đổi mượt mà, loại bỏ thanh ngang và text dài | **PASS** |
+| **QA-LOADER-04** | Shared-Element Docking Motion (`UI-14`) | Logo bay từ giữa lên góc Header (`translate3d` & `scale`) | 780ms spring cubic-bezier, hạ cánh hoàn hảo vào Header Logo | **PASS** |
 | **QA-03 / C2-00** | Mobile Touch Targets | 26/26 controls trên Mobile $\ge 44\times 44\text{px}$ | 26/26 Passed, 0 vi phạm | **PASS** |
 | **QA-04** | Multi-Viewport Table Matrix | 1280, 1366, 1440, 1920px có scrollWidth $\le$ innerWidth | Không tràn ngang viewport, sticky column ghim chuẩn | **PASS** |
 | **QA-06** | Focus Trap & Escape Sheet | Mobile Bottom Sheet giữ focus trap, Escape đóng và hoàn trả focus | Phục hồi 100% focus về nút trigger kích hoạt | **PASS** |

@@ -13,7 +13,7 @@ export default function App() {
   const { mode } = usePresentationMode();
 
   const [bootProgress, setBootProgress] = useState(25);
-  const [isBootReady, setIsBootReady] = useState(false);
+  const [isBootComplete, setIsBootComplete] = useState(false);
 
   // Synchronize boot stages with live measurable backend network events (UI-12)
   useEffect(() => {
@@ -25,7 +25,6 @@ export default function App() {
     if (!isAuthenticated) {
       // Unauthenticated: transition to login
       setBootProgress(100);
-      setIsBootReady(true);
       return;
     }
 
@@ -34,10 +33,6 @@ export default function App() {
       setBootProgress(70);
     } else if (lastSyncedAt || syncStatus === 'idle') {
       setBootProgress(100);
-      const timer = setTimeout(() => {
-        setIsBootReady(true);
-      }, 160);
-      return () => clearTimeout(timer);
     }
   }, [isLoading, isAuthenticated, syncStatus, lastSyncedAt]);
 
@@ -63,23 +58,28 @@ export default function App() {
     return () => window.removeEventListener('focus', handleFocus);
   }, [isAuthenticated, refreshSession]);
 
-  // Display authentic AdHome Logo Fill Loader 0→100 while booting (UI-12 & UI-13)
-  if (!isBootReady) {
-    return (
-      <LogoFillLoader
-        progress={bootProgress}
-        error={syncStatus === 'error' ? syncError || 'Lỗi kết nối cơ sở dữ liệu' : null}
-        onRetry={() => {
-          void refreshSession();
-          void refreshPortfolio();
-        }}
-      />
-    );
-  }
+  return (
+    <>
+      {!isAuthenticated ? (
+        <LoginPage />
+      ) : mode === 'desktop' ? (
+        <DesktopShell />
+      ) : (
+        <MobileShell />
+      )}
 
-  if (!isAuthenticated) {
-    return <LoginPage />;
-  }
-
-  return mode === 'desktop' ? <DesktopShell /> : <MobileShell />;
+      {/* Hero Shared-Element Docking Logo Fill Loader Overlay */}
+      {!isBootComplete && (
+        <LogoFillLoader
+          progress={bootProgress}
+          error={syncStatus === 'error' ? syncError || 'Lỗi kết nối cơ sở dữ liệu' : null}
+          onRetry={() => {
+            void refreshSession();
+            void refreshPortfolio();
+          }}
+          onComplete={() => setIsBootComplete(true)}
+        />
+      )}
+    </>
+  );
 }

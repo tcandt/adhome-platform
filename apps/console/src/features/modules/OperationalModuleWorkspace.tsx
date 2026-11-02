@@ -1070,78 +1070,34 @@ export const OperationalModuleWorkspace: React.FC<
       className="space-y-4"
       data-testid={`console-module-workspace-${moduleId}`}
     >
-      {/* MODULE TOOLBAR + CONDITIONAL DYNAMIC PERIOD SELECTOR */}
-      <div className="p-4 bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-3">
-        <div>
-          <h2 className="text-base font-bold text-slate-900 dark:text-white">
+      {/* MODULE TOOLBAR (UI-HEADER-03 / P1) — deterministic 2-tier layout:
+          Tier 1: title + action hierarchy (utility → secondary → primary)
+          Tier 2: context bar (building scope + period), only when relevant */}
+      <div
+        data-testid="module-workspace-toolbar"
+        className="bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-xl"
+      >
+        <div className="flex items-center justify-between gap-4 px-4 py-3">
+        <div className="min-w-0">
+          <h2 className="truncate text-base font-bold text-slate-900 dark:text-white">
             {currentNavConfig.label}
           </h2>
-          <p className="text-xs text-slate-500">
+          <p className="truncate text-xs text-slate-500">
             {currentNavConfig.description}
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {currentNavConfig.supportsBuildingScope && (
-            <BuildingScopeSelector />
-          )}
-
-          {currentNavConfig.hasPeriodToolbar && (
-            <div
-              data-testid="period-selector-toolbar"
-              className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl"
-            >
-              <button
-                type="button"
-                aria-label="Kỳ trước"
-                onClick={() =>
-                  setSelectedPeriod(shiftPeriodKey(selectedPeriod, -1))
-                }
-                className="p-1.5 rounded-lg text-slate-500 hover:bg-white dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white"
-              >
-                <ChevronLeft className="w-3.5 h-3.5" />
-              </button>
-              <label className="inline-flex items-center gap-1.5 px-2 text-xs font-bold text-slate-800 dark:text-slate-100">
-                <Calendar className="w-3.5 h-3.5 text-brand-primary" />
-                <span>{formatPeriodDisplay(selectedPeriod)}</span>
-                <input
-                  data-testid="input-module-period"
-                  type="month"
-                  value={selectedPeriod}
-                  onChange={(e) => {
-                    if (/^\d{4}-\d{2}$/.test(e.target.value)) {
-                      setSelectedPeriod(e.target.value);
-                    }
-                  }}
-                  className="sr-only"
-                />
-              </label>
-              <button
-                type="button"
-                aria-label="Kỳ kế tiếp"
-                onClick={() =>
-                  setSelectedPeriod(shiftPeriodKey(selectedPeriod, 1))
-                }
-                className="p-1.5 rounded-lg text-slate-500 hover:bg-white dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white"
-              >
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-              {selectedPeriod !== getCurrentVnPeriodKey() && (
-                <button
-                  type="button"
-                  onClick={() => setSelectedPeriod(getCurrentVnPeriodKey())}
-                  className="px-2 py-1 text-[11px] font-semibold text-brand-primary hover:underline"
-                >
-                  Kỳ hiện tại
-                </button>
-              )}
-            </div>
-          )}
-
+        <div
+          data-testid="module-toolbar-actions"
+          className="flex shrink-0 items-center gap-2"
+        >
+          {/* Utility action */}
           <button
             type="button"
+            data-testid="btn-module-refresh"
             onClick={() => void loadModuleData()}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"
+            title="Đồng bộ lại dữ liệu phân hệ"
+            className="inline-flex h-9 items-center gap-1.5 px-2.5 text-xs font-semibold rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
           >
             <RefreshCw
               className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`}
@@ -1154,7 +1110,7 @@ export const OperationalModuleWorkspace: React.FC<
               type="button"
               data-testid="btn-open-create-reservation"
               onClick={openReservationModal}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-amber-600 hover:bg-amber-700 text-white shadow-sm"
+              className="inline-flex h-9 items-center gap-1.5 px-3.5 text-xs font-bold rounded-lg bg-amber-600 hover:bg-amber-700 text-white shadow-sm"
             >
               <KeyRound className="w-3.5 h-3.5" />
               <span>Tạo phiếu giữ chỗ</span>
@@ -1162,26 +1118,28 @@ export const OperationalModuleWorkspace: React.FC<
           )}
 
           {moduleId === 'contracts' && hasCapability('canManageContracts') && (
-            <div className="flex items-center gap-2">
+            <>
+              {/* Secondary action */}
               <button
                 type="button"
                 data-testid="btn-open-legacy-import"
                 onClick={() => setIsImportModalOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition-colors"
+                className="inline-flex h-9 items-center gap-1.5 px-3 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
               >
                 <FileSpreadsheet className="w-3.5 h-3.5" />
                 <span>Import sổ cũ</span>
               </button>
+              {/* Primary CTA */}
               <button
                 type="button"
                 data-testid="btn-open-create-contract"
                 onClick={openContractModal}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-brand-primary hover:bg-brand-hover text-white shadow-sm"
+                className="inline-flex h-9 items-center gap-1.5 px-3.5 text-xs font-bold rounded-lg bg-brand-primary hover:bg-brand-hover text-white shadow-sm transition-colors"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Lập hợp đồng mới</span>
               </button>
-            </div>
+            </>
           )}
 
           {moduleId === 'settlements' && (
@@ -1238,6 +1196,71 @@ export const OperationalModuleWorkspace: React.FC<
             </button>
           )}
         </div>
+        </div>
+
+        {(currentNavConfig.supportsBuildingScope ||
+          currentNavConfig.hasPeriodToolbar) && (
+          <div
+            data-testid="module-toolbar-context"
+            className="flex flex-wrap items-center gap-2 border-t border-slate-100 dark:border-slate-800 px-4 py-2.5"
+          >
+            {currentNavConfig.supportsBuildingScope && (
+              <BuildingScopeSelector />
+            )}
+
+            {currentNavConfig.hasPeriodToolbar && (
+              <div
+                data-testid="period-selector-toolbar"
+                className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl"
+              >
+                <button
+                  type="button"
+                  aria-label="Kỳ trước"
+                  onClick={() =>
+                    setSelectedPeriod(shiftPeriodKey(selectedPeriod, -1))
+                  }
+                  className="p-1.5 rounded-lg text-slate-500 hover:bg-white dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+                <label className="inline-flex items-center gap-1.5 px-2 text-xs font-bold text-slate-800 dark:text-slate-100">
+                  <Calendar className="w-3.5 h-3.5 text-brand-primary" />
+                  <span>{formatPeriodDisplay(selectedPeriod)}</span>
+                  <input
+                    data-testid="input-module-period"
+                    type="month"
+                    value={selectedPeriod}
+                    onChange={(e) => {
+                      if (/^\d{4}-\d{2}$/.test(e.target.value)) {
+                        setSelectedPeriod(e.target.value);
+                      }
+                    }}
+                    className="sr-only"
+                  />
+                </label>
+                <button
+                  type="button"
+                  aria-label="Kỳ kế tiếp"
+                  onClick={() =>
+                    setSelectedPeriod(shiftPeriodKey(selectedPeriod, 1))
+                  }
+                  className="p-1.5 rounded-lg text-slate-500 hover:bg-white dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+                {selectedPeriod !== getCurrentVnPeriodKey() && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPeriod(getCurrentVnPeriodKey())}
+                    className="px-2 py-1 text-[11px] font-semibold text-brand-primary hover:underline"
+                  >
+                    Kỳ hiện tại
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {hunonicFeedback && (

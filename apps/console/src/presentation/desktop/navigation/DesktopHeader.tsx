@@ -14,7 +14,10 @@ export const DesktopHeader: React.FC = () => {
   return (
     <header
       data-testid="console-desktop-header"
-      className="sticky top-0 z-20 flex h-16 w-full shrink-0 items-center justify-between gap-4 border-b border-slate-200/90 dark:border-slate-800/90 bg-white/95 dark:bg-[#111827]/95 px-6 backdrop-blur-md select-none transition-colors"
+      // pl-16 = 64px safe zone reserved for AppShellSidebarToggle
+      // (8px gap + 44px hit area + 12px breathing room). The toggle itself is
+      // NOT part of this header's DOM (UI-HEADER-03).
+      className="sticky top-0 z-20 flex h-16 w-full shrink-0 items-center justify-between gap-4 border-b border-slate-200/90 dark:border-slate-800/90 bg-white/95 dark:bg-[#111827]/95 pl-16 pr-6 backdrop-blur-md select-none transition-colors"
     >
       {/* ZONE 1 (LEFT): Contextual Module Title & Breadcrumbs */}
       <div className="flex min-w-0 items-center gap-2.5">

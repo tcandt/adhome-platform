@@ -1,11 +1,9 @@
 import React from 'react';
-import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import {
   Container,
   Gap,
   Highlight,
   Provider,
-  TriggerIcon,
   useSidebar,
 } from '@animate-ui/react/primitives/sidebar';
 import {
@@ -73,6 +71,7 @@ export function Sidebar({
     >
       <Gap style={{ width: widthPx }} className="shrink-0" />
       <Container
+        id="console-desktop-sidebar-panel"
         style={{ width: widthPx }}
         data-state={state}
         data-collapsible={state === 'collapsed' ? 'icon' : ''}
@@ -91,11 +90,10 @@ export function SidebarHeader({
   children: React.ReactNode;
   className?: string;
 }) {
-  const hasCustomHeight = className.includes('h-');
   return (
     <div
       data-sidebar="header"
-      className={`flex ${hasCustomHeight ? '' : 'h-16'} shrink-0 items-center border-b border-slate-100 dark:border-slate-800/80 ${className}`}
+      className={`flex h-16 shrink-0 items-center border-b border-slate-100 dark:border-slate-800/80 ${className}`}
     >
       {children}
     </div>
@@ -267,65 +265,10 @@ export function SidebarMenuButton({
   );
 }
 
-export function SidebarRail() {
-  const { toggleSidebar, state } = useSidebar();
-  return (
-    <button
-      type="button"
-      data-sidebar="rail"
-      data-testid="console-sidebar-rail"
-      onClick={toggleSidebar}
-      title={
-        state === 'expanded'
-          ? 'Thu gọn thanh điều hướng (Ctrl+B)'
-          : 'Mở rộng thanh điều hướng (Ctrl+B)'
-      }
-      aria-label={
-        state === 'expanded'
-          ? 'Thu gọn thanh điều hướng'
-          : 'Mở rộng thanh điều hướng'
-      }
-      className="absolute inset-y-0 -right-2 z-40 hidden w-4 cursor-pointer lg:flex items-center justify-center group/rail focus:outline-none select-none"
-    >
-      <span className="h-full w-[2px] bg-transparent transition-colors group-hover/rail:bg-brand-primary/60 group-focus-visible/rail:bg-brand-primary" />
-    </button>
-  );
-}
-
-export function SidebarTrigger({ className = '' }: { className?: string }) {
-  const { toggleSidebar, state } = useSidebar();
-  const isExpanded = state === 'expanded';
-  const tooltipText = isExpanded
-    ? 'Thu gọn thanh điều hướng (Ctrl+B)'
-    : 'Mở rộng thanh điều hướng (Ctrl+B)';
-
-  const triggerButton = (
-    <button
-      type="button"
-      data-sidebar="trigger"
-      data-testid="console-sidebar-trigger"
-      data-state={state}
-      aria-expanded={isExpanded}
-      aria-label={tooltipText}
-      onClick={toggleSidebar}
-      className={`relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-750 hover:border-slate-300/80 dark:hover:border-slate-700 hover:text-slate-900 dark:hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 transition-all duration-150 active:scale-95 ${className}`}
-    >
-      <TriggerIcon
-        open={<PanelLeftClose className="h-4.5 w-4.5 transition-transform duration-200" />}
-        closed={<PanelLeftOpen className="h-4.5 w-4.5 text-blue-600 dark:text-blue-400 transition-transform duration-200" />}
-      />
-    </button>
-  );
-
-  return (
-    <Tooltip side="bottom" sideOffset={8} align="start">
-      <TooltipTrigger asChild>{triggerButton}</TooltipTrigger>
-      <TooltipContent className="z-50 rounded-lg border border-slate-700/80 bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-white shadow-lg">
-        {tooltipText}
-      </TooltipContent>
-    </Tooltip>
-  );
-}
+// NOTE (UI-SIDEBAR-02): `SidebarRail` and `SidebarTrigger` were removed on purpose.
+// The single source of truth for toggling the desktop sidebar is
+// `AppShellSidebarToggle` (rendered at DesktopShell level) plus the Ctrl/Cmd+B
+// shortcut that is already owned by the Animate UI `Provider`.
 
 export function SidebarInset({
   children,

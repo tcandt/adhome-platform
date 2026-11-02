@@ -1,92 +1,92 @@
 [
   {
     "filename": "redesign_desktop_1440_header_expanded.png",
-    "scenario": "UI-HEADER-01/UI-SIDEBAR-01: Desktop 1440x900 Header tối giản 2 vùng (Breadcrumb/Tiêu đề + Search Ctrl+K) & Sidebar mở rộng với nút Toggle cạnh Logo, Scope chuyển về Workspace, Sync/Thông báo/User Profile trong Sidebar",
+    "scenario": "UI-HEADER-03/UI-SIDEBAR-02: Desktop 1440x900 App Shell Floating Toggle (X=256px, Y=10px, 44x44px), Header tối giản 2 vùng (Breadcrumb/Tiêu đề + Search Ctrl+K) & Sidebar mở rộng (248px), Logo độc lập, Scope trong Workspace, Sync/Thông báo/Profile ở Sidebar Footer",
     "viewport": "1440x900",
-    "sizeBytes": 407136,
-    "sha256": "c134594e4ab68e2215d2cb23ebced97a69a2cdcebb7b8707cc69be0068f5cc52",
+    "sizeBytes": 405999,
+    "sha256": "e262c7cd72b4c82c23b432054b63dd0849012b9897679fc3381aa2a631164233",
     "relativePath": "screenshots/redesign_desktop_1440_header_expanded.png",
-    "capturedAt": "2026-11-01T14:28:40.273Z"
+    "capturedAt": "2026-11-02T01:02:17.072Z"
   },
   {
     "filename": "redesign_desktop_1440_header_collapsed.png",
-    "scenario": "UI-SIDEBAR-01: Desktop 1440x900 Sidebar thu gọn (72px) với nút Toggle cạnh Logo, icon PanelLeftOpen, tooltip Ctrl+B",
+    "scenario": "UI-SIDEBAR-02: Desktop 1440x900 Sidebar thu gọn (72px) với App Shell Floating Toggle (X=80px, Y=10px, 44x44px), icon Menu, không drop dưới logo, giữ nguyên focus, Header 64px phẳng",
     "viewport": "1440x900",
-    "sizeBytes": 322747,
-    "sha256": "fc5f2e5c13915523d2d0b7babaf7e6f813745d7ff50a28fe67c1898537ce1081",
+    "sizeBytes": 323825,
+    "sha256": "22b135a8b38fa725604e530f8481edef7db7e50ac754f88a027ff91c220e8b5c",
     "relativePath": "screenshots/redesign_desktop_1440_header_collapsed.png",
-    "capturedAt": "2026-11-01T14:28:41.579Z"
+    "capturedAt": "2026-11-02T01:02:18.379Z"
   },
   {
     "filename": "redesign_desktop_1280_header_contracts.png",
     "scenario": "UI-01: Desktop 1280x720 Header không tràn 2 dòng, các cụm điều hướng và context tòa nhà cân đối",
     "viewport": "1280x720",
-    "sizeBytes": 345161,
-    "sha256": "46f3ce55db9c61e4228a7d781fcde55d7530003ae3a973b8fd3136463ea37f5e",
+    "sizeBytes": 344180,
+    "sha256": "8fa5c1be1f70ed7ea49a0a0fcb8eb334e1ac7f9293354a16109595814641571c",
     "relativePath": "screenshots/redesign_desktop_1280_header_contracts.png",
-    "capturedAt": "2026-11-01T14:28:42.894Z"
+    "capturedAt": "2026-11-02T01:02:19.673Z"
   },
   {
     "filename": "redesign_desktop_1920_header_overview.png",
     "scenario": "UI-01: Desktop 1920x1080 Header trên màn hình rộng 1080p, bố cục sắc nét không vỡ tỷ lệ",
     "viewport": "1920x1080",
-    "sizeBytes": 446558,
-    "sha256": "785d1159447d07a4fd7ff3324091a058bbca45fda0f4a99453d9b4910c7d74ad",
+    "sizeBytes": 445407,
+    "sha256": "1a6beab0d95d3080f07c1d11281c6d8c5521f49040dcc8e54b754ea63198303a",
     "relativePath": "screenshots/redesign_desktop_1920_header_overview.png",
-    "capturedAt": "2026-11-01T14:28:43.705Z"
+    "capturedAt": "2026-11-02T01:02:20.473Z"
   },
   {
     "filename": "redesign_desktop_1280_contracts_table_expanded.png",
     "scenario": "QA-04-FIX-01: Bảng hợp đồng Desktop tại 1280x720 khi Sidebar MỞ RỘNG (248px): 6 cột cân đối, không tràn ngang, cột Thao tác sticky-right luôn nhìn thấy",
     "viewport": "1280x720",
-    "sizeBytes": 352039,
-    "sha256": "2d272a8a3138659eb02c5545aa0875a27a77ee1b9be9e376149eb6f803c36b55",
+    "sizeBytes": 349355,
+    "sha256": "503839c23cb11c74b1c1cd25799fa6131c1ee56627c3216c1bcda43b0b31b78e",
     "relativePath": "screenshots/redesign_desktop_1280_contracts_table_expanded.png",
-    "capturedAt": "2026-11-01T14:28:53.335Z"
+    "capturedAt": "2026-11-02T01:02:30.069Z"
   },
   {
     "filename": "redesign_desktop_1280_contracts_table_collapsed.png",
     "scenario": "QA-04-FIX-01: Bảng hợp đồng Desktop tại 1280x720 khi Sidebar THU GỌN (72px): Vùng hiển thị mở rộng, cột Thao tác sticky-right ghim cố định",
     "viewport": "1280x720",
-    "sizeBytes": 318753,
-    "sha256": "3fce62ef9a214a2dfa96077416bdf5f3d3363fe452dde52be5c92ca8996f2371",
+    "sizeBytes": 287895,
+    "sha256": "0276287014ed56d5fd35c07d9a33cf4f94d79f33c5f395b6b58ccbe5e00b8e81",
     "relativePath": "screenshots/redesign_desktop_1280_contracts_table_collapsed.png",
-    "capturedAt": "2026-11-01T14:28:54.659Z"
+    "capturedAt": "2026-11-02T01:02:31.382Z"
   },
   {
     "filename": "redesign_desktop_contracts_table_polished.png",
     "scenario": "UI-04/05/FIN-UI-03: Bảng danh sách hợp đồng Desktop 1440x900: Mã HĐ ngắn (HD-WF-010A, HD-S2R-105), badge \"Từ sổ cũ\", định dạng tiền tệ nowrap, phân rã cọc cam kết và thực thu chuẩn hóa, cột Thao tác sticky-right",
     "viewport": "1440x900",
-    "sizeBytes": 480820,
-    "sha256": "ca96576e0d3a5079b7d3559122f77e833b57c62aa10c3c84a63c24698d575fe0",
+    "sizeBytes": 468576,
+    "sha256": "4764fdb49d36e027efd382e75eb9462b245dcc0a27f3d231a6344c17f4880e2f",
     "relativePath": "screenshots/redesign_desktop_contracts_table_polished.png",
-    "capturedAt": "2026-11-01T14:28:55.998Z"
+    "capturedAt": "2026-11-02T01:02:32.747Z"
   },
   {
     "filename": "redesign_desktop_contracts_menu_open.png",
     "scenario": "UI-06: Menu ba chấm mở bằng Portal tại dòng hợp đồng, hiển thị đầy đủ trong viewport, không bị cắt bởi table container",
     "viewport": "1440x900",
-    "sizeBytes": 497350,
-    "sha256": "8cb62388ade18aa69ff10ebd5803195fb1c30ad53ae7bdbbdc2759ca3a142c28",
+    "sizeBytes": 485275,
+    "sha256": "8a2e79be175d68795a34863c919c2047b093fe18ddd752e3d3942f57848977ba",
     "relativePath": "screenshots/redesign_desktop_contracts_menu_open.png",
-    "capturedAt": "2026-11-01T14:28:57.552Z"
+    "capturedAt": "2026-11-02T01:02:34.309Z"
   },
   {
     "filename": "redesign_mobile_390x844_contracts_cards.png",
     "scenario": "UI-07/FIN-UI-03: Thẻ hợp đồng Mobile (390x844): Giá thuê nowrap không bị xuống dòng, mã HĐ ngắn, cọc thực thu chuẩn hóa, nút Bàn giao 44px+",
     "viewport": "390x844",
-    "sizeBytes": 141503,
-    "sha256": "8eb5c3d01998d2b7882dceee3c0975faece536dbcd81c3eeb16d8fbccc12e6ad",
+    "sizeBytes": 135859,
+    "sha256": "aa8ecd3185b902b156e37b70e174f8de0fb986cfdb85ea795ac903b2a52dcf9d",
     "relativePath": "screenshots/redesign_mobile_390x844_contracts_cards.png",
-    "capturedAt": "2026-11-01T14:28:59.268Z"
+    "capturedAt": "2026-11-02T01:02:36.014Z"
   },
   {
     "filename": "redesign_mobile_390x844_actions_bottom_sheet.png",
     "scenario": "UI-07/QA-06: Action Bottom Sheet trên Mobile mở từ thẻ hợp đồng với grab-bar, contextual header (tòa/phòng, mã HĐ, trạng thái), safe-area padding và touch targets 44px+",
     "viewport": "390x844",
-    "sizeBytes": 110406,
-    "sha256": "a5bb2dbda9a64dee680fd658e4210df9bd32773cff3635cbb0c591d26a3755e1",
+    "sizeBytes": 107886,
+    "sha256": "641efee205d055483b54fe77bec10be641d66846bc3c89b8849972f561ed73eb",
     "relativePath": "screenshots/redesign_mobile_390x844_actions_bottom_sheet.png",
-    "capturedAt": "2026-11-01T14:29:01.767Z"
+    "capturedAt": "2026-11-02T01:02:38.489Z"
   }
 ]

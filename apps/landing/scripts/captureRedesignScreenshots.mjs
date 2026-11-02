@@ -46,7 +46,7 @@ async function waitForHttpOk(url, maxTries = 40, intervalMs = 500) {
         });
       });
       if (res >= 200 && res < 500) return true;
-    } catch {}
+    } catch { }
     await new Promise((r) => setTimeout(r, intervalMs));
   }
   return false;
@@ -67,6 +67,9 @@ class CdpClient {
       this.ws.onerror = (err) => reject(err);
       this.ws.onmessage = (evt) => {
         const msg = JSON.parse(evt.data.toString());
+        if (msg.method === 'Runtime.exceptionThrown') {
+          console.error('  [Browser Exception]:', JSON.stringify(msg.params?.exceptionDetails?.exception || msg.params?.exceptionDetails));
+        }
         if (msg.id && this.callbacks.has(msg.id)) {
           const { res, rej } = this.callbacks.get(msg.id);
           this.callbacks.delete(msg.id);
@@ -113,7 +116,7 @@ class CdpClient {
 
   close() {
     if (this.ws) {
-      try { this.ws.close(); } catch {}
+      try { this.ws.close(); } catch { }
     }
   }
 }
@@ -213,6 +216,7 @@ async function main() {
     const browserBin = findBrowserExecutable();
     const cdpPort = 9225;
     const userDataDir = path.join(REPO_ROOT, '.tmp-ui-redesign-profile');
+    try { fs.rmSync(userDataDir, { recursive: true, force: true }); } catch { }
     fs.mkdirSync(userDataDir, { recursive: true });
 
     browserProc = spawn(
@@ -239,7 +243,7 @@ async function main() {
           cdpWsUrl = pageTarget.webSocketDebuggerUrl;
           break;
         }
-      } catch {}
+      } catch { }
     }
     if (!cdpWsUrl) throw new Error('CDP WebSocket URL not found.');
     console.log('  CDP connected:', cdpWsUrl);
@@ -287,6 +291,8 @@ async function main() {
 
     // 4. Authenticate into Console UI
     console.log('\n[Step 4] Logging into Console UI...');
+    await cdp.send('Network.enable');
+    await cdp.send('Network.clearBrowserCookies');
     await cdp.send('Emulation.setDeviceMetricsOverride', {
       width: 1440,
       height: 900,
@@ -294,16 +300,26 @@ async function main() {
       mobile: false,
     });
     await cdp.send('Page.navigate', { url: `${CONSOLE_URL}/login` });
-    const hasLogin = await waitForSelector('[data-testid="console-login-email"]');
-    if (!hasLogin) throw new Error('Console login page did not load.');
+    console.log(`  Navigating to ${CONSOLE_URL}/login...`);
+    await new Promise((r) => setTimeout(r, 800));
 
-    await setControlledInput('[data-testid="console-login-email"]', testActor.email);
-    await setControlledInput('[data-testid="console-login-password"]', ephemeralPassword);
-    await cdp.eval(`document.querySelector('[data-testid="console-login-submit"]')?.click()`);
+    const isAlreadyIn = await cdp.eval(`!!document.querySelector('[data-testid="console-desktop-header"]')`).catch(() => false);
+    if (!isAlreadyIn) {
+      const hasLogin = await waitForSelector('[data-testid="console-login-email"]');
+      if (!hasLogin) {
+        const finalDebug = await cdp.eval(`({ url: window.location.href, body: document.body ? document.body.innerHTML.slice(0, 500) : null })`).catch((e) => ({ error: e.message }));
+        console.error('  Failed to find login selector. Current page state:', finalDebug);
+        throw new Error('Console login page did not load.');
+      }
 
-    const hasHeader = await waitForSelector('[data-testid="console-desktop-header"]', 50, 250);
-    if (!hasHeader) throw new Error('Console failed to login.');
-    await new Promise((r) => setTimeout(r, 1000));
+      await setControlledInput('[data-testid="console-login-email"]', testActor.email);
+      await setControlledInput('[data-testid="console-login-password"]', ephemeralPassword);
+      await cdp.eval(`document.querySelector('[data-testid="console-login-submit"]')?.click()`);
+
+      const hasHeader = await waitForSelector('[data-testid="console-desktop-header"]', 50, 250);
+      if (!hasHeader) throw new Error('Console failed to login.');
+      await new Promise((r) => setTimeout(r, 1000));
+    }
     console.log('  Authenticated successfully.');
 
     async function capture({ filename, width, height, scenario }) {
@@ -347,9 +363,9 @@ async function main() {
       let current = await getState();
       if (current !== targetState) {
         await cdp.eval(`(() => {
-          const btn = document.querySelector('[data-sidebar="header"] [data-testid="console-sidebar-toggle"]') ||
-                      document.querySelector('[data-testid="console-sidebar-trigger"]') ||
-                      document.querySelector('[data-sidebar="trigger"]');
+          const btn = document.querySelector('[data-testid="console-sidebar-toggle"]') ||
+                      document.querySelector('[data-sidebar="trigger"]') ||
+                      document.querySelector('[data-testid="console-sidebar-trigger"]');
           if (btn) btn.click();
         })()`);
         await new Promise((r) => setTimeout(r, 600));
@@ -369,16 +385,23 @@ async function main() {
     // =========================================================================
     console.log('\n[QA-HEADER-01] Executing Header & Sidebar UX Verification Quality Gate...');
 
-    // Assertion 1: Sidebar Toggle Location
-    const toggleLocation = await cdp.eval(`(() => {
+    // Assertion 1: AppShell Floating Toggle Architecture & Clean 2-Zone Header
+    const toggleArch = await cdp.eval(`(() => {
+      const toggle = document.querySelector('[data-testid="console-sidebar-toggle"]');
       const sidebar = document.querySelector('[data-testid="console-desktop-sidebar"]');
       const header = document.querySelector('[data-testid="console-desktop-header"]');
       const sidebarHeader = sidebar?.querySelector('[data-sidebar="header"]');
-      const toggleBtn = sidebarHeader?.querySelector('[data-testid="console-sidebar-toggle"]') ||
-                        sidebarHeader?.querySelector('[data-sidebar="trigger"]');
+      const title = header?.querySelector('[data-testid="console-header-title"]');
+      const search = header?.querySelector('[data-testid="console-global-search-trigger"]');
 
-      const inSidebarHeader = !!toggleBtn;
-      const inDesktopHeader = header ? !!header.querySelector('[data-sidebar="trigger"], [data-testid="console-sidebar-trigger"], [data-testid="console-sidebar-toggle"]') : false;
+      const toggleRect = toggle ? toggle.getBoundingClientRect() : null;
+      const titleRect = title ? title.getBoundingClientRect() : null;
+      const headerRect = header ? header.getBoundingClientRect() : null;
+
+      const toggleExists = !!toggle;
+      const inSidebar = sidebar ? sidebar.contains(toggle) : false;
+      const inHeader = header ? header.contains(toggle) : false;
+      const inSidebarHeader = sidebarHeader ? sidebarHeader.contains(toggle) : false;
 
       // Verify DesktopHeader cleanliness (no cluttered controls)
       const headerClutters = {
@@ -389,52 +412,81 @@ async function main() {
         hasSync: !!header?.querySelector('[data-testid="console-sync-status"]'),
       };
 
-      const headerHeight = header ? header.getBoundingClientRect().height : 0;
-      const hasTitle = !!header?.querySelector('[data-testid="console-header-title"]');
-      const hasSearch = !!header?.querySelector('[data-testid="console-global-search-trigger"]');
+      const headerHeight = headerRect ? Math.round(headerRect.height) : 0;
+      const toggleWidth = toggleRect ? Math.round(toggleRect.width) : 0;
+      const toggleHeight = toggleRect ? Math.round(toggleRect.height) : 0;
+
+      // Safe zone check: title must start to the right of the toggle
+      const safeZoneOk = (titleRect && toggleRect) ? (titleRect.left >= toggleRect.right) : false;
 
       return {
+        toggleExists,
+        inSidebar,
+        inHeader,
         inSidebarHeader,
-        inDesktopHeader,
+        toggleSize: { width: toggleWidth, height: toggleHeight },
+        headerHeight,
         headerClutters,
-        headerHeight: Math.round(headerHeight),
-        cleanHeaderPassed: !Object.values(headerClutters).some(Boolean) && hasTitle && hasSearch,
+        cleanHeaderPassed: !Object.values(headerClutters).some(Boolean) && !!title && !!search,
+        safeZoneOk,
+        topCoord: toggleRect ? Math.round(toggleRect.top) : null,
+        leftCoord: toggleRect ? Math.round(toggleRect.left) : null,
       };
     })()`);
 
-    console.log('  [QA-HEADER-01 Assertion 1] Toggle Location & Clean Header:', toggleLocation);
-    if (!toggleLocation.inSidebarHeader || toggleLocation.inDesktopHeader || !toggleLocation.cleanHeaderPassed) {
-      throw new Error(`QA-HEADER-01 Failed: Sidebar toggle button misplaced or header cluttered: ${JSON.stringify(toggleLocation)}`);
+    console.log('  [QA-HEADER-01 Assertion 1] AppShell Toggle & Clean Header:', toggleArch);
+    if (!toggleArch.toggleExists || toggleArch.inSidebar || toggleArch.inHeader || toggleArch.inSidebarHeader) {
+      throw new Error(`QA-HEADER-01 Failed: Floating toggle is not independent of Sidebar and Header: ${JSON.stringify(toggleArch)}`);
+    }
+    if (toggleArch.toggleSize.width < 44 || toggleArch.toggleSize.height < 44) {
+      throw new Error(`QA-HEADER-01 Failed: Floating toggle touch target < 44px: ${JSON.stringify(toggleArch.toggleSize)}`);
+    }
+    if (!toggleArch.cleanHeaderPassed || toggleArch.headerHeight !== 64 || !toggleArch.safeZoneOk) {
+      throw new Error(`QA-HEADER-01 Failed: Header not clean 2-zone, height != 64, or title overlaps toggle: ${JSON.stringify(toggleArch)}`);
     }
 
     // Assertion 2: Expanded -> Collapsed -> Expanded Pointer Transition & Widths
-    console.log('  [QA-HEADER-01 Assertion 2] Testing Pointer Event Collapse & Expand...');
+    console.log('  [QA-HEADER-01 Assertion 2] Testing Pointer Event Collapse & Y/X Coordinates...');
     const initialSidebar = await cdp.eval(`(() => {
       const sb = document.querySelector('[data-testid="console-desktop-sidebar"]');
+      const toggle = document.querySelector('[data-testid="console-sidebar-toggle"]');
       const r = sb ? sb.getBoundingClientRect() : null;
-      return { state: sb?.getAttribute('data-state'), width: Math.round(r?.width || 0) };
+      const tr = toggle ? toggle.getBoundingClientRect() : null;
+      return {
+        state: sb?.getAttribute('data-state'),
+        width: Math.round(r?.width || 0),
+        toggleLeft: Math.round(tr?.left || 0),
+        toggleTop: Math.round(tr?.top || 0),
+      };
     })()`);
-    if (initialSidebar.state !== 'expanded' || Math.abs(initialSidebar.width - 248) > 2) {
-      throw new Error(`QA-HEADER-01 Failed: Initial sidebar not expanded (248px): ${JSON.stringify(initialSidebar)}`);
+    if (initialSidebar.state !== 'expanded' || Math.abs(initialSidebar.width - 248) > 2 || Math.abs(initialSidebar.toggleLeft - 256) > 2) {
+      throw new Error(`QA-HEADER-01 Failed: Initial sidebar not expanded (248px) or toggle left != 256px: ${JSON.stringify(initialSidebar)}`);
     }
 
     // Click toggle button to collapse
-    await cdp.eval(`(document.querySelector('[data-sidebar="header"] [data-testid="console-sidebar-toggle"]') || document.querySelector('[data-sidebar="header"] [data-sidebar="trigger"]'))?.click()`);
+    await cdp.eval(`document.querySelector('[data-testid="console-sidebar-toggle"]')?.click()`);
     await new Promise((r) => setTimeout(r, 600));
 
     const collapsedCheck = await cdp.eval(`(() => {
       const sb = document.querySelector('[data-testid="console-desktop-sidebar"]');
+      const toggle = document.querySelector('[data-testid="console-sidebar-toggle"]');
       const r = sb ? sb.getBoundingClientRect() : null;
-      const toggle = sb?.querySelector('[data-sidebar="header"] [data-testid="console-sidebar-toggle"], [data-sidebar="header"] [data-sidebar="trigger"]');
+      const tr = toggle ? toggle.getBoundingClientRect() : null;
       return {
         state: sb?.getAttribute('data-state'),
         width: Math.round(r?.width || 0),
         ariaExpanded: toggle?.getAttribute('aria-expanded'),
+        toggleLeft: Math.round(tr?.left || 0),
+        toggleTop: Math.round(tr?.top || 0),
+        isFocused: document.activeElement === toggle,
       };
     })()`);
     console.log('  [QA-HEADER-01 Collapsed Check]:', collapsedCheck);
     if (collapsedCheck.state !== 'collapsed' || Math.abs(collapsedCheck.width - 72) > 2 || collapsedCheck.ariaExpanded !== 'false') {
       throw new Error(`QA-HEADER-01 Failed: Collapse transition failed: ${JSON.stringify(collapsedCheck)}`);
+    }
+    if (Math.abs(collapsedCheck.toggleLeft - 80) > 2 || Math.abs(collapsedCheck.toggleTop - 10) > 2) {
+      throw new Error(`QA-HEADER-01 Failed: Collapsed toggle position error (expected left=80, top=10): ${JSON.stringify(collapsedCheck)}`);
     }
 
     // Hover stability test: Dispatch mouseenter / mousemove on collapsed sidebar
@@ -457,14 +509,22 @@ async function main() {
     }
 
     // Click toggle button again to re-expand
-    await cdp.eval(`(document.querySelector('[data-sidebar="header"] [data-testid="console-sidebar-toggle"]') || document.querySelector('[data-sidebar="header"] [data-sidebar="trigger"]'))?.click()`);
+    await cdp.eval(`document.querySelector('[data-testid="console-sidebar-toggle"]')?.click()`);
     await new Promise((r) => setTimeout(r, 600));
     const reExpandedCheck = await cdp.eval(`(() => {
       const sb = document.querySelector('[data-testid="console-desktop-sidebar"]');
+      const toggle = document.querySelector('[data-testid="console-sidebar-toggle"]');
       const r = sb ? sb.getBoundingClientRect() : null;
-      return { state: sb?.getAttribute('data-state'), width: Math.round(r?.width || 0) };
+      const tr = toggle ? toggle.getBoundingClientRect() : null;
+      return {
+        state: sb?.getAttribute('data-state'),
+        width: Math.round(r?.width || 0),
+        ariaExpanded: toggle?.getAttribute('aria-expanded'),
+        toggleLeft: Math.round(tr?.left || 0),
+        toggleTop: Math.round(tr?.top || 0),
+      };
     })()`);
-    if (reExpandedCheck.state !== 'expanded' || Math.abs(reExpandedCheck.width - 248) > 2) {
+    if (reExpandedCheck.state !== 'expanded' || Math.abs(reExpandedCheck.width - 248) > 2 || Math.abs(reExpandedCheck.toggleLeft - 256) > 2) {
       throw new Error(`QA-HEADER-01 Failed: Re-expand failed: ${JSON.stringify(reExpandedCheck)}`);
     }
 
@@ -541,7 +601,7 @@ async function main() {
     // Assertion 4: LocalStorage Persistence across Reload
     console.log('  [QA-HEADER-01 Assertion 4] Testing LocalStorage Persistence across Reload...');
     // Set to collapsed and verify localStorage
-    await cdp.eval(`(document.querySelector('[data-sidebar="header"] [data-testid="console-sidebar-toggle"]') || document.querySelector('[data-sidebar="header"] [data-sidebar="trigger"]'))?.click()`);
+    await cdp.eval(`document.querySelector('[data-testid="console-sidebar-toggle"]')?.click()`);
     await new Promise((r) => setTimeout(r, 500));
     const savedPref = await cdp.eval(`localStorage.getItem('adhome_ui_sidebar_open')`);
     if (savedPref !== 'false') {
@@ -564,7 +624,7 @@ async function main() {
     }
 
     // Re-expand sidebar after reload
-    await cdp.eval(`(document.querySelector('[data-sidebar="header"] [data-testid="console-sidebar-toggle"]') || document.querySelector('[data-sidebar="header"] [data-sidebar="trigger"]'))?.click()`);
+    await cdp.eval(`document.querySelector('[data-testid="console-sidebar-toggle"]')?.click()`);
     await new Promise((r) => setTimeout(r, 600));
 
     // Assertion 5: Relocated Controls Verification (Scope, Notifications, User Menu, Sync)
@@ -696,7 +756,7 @@ async function main() {
       filename: 'redesign_desktop_1440_header_expanded.png',
       width: 1440,
       height: 900,
-      scenario: 'UI-HEADER-01/UI-SIDEBAR-01: Desktop 1440x900 Header tối giản 2 vùng (Breadcrumb/Tiêu đề + Search Ctrl+K) & Sidebar mở rộng với nút Toggle cạnh Logo, Scope chuyển về Workspace, Sync/Thông báo/User Profile trong Sidebar',
+      scenario: 'UI-HEADER-03/UI-SIDEBAR-02: Desktop 1440x900 App Shell Floating Toggle (X=256px, Y=10px, 44x44px), Header tối giản 2 vùng (Breadcrumb/Tiêu đề + Search Ctrl+K) & Sidebar mở rộng (248px), Logo độc lập, Scope trong Workspace, Sync/Thông báo/Profile ở Sidebar Footer',
     });
 
     // 2. Desktop 1440x900 Header & Sidebar Collapsed
@@ -705,7 +765,7 @@ async function main() {
       filename: 'redesign_desktop_1440_header_collapsed.png',
       width: 1440,
       height: 900,
-      scenario: 'UI-SIDEBAR-01: Desktop 1440x900 Sidebar thu gọn (72px) với nút Toggle cạnh Logo, icon PanelLeftOpen, tooltip Ctrl+B',
+      scenario: 'UI-SIDEBAR-02: Desktop 1440x900 Sidebar thu gọn (72px) với App Shell Floating Toggle (X=80px, Y=10px, 44x44px), icon Menu, không drop dưới logo, giữ nguyên focus, Header 64px phẳng',
     });
 
     // Re-expand sidebar
@@ -736,6 +796,31 @@ async function main() {
     });
     await navigateModule('contracts');
     await waitForSelector('[data-testid="contracts-table"]', 30, 200);
+
+    // [QA-HEADER-01 Assertion 8] Contracts Workspace 2-Tier Toolbar Verification
+    console.log('\n[QA-HEADER-01 Assertion 8] Verifying Contracts Deterministic 2-Tier Toolbar...');
+    const contractsToolbarCheck = await cdp.eval(`(() => {
+      const toolbar = document.querySelector('[data-testid="module-workspace-toolbar"]');
+      const actions = document.querySelector('[data-testid="module-toolbar-actions"]');
+      const context = document.querySelector('[data-testid="module-toolbar-context"]');
+      const refreshBtn = actions?.querySelector('[data-testid="btn-module-refresh"]');
+      const importBtn = actions?.querySelector('[data-testid="btn-open-legacy-import"]');
+      const createBtn = actions?.querySelector('[data-testid="btn-open-create-contract"]');
+      const scopeSelector = context?.querySelector('[data-testid="console-building-scope-selector"]');
+      return {
+        hasToolbar: !!toolbar,
+        hasActions: !!actions,
+        hasContext: !!context,
+        hasRefresh: !!refreshBtn,
+        hasImport: !!importBtn,
+        hasCreate: !!createBtn,
+        hasScope: !!scopeSelector,
+      };
+    })()`);
+    console.log('  [Contracts 2-Tier Toolbar Check]:', contractsToolbarCheck);
+    if (!contractsToolbarCheck.hasToolbar || !contractsToolbarCheck.hasActions || !contractsToolbarCheck.hasContext || !contractsToolbarCheck.hasRefresh || !contractsToolbarCheck.hasImport || !contractsToolbarCheck.hasCreate) {
+      throw new Error(`QA-HEADER-01 Assertion 8 Failed: Contracts 2-Tier Toolbar check failed: ${JSON.stringify(contractsToolbarCheck)}`);
+    }
 
     console.log('\n[QA-04] Executing Multi-Viewport Table & Sticky Column Assertions (1280, 1366, 1440, 1920)...');
     const tableTestMatrix = [
@@ -1338,13 +1423,13 @@ async function main() {
     }
 
     if (browserProc) {
-      try { browserProc.kill(); } catch {}
+      try { browserProc.kill(); } catch { }
     }
     if (consoleProc) {
-      try { consoleProc.kill(); } catch {}
+      try { consoleProc.kill(); } catch { }
     }
     if (landingProc) {
-      try { landingProc.kill(); } catch {}
+      try { landingProc.kill(); } catch { }
     }
     await prisma.$disconnect();
   }

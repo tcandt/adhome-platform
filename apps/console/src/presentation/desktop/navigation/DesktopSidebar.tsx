@@ -6,8 +6,6 @@ import {
   ChevronUp,
   LogOut,
   Moon,
-  PanelLeftClose,
-  PanelLeftOpen,
   RefreshCw,
   Settings,
   ShieldCheck,
@@ -32,7 +30,6 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarRail,
   useSidebar,
 } from '@/shared/ui/animate-sidebar';
 import {
@@ -63,7 +60,7 @@ export const DesktopSidebar: React.FC = () => {
     moduleCounts,
   } = usePortfolio();
 
-  const { state, toggleSidebar } = useSidebar();
+  const { state } = useSidebar();
   const isCollapsed = state === 'collapsed';
 
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -110,13 +107,10 @@ export const DesktopSidebar: React.FC = () => {
 
   return (
     <Sidebar>
-      {/* SIDEBAR HEADER: Brand Logo + Sidebar Toggle Button */}
+      {/* SIDEBAR HEADER: Brand Logo only (64px in every state).
+          The toggle lives in AppShellSidebarToggle (UI-SIDEBAR-02). */}
       <SidebarHeader
-        className={
-          isCollapsed
-            ? 'flex-col justify-center py-2 px-2 h-20 gap-1.5'
-            : 'justify-between px-3.5 h-16'
-        }
+        className={isCollapsed ? 'justify-center px-2' : 'justify-start px-4'}
       >
         <button
           type="button"
@@ -124,49 +118,8 @@ export const DesktopSidebar: React.FC = () => {
           className="flex items-center shrink-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40"
           title="AdHome Console — Trang tổng quan"
         >
-          <BrandLogo collapsed={isCollapsed} size={isCollapsed ? 'sm' : 'md'} />
+          <BrandLogo collapsed={isCollapsed} size="md" />
         </button>
-
-        {/* Sidebar Toggle Button: Next to Logo */}
-        {isCollapsed ? (
-          <Tooltip side="right" sideOffset={10}>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                data-sidebar="trigger"
-                data-testid="console-sidebar-toggle"
-                onClick={toggleSidebar}
-                aria-expanded={false}
-                aria-label="Mở rộng thanh điều hướng (Ctrl+B)"
-                className="relative inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200/80 dark:border-slate-700/80 bg-slate-50/80 dark:bg-slate-800/60 text-blue-600 dark:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-750 hover:text-blue-700 dark:hover:text-blue-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40 shadow-xs cursor-pointer"
-              >
-                <span data-testid="console-sidebar-trigger" className="sr-only">
-                  Mở rộng thanh điều hướng
-                </span>
-                <PanelLeftOpen className="h-3.5 w-3.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent className="z-50 rounded-lg border border-slate-700/80 bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-white shadow-lg">
-              Mở rộng thanh điều hướng (Ctrl+B)
-            </TooltipContent>
-          </Tooltip>
-        ) : (
-          <button
-            type="button"
-            data-sidebar="trigger"
-            data-testid="console-sidebar-toggle"
-            onClick={toggleSidebar}
-            aria-expanded={true}
-            aria-label="Thu gọn thanh điều hướng (Ctrl+B)"
-            title="Thu gọn thanh điều hướng (Ctrl+B)"
-            className="relative inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200/80 dark:border-slate-700/80 bg-slate-50/80 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-750 hover:text-slate-900 dark:hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40 cursor-pointer"
-          >
-            <span data-testid="console-sidebar-trigger" className="sr-only">
-              Thu gọn thanh điều hướng
-            </span>
-            <PanelLeftClose className="h-4 w-4" />
-          </button>
-        )}
       </SidebarHeader>
 
       {/* SIDEBAR CONTENT: 10 Operational Modules */}
@@ -583,8 +536,6 @@ export const DesktopSidebar: React.FC = () => {
           )}
         </div>
       </SidebarFooter>
-
-      <SidebarRail />
     </Sidebar>
   );
 };

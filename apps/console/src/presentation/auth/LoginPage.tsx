@@ -47,6 +47,7 @@ export const LoginPage: React.FC = () => {
               alt="AdHome"
               width={32}
               height={32}
+              data-testid="header-brand-logo-img"
               className="w-8 h-8 object-contain select-none"
             />
           </div>

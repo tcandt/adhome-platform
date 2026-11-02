@@ -31,57 +31,72 @@ export const LogoFillLoader: React.FC<LogoFillLoaderProps> = ({
 
       // Brief settling pause (140ms) so user perceives the 100% full vibrant logo
       const timer = setTimeout(() => {
-        const sourceEl = logoContainerRef.current;
-        if (!sourceEl) {
-          setIsDocking(true);
-          onComplete?.();
-          return;
-        }
+        try {
+          const sourceEl = logoContainerRef.current;
+          if (!sourceEl) {
+            setIsDocking(true);
+            onComplete?.();
+            return;
+          }
 
-        const sourceRect = sourceEl.getBoundingClientRect();
+          const sourceRect = sourceEl.getBoundingClientRect();
 
-        // 1. Measure real target position in DOM
-        const targetEl = document.querySelector(targetSelector);
-        let targetRect: { left: number; top: number; width: number; height: number };
+          // 1. Measure real target position in DOM
+          const targetEl = document.querySelector(targetSelector);
+          let targetRect: { left: number; top: number; width: number; height: number };
 
-        if (targetEl) {
-          const r = targetEl.getBoundingClientRect();
-          if (r.width > 0 && r.height > 0) {
-            targetRect = { left: r.left, top: r.top, width: r.width, height: r.height };
+          if (targetEl) {
+            const r = targetEl.getBoundingClientRect();
+            if (r.width > 0 && r.height > 0) {
+              targetRect = { left: r.left, top: r.top, width: r.width, height: r.height };
+            } else {
+              targetRect = computeFallbackTarget();
+            }
           } else {
             targetRect = computeFallbackTarget();
           }
-        } else {
-          targetRect = computeFallbackTarget();
-        }
 
-        // 2. Compute 3D translation & scale delta to top-left corner
-        const sourceCenterX = sourceRect.left + sourceRect.width / 2;
-        const sourceCenterY = sourceRect.top + sourceRect.height / 2;
-        const targetCenterX = targetRect.left + targetRect.width / 2;
-        const targetCenterY = targetRect.top + targetRect.height / 2;
+          // 2. Compute 3D translation & scale delta to top-left corner
+          const sourceCenterX = sourceRect.left + sourceRect.width / 2;
+          const sourceCenterY = sourceRect.top + sourceRect.height / 2;
+          const targetCenterX = targetRect.left + targetRect.width / 2;
+          const targetCenterY = targetRect.top + targetRect.height / 2;
 
-        const deltaX = targetCenterX - sourceCenterX;
-        const deltaY = targetCenterY - sourceCenterY;
-        const scale = targetRect.width / sourceRect.width;
+          const deltaX = targetCenterX - sourceCenterX;
+          const deltaY = targetCenterY - sourceCenterY;
+          const scale = targetRect.width / sourceRect.width;
 
-        setDockStyle({
-          transform: `translate3d(${deltaX}px, ${deltaY}px, 0) scale(${scale})`,
-          transition: 'transform 780ms cubic-bezier(0.16, 1, 0.3, 1)',
-        });
-        setIsDocking(true);
+          setDockStyle({
+            transform: `translate3d(${deltaX}px, ${deltaY}px, 0) scale(${scale})`,
+            transition: 'transform 780ms cubic-bezier(0.16, 1, 0.3, 1)',
+          });
+          setIsDocking(true);
 
-        // 3. Complete and unmount after docking animation finishes
-        const completeTimer = setTimeout(() => {
+          // 3. Complete and unmount after docking animation finishes
+          const completeTimer = setTimeout(() => {
+            onComplete?.();
+          }, 820);
+
+          return () => clearTimeout(completeTimer);
+        } catch (err) {
+          console.error('[Console LogoFillLoader Error]:', err);
           onComplete?.();
-        }, 820);
-
-        return () => clearTimeout(completeTimer);
+        }
       }, 140);
 
       return () => clearTimeout(timer);
     }
   }, [clampedProgress, isExiting, error, onComplete, targetSelector]);
+
+  // Safety watchdog: ensure loader never remains on screen longer than 1.5s once progress reaches 100
+  useEffect(() => {
+    if (clampedProgress >= 100) {
+      const watchdog = setTimeout(() => {
+        onComplete?.();
+      }, 1500);
+      return () => clearTimeout(watchdog);
+    }
+  }, [clampedProgress, onComplete]);
 
   function computeFallbackTarget() {
     const isMobile = window.innerWidth < 640;

@@ -83,6 +83,16 @@ export const LogoFillLoader: React.FC<LogoFillLoaderProps> = ({
     }
   }, [clampedProgress, isExiting, error, onComplete, targetSelector]);
 
+  // Safety watchdog: ensure loader never remains on screen longer than 1.5s once progress reaches 100
+  useEffect(() => {
+    if (clampedProgress >= 100) {
+      const watchdog = setTimeout(() => {
+        onComplete?.();
+      }, 1500);
+      return () => clearTimeout(watchdog);
+    }
+  }, [clampedProgress, onComplete]);
+
   function computeFallbackTarget() {
     const isMobile = window.innerWidth < 640;
     if (isMobile) {

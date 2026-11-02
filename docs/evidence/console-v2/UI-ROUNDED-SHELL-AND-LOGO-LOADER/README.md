@@ -10,3 +10,4 @@
 - `checksums-verified.txt`: Danh sách mã băm SHA-256 đối soát cho 10 ảnh giao diện.
 - `screenshots-manifest.json`: Siêu dữ liệu máy đọc được về từng ảnh chụp viewport (kích thước, timestamp, scenario).
 - `screenshots/`: Thư mục chứa 10 tệp ảnh chụp thực tế bằng Chrome DevTools Protocol.
+

@@ -12,39 +12,32 @@ export default function App() {
   const { syncStatus, syncError, lastSyncedAt, refreshPortfolio } = usePortfolio();
   const { mode } = usePresentationMode();
 
-  const [bootProgress, setBootProgress] = useState(30);
-  const [bootStage, setBootStage] = useState('Đang xác thực phiên làm việc Quản trị viên...');
+  const [bootProgress, setBootProgress] = useState(25);
   const [isBootReady, setIsBootReady] = useState(false);
 
   // Synchronize boot stages with live measurable backend network events (UI-12)
   useEffect(() => {
     if (isLoading) {
-      setBootProgress(35);
-      setBootStage('Đang xác thực phiên làm việc Quản trị viên...');
+      setBootProgress(30);
       return;
     }
 
     if (!isAuthenticated) {
-      // Unauthenticated: instant transition to login
+      // Unauthenticated: transition to login
       setBootProgress(100);
-      setBootStage('Chuyển hướng màn hình Đăng nhập...');
       setIsBootReady(true);
       return;
     }
 
     // Authenticated: track portfolio bootstrap synchronization
     if (syncStatus === 'loading' && !lastSyncedAt) {
-      setBootProgress(75);
-      setBootStage('Đang đồng bộ cơ sở dữ liệu & danh mục tòa nhà...');
+      setBootProgress(70);
     } else if (lastSyncedAt || syncStatus === 'idle') {
       setBootProgress(100);
-      setBootStage('Hoàn tất! Sẵn sàng vận hành AdHome Console.');
       const timer = setTimeout(() => {
         setIsBootReady(true);
       }, 160);
       return () => clearTimeout(timer);
-    } else if (syncStatus === 'error') {
-      setBootStage('Không thể đồng bộ dữ liệu hệ thống.');
     }
   }, [isLoading, isAuthenticated, syncStatus, lastSyncedAt]);
 
@@ -75,14 +68,13 @@ export default function App() {
     return (
       <LogoFillLoader
         progress={bootProgress}
-        statusText={bootStage}
         error={syncStatus === 'error' ? syncError || 'Lỗi kết nối cơ sở dữ liệu' : null}
         onRetry={() => {
           void refreshSession();
           void refreshPortfolio();
         }}
         brandTitle="AdHome"
-        subtitle="Hệ thống Vận hành & Quản lý Căn hộ Dịch vụ"
+        subtitle="Smart Property Management"
       />
     );
   }

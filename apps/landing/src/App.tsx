@@ -40,8 +40,7 @@ export function App() {
   const [sourceVerified, setSourceVerified] = useState<boolean>(true);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [catalogError, setCatalogError] = useState<string | null>(null);
-  const [bootProgress, setBootProgress] = useState<number>(30);
-  const [bootStage, setBootStage] = useState<string>('Đang khởi tạo AdHome Platform...');
+  const [bootProgress, setBootProgress] = useState<number>(25);
   const [isBootReady, setIsBootReady] = useState<boolean>(false);
   const [quickViewRoom, setQuickViewRoom] = useState<RoomListing | null>(null);
   const [inquiryModalOpen, setInquiryModalOpen] = useState<boolean>(false);
@@ -50,7 +49,6 @@ export function App() {
   const loadCatalog = useCallback(() => {
     setIsLoading(true);
     setBootProgress(35);
-    setBootStage('Kết nối cơ sở dữ liệu phòng PostgreSQL...');
     setCatalogError(null);
 
     fetchPublicRoomCatalog()
@@ -60,14 +58,11 @@ export function App() {
         setSourceVerified(res.sourceVerified);
         setCatalogError(res.error);
         if (res.error) {
-          setBootStage('Lỗi kết nối cơ sở dữ liệu.');
           setIsLoading(false);
         } else {
           setBootProgress(80);
-          setBootStage('Tải danh mục 12 phòng thực tế...');
           setTimeout(() => {
             setBootProgress(100);
-            setBootStage('Hoàn tất! Sẵn sàng khám phá AdHome.');
             setTimeout(() => {
               setIsLoading(false);
               setIsBootReady(true);
@@ -77,7 +72,6 @@ export function App() {
       })
       .catch((err) => {
         setCatalogError(err.message || 'Lỗi không xác định');
-        setBootStage('Không thể tải danh mục phòng.');
         setIsLoading(false);
       });
   }, []);
@@ -169,7 +163,6 @@ export function App() {
     return (
       <LogoFillLoader
         progress={bootProgress}
-        statusText={bootStage}
         error={catalogError}
         onRetry={loadCatalog}
         brandTitle="AdHome"

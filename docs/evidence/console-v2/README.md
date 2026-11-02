@@ -10,7 +10,8 @@ Thư mục này lưu trữ toàn bộ hồ sơ bằng chứng kiểm thử (Evid
 
 | STT | Tên thư mục đợt thay đổi | Mã Commit HEAD | Thời điểm | Nội dung nghiệm thu chính | Trạng thái |
 | :---: | :--- | :---: | :---: | :--- | :---: |
-| **05** | [**`UI-REDESIGN-e60b23d/`**](UI-REDESIGN-e60b23d/README.md) | [`e60b23d`](https://github.com/tcandt/adhome-platform/commit/e60b23df6e3ace3d3bc7b92a5b072e22426d12b9) | 02/11/2026 | **Kiến trúc App Shell Floating Toggle (`UI-SIDEBAR-02`):** Nút toggle độc lập ngoài DOM ($44\times 44\text{px}$, $Y=10\text{px}$ cố định, $X=256\leftrightarrow 80\text{px}$, giữ nguyên focus); **Header 64px phẳng 2 vùng (`UI-HEADER-03`)** kèm Safe zone `pl-16`; **Toolbar phân hệ 2 tầng xác định**; Bộ test `QA-HEADER-01` 8 assertions 100% PASS; 10 ảnh CDP. | **PASS (MỚI NHẤT)** |
+| **06** | [**`UI-ALIGNMENT-HEADER-SIDEBAR/`**](UI-ALIGNMENT-HEADER-SIDEBAR/README.md) | *HEAD hiện tại* | 02/11/2026 | **Căn chỉnh kiến trúc Header & Sidebar theo ảnh tham chiếu đối chiếu:** Đặt nút Toggle `[ ≡ ]` (44x44px) và Search pill `Ctrl + K` tại mép trái Header; Đặt nút Thông báo `[ 🔔 1 ]` và Hồ sơ Quản trị `[ RA ]` tại mép phải Header; Sidebar mở rộng (248px) hiển thị Logo AdHome đầy đủ, Sidebar thu gọn (72px) hiển thị Logo icon mark ở giữa và icon module; Toàn bộ 10 ảnh CDP mới, 100% Quality Gates PASS. | **PASS (MỚI NHẤT)** |
+| 05 | [**`UI-REDESIGN-e60b23d/`**](UI-REDESIGN-e60b23d/README.md) | [`e60b23d`](https://github.com/tcandt/adhome-platform/commit/e60b23df6e3ace3d3bc7b92a5b072e22426d12b9) | 02/11/2026 | **Kiến trúc App Shell Floating Toggle (`UI-SIDEBAR-02`):** Nút toggle độc lập ngoài DOM ($44\times 44\text{px}$, $Y=10\text{px}$ cố định, $X=256\leftrightarrow 80\text{px}$, giữ nguyên focus); **Header 64px phẳng 2 vùng (`UI-HEADER-03`)** kèm Safe zone `pl-16`; **Toolbar phân hệ 2 tầng xác định**; Bộ test `QA-HEADER-01` 8 assertions 100% PASS; 10 ảnh CDP. | **PASS** |
 | 04 | [**`UI-REDESIGN/`**](UI-REDESIGN/ACCEPTANCE_REPORT.md) | `8615eff` | 01/11/2026 | Đợt Redesign giao diện Desktop & Mobile: Tối giản Header, thu gọn Sidebar 72px, ghim cột Thao tác bảng hợp đồng (`QA-04`), Touch targets Mobile 44px+ (`QA-03`), Bottom Sheet (`QA-06`). | **C2-00 CONDITIONAL** |
 | 03 | [**`C4/`**](C4/) | `35ad47e` | 31/10/2026 | Hoàn thiện Sprint 0, 1, 2, 3, 4: Hunonic IoT Sync, Sổ quỹ Ledger, Hóa đơn điện tử, Bàn giao phòng. | **PASS** |
 | 02 | [**`C3.2/`**](C3.2/) | `2d472d1` | 31/10/2026 | Báo cáo kiểm thử tải chịu tải dài hạn (Sustained Load Test) và kiểm tra tính toàn vẹn cơ sở dữ liệu. | **PASS** |
@@ -18,9 +19,9 @@ Thư mục này lưu trữ toàn bộ hồ sơ bằng chứng kiểm thử (Evid
 
 ---
 
-## Chi tiết đợt thay đổi mới nhất: `UI-REDESIGN-e60b23d/`
-- Thư mục chi tiết: [`UI-REDESIGN-e60b23d/`](UI-REDESIGN-e60b23d/)
-- Báo cáo nghiệm thu: [`ACCEPTANCE_REPORT.md`](UI-REDESIGN-e60b23d/ACCEPTANCE_REPORT.md)
-- Manifest ảnh: [`screenshots-manifest.json`](UI-REDESIGN-e60b23d/screenshots-manifest.json)
-- Bảng mã băm: [`checksums-verified.txt`](UI-REDESIGN-e60b23d/checksums-verified.txt)
-- Thư mục ảnh chụp: [`screenshots/`](UI-REDESIGN-e60b23d/screenshots/)
+## Chi tiết đợt thay đổi mới nhất: `UI-ALIGNMENT-HEADER-SIDEBAR/`
+- Thư mục chi tiết: [`UI-ALIGNMENT-HEADER-SIDEBAR/`](UI-ALIGNMENT-HEADER-SIDEBAR/)
+- Báo cáo nghiệm thu: [`ACCEPTANCE_REPORT.md`](UI-ALIGNMENT-HEADER-SIDEBAR/ACCEPTANCE_REPORT.md)
+- Manifest ảnh: [`screenshots-manifest.json`](UI-ALIGNMENT-HEADER-SIDEBAR/screenshots-manifest.json)
+- Bảng mã băm: [`checksums-verified.txt`](UI-ALIGNMENT-HEADER-SIDEBAR/checksums-verified.txt)
+- Thư mục ảnh chụp: [`screenshots/`](UI-ALIGNMENT-HEADER-SIDEBAR/screenshots/)

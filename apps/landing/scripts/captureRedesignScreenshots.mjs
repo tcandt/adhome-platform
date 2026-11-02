@@ -11,10 +11,10 @@ const REPO_ROOT = process.cwd();
 const LANDING_URL = 'http://127.0.0.1:8081';
 const CONSOLE_URL = 'http://127.0.0.1:5174';
 
-const TASK_ID = 'UI-REDESIGN';
-const EVIDENCE_DIR = path.join(REPO_ROOT, 'docs', 'evidence', 'console-v2', 'UI-REDESIGN');
+const TASK_ID = 'UI-ALIGNMENT-HEADER-SIDEBAR';
+const EVIDENCE_DIR = path.join(REPO_ROOT, 'docs', 'evidence', 'console-v2', TASK_ID);
 const SCREENSHOTS_DIR = path.join(EVIDENCE_DIR, 'screenshots');
-const ARTIFACT_DIR = process.env.ARTIFACT_DIR || path.join(REPO_ROOT, '.artifacts');
+const ARTIFACT_DIR = process.env.ARTIFACT_DIR || 'C:\\Users\\TINH-NGUYEN\\.gemini\\antigravity\\brain\\28c40a83-4f86-4432-98db-0577f31a9633';
 
 fs.mkdirSync(SCREENSHOTS_DIR, { recursive: true });
 fs.mkdirSync(ARTIFACT_DIR, { recursive: true });
@@ -385,17 +385,18 @@ async function main() {
     // =========================================================================
     console.log('\n[QA-HEADER-01] Executing Header & Sidebar UX Verification Quality Gate...');
 
-    // Assertion 1: AppShell Floating Toggle Architecture & Clean 2-Zone Header
+    // Assertion 1: Aligned Header Architecture & Layout Controls
     const toggleArch = await cdp.eval(`(() => {
       const toggle = document.querySelector('[data-testid="console-sidebar-toggle"]');
       const sidebar = document.querySelector('[data-testid="console-desktop-sidebar"]');
       const header = document.querySelector('[data-testid="console-desktop-header"]');
       const sidebarHeader = sidebar?.querySelector('[data-sidebar="header"]');
-      const title = header?.querySelector('[data-testid="console-header-title"]');
       const search = header?.querySelector('[data-testid="console-global-search-trigger"]');
+      const notif = header?.querySelector('[data-testid="console-notifications-trigger"]');
+      const userMenu = header?.querySelector('[data-testid="console-user-menu-trigger"]');
 
       const toggleRect = toggle ? toggle.getBoundingClientRect() : null;
-      const titleRect = title ? title.getBoundingClientRect() : null;
+      const searchRect = search ? search.getBoundingClientRect() : null;
       const headerRect = header ? header.getBoundingClientRect() : null;
 
       const toggleExists = !!toggle;
@@ -403,12 +404,13 @@ async function main() {
       const inHeader = header ? header.contains(toggle) : false;
       const inSidebarHeader = sidebarHeader ? sidebarHeader.contains(toggle) : false;
 
-      // Verify DesktopHeader cleanliness (no cluttered controls)
-      const headerClutters = {
+      // Verify DesktopHeader controls
+      const headerControls = {
         hasTrigger: !!header?.querySelector('[data-sidebar="trigger"], [data-testid="console-sidebar-trigger"], [data-testid="console-sidebar-toggle"]'),
+        hasSearch: !!search,
+        hasNotifications: !!notif,
+        hasUserMenu: !!userMenu,
         hasScope: !!header?.querySelector('[data-testid="console-building-scope-selector"]'),
-        hasNotifications: !!header?.querySelector('[data-testid="console-notifications-trigger"]'),
-        hasUserMenu: !!header?.querySelector('[data-testid="console-user-menu-trigger"]'),
         hasSync: !!header?.querySelector('[data-testid="console-sync-status"]'),
       };
 
@@ -416,8 +418,13 @@ async function main() {
       const toggleWidth = toggleRect ? Math.round(toggleRect.width) : 0;
       const toggleHeight = toggleRect ? Math.round(toggleRect.height) : 0;
 
-      // Safe zone check: title must start to the right of the toggle
-      const safeZoneOk = (titleRect && toggleRect) ? (titleRect.left >= toggleRect.right) : false;
+      // Safe zone check: search must start to the right of the toggle
+      const safeZoneOk = (searchRect && toggleRect) ? (searchRect.left >= toggleRect.right) : false;
+
+      const layoutPassed = inHeader && !inSidebar && !inSidebarHeader &&
+        headerControls.hasTrigger && headerControls.hasSearch &&
+        headerControls.hasNotifications && headerControls.hasUserMenu &&
+        !headerControls.hasScope && !headerControls.hasSync;
 
       return {
         toggleExists,
@@ -426,41 +433,37 @@ async function main() {
         inSidebarHeader,
         toggleSize: { width: toggleWidth, height: toggleHeight },
         headerHeight,
-        headerClutters,
-        cleanHeaderPassed: !Object.values(headerClutters).some(Boolean) && !!title && !!search,
+        headerControls,
+        layoutPassed,
         safeZoneOk,
         topCoord: toggleRect ? Math.round(toggleRect.top) : null,
         leftCoord: toggleRect ? Math.round(toggleRect.left) : null,
       };
     })()`);
 
-    console.log('  [QA-HEADER-01 Assertion 1] AppShell Toggle & Clean Header:', toggleArch);
-    if (!toggleArch.toggleExists || toggleArch.inSidebar || toggleArch.inHeader || toggleArch.inSidebarHeader) {
-      throw new Error(`QA-HEADER-01 Failed: Floating toggle is not independent of Sidebar and Header: ${JSON.stringify(toggleArch)}`);
+    console.log('  [QA-HEADER-01 Assertion 1] Aligned Header & Toggle Controls:', toggleArch);
+    if (!toggleArch.toggleExists || !toggleArch.inHeader || toggleArch.inSidebar || toggleArch.inSidebarHeader) {
+      throw new Error(`QA-HEADER-01 Failed: Toggle button is not in Header or leaked into Sidebar: ${JSON.stringify(toggleArch)}`);
     }
     if (toggleArch.toggleSize.width < 44 || toggleArch.toggleSize.height < 44) {
-      throw new Error(`QA-HEADER-01 Failed: Floating toggle touch target < 44px: ${JSON.stringify(toggleArch.toggleSize)}`);
+      throw new Error(`QA-HEADER-01 Failed: Toggle touch target < 44px: ${JSON.stringify(toggleArch.toggleSize)}`);
     }
-    if (!toggleArch.cleanHeaderPassed || toggleArch.headerHeight !== 64 || !toggleArch.safeZoneOk) {
-      throw new Error(`QA-HEADER-01 Failed: Header not clean 2-zone, height != 64, or title overlaps toggle: ${JSON.stringify(toggleArch)}`);
+    if (!toggleArch.layoutPassed || toggleArch.headerHeight !== 64 || !toggleArch.safeZoneOk) {
+      throw new Error(`QA-HEADER-01 Failed: Header layout mismatch or height != 64: ${JSON.stringify(toggleArch)}`);
     }
 
     // Assertion 2: Expanded -> Collapsed -> Expanded Pointer Transition & Widths
-    console.log('  [QA-HEADER-01 Assertion 2] Testing Pointer Event Collapse & Y/X Coordinates...');
+    console.log('  [QA-HEADER-01 Assertion 2] Testing Pointer Event Collapse & Sidebar Transitions...');
     const initialSidebar = await cdp.eval(`(() => {
       const sb = document.querySelector('[data-testid="console-desktop-sidebar"]');
-      const toggle = document.querySelector('[data-testid="console-sidebar-toggle"]');
       const r = sb ? sb.getBoundingClientRect() : null;
-      const tr = toggle ? toggle.getBoundingClientRect() : null;
       return {
         state: sb?.getAttribute('data-state'),
         width: Math.round(r?.width || 0),
-        toggleLeft: Math.round(tr?.left || 0),
-        toggleTop: Math.round(tr?.top || 0),
       };
     })()`);
-    if (initialSidebar.state !== 'expanded' || Math.abs(initialSidebar.width - 248) > 2 || Math.abs(initialSidebar.toggleLeft - 256) > 2) {
-      throw new Error(`QA-HEADER-01 Failed: Initial sidebar not expanded (248px) or toggle left != 256px: ${JSON.stringify(initialSidebar)}`);
+    if (initialSidebar.state !== 'expanded' || Math.abs(initialSidebar.width - 248) > 2) {
+      throw new Error(`QA-HEADER-01 Failed: Initial sidebar not expanded (248px): ${JSON.stringify(initialSidebar)}`);
     }
 
     // Click toggle button to collapse
@@ -471,22 +474,15 @@ async function main() {
       const sb = document.querySelector('[data-testid="console-desktop-sidebar"]');
       const toggle = document.querySelector('[data-testid="console-sidebar-toggle"]');
       const r = sb ? sb.getBoundingClientRect() : null;
-      const tr = toggle ? toggle.getBoundingClientRect() : null;
       return {
         state: sb?.getAttribute('data-state'),
         width: Math.round(r?.width || 0),
         ariaExpanded: toggle?.getAttribute('aria-expanded'),
-        toggleLeft: Math.round(tr?.left || 0),
-        toggleTop: Math.round(tr?.top || 0),
-        isFocused: document.activeElement === toggle,
       };
     })()`);
     console.log('  [QA-HEADER-01 Collapsed Check]:', collapsedCheck);
     if (collapsedCheck.state !== 'collapsed' || Math.abs(collapsedCheck.width - 72) > 2 || collapsedCheck.ariaExpanded !== 'false') {
       throw new Error(`QA-HEADER-01 Failed: Collapse transition failed: ${JSON.stringify(collapsedCheck)}`);
-    }
-    if (Math.abs(collapsedCheck.toggleLeft - 80) > 2 || Math.abs(collapsedCheck.toggleTop - 10) > 2) {
-      throw new Error(`QA-HEADER-01 Failed: Collapsed toggle position error (expected left=80, top=10): ${JSON.stringify(collapsedCheck)}`);
     }
 
     // Hover stability test: Dispatch mouseenter / mousemove on collapsed sidebar
@@ -515,16 +511,13 @@ async function main() {
       const sb = document.querySelector('[data-testid="console-desktop-sidebar"]');
       const toggle = document.querySelector('[data-testid="console-sidebar-toggle"]');
       const r = sb ? sb.getBoundingClientRect() : null;
-      const tr = toggle ? toggle.getBoundingClientRect() : null;
       return {
         state: sb?.getAttribute('data-state'),
         width: Math.round(r?.width || 0),
         ariaExpanded: toggle?.getAttribute('aria-expanded'),
-        toggleLeft: Math.round(tr?.left || 0),
-        toggleTop: Math.round(tr?.top || 0),
       };
     })()`);
-    if (reExpandedCheck.state !== 'expanded' || Math.abs(reExpandedCheck.width - 248) > 2 || Math.abs(reExpandedCheck.toggleLeft - 256) > 2) {
+    if (reExpandedCheck.state !== 'expanded' || Math.abs(reExpandedCheck.width - 248) > 2) {
       throw new Error(`QA-HEADER-01 Failed: Re-expand failed: ${JSON.stringify(reExpandedCheck)}`);
     }
 
@@ -648,22 +641,22 @@ async function main() {
       throw new Error(`QA-HEADER-01 Failed: Sync Status not found in Sidebar Footer`);
     }
 
-    // 5c. Notifications in Sidebar Footer
-    await cdp.eval(`document.querySelector('[data-sidebar="footer"] [data-testid="console-notifications-trigger"]')?.click()`);
+    // 5c. Notifications in Desktop Header
+    await cdp.eval(`document.querySelector('[data-testid="console-desktop-header"] [data-testid="console-notifications-trigger"]')?.click()`);
     await new Promise((r) => setTimeout(r, 400));
     const notifPopoverCheck = await cdp.eval(`(() => {
       const popover = document.querySelector('[data-testid="console-notifications-popover"]');
       return { found: !!popover };
     })()`);
     if (!notifPopoverCheck.found) {
-      throw new Error(`QA-HEADER-01 Failed: Notifications popover failed to open from Sidebar Footer`);
+      throw new Error(`QA-HEADER-01 Failed: Notifications popover failed to open from Desktop Header`);
     }
     await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
     await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
     await new Promise((r) => setTimeout(r, 300));
 
-    // 5d. User Menu in Sidebar Footer
-    await cdp.eval(`document.querySelector('[data-sidebar="footer"] [data-testid="console-user-menu-trigger"]')?.click()`);
+    // 5d. User Menu in Desktop Header
+    await cdp.eval(`document.querySelector('[data-testid="console-desktop-header"] [data-testid="console-user-menu-trigger"]')?.click()`);
     await new Promise((r) => setTimeout(r, 400));
     const userMenuCheck = await cdp.eval(`(() => {
       const popover = document.querySelector('[data-testid="console-user-menu-popover"]');
@@ -756,7 +749,7 @@ async function main() {
       filename: 'redesign_desktop_1440_header_expanded.png',
       width: 1440,
       height: 900,
-      scenario: 'UI-HEADER-03/UI-SIDEBAR-02: Desktop 1440x900 App Shell Floating Toggle (X=256px, Y=10px, 44x44px), Header tối giản 2 vùng (Breadcrumb/Tiêu đề + Search Ctrl+K) & Sidebar mở rộng (248px), Logo độc lập, Scope trong Workspace, Sync/Thông báo/Profile ở Sidebar Footer',
+      scenario: 'UI-ALIGNMENT: Desktop 1440x900 Header với Sidebar Toggle [≡] (44x44px), Tìm kiếm Ctrl+K pill, Thông báo hệ thống có badge, Profile Admin [RA], Sidebar mở rộng (248px) với Logo AdHome đầy đủ',
     });
 
     // 2. Desktop 1440x900 Header & Sidebar Collapsed
@@ -765,7 +758,7 @@ async function main() {
       filename: 'redesign_desktop_1440_header_collapsed.png',
       width: 1440,
       height: 900,
-      scenario: 'UI-SIDEBAR-02: Desktop 1440x900 Sidebar thu gọn (72px) với App Shell Floating Toggle (X=80px, Y=10px, 44x44px), icon Menu, không drop dưới logo, giữ nguyên focus, Header 64px phẳng',
+      scenario: 'UI-ALIGNMENT: Desktop 1440x900 Sidebar thu gọn (72px) chỉ hiển thị icon điều hướng và Logo icon mark, Header giữ nguyên 64px với Toggle [≡], Search, Notifications, Profile Admin',
     });
 
     // Re-expand sidebar

@@ -10,7 +10,6 @@ import { GlobalSearchModal } from '@/shared/ui/GlobalSearchModal';
 import { SidebarInset, SidebarProvider } from '@/shared/ui/animate-sidebar';
 import { DesktopHeader } from '../navigation/DesktopHeader';
 import { DesktopSidebar } from '../navigation/DesktopSidebar';
-import { AppShellSidebarToggle } from '../navigation/AppShellSidebarToggle';
 
 const SIDEBAR_UI_PREF_KEY = 'adhome_ui_sidebar_open';
 
@@ -33,11 +32,6 @@ export const DesktopShell: React.FC = () => {
     }
   }, []);
 
-  // UI-SIDEBAR-02: the Ctrl/Cmd+B shortcut is owned exclusively by the
-  // Animate UI Provider (it already excludes input/textarea/select and
-  // contenteditable). A second window listener here previously fired on the
-  // same keypress, so it was removed to guarantee one toggle per press.
-
   const isModuleAllowed = currentNavConfig.requiredCapability
     ? hasCapability(currentNavConfig.requiredCapability)
     : true;
@@ -45,9 +39,6 @@ export const DesktopShell: React.FC = () => {
   return (
     <SidebarProvider open={sidebarOpen} onOpenChange={handleOpenChange}>
       <DesktopSidebar />
-
-      {/* App Shell control — independent of Sidebar and Header DOM */}
-      <AppShellSidebarToggle />
 
       <SidebarInset>
         <DesktopHeader />

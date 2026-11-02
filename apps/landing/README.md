@@ -94,3 +94,7 @@ cd apps/landing && node scripts/e2eGate03.mjs
 - Khi chưa nối backend, API trả 503 minh bạch; thông tin giới thiệu và các kênh liên hệ vẫn dùng được, danh sách phòng không thay bằng dữ liệu demo và biểu mẫu không giả lập đã lưu thành công.
 - Custom domain `adhome.vn` được khai báo trong Wrangler. Không đổi DNS mail hoặc domain console.
 - Liên hệ công khai: 05678.67889; Zalo cùng số; TikTok @homeland.anphu; admin@adhome.vn.
+
+### Motion của landing
+
+Landing local và Worker production mặc định bật intro SVG draw → pulse và đưa icon/chữ về header. Dùng `?motion=reduced` để giảm chuyển động, `?motion=system` để theo thiết bị, hoặc `?motion=full` để bật đầy đủ. Cấu hình CSS và MotionConfig cùng dùng `src/motionPreference.tsx`.

@@ -4,13 +4,13 @@ import { MotionConfig } from 'motion/react';
 const media = window.matchMedia('(prefers-reduced-motion: reduce)');
 const requested = new URLSearchParams(window.location.search).get('motion');
 
-// Local previews show the designed motion. Production follows the device unless
-// the visitor explicitly selects full/reduced motion through the URL.
+// Keep the branded intro consistent in local and production builds.
+// Explicit reduced/system URL preferences remain available.
 function getReducedMotion() {
   if (requested === 'full') return false;
   if (requested === 'reduced') return true;
   if (requested === 'system') return media.matches;
-  return (import.meta as ImportMeta & { env: { DEV: boolean } }).env.DEV ? false : media.matches;
+  return false;
 }
 
 function syncDocumentPreference() {

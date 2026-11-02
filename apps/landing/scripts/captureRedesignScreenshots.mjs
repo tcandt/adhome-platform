@@ -11,7 +11,7 @@ const REPO_ROOT = process.cwd();
 const LANDING_URL = 'http://127.0.0.1:8081';
 const CONSOLE_URL = 'http://127.0.0.1:5174';
 
-const TASK_ID = 'UI-POLISH-HEADER-SIDEBAR';
+const TASK_ID = 'UI-ROUNDED-SHELL-AND-LOGO-LOADER';
 const EVIDENCE_DIR = path.join(REPO_ROOT, 'docs', 'evidence', 'console-v2', TASK_ID);
 const SCREENSHOTS_DIR = path.join(EVIDENCE_DIR, 'screenshots');
 const ARTIFACT_DIR = process.env.ARTIFACT_DIR || 'C:\\Users\\TINH-NGUYEN\\.gemini\\antigravity\\brain\\28c40a83-4f86-4432-98db-0577f31a9633';

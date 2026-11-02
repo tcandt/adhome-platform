@@ -1,14 +1,52 @@
-import React, { useEffect } from 'react';
-import { Loader2 } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/app/providers/AuthContext';
+import { usePortfolio } from '@/app/providers/PortfolioContext';
 import { usePresentationMode } from '@/shared/hooks/usePresentationMode';
 import { DesktopShell } from '@/presentation/desktop/layouts/DesktopShell';
 import { MobileShell } from '@/presentation/mobile/layouts/MobileShell';
 import { LoginPage } from '@/presentation/auth/LoginPage';
+import { LogoFillLoader } from '@/shared/ui/LogoFillLoader';
 
 export default function App() {
   const { isAuthenticated, isLoading, refreshSession } = useAuth();
+  const { syncStatus, syncError, lastSyncedAt, refreshPortfolio } = usePortfolio();
   const { mode } = usePresentationMode();
+
+  const [bootProgress, setBootProgress] = useState(30);
+  const [bootStage, setBootStage] = useState('Đang xác thực phiên làm việc Quản trị viên...');
+  const [isBootReady, setIsBootReady] = useState(false);
+
+  // Synchronize boot stages with live measurable backend network events (UI-12)
+  useEffect(() => {
+    if (isLoading) {
+      setBootProgress(35);
+      setBootStage('Đang xác thực phiên làm việc Quản trị viên...');
+      return;
+    }
+
+    if (!isAuthenticated) {
+      // Unauthenticated: instant transition to login
+      setBootProgress(100);
+      setBootStage('Chuyển hướng màn hình Đăng nhập...');
+      setIsBootReady(true);
+      return;
+    }
+
+    // Authenticated: track portfolio bootstrap synchronization
+    if (syncStatus === 'loading' && !lastSyncedAt) {
+      setBootProgress(75);
+      setBootStage('Đang đồng bộ cơ sở dữ liệu & danh mục tòa nhà...');
+    } else if (lastSyncedAt || syncStatus === 'idle') {
+      setBootProgress(100);
+      setBootStage('Hoàn tất! Sẵn sàng vận hành AdHome Console.');
+      const timer = setTimeout(() => {
+        setIsBootReady(true);
+      }, 160);
+      return () => clearTimeout(timer);
+    } else if (syncStatus === 'error') {
+      setBootStage('Không thể đồng bộ dữ liệu hệ thống.');
+    }
+  }, [isLoading, isAuthenticated, syncStatus, lastSyncedAt]);
 
   // Keep canonical `/login` vs `/` path synchronized with live server auth state
   useEffect(() => {
@@ -32,12 +70,20 @@ export default function App() {
     return () => window.removeEventListener('focus', handleFocus);
   }, [isAuthenticated, refreshSession]);
 
-  if (isLoading) {
+  // Display authentic AdHome Logo Fill Loader 0→100 while booting (UI-12 & UI-13)
+  if (!isBootReady) {
     return (
-      <div className="min-h-screen w-full flex flex-col items-center justify-center gap-3 bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-300">
-        <Loader2 className="w-6 h-6 animate-spin text-brand-primary" />
-        <p className="text-xs font-medium">Đang xác thực phiên làm việc AdHome Console...</p>
-      </div>
+      <LogoFillLoader
+        progress={bootProgress}
+        statusText={bootStage}
+        error={syncStatus === 'error' ? syncError || 'Lỗi kết nối cơ sở dữ liệu' : null}
+        onRetry={() => {
+          void refreshSession();
+          void refreshPortfolio();
+        }}
+        brandTitle="AdHome"
+        subtitle="Hệ thống Vận hành & Quản lý Căn hộ Dịch vụ"
+      />
     );
   }
 

@@ -43,7 +43,7 @@ export const DesktopShell: React.FC = () => {
       <SidebarInset>
         <DesktopHeader />
 
-        <main className="flex-1 px-4 lg:px-6 py-5 min-w-0">
+        <main className="flex-1 bg-[#F8FAFC] dark:bg-[#0B0F19] border-t border-l border-slate-200/90 dark:border-slate-800/90 rounded-tl-[24px] min-w-0 min-h-[calc(100vh-64px)] px-4 lg:px-6 py-5 shadow-2xs transition-all duration-280">
           <div className="max-w-[1600px] mx-auto">
             {!isModuleAllowed ? (
               <div

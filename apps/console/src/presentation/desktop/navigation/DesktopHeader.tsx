@@ -96,7 +96,7 @@ export const DesktopHeader: React.FC = () => {
   return (
     <header
       data-testid="console-desktop-header"
-      className="sticky top-0 z-20 flex h-16 w-full shrink-0 items-center justify-between border-b border-slate-200/90 dark:border-slate-800/90 bg-white dark:bg-[#111827] px-4 lg:px-6 backdrop-blur-md select-none transition-colors"
+      className="sticky top-0 z-20 flex h-16 w-full shrink-0 items-center justify-between bg-white dark:bg-[#111827] px-4 lg:px-6 backdrop-blur-md select-none transition-colors"
     >
       {/* ZONE 1 (LEFT): Sidebar Toggle */}
       <div className="flex items-center gap-3 flex-1 justify-start min-w-0">

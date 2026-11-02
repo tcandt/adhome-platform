@@ -40,7 +40,7 @@ export function SidebarProvider({
         open={open}
         onOpenChange={onOpenChange}
         animateOnHover={false}
-        className={`flex min-h-screen w-full bg-[#F7F9FC] dark:bg-[#0B0F19] text-slate-900 dark:text-slate-100 ${className}`}
+        className={`flex min-h-screen w-full bg-white dark:bg-[#111827] text-slate-900 dark:text-slate-100 ${className}`}
       >
         {children}
       </Provider>
@@ -86,7 +86,7 @@ export function Sidebar({
         }}
         data-state={state}
         data-collapsible={state === 'collapsed' ? 'icon' : ''}
-        className={`fixed inset-y-0 left-0 z-30 flex h-screen flex-col border-r border-slate-200/90 dark:border-slate-800/90 bg-white dark:bg-[#111827] select-none ${className}`}
+        className={`fixed inset-y-0 left-0 z-30 flex h-screen flex-col bg-white dark:bg-[#111827] select-none ${className}`}
       >
         {children}
       </Container>
@@ -292,7 +292,7 @@ export function SidebarInset({
   return (
     <div
       data-sidebar="inset"
-      className={`flex min-h-screen flex-1 flex-col min-w-0 ${className}`}
+      className={`flex min-h-screen flex-1 flex-col min-w-0 bg-white dark:bg-[#111827] ${className}`}
     >
       {children}
     </div>

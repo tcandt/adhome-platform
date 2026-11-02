@@ -11,6 +11,7 @@ import { PlatformIntroSection } from './components/PlatformIntroSection';
 import { Footer } from './components/Footer';
 import { RoomDetailModal } from './components/RoomDetailModal';
 import { LeadInquiryModal } from './components/LeadInquiryModal';
+import { LogoFillLoader } from './components/LogoFillLoader';
 import {
   fetchPublicRoomCatalog,
   getAvailableRoomsSync,
@@ -39,19 +40,46 @@ export function App() {
   const [sourceVerified, setSourceVerified] = useState<boolean>(true);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [bootProgress, setBootProgress] = useState<number>(30);
+  const [bootStage, setBootStage] = useState<string>('Đang khởi tạo AdHome Platform...');
+  const [isBootReady, setIsBootReady] = useState<boolean>(false);
   const [quickViewRoom, setQuickViewRoom] = useState<RoomListing | null>(null);
   const [inquiryModalOpen, setInquiryModalOpen] = useState<boolean>(false);
   const [inquiryRoom, setInquiryRoom] = useState<RoomListing | null>(null);
 
   const loadCatalog = useCallback(() => {
     setIsLoading(true);
-    fetchPublicRoomCatalog().then((res) => {
-      setRooms(res.rooms);
-      setDataMode(res.dataMode);
-      setSourceVerified(res.sourceVerified);
-      setCatalogError(res.error);
-      setIsLoading(false);
-    });
+    setBootProgress(35);
+    setBootStage('Kết nối cơ sở dữ liệu phòng PostgreSQL...');
+    setCatalogError(null);
+
+    fetchPublicRoomCatalog()
+      .then((res) => {
+        setRooms(res.rooms);
+        setDataMode(res.dataMode);
+        setSourceVerified(res.sourceVerified);
+        setCatalogError(res.error);
+        if (res.error) {
+          setBootStage('Lỗi kết nối cơ sở dữ liệu.');
+          setIsLoading(false);
+        } else {
+          setBootProgress(80);
+          setBootStage('Tải danh mục 12 phòng thực tế...');
+          setTimeout(() => {
+            setBootProgress(100);
+            setBootStage('Hoàn tất! Sẵn sàng khám phá AdHome.');
+            setTimeout(() => {
+              setIsLoading(false);
+              setIsBootReady(true);
+            }, 180);
+          }, 120);
+        }
+      })
+      .catch((err) => {
+        setCatalogError(err.message || 'Lỗi không xác định');
+        setBootStage('Không thể tải danh mục phòng.');
+        setIsLoading(false);
+      });
   }, []);
 
   useEffect(() => {
@@ -136,6 +164,19 @@ export function App() {
     setInquiryRoom(room || null);
     setInquiryModalOpen(true);
   };
+
+  if (!isBootReady) {
+    return (
+      <LogoFillLoader
+        progress={bootProgress}
+        statusText={bootStage}
+        error={catalogError}
+        onRetry={loadCatalog}
+        brandTitle="AdHome"
+        subtitle="Căn hộ dịch vụ & Studio cao cấp tại KĐT Ân Phú"
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-canvas text-ink">

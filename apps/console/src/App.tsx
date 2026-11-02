@@ -1,3 +1,5 @@
+import { motion } from 'motion/react';
+import { useAppReducedMotion } from './motionPreference';
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/app/providers/AuthContext';
 import { usePortfolio } from '@/app/providers/PortfolioContext';
@@ -8,6 +10,8 @@ import { LoginPage } from '@/presentation/auth/LoginPage';
 import { LogoFillLoader } from '@/shared/ui/LogoFillLoader';
 
 export default function App() {
+  const reduceMotion = useAppReducedMotion();
+  const [isPageRevealed, setIsPageRevealed] = useState(false);
   const { isAuthenticated, isLoading, refreshSession } = useAuth();
   const { syncStatus, syncError, lastSyncedAt, refreshPortfolio } = usePortfolio();
   const { mode } = usePresentationMode();
@@ -50,10 +54,10 @@ export default function App() {
     if (isLoading || typeof window === 'undefined') return;
     if (!isAuthenticated) {
       if (window.location.pathname !== '/login') {
-        window.history.replaceState({}, '', '/login');
+        window.history.replaceState({}, '', `/login${window.location.search}${window.location.hash}`);
       }
     } else if (window.location.pathname === '/login') {
-      window.history.replaceState({}, '', '/');
+      window.history.replaceState({}, '', `/${window.location.search}${window.location.hash}`);
     }
   }, [isAuthenticated, isLoading]);
 
@@ -69,6 +73,7 @@ export default function App() {
 
   return (
     <>
+      <motion.div initial={false} animate={{ opacity: isPageRevealed ? 1 : 0 }} transition={{ duration: reduceMotion ? 0.12 : 0.7, ease: [0.22, 1, 0.36, 1] }}>
       {!isAuthenticated ? (
         <LoginPage />
       ) : mode === 'desktop' ? (
@@ -76,6 +81,8 @@ export default function App() {
       ) : (
         <MobileShell />
       )}
+
+      </motion.div>
 
       {/* Hero Shared-Element Docking Logo Fill Loader Overlay */}
       {!isBootComplete && (
@@ -86,7 +93,8 @@ export default function App() {
             void refreshSession();
             void refreshPortfolio();
           }}
-          onComplete={() => setIsBootComplete(true)}
+          onReveal={() => setIsPageRevealed(true)}
+          onComplete={() => { setIsPageRevealed(true); setIsBootComplete(true); }}
         />
       )}
     </>

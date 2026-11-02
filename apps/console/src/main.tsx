@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { MotionConfig } from 'motion/react';
+import { AppMotionProvider } from './motionPreference';
 import App from './App';
 import './index.css';
 import { ThemeProvider } from '@/app/providers/ThemeContext';
@@ -10,7 +10,7 @@ import { PortfolioProvider } from '@/app/providers/PortfolioContext';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <MotionConfig reducedMotion="user">
+    <AppMotionProvider>
       <ThemeProvider>
         <AuthProvider>
           <NavigationProvider>
@@ -20,7 +20,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           </NavigationProvider>
         </AuthProvider>
       </ThemeProvider>
-    </MotionConfig>
+    </AppMotionProvider>
   </React.StrictMode>
 );
 

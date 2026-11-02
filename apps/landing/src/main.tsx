@@ -5,7 +5,8 @@ import './index.css';
 import App from './App';
 import { initRealUserMonitoring } from './services/rumService';
 
-initRealUserMonitoring();
+// Telemetry is optional and must never prevent the public page from mounting.
+try { initRealUserMonitoring(); } catch { /* Unsupported browser telemetry. */ }
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "adhome-console",
+  "main": "apps/console/worker/index.mjs",
+  "compatibility_date": "2026-11-02",
+  "workers_dev": true,
+  "routes": [{ "pattern": "console.adhome.vn", "custom_domain": true }],
+  "assets": {
+    "directory": "./apps/console/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  }
+}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   X,
   ChevronRight,
@@ -424,6 +424,25 @@ export const ContractCreationWizardModal: React.FC<Props> = ({
     }
   };
 
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!isOpen) return;
+    const trigger = document.activeElement as HTMLElement | null;
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    dialogRef.current?.querySelector<HTMLElement>('button')?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); onClose(); }
+      if (event.key !== 'Tab') return;
+      const nodes = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex="0"]') || []).filter(node => node.getClientRects().length > 0);
+      const first = nodes[0], last = nodes[nodes.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => { document.body.style.overflow = overflow; document.removeEventListener('keydown', onKey); trigger?.focus(); };
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   return (
@@ -431,7 +450,7 @@ export const ContractCreationWizardModal: React.FC<Props> = ({
       data-testid="contract-creation-wizard-modal"
       className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/70 backdrop-blur-sm overflow-y-auto"
     >
-      <div className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col my-auto max-h-[95vh]">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="contract-wizard-title" className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col my-auto max-h-[95vh]">
         {/* MODAL HEADER */}
         <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0">
           <div>
@@ -439,7 +458,7 @@ export const ContractCreationWizardModal: React.FC<Props> = ({
               <span className="p-1.5 rounded-lg bg-blue-100 dark:bg-blue-950 text-brand-primary">
                 <FileSignature className="w-4 h-4" />
               </span>
-              <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
+              <h2 id="contract-wizard-title" className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
                 Quy trình Đặt phòng &amp; Lập hợp đồng thuê
               </h2>
             </div>
@@ -450,7 +469,8 @@ export const ContractCreationWizardModal: React.FC<Props> = ({
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg"
+            aria-label="Đóng biểu mẫu hợp đồng"
+            className="flex min-h-11 min-w-11 items-center justify-center p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg"
           >
             <X className="w-5 h-5" />
           </button>

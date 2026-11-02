@@ -83,6 +83,17 @@ export function App() {
     loadCatalog();
   }, [loadCatalog]);
 
+  // The public page and contact links stay usable even while room data or
+  // animation completion is delayed. API errors remain visible in the catalog.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setIsPageRevealed(true);
+      setIsBootComplete(true);
+    }, 5000);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+
   useEffect(() => {
     const handlePopState = () => {
       setCurrentPath(normalizePathname(window.location.pathname));

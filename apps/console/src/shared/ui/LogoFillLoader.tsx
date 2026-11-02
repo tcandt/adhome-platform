@@ -1,11 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
+import { motion } from 'motion/react';
+import { BrandWordmark, WORDMARK_INTRO_MS } from './BrandWordmark';
+import { BrandIntroIcon } from './BrandIntroIcon';
+import { useAppReducedMotion } from '../../motionPreference';
 
 export interface LogoFillLoaderProps {
   progress?: number;
   error?: string | null;
   onRetry?: () => void;
   onComplete?: () => void;
+  onReveal?: () => void;
   targetSelector?: string;
   isExiting?: boolean;
 }
@@ -15,156 +20,129 @@ export const LogoFillLoader: React.FC<LogoFillLoaderProps> = ({
   error = null,
   onRetry,
   onComplete,
-  targetSelector = '[data-testid~="header-brand-logo-img"], [data-testid="header-brand-logo-img"], [data-testid="brand-logo-icon-img"], [data-testid="brand-logo-horizontal"]',
+  onReveal,
+  targetSelector = '[data-brand-part="icon"], [data-testid~="header-brand-logo-img"], [data-testid="header-brand-logo-img"], [data-testid="brand-logo-icon-img"], [data-testid="brand-logo-horizontal"]',
   isExiting = false,
 }) => {
-  const clampedProgress = Math.max(0, Math.min(100, progress));
+  const clampedProgress = Number.isFinite(progress) ? Math.max(0, Math.min(100, progress)) : 0;
   const logoContainerRef = useRef<HTMLDivElement | null>(null);
-  const [isDocking, setIsDocking] = useState<boolean>(false);
-  const [dockStyle, setDockStyle] = useState<React.CSSProperties | null>(null);
-  const dockingTriggeredRef = useRef<boolean>(false);
+  const wordmarkRef = useRef<HTMLDivElement | null>(null);
+  const mountedAt = useRef(performance.now());
+  const finishedParts = useRef(new Set<string>());
+  const completionRef = useRef(onComplete);
+  const completedRef = useRef(false);
+  const revealRef = useRef(onReveal);
+  const restoreTargetRef = useRef<() => void>(() => {});
+  const [isDocking, setIsDocking] = useState(false);
+  const [flight, setFlight] = useState<{ x: number; y: number; scale: number; word?: { x: number; y: number; scale: number } } | null>(null);
+  const isReducedMotion = useAppReducedMotion();
+  const ready = (clampedProgress >= 100 || isExiting) && !error;
 
-  // Detect user preference for reduced motion (Windows 11 "Animation effects: off" or macOS equivalent)
-  const isReducedMotion =
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  useEffect(() => { completionRef.current = onComplete; revealRef.current = onReveal; }, [onComplete, onReveal]);
 
-  // Reset trigger flag if progress fluctuates before reaching completion
   useEffect(() => {
-    if (clampedProgress < 100 && !isExiting) {
-      dockingTriggeredRef.current = false;
+    if (!ready) {
+      setIsDocking(false);
+      setFlight(null);
+      return;
     }
-  }, [clampedProgress, isExiting]);
 
-  // Trigger docking flight or fast-fade when progress hits 100% or isExiting is requested
-  useEffect(() => {
-    if ((clampedProgress >= 100 || isExiting) && !dockingTriggeredRef.current && !error) {
-      dockingTriggeredRef.current = true;
-
-      // FAST PATH for Reduced Motion users: zero-latency immediate completion without complex transforms
-      if (isReducedMotion) {
-        setIsDocking(true);
-        const rmTimer = setTimeout(() => {
-          onComplete?.();
-        }, 120);
-        return () => clearTimeout(rmTimer);
+    let hiddenTarget: HTMLElement | undefined;
+    let originalVisibility = '';
+    // Allow the final fill to settle before starting the shared-element flight.
+    const settleTimer = setTimeout(() => {
+      const source = logoContainerRef.current?.getBoundingClientRect();
+      let target: HTMLElement | undefined;
+      try {
+        target = Array.from(document.querySelectorAll<HTMLElement>(targetSelector)).find(el => {
+          const rect = el.getBoundingClientRect();
+          const style = getComputedStyle(el);
+          return rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < innerHeight &&
+            rect.right > 0 && rect.left < innerWidth && style.visibility !== 'hidden' &&
+            style.display !== 'none' && Number(style.opacity) > 0 &&
+            Math.abs(rect.width / rect.height - 1) < 0.15;
+        });
+      } catch { /* Invalid or absent targets use a short fade. */ }
+      const group = target?.closest<HTMLElement>('[data-brand-dock]');
+      const wordTarget = group?.querySelector<HTMLElement>('[data-brand-part="wordmark"]');
+      const sourceWord = wordmarkRef.current?.getBoundingClientRect();
+      const targetWord = wordTarget?.getBoundingClientRect();
+      // Hide the complete destination brand before revealing the page beneath.
+      hiddenTarget = group || target;
+      if (hiddenTarget) {
+        originalVisibility = hiddenTarget.style.visibility;
+        hiddenTarget.style.visibility = 'hidden';
       }
-
-      // Normal Motion: Snappy 40ms settling pause then fluid 480ms flight into target header logo
-      const timer = setTimeout(() => {
-        try {
-          const sourceEl = logoContainerRef.current;
-          if (!sourceEl) {
-            setIsDocking(true);
-            onComplete?.();
-            return;
-          }
-
-          const sourceRect = sourceEl.getBoundingClientRect();
-
-          // 1. Measure real target position in DOM safely
-          let targetRect = computeFallbackTarget();
-          try {
-            const targetEl = document.querySelector(targetSelector);
-            if (targetEl && document.body.contains(targetEl)) {
-              const r = targetEl.getBoundingClientRect();
-              if (r.width > 0 && r.height > 0) {
-                targetRect = { left: r.left, top: r.top, width: r.width, height: r.height };
-              }
-            }
-          } catch {
-            targetRect = computeFallbackTarget();
-          }
-
-          // 2. Compute 3D translation & scale delta to top-left corner
-          const sourceCenterX = sourceRect.left + sourceRect.width / 2;
-          const sourceCenterY = sourceRect.top + sourceRect.height / 2;
-          const targetCenterX = targetRect.left + targetRect.width / 2;
-          const targetCenterY = targetRect.top + targetRect.height / 2;
-
-          const deltaX = targetCenterX - sourceCenterX;
-          const deltaY = targetCenterY - sourceCenterY;
-          const scale = targetRect.width / sourceRect.width;
-
-          setDockStyle({
-            transform: `translate3d(${deltaX}px, ${deltaY}px, 0) scale(${scale})`,
-            transition: 'transform 480ms cubic-bezier(0.16, 1, 0.3, 1)',
-          });
-          setIsDocking(true);
-
-          // 3. Complete and unmount after docking animation finishes (500ms)
-          const completeTimer = setTimeout(() => {
-            onComplete?.();
-          }, 500);
-
-          return () => clearTimeout(completeTimer);
-        } catch (err) {
-          console.error('[Console LogoFillLoader Error]:', err);
-          onComplete?.();
-        }
-      }, 40);
-
-      return () => {
-        clearTimeout(timer);
-        // If unmounted or interrupted before flight started, reset flag
-        if (!isDocking) {
-          dockingTriggeredRef.current = false;
-        }
+      if (!isReducedMotion && source && target) {
+        const rect = target.getBoundingClientRect();
+        setFlight({
+          x: rect.left + rect.width / 2 - source.left - source.width / 2,
+          y: rect.top + rect.height / 2 - source.top - source.height / 2,
+          scale: rect.width / source.width,
+          word: sourceWord && targetWord && targetWord.width > 0 ? {
+            x: targetWord.left + targetWord.width / 2 - sourceWord.left - sourceWord.width / 2,
+            y: targetWord.top + targetWord.height / 2 - sourceWord.top - sourceWord.height / 2,
+            scale: targetWord.width / sourceWord.width,
+          } : undefined,
+        });
+      } else {
+        setFlight(null);
+      }
+      finishedParts.current.clear();
+      restoreTargetRef.current = () => {
+        if (hiddenTarget) hiddenTarget.style.visibility = originalVisibility;
       };
-    }
-  }, [clampedProgress, isExiting, error, onComplete, targetSelector, isReducedMotion, isDocking]);
+      revealRef.current?.();
+      setIsDocking(true);
+    }, isReducedMotion ? 0 : Math.max(180, WORDMARK_INTRO_MS - (performance.now() - mountedAt.current)));
+    return () => {
+      clearTimeout(settleTimer);
 
-  // Safety watchdog: ensure loader never remains on screen longer than 750ms once progress reaches 100
+      if (hiddenTarget) hiddenTarget.style.visibility = originalVisibility;
+    };
+  }, [ready, targetSelector, isReducedMotion]);
+
+  const complete = () => {
+    if (completedRef.current) return;
+    completedRef.current = true;
+    if (logoContainerRef.current) logoContainerRef.current.style.visibility = 'hidden';
+    if (wordmarkRef.current) wordmarkRef.current.style.visibility = 'hidden';
+    restoreTargetRef.current();
+    revealRef.current?.();
+    completionRef.current?.();
+  };
+
+  // Animation events can be cancelled/suspended by WebKit or low-power mode.
+  // Completion must not depend on receiving events from both travelling parts.
   useEffect(() => {
-    if (clampedProgress >= 100) {
-      const watchdog = setTimeout(() => {
-        onComplete?.();
-      }, 750);
-      return () => clearTimeout(watchdog);
-    }
-  }, [clampedProgress, onComplete]);
+    if (!ready || !isDocking) return;
+    const timer = window.setTimeout(complete, isReducedMotion ? 250 : 1400);
+    return () => window.clearTimeout(timer);
+  }, [ready, isDocking, isReducedMotion]);
 
-  function computeFallbackTarget() {
-    const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
-    if (isMobile) {
-      return { left: 16, top: 14, width: 36, height: 36 };
-    }
-    return { left: 24, top: 16, width: 36, height: 36 };
-  }
+  const finish = (part: string) => {
+    if (!ready || !isDocking || completedRef.current) return;
+    finishedParts.current.add(part);
+    if (finishedParts.current.size >= 2) complete();
+  };
 
   return (
     <>
-      <style>{`
-        @keyframes adhomeGentleFloat {
-          0%, 100% {
-            transform: translateY(0px) scale(0.97);
-          }
-          50% {
-            transform: translateY(-4px) scale(1.015);
-          }
-        }
-        .adhome-float-motion {
-          animation: adhomeGentleFloat 3s ease-in-out infinite;
-        }
-      `}</style>
-
       {/* Layer 1: Backdrop Overlay — Fades to transparent to reveal page underneath */}
-      <div
-        className="fixed inset-0 z-40 bg-[#FAF9F6] dark:bg-[#0B0F19] pointer-events-none"
-        style={{
-          opacity: isDocking ? 0 : 1,
-          transition: isReducedMotion
-            ? 'opacity 120ms ease-out'
-            : 'opacity 420ms cubic-bezier(0.16, 1, 0.3, 1) 40ms',
-        }}
+      <motion.div
+        initial={false}
+        animate={{ opacity: isDocking ? 0 : 1 }}
+        transition={{ duration: isReducedMotion ? 0.12 : 0.65, ease: [0.22, 1, 0.36, 1] }}
+        className="fixed inset-0 z-[100] bg-[#FAF9F6] dark:bg-[#0B0F19] pointer-events-none"
         aria-hidden="true"
       />
 
       {/* Layer 2: Flying Logo Stage — Logo stays 100% visible while gliding to corner */}
       <div
         data-testid="adhome-logo-fill-loader"
-        className={`fixed inset-0 z-50 flex min-h-screen w-full flex-col items-center justify-center px-4 select-none ${
+        data-motion-mode={isReducedMotion ? "reduced" : "full"}
+        data-motion-phase={isDocking ? (flight ? "flight" : "fade") : "loading"}
+        className={`fixed inset-0 z-[101] flex min-h-[100dvh] w-full flex-col items-center justify-center px-4 select-none ${
           isDocking ? 'pointer-events-none' : 'pointer-events-auto'
         }`}
         style={
@@ -186,176 +164,54 @@ export const LogoFillLoader: React.FC<LogoFillLoaderProps> = ({
                   ? 'radial-gradient(circle, rgba(8, 121, 250, 0.16) 0%, rgba(22, 210, 203, 0.1) 40%, transparent 70%)'
                   : 'radial-gradient(circle, rgba(148, 163, 184, 0.1) 0%, transparent 65%)',
               opacity: isDocking ? 0 : clampedProgress > 0 ? Math.min(1, 0.5 + clampedProgress / 120) : 0.35,
-              transform: isDocking ? 'scale(0.3)' : 'scale(1)',
+              transform: isDocking && !isReducedMotion ? 'scale(0.3)' : 'scale(1)',
               transition: isReducedMotion ? 'opacity 100ms ease-out' : 'opacity 300ms ease-out, transform 400ms ease-out',
             }}
             aria-hidden="true"
           />
 
-          {/* Logo Container: Floating breathing during load -> Smooth Spring Glide into Header */}
-          <div
-            ref={logoContainerRef}
-            className={`relative w-28 h-28 sm:w-32 sm:h-32 will-change-transform ${
-              isDocking || isReducedMotion ? '' : 'adhome-float-motion'
-            }`}
-            style={
-              isDocking && dockStyle
-                ? dockStyle
-                : {
-                    transform:
-                      clampedProgress >= 100
-                        ? 'scale(1.02)'
-                        : `scale(${0.96 + (clampedProgress / 100) * 0.04})`,
-                    transition: isReducedMotion ? 'none' : 'transform 400ms cubic-bezier(0.16, 1, 0.3, 1)',
-                  }
-            }
+          {/* Keep the flight wrapper stable; breathing belongs to its child. */}
+          <motion.div ref={logoContainerRef}
+            initial={false}
+            animate={isDocking ? (flight ? {
+              x: flight.x, y: flight.y, scale: flight.scale, opacity: 1,
+            } : { x: 0, y: isReducedMotion ? 0 : -10, scale: isReducedMotion ? 1 : 0.94, opacity: 0 }) : { x: 0, y: 0, scale: 1, opacity: 1 }}
+            transition={{
+              duration: isReducedMotion ? 0.12 : 0.85,
+              ease: [0.45, 0, 0.2, 1],
+              x: { duration: isReducedMotion ? 0.12 : 0.85, ease: [0.65, 0, 0.2, 1] },
+              y: { duration: isReducedMotion ? 0.12 : 0.85, ease: [0.4, 0, 0.2, 1] },
+            }}
+            onAnimationComplete={() => finish("icon")}
+            role="progressbar" aria-label="Tiến độ tải AdHome"
+            aria-valuemin={0} aria-valuemax={100} aria-valuenow={clampedProgress}
+            className="relative w-28 h-28 sm:w-32 sm:h-32 will-change-transform"
           >
+            <BrandIntroIcon />
+          </motion.div>
 
-            {/* Layer 1: Stroke Outline / Silhouette Base */}
-            <div className="absolute inset-0">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="4 7 90 82"
-                className="w-full h-full object-contain"
-                aria-hidden="true"
-                fill="none"
-              >
-                <defs>
-                  <linearGradient id="console-outline-base" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stopColor="#CBD5E1" />
-                    <stop offset="100%" stopColor="#94A3B8" />
-                  </linearGradient>
-                </defs>
-                <path
-                  d="M60 14.5C60 9.2 64.7 7.5 68.5 10.3L77.5 17C80.3 19 81 21.3 81 25V71.7C81 76.7 77.5 80.3 72.5 80.3H60V14.5Z"
-                  stroke="url(#console-outline-base)"
-                  strokeWidth="1.8"
-                  strokeLinejoin="round"
-                  className="opacity-45"
-                />
-                <path
-                  d="M77.5 26L88.5 33.4C91.4 35.4 92 37.5 92 41V70.2C92 76.2 87.5 80.3 81.5 80.3H77.5V26Z"
-                  stroke="url(#console-outline-base)"
-                  strokeWidth="1.8"
-                  strokeLinejoin="round"
-                  className="opacity-45"
-                />
-                <path
-                  d="M6 45.2C6 41.2 7.7 38.4 11.4 35.4L41 11.3C44.5 8.45 47.4 8.45 50.7 11.1L64.6 22.35C71.8 28.2 74 32.8 74 40.4V70.5H61V44.7C61 41.7 60.4 40.4 58 38.5L47.7 29.9C46 28.5 44.9 28.6 43.3 29.9L23.8 46.1C21.8 47.8 21 49.4 21 52V80.3H14.4C9 80.3 6 77.4 6 72V45.2Z"
-                  stroke="url(#console-outline-base)"
-                  strokeWidth="1.8"
-                  strokeLinejoin="round"
-                  className="opacity-45"
-                />
-                <rect
-                  x="34.5"
-                  y="46"
-                  width="8.3"
-                  height="8.3"
-                  rx="2"
-                  stroke="url(#console-outline-base)"
-                  strokeWidth="1.5"
-                  className="opacity-45"
-                />
-                <rect
-                  x="45.1"
-                  y="46"
-                  width="8.3"
-                  height="8.3"
-                  rx="2"
-                  stroke="url(#console-outline-base)"
-                  strokeWidth="1.5"
-                  className="opacity-45"
-                />
-                <rect
-                  x="34.5"
-                  y="56.5"
-                  width="8.3"
-                  height="8.3"
-                  rx="2"
-                  stroke="url(#console-outline-base)"
-                  strokeWidth="1.5"
-                  className="opacity-45"
-                />
-                <rect
-                  x="45.1"
-                  y="56.5"
-                  width="8.3"
-                  height="8.3"
-                  rx="2"
-                  stroke="url(#console-outline-base)"
-                  strokeWidth="1.5"
-                  className="opacity-45"
-                />
-                <path
-                  d="M21.4 68.8C29.4 63.2 39.1 62 49.5 64.7C59.6 67.3 70 74.9 79.5 77C83.5 77.9 87.5 77.8 92.7 74.7C87.9 84.5 76.5 88.5 65.8 85.9C50.9 82.3 37.7 70.9 21.4 68.8Z"
-                  stroke="url(#console-outline-base)"
-                  strokeWidth="1.8"
-                  strokeLinejoin="round"
-                  className="opacity-45"
-                />
-              </svg>
-            </div>
-
-            {/* Layer 2: Vibrant Authentic Color Logo Fill with Bottom-to-Top Clip Path */}
-            <div
-              className="absolute inset-0 transition-all duration-600 ease-[cubic-bezier(0.16,1,0.3,1)]"
-              style={{
-                clipPath: `inset(${100 - clampedProgress}% 0% 0%)`,
-              }}
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="4 7 90 82"
-                className="w-full h-full object-contain filter drop-shadow-md"
-                aria-hidden="true"
-              >
-                <defs>
-                  <linearGradient id="console-loader-roof" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stopColor="#0864E5" />
-                    <stop offset="100%" stopColor="#0879FA" />
-                  </linearGradient>
-                  <linearGradient id="console-loader-tower" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#0EA5E9" />
-                    <stop offset="50%" stopColor="#06B6D4" />
-                    <stop offset="100%" stopColor="#059669" />
-                  </linearGradient>
-                  <linearGradient id="console-loader-flow" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stopColor="#0879FA" />
-                    <stop offset="100%" stopColor="#16D2CB" />
-                  </linearGradient>
-                </defs>
-                <path
-                  d="M60 14.5C60 9.2 64.7 7.5 68.5 10.3L77.5 17C80.3 19 81 21.3 81 25V71.7C81 76.7 77.5 80.3 72.5 80.3H60V14.5Z"
-                  fill="url(#console-loader-tower)"
-                />
-                <path
-                  d="M77.5 26L88.5 33.4C91.4 35.4 92 37.5 92 41V70.2C92 76.2 87.5 80.3 81.5 80.3H77.5V26Z"
-                  fill="url(#console-loader-tower)"
-                />
-                <path
-                  d="M6 45.2C6 41.2 7.7 38.4 11.4 35.4L41 11.3C44.5 8.45 47.4 8.45 50.7 11.1L64.6 22.35C71.8 28.2 74 32.8 74 40.4V70.5H61V44.7C61 41.7 60.4 40.4 58 38.5L47.7 29.9C46 28.5 44.9 28.6 43.3 29.9L23.8 46.1C21.8 47.8 21 49.4 21 52V80.3H14.4C9 80.3 6 77.4 6 72V45.2Z"
-                  fill="url(#console-loader-roof)"
-                />
-                <rect x="34.5" y="46" width="8.3" height="8.3" rx="2" fill="#0864E5" />
-                <rect x="45.1" y="46" width="8.3" height="8.3" rx="2" fill="#0864E5" />
-                <rect x="34.5" y="56.5" width="8.3" height="8.3" rx="2" fill="#0864E5" />
-                <rect x="45.1" y="56.5" width="8.3" height="8.3" rx="2" fill="#0864E5" />
-                <rect x="83.3" y="40.8" width="3.9" height="7.3" rx="1.95" fill="#F5FFFE" />
-                <rect x="83.3" y="52.2" width="3.9" height="7.3" rx="1.95" fill="#F5FFFE" />
-                <rect x="83.3" y="63.6" width="3.9" height="7.3" rx="1.95" fill="#F5FFFE" />
-                <path
-                  d="M21.4 68.8C29.4 63.2 39.1 62 49.5 64.7C59.6 67.3 70 74.9 79.5 77C83.5 77.9 87.5 77.8 92.7 74.7C87.9 84.5 76.5 88.5 65.8 85.9C50.9 82.3 37.7 70.9 21.4 68.8Z"
-                  fill="url(#console-loader-flow)"
-                />
-              </svg>
-            </div>
-          </div>
+          <motion.div ref={wordmarkRef}
+            data-testid="loading-wordmark-flight"
+            initial={false}
+            animate={isDocking ? (flight?.word ? {
+              x: flight.word.x, y: flight.word.y, scale: flight.word.scale, opacity: 1,
+            } : { x: 0, y: 0, scale: 1, opacity: 0 }) : { x: 0, y: 0, scale: 1, opacity: 1 }}
+            transition={{
+              duration: isReducedMotion ? 0.12 : 0.85,
+              ease: [0.45, 0, 0.2, 1],
+              x: { duration: isReducedMotion ? 0.12 : 0.85, ease: [0.65, 0, 0.2, 1] },
+              y: { duration: isReducedMotion ? 0.12 : 0.85, ease: [0.4, 0, 0.2, 1] },
+            }}
+            onAnimationComplete={() => finish("wordmark")}
+            className="pointer-events-none absolute top-28 sm:top-32 mt-5 h-auto w-52 sm:w-60"
+          >
+            <BrandWordmark animated className="block h-auto w-full overflow-visible" />
+          </motion.div>
 
           {/* Minimalist Error Handling (Only rendered if live connection failure occurs) */}
           {error && (
-            <div className="flex flex-col items-center gap-2 mt-6 animate-fade-in">
-              <span className="text-xs font-medium text-rose-500">{error}</span>
+            <div className="flex flex-col items-center gap-2 mt-24 max-w-xs text-center animate-fade-in">
+              <span role="alert" className="text-xs font-medium text-rose-500">{error}</span>
               {onRetry && (
                 <button
                   type="button"

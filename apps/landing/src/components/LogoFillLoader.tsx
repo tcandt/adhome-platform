@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { motion } from 'motion/react';
 import { BrandWordmark, WORDMARK_INTRO_MS } from './BrandWordmark';
+import { BrandIntroIcon } from './BrandIntroIcon';
 import { useAppReducedMotion } from '../motionPreference';
 
 export interface LogoFillLoaderProps {
@@ -26,10 +27,10 @@ export const LogoFillLoader: React.FC<LogoFillLoaderProps> = ({
   const clampedProgress = Number.isFinite(progress) ? Math.max(0, Math.min(100, progress)) : 0;
   const logoContainerRef = useRef<HTMLDivElement | null>(null);
   const wordmarkRef = useRef<HTMLDivElement | null>(null);
+  const mountedAt = useRef(performance.now());
   const finishedParts = useRef(new Set<string>());
   const completionRef = useRef(onComplete);
   const completedRef = useRef(false);
-  const mountedAt = useRef(performance.now());
   const revealRef = useRef(onReveal);
   const restoreTargetRef = useRef<() => void>(() => {});
   const [isDocking, setIsDocking] = useState(false);
@@ -101,17 +102,28 @@ export const LogoFillLoader: React.FC<LogoFillLoaderProps> = ({
     };
   }, [ready, targetSelector, isReducedMotion]);
 
+  const complete = () => {
+    if (completedRef.current) return;
+    completedRef.current = true;
+    if (logoContainerRef.current) logoContainerRef.current.style.visibility = 'hidden';
+    if (wordmarkRef.current) wordmarkRef.current.style.visibility = 'hidden';
+    restoreTargetRef.current();
+    revealRef.current?.();
+    completionRef.current?.();
+  };
+
+  // Animation events can be cancelled/suspended by WebKit or low-power mode.
+  // Completion must not depend on receiving events from both travelling parts.
+  useEffect(() => {
+    if (!ready || !isDocking) return;
+    const timer = window.setTimeout(complete, isReducedMotion ? 250 : 1400);
+    return () => window.clearTimeout(timer);
+  }, [ready, isDocking, isReducedMotion]);
+
   const finish = (part: string) => {
     if (!ready || !isDocking || completedRef.current) return;
     finishedParts.current.add(part);
-    if (finishedParts.current.size < 2) return;
-    // Swap in a single paint: remove both travelling elements, then show the
-    // destination. No frame contains duplicate logos or duplicate wordmarks.
-    if (logoContainerRef.current) logoContainerRef.current.style.visibility = 'hidden';
-    if (wordmarkRef.current) wordmarkRef.current.style.visibility = 'hidden';
-    completedRef.current = true;
-    restoreTargetRef.current();
-    completionRef.current?.();
+    if (finishedParts.current.size >= 2) complete();
   };
 
   return (
@@ -165,7 +177,7 @@ export const LogoFillLoader: React.FC<LogoFillLoaderProps> = ({
               x: flight.x, y: flight.y, scale: flight.scale, opacity: 1,
             } : { x: 0, y: isReducedMotion ? 0 : -10, scale: isReducedMotion ? 1 : 0.94, opacity: 0 }) : { x: 0, y: 0, scale: 1, opacity: 1 }}
             transition={{
-              duration: isReducedMotion ? 0.12 : flight ? 0.85 : 0.65,
+              duration: isReducedMotion ? 0.12 : 0.85,
               ease: [0.45, 0, 0.2, 1],
               x: { duration: isReducedMotion ? 0.12 : 0.85, ease: [0.65, 0, 0.2, 1] },
               y: { duration: isReducedMotion ? 0.12 : 0.85, ease: [0.4, 0, 0.2, 1] },
@@ -175,20 +187,7 @@ export const LogoFillLoader: React.FC<LogoFillLoaderProps> = ({
             aria-valuemin={0} aria-valuemax={100} aria-valuenow={clampedProgress}
             className="relative w-28 h-28 sm:w-32 sm:h-32 will-change-transform"
           >
-            <motion.div className="relative h-full w-full"
-              animate={isReducedMotion || isDocking || error ? { y: 0 } : { y: [0, -4, 0] }}
-              transition={isReducedMotion ? { duration: 0 } : isDocking || error ? { duration: 0.3, ease: 'easeOut' } : { duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
-            >
-              <img src="/brand/adhome-icon.svg" alt="" draggable={false}
-                className="absolute inset-0 h-full w-full object-contain opacity-20 grayscale" />
-              <motion.div className="absolute inset-0"
-                animate={{ clipPath: `inset(${100 - (isExiting ? 100 : clampedProgress)}% 0% 0%)` }}
-                transition={{ duration: isReducedMotion ? 0 : 0.48, ease: [0.22, 1, 0.36, 1] }}
-              >
-                <img src="/brand/adhome-icon.svg" alt="" draggable={false}
-                  className="h-full w-full object-contain" />
-              </motion.div>
-            </motion.div>
+            <BrandIntroIcon />
           </motion.div>
 
           <motion.div ref={wordmarkRef}
@@ -206,7 +205,7 @@ export const LogoFillLoader: React.FC<LogoFillLoaderProps> = ({
             onAnimationComplete={() => finish("wordmark")}
             className="pointer-events-none absolute top-28 sm:top-32 mt-5 h-auto w-52 sm:w-60"
           >
-            <BrandWordmark animated settled={isDocking} className="block h-auto w-full overflow-visible" />
+            <BrandWordmark animated className="block h-auto w-full overflow-visible" />
           </motion.div>
 
           {/* Minimalist Error Handling (Only rendered if live connection failure occurs) */}

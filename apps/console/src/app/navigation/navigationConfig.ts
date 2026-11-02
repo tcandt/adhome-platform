@@ -177,7 +177,7 @@ export const NAV_GROUPS_CONFIG: NavGroupConfig[] = [
     items: [
       {
         id: 'settlements',
-        label: 'Tổng hợp & Cron',
+        label: 'Tổng hợp kỳ',
         shortMobileLabel: 'Tổng hợp',
         groupId: 'finance_summary',
         icon: ClipboardCheck,

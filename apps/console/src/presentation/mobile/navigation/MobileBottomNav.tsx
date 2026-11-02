@@ -1,70 +1,22 @@
 import React from 'react';
-import {
-  Building2,
-  CreditCard,
-  LayoutDashboard,
-  Menu,
-  Receipt,
-} from 'lucide-react';
-import {
-  type NavModuleId,
-  useNavigation,
-} from '@/app/providers/NavigationContext';
+import { Building2, CreditCard, LayoutDashboard, Receipt } from 'lucide-react';
+import { type NavModuleId, useNavigation, NAV_ITEMS_CONFIG } from '@/app/providers/NavigationContext';
+import { useAuth } from '@/app/providers/AuthContext';
 
-interface MobileBottomNavProps {
-  onOpenDrawer: () => void;
-}
-
-export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
-  onOpenDrawer,
-}) => {
+export const MobileBottomNav: React.FC = () => {
   const { activeModule, setActiveModule } = useNavigation();
-
-  const quickTabs: Array<{
-    id: NavModuleId;
-    label: string;
-    icon: React.ComponentType<{ className?: string }>;
-  }> = [
+  const { hasCapability } = useAuth();
+  const tabs = [
     { id: 'overview', label: 'Tổng quan', icon: LayoutDashboard },
-    { id: 'buildings', label: 'Phòng & Khách', icon: Building2 },
+    { id: 'buildings', label: 'Phòng', icon: Building2 },
     { id: 'invoices', label: 'Hóa đơn', icon: Receipt },
     { id: 'payments', label: 'Đối soát', icon: CreditCard },
-  ];
-
-  return (
-    <nav
-      data-testid="console-mobile-bottom-nav"
-      aria-label="Điều hướng nhanh di động"
-      className="fixed bottom-0 left-0 right-0 z-30 flex h-16 items-center justify-around border-t border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-[#111827]/95 px-1 backdrop-blur-md"
-    >
-      {quickTabs.map((tab) => {
-        const Icon = tab.icon;
-        const isActive = activeModule === tab.id;
-        return (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setActiveModule(tab.id)}
-            className={`flex min-h-[48px] flex-1 flex-col items-center justify-center gap-0.5 rounded-xl text-[10px] transition-colors ${
-              isActive
-                ? 'font-bold text-brand-primary dark:text-blue-400'
-                : 'font-medium text-slate-500 dark:text-slate-400'
-            }`}
-          >
-            <Icon className="h-5 w-5" />
-            <span className="truncate">{tab.label}</span>
-          </button>
-        );
-      })}
-
-      <button
-        type="button"
-        onClick={onOpenDrawer}
-        className="flex min-h-[48px] flex-1 flex-col items-center justify-center gap-0.5 rounded-xl text-[10px] font-medium text-slate-500 dark:text-slate-400"
-      >
-        <Menu className="h-5 w-5" />
-        <span>Menu</span>
-      </button>
-    </nav>
-  );
+  ] as const;
+  return <nav data-testid="console-mobile-bottom-nav" aria-label="Điều hướng nhanh di động" className="fixed inset-x-0 bottom-0 z-30 flex items-center justify-around border-t border-slate-200 bg-white/95 px-2 pt-1 backdrop-blur-md dark:border-slate-800 dark:bg-[#111827]/95" style={{ paddingBottom: 'max(0.25rem, env(safe-area-inset-bottom, 0px))' }}>
+    {tabs.filter(tab => { const capability = NAV_ITEMS_CONFIG.find(item => item.id === tab.id)?.requiredCapability; return !capability || hasCapability(capability); }).map(tab => {
+      const active = activeModule === tab.id;
+      const Icon = tab.icon;
+      return <button key={tab.id} type="button" aria-current={active ? 'page' : undefined} onClick={() => setActiveModule(tab.id as NavModuleId)} className={`flex min-h-12 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl text-[10px] ${active ? 'font-bold text-blue-700 dark:text-blue-300' : 'font-medium text-slate-500 dark:text-slate-400'}`}><Icon className="h-5 w-5" /><span>{tab.label}</span></button>;
+    })}
+  </nav>;
 };

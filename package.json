@@ -4,6 +4,7 @@
   "private": true,
   "description": "AdHome V2 — SaaS Quản lý Căn hộ Dịch vụ Native Monorepo",
   "scripts": {
+    "dev:local": "node scripts/dev-local.mjs",
     "dev": "pnpm --filter @adhome/landing dev --host 127.0.0.1 --port 5173",
     "dev:console": "pnpm --filter @adhome/console dev --host 0.0.0.0 --port 5174",
     "dev:console:host": "pnpm --filter @adhome/console dev --host 0.0.0.0 --port 5174",
@@ -15,6 +16,8 @@
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
     "build:worker": "pnpm --filter @adhome/landing build:worker",
+    "build:console:worker": "pnpm --filter @adhome/console build",
+    "deploy:console:worker": "pnpm run build:console:worker && npx wrangler deploy --config wrangler.console.jsonc",
     "deploy:worker": "pnpm run build:worker && npx wrangler deploy"
   },
   "packageManager": "pnpm@11.14.0",

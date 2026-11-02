@@ -19,8 +19,12 @@ function syncDocumentPreference() {
 
 function subscribe(onChange: () => void) {
   const update = () => { syncDocumentPreference(); onChange(); };
-  media.addEventListener('change', update);
-  return () => media.removeEventListener('change', update);
+  if (typeof media.addEventListener === 'function') {
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }
+  media.addListener(update);
+  return () => media.removeListener(update);
 }
 
 syncDocumentPreference();

@@ -29,7 +29,7 @@ export const MobileShell: React.FC = () => {
 
       <MobileDrawer isOpen={drawerOpen} onClose={() => setDrawerOpen(false)} />
 
-      <main className="pt-3 pb-20 px-3.5">
+      <main className="pt-4 px-4" style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom, 0px))' }}>
         {!isModuleAllowed ? (
           <div
             data-testid="console-module-forbidden"
@@ -41,7 +41,7 @@ export const MobileShell: React.FC = () => {
             </h2>
           </div>
         ) : activeModule === 'overview' ? (
-          <OverviewDashboard />
+          <OverviewDashboard mobile />
         ) : activeModule === 'buildings' ? (
           <UnifiedBuildingCanvas />
         ) : activeModule === 'settings' ? (
@@ -51,7 +51,7 @@ export const MobileShell: React.FC = () => {
         )}
       </main>
 
-      <MobileBottomNav onOpenDrawer={() => setDrawerOpen(true)} />
+      <MobileBottomNav />
 
       <GlobalSearchModal />
     </div>

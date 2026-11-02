@@ -11,9 +11,13 @@ const LETTERS = [
   { d: 'M255.31835937499994 61.4404296875C260.52343749999994 61.4404296875 264.08691406249994 59.01806640625 265.18798828124994 55.29443359375L259.74267578124994 54.2734375C259.10205078124994 55.9951171875 257.52050781249994 56.916015625 255.41845703124994 56.916015625C252.39550781249994 56.916015625 250.35351562499994 55.0341796875 250.21337890624994 51.37060546875H265.52832031249994V49.68896484375C265.52832031249994 42.04150390625 260.86376953124994 38.337890625 255.01806640624994 38.337890625C248.47167968749994 38.337890625 244.26757812499994 43.0224609375 244.26757812499994 49.92919921875C244.26757812499994 56.99609375 248.47167968749994 61.4404296875 255.31835937499994 61.4404296875ZM250.25341796874994 47.60693359375C250.49365234374994 44.84423828125 252.21533203124994 42.8623046875 255.07812499999994 42.8623046875C257.86083984374994 42.8623046875 259.44238281249994 44.68408203125 259.74267578124994 47.60693359375Z', brand: false },
 ];
 
-export const WORDMARK_INTRO_MS = 1700;
+export const WORDMARK_INTRO_MS = 2050;
+export const BRAND_DRAW_TRANSITION = {
+  pathLength: { duration: 1.3, ease: 'easeInOut' },
+  fillOpacity: { duration: 0.45, delay: 1.15, ease: 'easeOut' },
+} as const;
 
-export function BrandWordmark({ animated = false, exiting = false, settled = false, className = '' }: {
+export function BrandWordmark({ animated = false, exiting = false, className = '' }: {
   animated?: boolean;
   exiting?: boolean;
   settled?: boolean;
@@ -27,23 +31,18 @@ export function BrandWordmark({ animated = false, exiting = false, settled = fal
       role="img" aria-label="AdHome" data-testid="adhome-wordmark" data-brand-part="wordmark"
       className={className}
       initial={draw ? { opacity: 1, scale: 1 } : false}
-      animate={exiting ? { opacity: 0, scale: reduced ? 1 : 0.98 } : draw && !settled ? {
-        opacity: [1, 0.78, 1], scale: [1, 1.018, 1],
-      } : { opacity: 1, scale: 1 }}
-      transition={exiting ? { duration: reduced ? 0.12 : 0.25 } : settled ? { duration: 0.18 } : draw ? {
-        delay: 1.1, duration: 1.2, repeat: Infinity, ease: 'easeInOut',
-      } : { duration: 0 }}
+      animate={exiting ? { opacity: 0 } : { opacity: 1, scale: 1 }}
+      transition={{ duration: reduced ? 0 : 0.25 }}
     >
       {LETTERS.map(({ d, brand }, index) => (
         <motion.path key={index} d={d} fill="currentColor" stroke="currentColor"
           strokeWidth="0.65" strokeLinejoin="round"
           className={brand ? 'text-[#0879FA]' : 'text-[#15243B] dark:text-slate-100'}
           initial={draw ? { pathLength: 0, fillOpacity: 0, strokeOpacity: 1 } : false}
-          animate={{ pathLength: 1, fillOpacity: 1, strokeOpacity: 0 }}
+          animate={{ pathLength: 1, fillOpacity: 1, strokeOpacity: draw ? 1 : 0 }}
           transition={draw ? {
-            pathLength: { duration: 0.85, delay: index * 0.055, ease: 'easeInOut' },
-            fillOpacity: { duration: 0.35, delay: 0.65 + index * 0.055, ease: 'easeOut' },
-            strokeOpacity: { duration: 0.3, delay: 0.95 + index * 0.055 },
+            ...BRAND_DRAW_TRANSITION,
+            strokeOpacity: { duration: 0 },
           } : { duration: 0 }}
         />
       ))}

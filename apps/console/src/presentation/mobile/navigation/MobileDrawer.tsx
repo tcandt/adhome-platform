@@ -1,5 +1,5 @@
 import React from 'react';
-import { LogOut, Moon, ShieldCheck, Sun, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useAuth } from '@/app/providers/AuthContext';
 import {
   NAV_GROUPS_CONFIG,
@@ -7,7 +7,6 @@ import {
   useNavigation,
 } from '@/app/providers/NavigationContext';
 import { usePortfolio } from '@/app/providers/PortfolioContext';
-import { useTheme } from '@/app/providers/ThemeContext';
 import { BrandLogo } from '@/shared/ui/BrandLogo';
 import { MobileSidebarSheet } from '@/shared/ui/animate-sidebar';
 
@@ -20,10 +19,9 @@ export const MobileDrawer: React.FC<MobileDrawerProps> = ({
   isOpen,
   onClose,
 }) => {
-  const { user, logout, hasCapability } = useAuth();
+  const { hasCapability } = useAuth();
   const { activeModule, setActiveModule } = useNavigation();
-  const { moduleCounts, activeBuildings } = usePortfolio();
-  const { theme, toggleTheme } = useTheme();
+  const { moduleCounts } = usePortfolio();
 
   const handleSelect = (id: NavModuleId) => {
     setActiveModule(id);
@@ -80,6 +78,7 @@ export const MobileDrawer: React.FC<MobileDrawerProps> = ({
                       type="button"
                       data-testid={`console-mobile-nav-${item.id}`}
                       onClick={() => handleSelect(item.id)}
+                      aria-current={isActive ? 'page' : undefined}
                       className={`flex min-h-[44px] w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-[13px] transition-colors ${
                         isActive
                           ? 'bg-blue-50 dark:bg-blue-500/15 font-semibold text-brand-primary dark:text-blue-400'
@@ -108,51 +107,8 @@ export const MobileDrawer: React.FC<MobileDrawerProps> = ({
         })}
       </div>
 
-      {/* Footer: Verified Actor Profile, Theme & Safe Logout */}
-      <div className="shrink-0 border-t border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/60 p-3 space-y-2">
-        <div className="rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-2">
-          <div className="truncate text-xs font-bold text-slate-900 dark:text-white">
-            {user?.name}
-          </div>
-          <div className="truncate text-[11px] text-slate-500">
-            {user?.email}
-          </div>
-          <div className="mt-1.5 flex items-center gap-1.5 text-[10px] font-semibold text-blue-700 dark:text-blue-300">
-            <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
-            <span>
-              {user?.backendRole === 'ADMIN'
-                ? 'Admin · Toàn hệ thống'
-                : `Manager · ${activeBuildings.length} tòa`}
-            </span>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={toggleTheme}
-            className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700"
-          >
-            {theme === 'light' ? (
-              <Moon className="h-3.5 w-3.5" />
-            ) : (
-              <Sun className="h-3.5 w-3.5 text-amber-400" />
-            )}
-            <span>{theme === 'light' ? 'Nền tối' : 'Nền sáng'}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              onClose();
-              void logout();
-            }}
-            className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/30 text-xs font-semibold text-red-600 dark:text-red-400 active:bg-red-100 dark:active:bg-red-900/50"
-          >
-            <LogOut className="h-3.5 w-3.5" />
-            <span>Đăng xuất</span>
-          </button>
-        </div>
+      <div className="shrink-0 border-t border-slate-100 px-5 py-4 text-[11px] leading-relaxed text-slate-500 dark:border-slate-800 dark:text-slate-400" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 0px))' }}>
+        Hồ sơ, giao diện và đăng xuất trong avatar trên thanh đầu trang.
       </div>
     </MobileSidebarSheet>
   );

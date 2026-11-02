@@ -1,5 +1,5 @@
 import React from 'react';
-import { useTheme } from '@/app/providers/ThemeContext';
+import { BrandWordmark } from './BrandWordmark';
 
 interface BrandLogoProps {
   collapsed?: boolean;
@@ -14,8 +14,6 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
   size = 'md',
   variant = 'horizontal',
 }) => {
-  const { theme } = useTheme();
-  const isDark = theme === 'dark';
 
   if (variant === 'icon-only' || collapsed) {
     const iconSize =
@@ -23,11 +21,13 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
     return (
       <div
         className={`relative flex shrink-0 items-center justify-center ${iconSize} ${className}`}
+        data-brand-dock="console-icon"
         data-testid="brand-logo-icon"
       >
         <img
           src="/brand/adhome-icon.svg"
           alt="AdHome"
+          data-brand-part="icon"
           data-testid="brand-logo-icon-img header-brand-logo-img"
           className="h-full w-full shrink-0 object-contain select-none"
           draggable={false}
@@ -52,24 +52,13 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
     );
   }
 
-  const fullLogoHeight =
-    size === 'sm' ? 'h-7' : size === 'lg' ? 'h-11' : 'h-9';
-
+  const iconSize = size === 'sm' ? 'h-7 w-7' : size === 'lg' ? 'h-11 w-11' : 'h-9 w-9';
   return (
-    <div
-      className={`relative flex shrink-0 items-center ${className}`}
-      data-testid="brand-logo-horizontal"
-    >
-      <img
-        src={
-          isDark
-            ? '/brand/adhome-logo-full-dark.svg'
-            : '/brand/adhome-logo-full.svg'
-        }
-        alt="AdHome — Smart Property Management"
-        className={`${fullLogoHeight} w-auto max-w-[180px] shrink-0 object-contain select-none`}
-        draggable={false}
-      />
+    <div className={`relative flex shrink-0 items-center gap-2.5 ${className}`}
+      data-brand-dock="console-horizontal" data-testid="brand-logo-horizontal">
+      <img src="/brand/adhome-icon.svg" alt="" data-brand-part="icon"
+        className={`${iconSize} shrink-0 object-contain select-none`} draggable={false} />
+      <BrandWordmark className={size === 'sm' ? 'h-auto w-[94px]' : size === 'lg' ? 'h-auto w-[125px]' : 'h-auto w-[110px]'} />
     </div>
   );
 };

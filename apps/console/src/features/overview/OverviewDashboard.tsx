@@ -1,4 +1,5 @@
 import React from 'react';
+import { MobileOverviewSummary } from './MobileOverviewSummary';
 import {
   AlertTriangle,
   ArrowRight,
@@ -22,7 +23,7 @@ function formatVnd(amount: number): string {
   return `${Math.trunc(amount).toLocaleString('vi-VN')} đ`;
 }
 
-export const OverviewDashboard: React.FC = () => {
+export const OverviewDashboard: React.FC<{ mobile?: boolean }> = ({ mobile = false }) => {
   const { user, hasCapability } = useAuth();
   const {
     setActiveModule,
@@ -52,7 +53,8 @@ export const OverviewDashboard: React.FC = () => {
         };
 
   return (
-    <div className="space-y-6">
+    <div className={mobile ? "space-y-4" : "space-y-6"}>
+      {!mobile && <>
       {/* Scope & Live PostgreSQL Summary Banner */}
       <div
         data-testid="console-overview-portfolio-summary"
@@ -76,7 +78,7 @@ export const OverviewDashboard: React.FC = () => {
             </span>
           </div>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            Dữ liệu đồng bộ trực tiếp từ PostgreSQL · Kỳ theo dõi{' '}
+            Tổng quan vận hành · Kỳ theo dõi{' '}
             <strong className="text-slate-700 dark:text-slate-200">
               {formatPeriodDisplay(selectedPeriod)}
             </strong>{' '}
@@ -112,11 +114,12 @@ export const OverviewDashboard: React.FC = () => {
         </div>
       </div>
 
+      </>}
       {syncError && (
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/30 p-3.5 text-xs text-red-700 dark:text-red-300">
+        <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/30 p-3.5 text-xs text-red-700 dark:text-red-300">
           <div className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 shrink-0" />
-            <span>{syncError}</span>
+            <span>{mobile ? 'Không thể cập nhật dữ liệu. Đang giữ lần đồng bộ gần nhất.' : syncError}</span>
           </div>
           <button
             type="button"
@@ -128,8 +131,9 @@ export const OverviewDashboard: React.FC = () => {
         </div>
       )}
 
+      {mobile && <MobileOverviewSummary />}
       {/* 4 Authoritative PostgreSQL KPI Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {!mobile && <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {/* Card 1: Occupancy */}
         <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#111827] p-4">
           <div className="flex items-center justify-between">
@@ -184,7 +188,7 @@ export const OverviewDashboard: React.FC = () => {
         <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#111827] p-4">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-              Công nợ phải thu ({selectedPeriod})
+              Còn phải thu ({selectedPeriod})
             </span>
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400">
               <Wallet className="h-4 w-4" />
@@ -240,6 +244,7 @@ export const OverviewDashboard: React.FC = () => {
         </div>
       </div>
 
+      }
       {/* Main Two-Column Section: Scoped Buildings + Real Landing Inquiries */}
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         {/* Left 2 cols: Buildings in Authorized Scope */}
@@ -346,7 +351,7 @@ export const OverviewDashboard: React.FC = () => {
                 Yêu cầu xem phòng từ Landing
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Ghi nhận thực từ bảng lead_inquiries
+                Khách quan tâm từ website
               </p>
             </div>
             <PhoneCall className="h-4 w-4 text-slate-400" />

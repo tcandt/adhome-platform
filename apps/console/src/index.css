@@ -48,11 +48,30 @@
 }
 
 /* Smooth motion rules conforming to Blueprint Motion Budget */
-@media (prefers-reduced-motion: reduce) {
-  *, ::before, ::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
+/* The same resolved preference controls CSS and Motion animations. */
+html[data-motion="reduced"],
+html[data-motion="reduced"] *,
+html[data-motion="reduced"] ::before,
+html[data-motion="reduced"] ::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
 }
+
+/* Mobile console: compact actions, readable scopes, visible keyboard focus. */
+.mobile-quick-action {
+  @apply flex min-h-16 min-w-0 flex-col items-center justify-center gap-2 rounded-xl border border-blue-100 bg-blue-50 px-1 py-3 text-[11px] font-semibold text-blue-700 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300;
+}
+.mobile-quick-action span { white-space: nowrap; }
+.mobile-overview-scope > button { width: 100%; max-width: none; min-height: 44px; }
+.mobile-overview-scope > button > span { flex: 1; text-align: left; }
+[data-testid="console-mobile-shell"] button:focus-visible,
+[data-testid="console-mobile-shell"] input:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 3px;
+}
+
+.mobile-overview-scope [role="listbox"] { width: 100%; }
+.mobile-overview-scope [role="listbox"] button { min-height: 44px; }
+.mobile-overview-scope [role="listbox"] input { min-height: 44px; }

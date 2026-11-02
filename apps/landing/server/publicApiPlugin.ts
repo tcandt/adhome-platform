@@ -1,4 +1,6 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { PrismaClient, Prisma } from '@prisma/client';
 import type { Plugin } from 'vite';
@@ -957,7 +959,8 @@ function percentile(sorted: number[], p: number): number {
   return sorted[idx];
 }
 
-function createApiAndDynamicSeoMiddleware() {
+function createApiAndDynamicSeoMiddleware(options: { isDev?: boolean } = {}) {
+  const isDev = Boolean(options.isDev);
   assertSecurityConfiguration();
   return async (
     req: IncomingMessage,
@@ -967,6 +970,39 @@ function createApiAndDynamicSeoMiddleware() {
     const rawUrl = req.url || '';
     const parsedUrl = new URL(rawUrl, 'http://127.0.0.1');
     const pathname = parsedUrl.pathname;
+
+    // Static asset fallback: serve pre-built /assets/ bundles if requested
+    if (pathname.startsWith('/assets/')) {
+      const candidates = [
+        path.join(process.cwd(), 'dist', pathname),
+        path.join(process.cwd(), 'apps', 'landing', 'dist', pathname),
+      ];
+      for (const assetPath of candidates) {
+        if (fs.existsSync(assetPath)) {
+          try {
+            const stat = fs.statSync(assetPath);
+            if (stat.isFile()) {
+              const ext = path.extname(assetPath).toLowerCase();
+              const mimeTypes: Record<string, string> = {
+                '.js': 'application/javascript; charset=utf-8',
+                '.css': 'text/css; charset=utf-8',
+                '.svg': 'image/svg+xml',
+                '.png': 'image/png',
+                '.webp': 'image/webp',
+                '.json': 'application/json',
+              };
+              res.statusCode = 200;
+              res.setHeader('Content-Type', mimeTypes[ext] || 'application/octet-stream');
+              res.setHeader('Cache-Control', 'no-cache');
+              fs.createReadStream(assetPath).pipe(res);
+              return;
+            }
+          } catch {
+            // ignore and proceed
+          }
+        }
+      }
+    }
 
     // =========================================================================
     // -1. PERMANENT 301 REDIRECT FROM LEGACY *.ductinh.one DOMAINS TO OFFICIAL
@@ -1029,6 +1065,7 @@ function createApiAndDynamicSeoMiddleware() {
     }
 
     if (
+      !isDev &&
       req.method === 'GET' &&
       (pathname === '/' ||
         pathname === '/index.html' ||
@@ -2861,11 +2898,11 @@ export function adhomePublicApiPlugin(): Plugin {
     },
     configureServer(server) {
       assertSecurityConfiguration();
-      server.middlewares.use(createApiAndDynamicSeoMiddleware());
+      server.middlewares.use(createApiAndDynamicSeoMiddleware({ isDev: true }));
     },
     configurePreviewServer(server) {
       assertSecurityConfiguration();
-      server.middlewares.use(createApiAndDynamicSeoMiddleware());
+      server.middlewares.use(createApiAndDynamicSeoMiddleware({ isDev: false }));
     },
   };
 }

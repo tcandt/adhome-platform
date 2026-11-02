@@ -41,7 +41,7 @@ function legacyDomainRedirectPlugin(): Plugin {
   };
 }
 
-const apiTarget = process.env.ADHOME_API_TARGET || 'http://127.0.0.1:5173';
+const apiTarget = process.env.ADHOME_API_TARGET || 'http://127.0.0.1:8081';
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -56,7 +56,7 @@ export default defineConfig({
     port: 5174,
     proxy: {
       '/api': {
-        target: apiTarget,
+        target: process.env.ADHOME_API_TARGET || 'http://127.0.0.1:5173',
         changeOrigin: true,
       },
     },
@@ -66,7 +66,7 @@ export default defineConfig({
     port: 5174,
     proxy: {
       '/api': {
-        target: apiTarget,
+        target: process.env.ADHOME_API_TARGET || 'http://127.0.0.1:8081',
         changeOrigin: true,
       },
     },

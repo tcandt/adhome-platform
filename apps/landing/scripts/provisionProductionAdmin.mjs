@@ -200,7 +200,9 @@ if (process.argv[1] && process.argv[1].endsWith('provisionProductionAdmin.mjs'))
     const deactivate = process.argv.includes('--deactivate');
     let newPassword = null;
 
-    if (process.argv.includes('--set-password-from-env')) {
+    if (readArg('password')) {
+      newPassword = readArg('password');
+    } else if (process.argv.includes('--set-password-from-env')) {
       newPassword = process.env.ADHOME_ADMIN_NEW_PASSWORD ?? '';
       if (!newPassword) {
         throw new Error('ADHOME_ADMIN_NEW_PASSWORD is empty. Refusing to continue.');

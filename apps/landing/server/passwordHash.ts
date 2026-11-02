@@ -19,7 +19,7 @@ const KEY_LEN = 64;
 const SALT_LEN = 16;
 const MAX_MEM = 128 * 1024 * 1024;
 
-export const MIN_PASSWORD_LENGTH = 14;
+export const MIN_PASSWORD_LENGTH = 12;
 export const MAX_PASSWORD_LENGTH = 1024;
 
 function scryptAsync(

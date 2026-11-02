@@ -24,77 +24,108 @@ export const LogoFillLoader: React.FC<LogoFillLoaderProps> = ({
   const [dockStyle, setDockStyle] = useState<React.CSSProperties | null>(null);
   const dockingTriggeredRef = useRef<boolean>(false);
 
-  // Trigger docking flight when progress hits 100% or isExiting is requested
+  // Detect user preference for reduced motion
+  const isReducedMotion =
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Reset trigger flag if progress fluctuates before reaching completion
+  useEffect(() => {
+    if (clampedProgress < 100 && !isExiting) {
+      dockingTriggeredRef.current = false;
+    }
+  }, [clampedProgress, isExiting]);
+
+  // Trigger docking flight or fast-fade when progress hits 100% or isExiting is requested
   useEffect(() => {
     if ((clampedProgress >= 100 || isExiting) && !dockingTriggeredRef.current && !error) {
       dockingTriggeredRef.current = true;
 
-      // Brief settling pause (140ms) so user perceives the 100% full vibrant logo
-      const timer = setTimeout(() => {
-        const sourceEl = logoContainerRef.current;
-        if (!sourceEl) {
-          setIsDocking(true);
+      // FAST PATH for Reduced Motion users: zero-latency immediate completion without complex transforms
+      if (isReducedMotion) {
+        setIsDocking(true);
+        const rmTimer = setTimeout(() => {
           onComplete?.();
-          return;
-        }
+        }, 120);
+        return () => clearTimeout(rmTimer);
+      }
 
-        const sourceRect = sourceEl.getBoundingClientRect();
+      // Normal Motion: Snappy 40ms settling pause then fluid 480ms flight into target header logo
+      const timer = setTimeout(() => {
+        try {
+          const sourceEl = logoContainerRef.current;
+          if (!sourceEl) {
+            setIsDocking(true);
+            onComplete?.();
+            return;
+          }
 
-        // 1. Measure real target position in DOM
-        const targetEl = document.querySelector(targetSelector);
-        let targetRect: { left: number; top: number; width: number; height: number };
+          const sourceRect = sourceEl.getBoundingClientRect();
 
-        if (targetEl) {
-          const r = targetEl.getBoundingClientRect();
-          if (r.width > 0 && r.height > 0) {
-            targetRect = { left: r.left, top: r.top, width: r.width, height: r.height };
-          } else {
+          // 1. Measure real target position in DOM safely
+          let targetRect = computeFallbackTarget();
+          try {
+            const targetEl = document.querySelector(targetSelector);
+            if (targetEl && document.body.contains(targetEl)) {
+              const r = targetEl.getBoundingClientRect();
+              if (r.width > 0 && r.height > 0) {
+                targetRect = { left: r.left, top: r.top, width: r.width, height: r.height };
+              }
+            }
+          } catch {
             targetRect = computeFallbackTarget();
           }
-        } else {
-          targetRect = computeFallbackTarget();
-        }
 
-        // 2. Compute 3D translation & scale delta to top-left corner
-        const sourceCenterX = sourceRect.left + sourceRect.width / 2;
-        const sourceCenterY = sourceRect.top + sourceRect.height / 2;
-        const targetCenterX = targetRect.left + targetRect.width / 2;
-        const targetCenterY = targetRect.top + targetRect.height / 2;
+          // 2. Compute 3D translation & scale delta to top-left corner
+          const sourceCenterX = sourceRect.left + sourceRect.width / 2;
+          const sourceCenterY = sourceRect.top + sourceRect.height / 2;
+          const targetCenterX = targetRect.left + targetRect.width / 2;
+          const targetCenterY = targetRect.top + targetRect.height / 2;
 
-        const deltaX = targetCenterX - sourceCenterX;
-        const deltaY = targetCenterY - sourceCenterY;
-        const scale = targetRect.width / sourceRect.width;
+          const deltaX = targetCenterX - sourceCenterX;
+          const deltaY = targetCenterY - sourceCenterY;
+          const scale = targetRect.width / sourceRect.width;
 
-        setDockStyle({
-          transform: `translate3d(${deltaX}px, ${deltaY}px, 0) scale(${scale})`,
-          transition: 'transform 780ms cubic-bezier(0.16, 1, 0.3, 1)',
-        });
-        setIsDocking(true);
+          setDockStyle({
+            transform: `translate3d(${deltaX}px, ${deltaY}px, 0) scale(${scale})`,
+            transition: 'transform 480ms cubic-bezier(0.16, 1, 0.3, 1)',
+          });
+          setIsDocking(true);
 
-        // 3. Complete and unmount after docking animation finishes
-        const completeTimer = setTimeout(() => {
+          // 3. Complete and unmount after docking animation finishes (500ms)
+          const completeTimer = setTimeout(() => {
+            onComplete?.();
+          }, 500);
+
+          return () => clearTimeout(completeTimer);
+        } catch (err) {
+          console.error('[Landing LogoFillLoader Error]:', err);
           onComplete?.();
-        }, 820);
+        }
+      }, 40);
 
-        return () => clearTimeout(completeTimer);
-      }, 140);
-
-      return () => clearTimeout(timer);
+      return () => {
+        clearTimeout(timer);
+        if (!isDocking) {
+          dockingTriggeredRef.current = false;
+        }
+      };
     }
-  }, [clampedProgress, isExiting, error, onComplete, targetSelector]);
+  }, [clampedProgress, isExiting, error, onComplete, targetSelector, isReducedMotion, isDocking]);
 
-  // Safety watchdog: ensure loader never remains on screen longer than 1.5s once progress reaches 100
+  // Safety watchdog: ensure loader never remains on screen longer than 750ms once progress reaches 100
   useEffect(() => {
     if (clampedProgress >= 100) {
       const watchdog = setTimeout(() => {
         onComplete?.();
-      }, 1500);
+      }, 750);
       return () => clearTimeout(watchdog);
     }
   }, [clampedProgress, onComplete]);
 
   function computeFallbackTarget() {
-    const isMobile = window.innerWidth < 640;
+    const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
     if (isMobile) {
       return { left: 16, top: 14, width: 36, height: 36 };
     }
@@ -123,7 +154,9 @@ export const LogoFillLoader: React.FC<LogoFillLoaderProps> = ({
         className="fixed inset-0 z-40 bg-[#FAF9F6] dark:bg-[#0B0F19] pointer-events-none"
         style={{
           opacity: isDocking ? 0 : 1,
-          transition: 'opacity 650ms cubic-bezier(0.16, 1, 0.3, 1) 150ms',
+          transition: isReducedMotion
+            ? 'opacity 120ms ease-out'
+            : 'opacity 420ms cubic-bezier(0.16, 1, 0.3, 1) 40ms',
         }}
         aria-hidden="true"
       />
@@ -134,6 +167,11 @@ export const LogoFillLoader: React.FC<LogoFillLoaderProps> = ({
         className={`fixed inset-0 z-50 flex min-h-screen w-full flex-col items-center justify-center px-4 select-none ${
           isDocking ? 'pointer-events-none' : 'pointer-events-auto'
         }`}
+        style={
+          isReducedMotion && isDocking
+            ? { opacity: 0, transition: 'opacity 120ms ease-out' }
+            : undefined
+        }
         role="status"
         aria-live="polite"
         aria-label="AdHome loading"
@@ -149,7 +187,7 @@ export const LogoFillLoader: React.FC<LogoFillLoaderProps> = ({
                   : 'radial-gradient(circle, rgba(148, 163, 184, 0.1) 0%, transparent 65%)',
               opacity: isDocking ? 0 : clampedProgress > 0 ? Math.min(1, 0.5 + clampedProgress / 120) : 0.35,
               transform: isDocking ? 'scale(0.3)' : 'scale(1)',
-              transition: 'opacity 350ms ease-out, transform 450ms ease-out',
+              transition: isReducedMotion ? 'opacity 100ms ease-out' : 'opacity 300ms ease-out, transform 400ms ease-out',
             }}
             aria-hidden="true"
           />
@@ -158,7 +196,7 @@ export const LogoFillLoader: React.FC<LogoFillLoaderProps> = ({
           <div
             ref={logoContainerRef}
             className={`relative w-28 h-28 sm:w-32 sm:h-32 will-change-transform ${
-              isDocking ? '' : 'adhome-float-motion'
+              isDocking || isReducedMotion ? '' : 'adhome-float-motion'
             }`}
             style={
               isDocking && dockStyle
@@ -168,10 +206,11 @@ export const LogoFillLoader: React.FC<LogoFillLoaderProps> = ({
                       clampedProgress >= 100
                         ? 'scale(1.02)'
                         : `scale(${0.96 + (clampedProgress / 100) * 0.04})`,
-                    transition: 'transform 500ms cubic-bezier(0.16, 1, 0.3, 1)',
+                    transition: isReducedMotion ? 'none' : 'transform 400ms cubic-bezier(0.16, 1, 0.3, 1)',
                   }
             }
           >
+
             {/* Layer 1: Stroke Outline / Silhouette Base */}
             <div className="absolute inset-0">
               <svg

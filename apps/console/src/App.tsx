@@ -17,24 +17,33 @@ export default function App() {
 
   // Synchronize boot stages with live measurable backend network events (UI-12)
   useEffect(() => {
-    if (isLoading) {
-      setBootProgress(30);
-      return;
-    }
+    if (isBootComplete) return;
 
-    if (!isAuthenticated) {
-      // Unauthenticated: transition to login
+    if (!isLoading && !isAuthenticated) {
+      // Unauthenticated: instantly complete boot to reveal LoginPage
       setBootProgress(100);
       return;
     }
 
-    // Authenticated: track portfolio bootstrap synchronization
-    if (syncStatus === 'loading' && !lastSyncedAt) {
-      setBootProgress(70);
-    } else if (lastSyncedAt || syncStatus === 'idle') {
+    if (!isLoading && isAuthenticated && lastSyncedAt) {
+      // Authenticated & bootstrap data synchronized: hit 100% and dock
       setBootProgress(100);
+      return;
     }
-  }, [isLoading, isAuthenticated, syncStatus, lastSyncedAt]);
+
+    // Dynamic fluid progress interpolation while waiting for network responses (prevents freeze)
+    const targetCap = !isLoading && isAuthenticated ? 90 : 45;
+    const interval = setInterval(() => {
+      setBootProgress((prev) => {
+        if (prev >= targetCap) return prev;
+        const step = Math.max(1, Math.round((targetCap - prev) * 0.25));
+        return Math.min(targetCap, prev + step);
+      });
+    }, 60);
+
+    return () => clearInterval(interval);
+  }, [isLoading, isAuthenticated, lastSyncedAt, isBootComplete]);
+
 
   // Keep canonical `/login` vs `/` path synchronized with live server auth state
   useEffect(() => {

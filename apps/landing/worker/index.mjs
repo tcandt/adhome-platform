@@ -11,6 +11,47 @@ const failure = (message, status = 503) => Response.json(
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.pathname === '/api/v1/public/boot-report') {
+      if (request.method !== 'POST') return failure('Method not allowed', 405);
+      if (request.headers.get('origin') !== url.origin) return failure('Forbidden', 403);
+      // Bound both streamed bodies and logged fields from this unauthenticated endpoint.
+      if (!request.body) return failure('Invalid report', 400);
+      const reader = request.body.getReader();
+      let length = 0;
+      const chunks = [];
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        length += value.byteLength;
+        if (length > 1024) { await reader.cancel(); return failure('Report too large', 413); }
+        chunks.push(value);
+      }
+      try {
+        const bytes = new Uint8Array(length);
+        let offset = 0;
+        for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+        const report = JSON.parse(new TextDecoder().decode(bytes));
+        const kinds = ['resource', 'runtime', 'render', 'timeout'];
+        if (!kinds.includes(report.kind)) return failure('Invalid report', 400);
+        const safe = value => String(value || '').replace(/[^a-zA-Z0-9_.-]/g, '').slice(0, 60);
+        console.warn('landing_boot_failure', JSON.stringify({
+          kind: report.kind, release: safe(report.release), errorName: safe(report.errorName),
+          asset: /^\/assets\/[a-zA-Z0-9_.-]+\.js$/.test(report.asset || '') ? report.asset : '',
+          device: /iPhone|iPad/.test(request.headers.get('user-agent') || '') ? 'ios' : 'other',
+        }));
+        return new Response(null, { status: 204, headers: { 'Cache-Control': 'no-store' } });
+      } catch { return failure('Invalid report', 400); }
+    }
+    if (url.pathname.startsWith('/assets/')) {
+      const asset = await env.ASSETS.fetch(request);
+      // SPA fallback is valid for pages, never for missing versioned bundles.
+      if ((asset.headers.get('Content-Type') || '').includes('text/html')) {
+        return new Response('Asset not found', {
+          status: 404, headers: { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' },
+        });
+      }
+      return asset;
+    }
     if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
     const methods = PUBLIC_ROUTES.get(url.pathname);
     if (!methods) return failure('Not found', 404);

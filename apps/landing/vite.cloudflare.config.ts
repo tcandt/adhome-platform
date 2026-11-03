@@ -1,12 +1,26 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// Workers serve frontend assets. The Node/Prisma API stays on its own origin.
-// This build deliberately does not import the local API plugin or query a DB.
+// One classic deferred bundle avoids stale Safari module-map/dependency failures.
+// Keep the Node/Prisma API out of this frontend build.
 export default defineConfig({
-  plugins: [react()],
-  build: { rollupOptions: { output: { manualChunks: {
-    'react-vendor': ['react', 'react-dom'],
-    'ui-vendor': ['motion', 'lucide-react'],
-  } } } },
+  plugins: [react(), {
+    name: 'landing-classic-entry',
+    apply: 'build',
+    enforce: 'post',
+    generateBundle(_options, bundle) {
+      for (const output of Object.values(bundle)) {
+        if (output.type === 'asset' && output.fileName.endsWith('.html')) {
+          output.source = String(output.source).replace(
+            /<script type="module" crossorigin src=/g, '<script defer src=',
+          );
+        }
+      }
+    },
+  }],
+  build: {
+    target: 'safari15',
+    modulePreload: false,
+    rollupOptions: { output: { format: 'iife', inlineDynamicImports: true } },
+  },
 });

@@ -1,0 +1,15 @@
+# Revalidate entry documents and stable brand URLs.
+/
+  Cache-Control: no-store
+/index.html
+  Cache-Control: no-store
+/phong-trong
+  Cache-Control: no-store
+/phong/*
+  Cache-Control: no-store
+/brand/*
+  Cache-Control: no-store
+
+# Vite filenames contain a content hash and can be cached permanently.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

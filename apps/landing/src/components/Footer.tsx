@@ -1,4 +1,5 @@
 import React from 'react';
+import { BrandIcon } from './BrandIcon';
 import { MapPin, ExternalLink, Phone, Mail, MessageCircle, Music2 } from 'lucide-react';
 
 interface FooterProps {
@@ -26,9 +27,9 @@ export const Footer: React.FC<FooterProps> = ({
           {/* Column 1: Brand & Positioning */}
           <div className="md:col-span-5 space-y-3">
             <div className="flex items-center gap-3">
-              <img
-                src="/brand/adhome-icon-white.svg"
-                alt="AdHome"
+              <BrandIcon
+                tone="white"
+                data-testid="footer-brand-icon"
                 width={36}
                 height={36}
                 className="w-9 h-9 object-contain"

@@ -47,12 +47,12 @@ export const ComingSoonSection: React.FC<ComingSoonSectionProps> = ({
                   className="bg-canvas-pure rounded-card border border-line p-4 flex items-center gap-4 shadow-subtle animate-pulse"
                 >
                   <div className="w-24 h-24 sm:w-32 sm:h-24 rounded-lg bg-canvas-muted shrink-0" />
-                  <div className="flex-1 space-y-2.5">
+                  <div className="flex-1 min-w-0 space-y-2.5">
                     <div className="h-4 bg-canvas-muted rounded w-1/3" />
                     <div className="h-5 bg-canvas-muted rounded w-2/3" />
                     <div className="pt-2 border-t border-line flex justify-between items-center">
-                      <div className="h-4 bg-canvas-muted rounded w-28" />
-                      <div className="h-9 bg-canvas-muted rounded w-36" />
+                      <div className="h-4 bg-canvas-muted rounded w-1/3 sm:w-28" />
+                      <div className="h-9 bg-canvas-muted rounded w-1/2 sm:w-36" />
                     </div>
                   </div>
                 </div>

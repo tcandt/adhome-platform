@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Menu, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { BrandWordmark } from './BrandWordmark';
+import { BrandIcon } from './BrandIcon';
 
 interface HeaderProps {
   currentPath: string;
@@ -58,11 +59,9 @@ export const Header: React.FC<HeaderProps> = ({ currentPath, onNavigate }) => {
           className="flex items-center gap-3 shrink-0 focus:outline-none"
           aria-label="AdHome — Trang chủ"
         >
-          <img
+          <BrandIcon
             data-brand-part="icon"
             data-testid="header-brand-logo-img"
-            src="/brand/adhome-icon.svg"
-            alt="AdHome"
             width={40}
             height={40}
             className="w-9 h-9 sm:w-10 sm:h-10 object-contain transition-transform duration-300"

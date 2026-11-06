@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { notifySave } from '@/shared/ui/SaveToast';
 import {
   AlertCircle,
   BellRing,
   Building2,
   CheckCircle2,
   Clock,
-  CreditCard,
   Droplets,
   KeyRound,
   Loader2,
@@ -20,6 +20,13 @@ import { CONSOLE_CSRF_HEADER, useAuth } from '@/app/providers/AuthContext';
 import { useNavigation } from '@/app/providers/NavigationContext';
 import { usePortfolio } from '@/app/providers/PortfolioContext';
 import { AccountManagementView } from './AccountManagementView';
+import { PaymentIntegrationHub } from './PaymentIntegrationHub';
+import { ZaloBotSettings } from './ZaloBotSettings';
+import { DataManagement } from './DataManagement';
+import { VndAmountInput } from '@/shared/ui/VndAmountInput';
+import { SettingsNavigation } from './SettingsNavigation';
+import { SettingsDialog } from '@/shared/ui/SettingsDialog';
+import { SettingsButton } from '@/shared/ui/SettingsButton';
 
 interface IntegrationRow {
   id: string;
@@ -106,9 +113,9 @@ export const SettingsWorkspaceView: React.FC = () => {
   const [orgAddress, setOrgAddress] = useState('');
 
   // Tariffs form
-  const [defaultElectricRateVnd, setDefaultElectricRateVnd] = useState(3800);
+  const [defaultElectricRateVnd, setDefaultElectricRateVnd] = useState<number | null>(3800);
   const [defaultWaterMethod, setDefaultWaterMethod] = useState('PER_M3');
-  const [defaultWaterRateVnd, setDefaultWaterRateVnd] = useState(15000);
+  const [defaultWaterRateVnd, setDefaultWaterRateVnd] = useState<number | null>(15000);
   const [defaultDepositMonths, setDefaultDepositMonths] = useState(1);
   const [buildingTariffs, setBuildingTariffs] = useState<BuildingTariffRow[]>(
     []
@@ -122,10 +129,16 @@ export const SettingsWorkspaceView: React.FC = () => {
   const [cronJobs, setCronJobs] = useState<CronJobRow[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogRow[]>([]);
   const [loginAudits, setLoginAudits] = useState<LoginAuditRow[]>([]);
+  const [businessPage, setBusinessPage] = useState(1);
+  const [loginPage, setLoginPage] = useState(1);
+  const [businessPageCount, setBusinessPageCount] = useState(1);
+  const [loginPageCount, setLoginPageCount] = useState(1);
+  const [auditLoading, setAuditLoading] = useState(false);
 
   // Per-card editing buffers for secrets / labels
   const [secretInputs, setSecretInputs] = useState<Record<string, string>>({});
   const [labelInputs, setLabelInputs] = useState<Record<string, string>>({});
+  const [editingChannel, setEditingChannel] = useState<NotificationChannelRow | null>(null);
 
   const loadSettings = useCallback(async () => {
     if (!canManageSettings) {
@@ -177,8 +190,6 @@ export const SettingsWorkspaceView: React.FC = () => {
       setIntegrations(intList);
       setNotificationChannels(notifList);
       setCronJobs(Array.isArray(data.cronJobs) ? data.cronJobs : []);
-      setAuditLogs(Array.isArray(data.auditLogs) ? data.auditLogs : []);
-      setLoginAudits(Array.isArray(data.loginAudits) ? data.loginAudits : []);
 
       const nextLabels: Record<string, string> = {};
       for (const item of intList) {
@@ -199,6 +210,28 @@ export const SettingsWorkspaceView: React.FC = () => {
   useEffect(() => {
     void loadSettings();
   }, [loadSettings]);
+
+  const loadAuditPages = useCallback(async () => {
+    if (!canManageSettings || settingsTab !== 'audit') return;
+    setAuditLoading(true);
+    try {
+      const [businessResponse, loginResponse] = await Promise.all([
+        fetch(`/api/v1/console/v2/settings/business-logs?page=${businessPage}`, { credentials: 'include' }),
+        fetch(`/api/v1/console/v2/settings/login-logs?page=${loginPage}`, { credentials: 'include' }),
+      ]);
+      const [business, login] = await Promise.all([businessResponse.json(), loginResponse.json()]);
+      if (!businessResponse.ok || !loginResponse.ok) throw new Error(business.message || login.message || 'Không thể tải nhật ký.');
+      setAuditLogs(business.items);
+      setLoginAudits(login.items);
+      setBusinessPageCount(business.pageCount);
+      setLoginPageCount(login.pageCount);
+      if (businessPage > business.pageCount) setBusinessPage(business.pageCount);
+      if (loginPage > login.pageCount) setLoginPage(login.pageCount);
+    } catch (error) {
+      setErrorMsg(error instanceof Error ? error.message : 'Không thể tải nhật ký.');
+    } finally { setAuditLoading(false); }
+  }, [businessPage, canManageSettings, loginPage, settingsTab]);
+  useEffect(() => { void loadAuditPages(); }, [loadAuditPages]);
 
   const patchSettingsSection = async (
     section: string,
@@ -221,12 +254,48 @@ export const SettingsWorkspaceView: React.FC = () => {
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) {
         setErrorMsg(data.message || 'Không thể lưu thay đổi cấu hình.');
+        notifySave(false, 'Không thể lưu cấu hình', data.message || 'Máy chủ từ chối thao tác.');
         return;
       }
-      setSuccessMsg(okMessage);
       await Promise.all([loadSettings(), refreshPortfolio()]);
+      setSuccessMsg(okMessage);
+      notifySave(true, okMessage);
     } catch {
       setErrorMsg('Lỗi kết nối khi lưu cấu hình.');
+      notifySave(false, 'Không thể lưu cấu hình', 'Lỗi kết nối máy chủ.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const saveHunonic = async () => {
+    const phone = (labelInputs['INT:HUNONIC'] || '').trim();
+    const password = secretInputs['INT:HUNONIC'] || '';
+    if (!phone) {
+      setErrorMsg('Nhập số điện thoại hoặc email Hunonic.');
+      return;
+    }
+    setIsSaving(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    try {
+      const response = await fetch('/api/v1/console/integrations/hunonic/test', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': CONSOLE_CSRF_HEADER },
+        body: JSON.stringify({ phone, ...(password ? { password } : {}), isEnabled: true }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok || !data.verified) {
+        throw new Error(data.message || 'Hunonic chưa xác minh kết nối. Kiểm tra tài khoản và mật khẩu.');
+      }
+      await Promise.all([loadSettings(), refreshPortfolio()]);
+      setSecretInputs(prev => ({ ...prev, 'INT:HUNONIC': '' }));
+      setSuccessMsg('Đã xác minh và kết nối Hunonic.');
+      notifySave(true, 'Đã kết nối Hunonic');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Không thể kết nối Hunonic.';
+      setErrorMsg(message);
+      notifySave(false, 'Chưa kết nối Hunonic', message);
     } finally {
       setIsSaving(false);
     }
@@ -250,11 +319,11 @@ export const SettingsWorkspaceView: React.FC = () => {
     );
   }
 
-  const paymentIntegrations = integrations.filter(
-    (i) => i.category === 'PAYMENT'
-  );
   const hunonicIntegration = integrations.find(
     (i) => i.providerId === 'HUNONIC'
+  );
+  const activeSettingsTab = SETTINGS_TABS_CONFIG.find(
+    (tab) => tab.id === settingsTab
   );
 
   const renderStatusBadge = (status: string) => {
@@ -281,39 +350,25 @@ export const SettingsWorkspaceView: React.FC = () => {
 
   return (
     <div className="space-y-4" data-testid="console-settings-workspace">
-      {/* 8-TAB NAVIGATION BAR */}
-      <div className="bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-xl p-2 overflow-x-auto">
-        <div
-          role="tablist"
-          aria-label="Các mục Cài đặt và Thiết lập hệ thống"
-          className="flex items-center gap-1 min-w-max"
-        >
-          {SETTINGS_TABS_CONFIG.map((tab) => {
-            const isActive = settingsTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                role="tab"
-                aria-selected={isActive}
-                data-testid={`settings-tab-${tab.id}`}
-                onClick={() => {
-                  setErrorMsg(null);
-                  setSuccessMsg(null);
-                  setSettingsTab(tab.id);
-                }}
-                className={`px-3 py-2 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap ${
-                  isActive
-                    ? 'bg-blue-50 dark:bg-blue-500/15 text-brand-primary dark:text-blue-400 font-bold'
-                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-                }`}
-              >
-                {tab.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      <div className="grid min-w-0 gap-4 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-5">
+        <SettingsNavigation
+          activeTab={settingsTab}
+          onChange={(tab) => {
+            setErrorMsg(null);
+            setSuccessMsg(null);
+            setSettingsTab(tab);
+          }}
+        />
+
+        <main className="min-w-0 space-y-4">
+          <div className="border-b border-slate-200/80 px-0.5 pb-3 dark:border-slate-800">
+            <h2 className="text-base font-bold text-slate-900 dark:text-white">
+              {activeSettingsTab?.label}
+            </h2>
+            <p className="mt-0.5 text-xs leading-5 text-slate-500 dark:text-slate-400">
+              {activeSettingsTab?.description}
+            </p>
+          </div>
 
       {errorMsg && (
         <div
@@ -362,7 +417,7 @@ export const SettingsWorkspaceView: React.FC = () => {
                     'Đã cập nhật thông tin tổ chức trên PostgreSQL.'
                   );
                 }}
-                className="lg:col-span-6 p-5 bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl space-y-4"
+                className="lg:col-span-7 p-5 bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl space-y-4"
               >
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
                   <Building2 className="w-4 h-4 text-brand-primary" />
@@ -440,7 +495,7 @@ export const SettingsWorkspaceView: React.FC = () => {
                 </div>
               </form>
 
-              <div className="lg:col-span-6 p-5 bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl space-y-3">
+              <div className="lg:col-span-5 p-5 bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl space-y-3">
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white">
                   Danh mục tòa nhà thuộc tổ chức ({allBuildings.length} tòa)
                 </h3>
@@ -483,9 +538,9 @@ export const SettingsWorkspaceView: React.FC = () => {
                 void patchSettingsSection(
                   'tariffs',
                   {
-                    defaultElectricRateVnd,
+                    defaultElectricRateVnd: defaultElectricRateVnd ?? 0,
                     defaultWaterMethod,
-                    defaultWaterRateVnd,
+                    defaultWaterRateVnd: defaultWaterRateVnd ?? 0,
                     defaultDepositMonths,
                     buildingOverrides: buildingTariffs.map((b) => ({
                       buildingId: b.id,
@@ -494,7 +549,7 @@ export const SettingsWorkspaceView: React.FC = () => {
                       waterRateVnd: b.waterRateVnd,
                     })),
                   },
-                  'Đã cập nhật biểu giá điện & 3 phương thức tính nước trên PostgreSQL.'
+                  'Đã lưu biểu giá.'
                 );
               }}
               className="p-5 bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl space-y-5"
@@ -502,11 +557,10 @@ export const SettingsWorkspaceView: React.FC = () => {
               <div>
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
                   <Droplets className="w-4 h-4 text-cyan-600" />
-                  Chính sách biểu giá mặc định toàn tổ chức (Số nguyên VND)
+                  Biểu giá mặc định
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Thứ tự ưu tiên kế thừa: Hợp đồng / Phòng ghi đè → Tòa nhà ghi
-                  đè → Mặc định tổ chức.
+                  Ưu tiên: Hợp đồng / Phòng → Tòa nhà → Tổ chức.
                 </p>
               </div>
 
@@ -515,17 +569,10 @@ export const SettingsWorkspaceView: React.FC = () => {
                   <label className="block text-xs font-semibold mb-1">
                     Đơn giá điện mặc định (VND/kWh)
                   </label>
-                  <input
+                  <VndAmountInput
                     data-testid="input-default-electric-rate"
-                    type="number"
-                    min={0}
-                    step={100}
                     value={defaultElectricRateVnd}
-                    onChange={(e) =>
-                      setDefaultElectricRateVnd(
-                        parseInt(e.target.value, 10) || 0
-                      )
-                    }
+                    onChange={setDefaultElectricRateVnd}
                     className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold"
                   />
                 </div>
@@ -556,15 +603,10 @@ export const SettingsWorkspaceView: React.FC = () => {
                   <label className="block text-xs font-semibold mb-1">
                     Đơn giá nước mặc định (VND)
                   </label>
-                  <input
+                  <VndAmountInput
                     data-testid="input-default-water-rate"
-                    type="number"
-                    min={0}
-                    step={1000}
                     value={defaultWaterRateVnd}
-                    onChange={(e) =>
-                      setDefaultWaterRateVnd(parseInt(e.target.value, 10) || 0)
-                    }
+                    onChange={setDefaultWaterRateVnd}
                     className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold"
                   />
                 </div>
@@ -588,8 +630,7 @@ export const SettingsWorkspaceView: React.FC = () => {
 
               <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-3">
                 <h4 className="text-xs font-bold text-slate-700 dark:text-slate-200">
-                  Ghi đè biểu giá riêng cho từng tòa nhà (bỏ trống = kế thừa mặc
-                  định tổ chức)
+                  Giá riêng theo tòa nhà · Để trống để kế thừa
                 </h4>
                 <div className="space-y-2">
                   {buildingTariffs.map((b, idx) => (
@@ -600,16 +641,11 @@ export const SettingsWorkspaceView: React.FC = () => {
                       <div className="font-bold text-slate-900 dark:text-white">
                         {b.code} — {b.name}
                       </div>
-                      <input
-                        type="number"
-                        min={0}
-                        placeholder={`Điện mặc định (${defaultElectricRateVnd}đ)`}
-                        value={b.electricRateVnd ?? ''}
-                        onChange={(e) => {
-                          const val =
-                            e.target.value === ''
-                              ? null
-                              : parseInt(e.target.value, 10) || 0;
+                      <VndAmountInput
+                        aria-label={`Giá điện ${b.name}`}
+                        placeholder={`Điện · ${(defaultElectricRateVnd ?? 0).toLocaleString('vi-VN')} đ`}
+                        value={b.electricRateVnd}
+                        onChange={(val) => {
                           setBuildingTariffs((prev) =>
                             prev.map((row, i) =>
                               i === idx ? { ...row, electricRateVnd: val } : row
@@ -637,16 +673,11 @@ export const SettingsWorkspaceView: React.FC = () => {
                         <option value="PER_PERSON">Theo đầu người</option>
                         <option value="FIXED_PER_ROOM">Khoán cố định</option>
                       </select>
-                      <input
-                        type="number"
-                        min={0}
-                        placeholder={`Nước mặc định (${defaultWaterRateVnd}đ)`}
-                        value={b.waterRateVnd ?? ''}
-                        onChange={(e) => {
-                          const val =
-                            e.target.value === ''
-                              ? null
-                              : parseInt(e.target.value, 10) || 0;
+                      <VndAmountInput
+                        aria-label={`Giá nước ${b.name}`}
+                        placeholder={`Nước · ${(defaultWaterRateVnd ?? 0).toLocaleString('vi-VN')} đ`}
+                        value={b.waterRateVnd}
+                        onChange={(val) => {
                           setBuildingTariffs((prev) =>
                             prev.map((row, i) =>
                               i === idx ? { ...row, waterRateVnd: val } : row
@@ -680,34 +711,40 @@ export const SettingsWorkspaceView: React.FC = () => {
 
           {/* TAB 4: NOTIFICATION CHANNELS */}
           {settingsTab === 'notifications' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {notificationChannels.map((ch) => {
+            <div className="space-y-2">
+              {notificationChannels.filter(ch => ch.channelType !== 'ZALO_BOT').map((ch) => {
                 const labelKey = `CH:${ch.channelType}`;
                 const secretKey = `CH:${ch.channelType}`;
                 return (
                   <div
                     key={ch.id}
                     data-testid={`notification-channel-card-${ch.channelType}`}
-                    className="p-5 bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl space-y-3"
+                    className="flex min-h-16 min-w-0 items-center justify-between gap-3 rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 dark:border-slate-800 dark:bg-[#111827]"
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-500/10"><BellRing className="h-4 w-4" /></span>
+                      <div className="min-w-0">
                         <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                          <BellRing className="w-4 h-4 text-brand-primary" />
                           {ch.displayName}
                         </h3>
                         <p className="text-[11px] text-slate-500 font-mono mt-0.5">
-                          {ch.channelType} · Tối đa {ch.retryMaxAttempts} lần
-                          thử lại
+                          Tối đa {ch.retryMaxAttempts} lần thử lại
                         </p>
                       </div>
-                      {renderStatusBadge(ch.status)}
+                      <div className="hidden sm:block">{renderStatusBadge(ch.status)}</div>
                     </div>
-
-                    <div className="space-y-2.5 text-xs">
+                    <SettingsButton type="button" onClick={() => setEditingChannel(ch)}>Thiết lập</SettingsButton>
+                    {editingChannel?.id === ch.id && <SettingsDialog title={ch.displayName} description={`Cấu hình kênh và tối đa ${ch.retryMaxAttempts} lần thử lại.`} busy={isSaving} onClose={() => setEditingChannel(null)}>
+                    <div className="space-y-4">{ch.channelType === 'ZALO_OA' ? (
+                      <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+                        <p className="font-semibold">Zalo OA chưa sẵn sàng gửi tin.</p>
+                        <details><summary className="cursor-pointer font-semibold">Điều kiện kết nối</summary><p className="mt-2 leading-5">Cần App được OA cấp quyền, webhook xác thực, ZBS liên kết và mẫu tin được duyệt. Lưu OA ID hoặc token chưa kích hoạt gửi tin.</p></details>
+                        <a className="inline-block font-semibold underline underline-offset-2" href="https://oa.zalo.me/home/documents/guides/Khoi-tao-ung-dung-va-cap-quyen_117071366476220195" target="_blank" rel="noreferrer">Xem hướng dẫn OA</a>
+                      </div>
+                    ) : <div className="space-y-2.5 text-xs">
                       <div>
                         <label className="block font-semibold text-slate-600 dark:text-slate-300 mb-1">
-                          Định danh kênh nhận (OA ID / Chat ID / Page ID)
+                          ID kênh nhận
                         </label>
                         <input
                           type="text"
@@ -725,10 +762,7 @@ export const SettingsWorkspaceView: React.FC = () => {
 
                       <div>
                         <label className="block font-semibold text-slate-600 dark:text-slate-300 mb-1">
-                          Access Token / Bot Secret{' '}
-                          {ch.secretHint
-                            ? `(Đang lưu: ${ch.secretHint})`
-                            : '(Chưa lưu khóa)'}
+                          Khóa truy cập {ch.secretHint ? '· Đã lưu' : '· Chưa lưu'}
                         </label>
                         <div className="relative">
                           <KeyRound className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -741,17 +775,17 @@ export const SettingsWorkspaceView: React.FC = () => {
                                 [secretKey]: e.target.value,
                               }))
                             }
-                            placeholder="Nhập khóa mới để cập nhật (API không bao giờ trả lại khóa gốc)"
+                            placeholder="Nhập khóa mới để cập nhật"
                             className="w-full pl-8 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl"
                           />
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between pt-2">
-                        <span className="text-[11px] text-slate-400">
-                          Sự kiện: {ch.subscribedEvents.join(', ')}
+                      <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                        <span className="min-w-0 text-[11px] text-slate-500">
+                          {ch.subscribedEvents.length} loại thông báo
                         </span>
-                        <button
+                        <SettingsButton primary
                           type="button"
                           disabled={isSaving}
                           onClick={() =>
@@ -768,120 +802,20 @@ export const SettingsWorkspaceView: React.FC = () => {
                               `Đã lưu cấu hình kênh ${ch.displayName}.`
                             )
                           }
-                          className="px-3.5 py-1.5 text-xs font-bold bg-brand-primary text-white rounded-xl hover:bg-brand-hover"
                         >
-                          Lưu cấu hình
-                        </button>
+                          Lưu kênh
+                        </SettingsButton>
                       </div>
-                    </div>
+                    </div>} </div></SettingsDialog>}
                   </div>
                 );
               })}
+              <ZaloBotSettings />
             </div>
           )}
 
-          {/* TAB 5: PAYMENT GATEWAYS (SEPAY / PAYOS / TINGEE) */}
-          {settingsTab === 'payments' && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              {paymentIntegrations.map((p) => {
-                const labelKey = `INT:${p.providerId}`;
-                const secretKey = `INT:${p.providerId}`;
-                return (
-                  <div
-                    key={p.id}
-                    data-testid={`payment-provider-card-${p.providerId}`}
-                    className="p-5 bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl flex flex-col justify-between space-y-4"
-                  >
-                    <div className="space-y-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                            <CreditCard className="w-4 h-4 text-brand-primary" />
-                            {p.displayName}
-                          </h3>
-                          <span className="text-[10.5px] font-mono text-slate-400">
-                            {p.providerId} · {p.apiVersion || 'v1'}
-                          </span>
-                        </div>
-                        {renderStatusBadge(p.status)}
-                      </div>
-
-                      <div className="flex flex-wrap gap-1">
-                        {p.capabilities.map((cap) => (
-                          <span
-                            key={cap}
-                            className="rounded-md bg-blue-50 dark:bg-blue-950/50 px-2 py-0.5 font-mono text-[10px] font-semibold text-blue-700 dark:text-blue-300"
-                          >
-                            {cap}
-                          </span>
-                        ))}
-                      </div>
-
-                      <div className="space-y-2.5 text-xs">
-                        <div>
-                          <label className="block font-semibold mb-1">
-                            Số tài khoản / Merchant ID
-                          </label>
-                          <input
-                            type="text"
-                            value={labelInputs[labelKey] || ''}
-                            onChange={(e) =>
-                              setLabelInputs((prev) => ({
-                                ...prev,
-                                [labelKey]: e.target.value,
-                              }))
-                            }
-                            placeholder="VD: VA-ADHOME-001"
-                            className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl"
-                          />
-                        </div>
-                        <div>
-                          <label className="block font-semibold mb-1">
-                            Webhook / Checksum Secret{' '}
-                            {p.secretHint ? `(${p.secretHint})` : ''}
-                          </label>
-                          <input
-                            type="password"
-                            value={secretInputs[secretKey] || ''}
-                            onChange={(e) =>
-                              setSecretInputs((prev) => ({
-                                ...prev,
-                                [secretKey]: e.target.value,
-                              }))
-                            }
-                            placeholder="Nhập API Key / Checksum Key"
-                            className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      disabled={isSaving}
-                      onClick={() =>
-                        void patchSettingsSection(
-                          'integration',
-                          {
-                            providerId: p.providerId,
-                            accountLabel: labelInputs[labelKey] || '',
-                            secretToken: secretInputs[secretKey] || '',
-                            isEnabled: Boolean(
-                              secretInputs[secretKey] || p.hasCredentials
-                            ),
-                          },
-                          `Đã cập nhật thông tin kết nối ${p.displayName}.`
-                        )
-                      }
-                      className="w-full py-2 text-xs font-bold bg-brand-primary hover:bg-brand-hover text-white rounded-xl"
-                    >
-                      Lưu cấu hình {p.displayName}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          {/* Payment Integration Hub: multiple connections and receiving accounts */}
+          {settingsTab === 'payments' && <PaymentIntegrationHub />}
 
           {/* TAB 6: HUNONIC SMART METER */}
           {settingsTab === 'hunonic' && hunonicIntegration && (
@@ -896,10 +830,7 @@ export const SettingsWorkspaceView: React.FC = () => {
                     {hunonicIntegration.displayName}
                   </h3>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Đồng bộ chỉ số công tơ điện thông minh theo chuẩn hợp đồng
-                    tích hợp 3 lớp (Provider Contract → Adapter → Config). Không
-                    hiển thị trạng thái &ldquo;Online&rdquo; giả lập khi chưa có
-                    kết nối xác thực thực tế.
+                    Xác minh tài khoản để kết nối và đồng bộ công tơ.
                   </p>
                 </div>
                 {renderStatusBadge(hunonicIntegration.status)}
@@ -925,10 +856,7 @@ export const SettingsWorkspaceView: React.FC = () => {
                 </div>
                 <div>
                   <label className="block font-semibold mb-1">
-                    API Token / Mật khẩu ứng dụng{' '}
-                    {hunonicIntegration.secretHint
-                      ? `(${hunonicIntegration.secretHint})`
-                      : ''}
+                    Mật khẩu Hunonic {hunonicIntegration.secretHint ? '· Đã lưu' : ''}
                   </label>
                   <input
                     type="password"
@@ -939,7 +867,7 @@ export const SettingsWorkspaceView: React.FC = () => {
                         'INT:HUNONIC': e.target.value,
                       }))
                     }
-                    placeholder="Nhập khóa kết nối Hunonic"
+                    placeholder={hunonicIntegration.hasCredentials ? 'Để trống nếu dùng mật khẩu đã lưu' : 'Nhập mật khẩu Hunonic'}
                     className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl"
                   />
                 </div>
@@ -949,24 +877,10 @@ export const SettingsWorkspaceView: React.FC = () => {
                 <button
                   type="button"
                   disabled={isSaving}
-                  onClick={() =>
-                    void patchSettingsSection(
-                      'integration',
-                      {
-                        providerId: 'HUNONIC',
-                        accountLabel: labelInputs['INT:HUNONIC'] || '',
-                        secretToken: secretInputs['INT:HUNONIC'] || '',
-                        isEnabled: Boolean(
-                          secretInputs['INT:HUNONIC'] ||
-                            hunonicIntegration.hasCredentials
-                        ),
-                      },
-                      'Đã lưu cấu hình tài khoản đồng hồ Hunonic.'
-                    )
-                  }
+                  onClick={() => void saveHunonic()}
                   className="px-4 py-2 text-xs font-bold bg-brand-primary hover:bg-brand-hover text-white rounded-xl"
                 >
-                  Lưu cấu hình Hunonic
+                  {isSaving ? 'Đang xác minh…' : 'Kết nối Hunonic'}
                 </button>
               </div>
             </div>
@@ -1066,18 +980,18 @@ export const SettingsWorkspaceView: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
                     <ShieldCheck className="w-4 h-4 text-brand-primary" />
-                    Nhật ký thao tác nghiệp vụ (ConsoleAuditLog)
+                    Nhật ký thao tác nghiệp vụ
                   </h3>
                   <button
                     type="button"
-                    onClick={() => void loadSettings()}
+                    onClick={() => void loadAuditPages()}
                     className="inline-flex items-center gap-1 text-xs font-semibold text-brand-primary hover:underline"
                   >
                     <RefreshCw className="w-3 h-3" /> Làm mới
                   </button>
                 </div>
-                <div className="max-h-96 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 text-xs">
-                  {auditLogs.length === 0 ? (
+                <div className="divide-y divide-slate-100 text-xs dark:divide-slate-800" aria-busy={auditLoading}>
+                  {auditLoading ? <p role="status" className="py-6 text-center text-slate-500">Đang tải nhật ký…</p> : auditLogs.length === 0 ? (
                     <p className="py-6 text-center text-slate-500">
                       Chưa ghi nhận thao tác thay đổi dữ liệu mới.
                     </p>
@@ -1095,14 +1009,15 @@ export const SettingsWorkspaceView: React.FC = () => {
                     ))
                   )}
                 </div>
+                <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-3 text-xs dark:border-slate-800"><span>Trang {businessPage}/{businessPageCount}</span><div className="flex gap-2"><button type="button" disabled={auditLoading || businessPage <= 1} onClick={() => setBusinessPage(p => p - 1)} className="min-h-10 rounded-lg border px-3 disabled:opacity-40">Trước</button><button type="button" disabled={auditLoading || businessPage >= businessPageCount} onClick={() => setBusinessPage(p => p + 1)} className="min-h-10 rounded-lg border px-3 disabled:opacity-40">Sau</button></div></div>
               </div>
 
               <div className="lg:col-span-5 p-5 bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl space-y-3">
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white">
                   Lịch sử xác thực đăng nhập
                 </h3>
-                <div className="max-h-96 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 text-xs">
-                  {loginAudits.map((item) => (
+                <div className="divide-y divide-slate-100 text-xs dark:divide-slate-800" aria-busy={auditLoading}>
+                  {auditLoading ? <p role="status" className="py-6 text-center text-slate-500">Đang tải lịch sử…</p> : loginAudits.length === 0 ? <p className="py-6 text-center text-slate-500">Chưa có lượt đăng nhập.</p> : loginAudits.map((item) => (
                     <div
                       key={item.id}
                       className="py-2.5 flex items-center justify-between gap-2"
@@ -1128,11 +1043,15 @@ export const SettingsWorkspaceView: React.FC = () => {
                     </div>
                   ))}
                 </div>
+                <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-3 text-xs dark:border-slate-800"><span>Trang {loginPage}/{loginPageCount}</span><div className="flex gap-2"><button type="button" disabled={auditLoading || loginPage <= 1} onClick={() => setLoginPage(p => p - 1)} className="min-h-10 rounded-lg border px-3 disabled:opacity-40">Trước</button><button type="button" disabled={auditLoading || loginPage >= loginPageCount} onClick={() => setLoginPage(p => p + 1)} className="min-h-10 rounded-lg border px-3 disabled:opacity-40">Sau</button></div></div>
               </div>
             </div>
           )}
+          {settingsTab === 'data' && (user?.role === 'ORG_ADMIN' ? <DataManagement /> : <p className="rounded-xl border border-slate-200 bg-white p-5 text-sm dark:border-slate-800 dark:bg-[#111827]">Chỉ quản trị viên được quản lý dữ liệu.</p>)}
         </>
       )}
+        </main>
+      </div>
     </div>
   );
 };

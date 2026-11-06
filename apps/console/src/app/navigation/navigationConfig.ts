@@ -37,7 +37,8 @@ export type SettingsTabId =
   | 'payments'
   | 'hunonic'
   | 'cron'
-  | 'audit';
+  | 'audit'
+  | 'data';
 
 export interface NavItemConfig {
   id: NavModuleId;
@@ -77,24 +78,24 @@ export const SETTINGS_TABS_CONFIG: SettingsTabConfig[] = [
   },
   {
     id: 'staff',
-    label: 'Nhân sự & Phân quyền',
+    label: 'Nhân sự',
     description: 'Quản lý tài khoản Admin / Manager và gán phạm vi tòa nhà',
   },
   {
     id: 'tariffs',
-    label: 'Cấu hình Tiền phòng & Dịch vụ',
+    label: 'Biểu giá & Dịch vụ',
     description:
       'Đơn giá điện và 3 phương thức tính nước (theo m³, theo đầu người, khoán cố định)',
   },
   {
     id: 'notifications',
-    label: 'Kênh thông báo',
+    label: 'Thông báo',
     description: 'Zalo OA / ZBS, Zalo Bot, Telegram Bot và Facebook Messenger',
   },
   {
     id: 'payments',
-    label: 'Cổng thanh toán',
-    description: 'SePay, payOS và Tingee theo ma trận năng lực thực tế',
+    label: 'Tích hợp ngân hàng',
+    description: 'Quản lý nhiều kết nối SePay, payOS, MoMo, ZaloPay và Tingee',
   },
   {
     id: 'hunonic',
@@ -110,6 +111,11 @@ export const SETTINGS_TABS_CONFIG: SettingsTabConfig[] = [
     id: 'audit',
     label: 'Nhật ký & Bảo mật',
     description: 'Nhật ký thao tác nghiệp vụ và lịch sử xác thực hệ thống',
+  },
+  {
+    id: 'data',
+    label: 'Quản lý dữ liệu',
+    description: 'Sao lưu, phục hồi và xóa dữ liệu nghiệp vụ; giữ nguyên Cài đặt',
   },
 ];
 
@@ -133,7 +139,7 @@ export const NAV_GROUPS_CONFIG: NavGroupConfig[] = [
       {
         id: 'buildings',
         label: 'Tòa nhà & phòng',
-        shortMobileLabel: 'Phòng & Khách',
+        shortMobileLabel: 'Tòa nhà',
         groupId: 'core_ops',
         icon: Building2,
         requiredCapability: 'canManageRooms',

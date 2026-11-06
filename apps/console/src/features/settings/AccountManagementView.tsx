@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import './AccountManagementView.css';
 import {
   Users,
   ShieldCheck,
@@ -16,6 +17,8 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth, CONSOLE_CSRF_HEADER } from '@/app/providers/AuthContext';
+import { notifySave } from '@/shared/ui/SaveToast';
+import { SettingsButton } from '@/shared/ui/SettingsButton';
 
 interface BuildingOption {
   id: string;
@@ -198,6 +201,7 @@ export const AccountManagementView: React.FC = () => {
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.ok) {
           setErrorMsg(data.message || 'Không thể tạo tài khoản nhân sự.');
+          notifySave(false, 'Không thể lưu tài khoản', data.message);
           return;
         }
         setSuccessMsg(`Đã tạo tài khoản ${data.account.email} (${data.account.role}) thành công.`);
@@ -225,6 +229,7 @@ export const AccountManagementView: React.FC = () => {
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.ok) {
           setErrorMsg(data.message || 'Không thể cập nhật phân quyền tài khoản.');
+          notifySave(false, 'Không thể lưu tài khoản', data.message);
           return;
         }
         setSuccessMsg(
@@ -236,8 +241,10 @@ export const AccountManagementView: React.FC = () => {
 
       setIsFormOpen(false);
       await loadAccounts();
+      notifySave(true, editingAccount ? 'Đã cập nhật tài khoản' : 'Đã tạo tài khoản');
     } catch {
       setErrorMsg('Lỗi kết nối khi lưu thông tin tài khoản.');
+      notifySave(false, 'Không thể lưu tài khoản', 'Lỗi kết nối máy chủ.');
     } finally {
       setIsSaving(false);
     }
@@ -291,40 +298,22 @@ export const AccountManagementView: React.FC = () => {
   return (
     <div className="space-y-6" data-testid="console-account-management-view">
       {/* Header Toolbar */}
-      <div className="p-5 bg-surface dark:bg-surface-dark border border-appBorder-light dark:border-appBorder-dark rounded-card shadow-soft flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">
-              Cài đặt &amp; Phân quyền Nhân sự (RBAC)
-            </h2>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-              PostgreSQL Authoritative
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-2xl">
-            Tạo tài khoản nhân viên, chỉ định vai trò Admin / Manager, giới hạn tòa nhà phụ trách và thu hồi quyền truy cập tức thì qua cơ chế nâng phiên <code>sessionVersion</code>.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
+      <div className="flex flex-wrap items-center justify-end gap-2">
+          <SettingsButton
             type="button"
             onClick={() => void loadAccounts()}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
             <span>Làm mới</span>
-          </button>
-          <button
+          </SettingsButton>
+          <SettingsButton primary
             type="button"
             data-testid="console-open-create-account"
             onClick={openCreateForm}
-            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold bg-brand-primary text-white rounded-xl hover:bg-brand-hover shadow-sm transition-colors"
           >
             <UserPlus className="w-3.5 h-3.5" />
-            <span>Tạo tài khoản nhân sự</span>
-          </button>
-        </div>
+            <span>Thêm nhân sự</span>
+          </SettingsButton>
       </div>
 
       {/* Status Alerts */}
@@ -566,7 +555,7 @@ export const AccountManagementView: React.FC = () => {
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
             <Users className="w-4 h-4 text-brand-primary" />
-            Danh sách tài khoản Console ({accounts.length} nhân sự)
+            Tài khoản nhân sự ({accounts.length})
           </h3>
         </div>
 
@@ -576,8 +565,8 @@ export const AccountManagementView: React.FC = () => {
             <span>Đang tải danh sách nhân sự từ PostgreSQL...</span>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table data-testid="console-accounts-table" className="w-full text-left text-xs">
+          <div className="account-list-wrap overflow-x-auto">
+            <table data-testid="console-accounts-table" className="account-list-table w-full text-left text-xs">
               <thead>
                 <tr className="border-b border-appBorder-light dark:border-appBorder-dark text-slate-400 font-semibold">
                   <th className="pb-3">Nhân sự / Email</th>

@@ -1,0 +1,19 @@
+@media (max-width: 640px) {
+  .account-list-wrap { overflow: visible; }
+  .account-list-table, .account-list-table tbody { display: block; width: 100%; }
+  .account-list-table thead { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+  .account-list-table tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; padding: 14px; border: 1px solid #e2e8f0; border-radius: 14px; }
+  .account-list-table td { display: block; min-width: 0; padding: 0; overflow-wrap: anywhere; }
+  .account-list-table td::before { display: block; margin-bottom: 4px; color: #64748b; font-size: 10px; font-weight: 700; letter-spacing: .02em; }
+  .account-list-table td:nth-child(1), .account-list-table td:nth-child(7) { grid-column: 1 / -1; }
+  .account-list-table td:nth-child(1) { padding-bottom: 10px; border-bottom: 1px solid #e2e8f0; }
+  .account-list-table td:nth-child(2)::before { content: 'Vai trò'; }
+  .account-list-table td:nth-child(3)::before { content: 'Tòa nhà'; }
+  .account-list-table td:nth-child(4)::before { content: 'Quyền'; }
+  .account-list-table td:nth-child(5)::before { content: 'Phiên'; }
+  .account-list-table td:nth-child(6)::before { content: 'Trạng thái'; }
+  .account-list-table td:nth-child(7) { text-align: left; padding-top: 10px; border-top: 1px solid #e2e8f0; }
+  .account-list-table td:nth-child(7) > div { display: flex; flex-wrap: wrap; }
+  .account-list-table td:nth-child(7) button { min-height: 40px; }
+  .dark .account-list-table tr, .dark .account-list-table td:nth-child(1), .dark .account-list-table td:nth-child(7) { border-color: #334155; }
+}

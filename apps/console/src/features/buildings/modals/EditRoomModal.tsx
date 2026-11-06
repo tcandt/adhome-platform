@@ -470,7 +470,7 @@ export const EditRoomModal: React.FC<EditRoomModalProps> = ({
                         data-testid="select-water-method"
                         value={waterBillingMethod}
                         onChange={(e) => setWaterBillingMethod(e.target.value)}
-                        className="w-full min-w-0 min-h-11 text-sm px-2.5 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg outline-none"
+                        className="h-11 min-h-11 max-h-11 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2.5 py-0 text-sm outline-none dark:border-slate-700 dark:bg-slate-900"
                       >
                         <option value="">Kế thừa từ tòa nhà</option>
                         <option value="PER_PERSON">Theo người</option>
@@ -488,7 +488,7 @@ export const EditRoomModal: React.FC<EditRoomModalProps> = ({
                       </label>
                       <MoneyInput
                         data-testid="edit-room-water-rate"
-                        className="h-11 min-h-11 py-2"
+                        className="!h-11 !min-h-11 !max-h-11 !rounded-lg !py-0"
                         value={waterRateVnd}
                         onChange={(v) =>
                           setWaterRateVnd(v > 0 ? String(v) : "")

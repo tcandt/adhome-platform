@@ -41,6 +41,9 @@ interface IntegrationRow {
   capabilities: string[];
   apiVersion: string | null;
   lastTestedAt: string | null;
+  buildingScopeId: string | null;
+  lastSyncedAt: string | null;
+  lastError: string | null;
 }
 
 interface NotificationChannelRow {
@@ -860,15 +863,39 @@ export const SettingsWorkspaceView: React.FC = () => {
                 </div>
               </div>
 
+              <dl className="grid grid-cols-1 sm:grid-cols-2 gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200 text-xs dark:border-slate-700 dark:bg-slate-700">
+                {[
+                  ['Trạng thái', hunonicIntegration.isEnabled ? 'Đang bật' : 'Đang tắt'],
+                  ['Thông tin xác thực', hunonicIntegration.hasCredentials ? 'Đã lưu bảo mật' : 'Chưa lưu'],
+                  ['Xác minh gần nhất', hunonicIntegration.lastTestedAt ? new Date(hunonicIntegration.lastTestedAt).toLocaleString('vi-VN') : 'Chưa có'],
+                  ['Đồng bộ gần nhất', hunonicIntegration.lastSyncedAt ? new Date(hunonicIntegration.lastSyncedAt).toLocaleString('vi-VN') : 'Chưa có'],
+                  ['Phiên bản API', hunonicIntegration.apiVersion || 'Mặc định'],
+                  ['Phạm vi', hunonicIntegration.buildingScopeId ? 'Một tòa nhà' : 'Toàn tổ chức'],
+                  ['Khả năng', `${hunonicIntegration.capabilities.length} chức năng`],
+                ].map(([label, value]) => (
+                  <div key={label} className="flex items-center justify-between gap-3 bg-white px-3 py-2.5 dark:bg-[#111827]">
+                    <dt className="text-slate-500">{label}</dt>
+                    <dd className="text-right font-semibold text-slate-800 dark:text-slate-100">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+
+              {hunonicIntegration.status === 'ERROR' && hunonicIntegration.lastError && (
+                <div role="alert" className="flex items-start gap-2 rounded-xl bg-rose-50 p-3 text-xs text-rose-700 dark:bg-rose-950/30 dark:text-rose-300">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>{hunonicIntegration.lastError}</span>
+                </div>
+              )}
+
               <div className="flex justify-end">
-                <button
+                <SettingsButton
+                  primary
                   type="button"
                   disabled={isSaving}
                   onClick={() => void saveHunonic()}
-                  className="px-4 py-2 text-xs font-bold bg-brand-primary hover:bg-brand-hover text-white rounded-xl"
                 >
                   {isSaving ? 'Đang xác minh…' : 'Kết nối Hunonic'}
-                </button>
+                </SettingsButton>
               </div>
             </div>
           )}

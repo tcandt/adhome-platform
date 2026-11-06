@@ -1,265 +1,283 @@
-import crypto from 'node:crypto';
-import type { PrismaClient } from '@prisma/client';
+import crypto from "node:crypto";
+import { syncHunonicHistory } from "./hunonicHistory";
+import type { PrismaClient } from "@prisma/client";
 import {
   HunonicCloudClient,
   validateKwhReading,
   exportAtomicJsonSnapshot,
   type HunonicJsonSnapshot,
   type HunonicMeterSnapshotItem,
-} from './hunonicAdapter';
-import { decryptSecret } from './cryptoVault';
+} from "./hunonicAdapter";
+import { readHunonicCredentials } from "./hunonicCredentials";
 
 export interface HunonicSyncWorkerOptions {
   prisma: PrismaClient;
   orgId: string;
   actorId?: string;
-  triggerType?: 'MANUAL_JOB' | 'CRON_HOURLY';
+  triggerType?: "MANUAL_JOB" | "CRON_HOURLY";
+  jobId?: string;
+  buildingIds?: string[];
 }
 
-/**
- * Background Sync Worker for Hunonic IoT Meters (HUN-03, HUN-04, CRON-02)
- * Decouples Hunonic external API latency from user page-load operations.
- * Writes verified records to PostgreSQL and publishes atomic JSON snapshots.
- */
+/** Import one authoritative catalog per job, including devices not yet assigned to a room. */
 export async function executeHunonicBackgroundSync(
-  options: HunonicSyncWorkerOptions
+  options: HunonicSyncWorkerOptions,
 ): Promise<HunonicJsonSnapshot> {
-  const { prisma, orgId, actorId = 'system_worker', triggerType = 'MANUAL_JOB' } = options;
-
-  const jobId = `sync_job_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
-
-  // 1. Create or register Sync Job record
+  const {
+    prisma,
+    orgId,
+    actorId = "system_worker",
+    triggerType = "MANUAL_JOB",
+  } = options;
+  const jobId =
+    options.jobId ||
+    `sync_job_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
+  let connectionVersion: Date | undefined;
   await prisma.integrationSyncJob.create({
     data: {
       id: jobId,
       orgId,
-      providerId: 'HUNONIC',
+      providerId: "HUNONIC",
       jobType: triggerType,
-      status: 'RUNNING',
+      status: "RUNNING",
       startedAt: new Date(),
     },
   });
-
   try {
-    // 2. Load and decrypt Hunonic credentials
-    const conn = await prisma.integrationConnection.findUnique({
-      where: {
-        orgId_providerId: { orgId, providerId: 'HUNONIC' },
-      },
+    const connection = await prisma.integrationConnection.findUnique({
+      where: { orgId_providerId: { orgId, providerId: "HUNONIC" } },
     });
-
-    const credsJson = (conn?.credentialsJson as any) || {};
-    let phone = credsJson.phone || '0901234567';
-    let password = credsJson.password;
-    if (credsJson.encryptedPassword) {
-      try {
-        password = decryptSecret(credsJson.encryptedPassword);
-      } catch {
-        password = credsJson.password;
-      }
-    }
-
+    connectionVersion = connection?.updatedAt;
+    if (!connection?.isEnabled)
+      throw new Error("Tích hợp Hunonic chưa được kích hoạt.");
+    const { phone, password } = readHunonicCredentials(
+      connection.credentialsJson,
+    );
     const client = new HunonicCloudClient();
-    const loginResult = await client.login(phone, password);
-    const token = loginResult.token;
-
-    // 3. Find all configured meters for this organization
+    const session = await client.login(phone, password);
+    if (session.token.startsWith("mock_hunonic_token_"))
+      throw new Error("Không đồng bộ dữ liệu thử nghiệm vào công tơ vận hành.");
+    const devices = await client.listElectricMeters(session.token);
+    const fetchedAt = new Date();
+    const byId = new Map(devices.map((device) => [device.id, device]));
     const meters = await prisma.electricMeter.findMany({
       where: {
         orgId,
         hunonicDeviceId: { not: null },
+        ...(options.buildingIds
+          ? { room: { buildingId: { in: options.buildingIds } } }
+          : {}),
       },
       include: {
         room: {
-          select: { id: true, code: true, buildingId: true, electricBillingMode: true },
+          select: {
+            id: true,
+            code: true,
+            buildingId: true,
+            electricBillingMode: true,
+          },
         },
       },
     });
-
-    const periodKey = new Date().toISOString().slice(0, 7); // YYYY-MM
-    let syncedCount = 0;
-    let failedCount = 0;
-    const snapshotItems: HunonicMeterSnapshotItem[] = [];
-
-    // 4. Query telemetry per meter and persist to PostgreSQL
+    await prisma.integrationSyncJob.update({
+      where: { id: jobId },
+      data: {
+        totalItems: meters.length || devices.length,
+        syncedItems: 0,
+        failedItems: 0,
+      },
+    });
+    const periodKey = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Ho_Chi_Minh",
+      year: "numeric",
+      month: "2-digit",
+    })
+      .format(fetchedAt)
+      .slice(0, 7);
+    let synced = 0;
+    let failed = 0;
+    const items: HunonicMeterSnapshotItem[] = [];
     for (const meter of meters) {
-      const deviceId = meter.hunonicDeviceId!;
-      try {
-        let telemetry: any = null;
-        let attempt = 0;
-        const maxRetries = 2;
-        while (attempt <= maxRetries) {
-          try {
-            telemetry = await client.fetchDeviceTelemetry(token, deviceId, meter.cumulativeKwh || 120.0);
-            break;
-          } catch (fetchErr) {
-            attempt++;
-            if (attempt > maxRetries) {
-              throw fetchErr;
-            }
-            await new Promise((r) => setTimeout(r, 100 * attempt));
-          }
-        }
-        const kwhValid = validateKwhReading(meter.cumulativeKwh, telemetry.cumulativeKwh);
-
-        const quality: 'VALID' | 'STALE' | 'OFFLINE' | 'SUSPICIOUS' = !telemetry.isOnline
-          ? 'OFFLINE'
-          : telemetry.status === 'STALE'
-          ? 'STALE'
-          : !kwhValid.isValid
-          ? 'SUSPICIOUS'
-          : 'VALID';
-
-        // Update ElectricMeter state in database
-        await prisma.electricMeter.update({
-          where: { id: meter.id },
-          data: {
-            cumulativeKwh: telemetry.cumulativeKwh,
-            instantPowerW: telemetry.instantPowerW,
-            connectionStatus: telemetry.status,
-            lastSyncedAt: new Date(),
+      const device = byId.get(meter.hunonicDeviceId!);
+      const basis =
+        device?.cumulativeKwh != null ? "CUMULATIVE" : "MONTHLY_CONSUMPTION";
+      const value = device?.cumulativeKwh ?? device?.monthReportedKwh ?? null;
+      const validation =
+        device?.cumulativeKwh == null
+          ? null
+          : validateKwhReading(meter.cumulativeKwh, device.cumulativeKwh);
+      const quality: HunonicMeterSnapshotItem["reading"]["quality"] = !device
+        ? "MISSING"
+        : device.online === false
+          ? "OFFLINE"
+          : device.connectionStatus === "STALE"
+            ? "STALE"
+            : validation && !validation.isValid
+              ? "SUSPICIOUS"
+              : value === null ||
+                  !device.providerReportedAt ||
+                  device.online !== true ||
+                  basis !== "CUMULATIVE"
+                ? "UNVERIFIED"
+                : "VALID";
+      await prisma.electricMeter.update({
+        where: { id: meter.id },
+        data: {
+          connectionStatus:
+            !device || quality === "SUSPICIOUS"
+              ? "UNCONFIGURED"
+              : device.connectionStatus,
+          instantPowerW: device?.instantPowerW ?? null,
+          monthReportedKwh: device?.monthReportedKwh ?? null,
+          ...(device ? { readingBasis: basis } : {}),
+          ...(quality === "VALID" && device?.cumulativeKwh != null
+            ? { cumulativeKwh: device.cumulativeKwh }
+            : {}),
+          lastSyncedAt: fetchedAt,
+        },
+      });
+      // Monthly consumption and unknown timestamps must never become cumulative billing readings.
+      if (
+        quality === "VALID" &&
+        device?.cumulativeKwh != null &&
+        device.providerReportedAt
+      ) {
+        const recordedAt = new Date(device.providerReportedAt);
+        const alreadyRecorded = await prisma.meterReading.findFirst({
+          where: {
+            meterId: meter.id,
+            periodKey,
+            readingKwh: device.cumulativeKwh,
+            recordedAt,
+            source: "HUNONIC_AUTO",
           },
         });
-
-        // Record reading in MeterReading table
-        if (quality === 'VALID' || quality === 'STALE') {
+        if (!alreadyRecorded)
           await prisma.meterReading.create({
             data: {
               meterId: meter.id,
               periodKey,
-              readingKwh: telemetry.cumulativeKwh,
-              source: 'HUNONIC_AUTO',
+              readingKwh: device.cumulativeKwh,
+              recordedAt,
+              source: "HUNONIC_AUTO",
               recordedByActor: actorId,
             },
           });
-        }
-
-        // Track exception in BillingPeriod if quality is not valid
-        if (quality !== 'VALID') {
-          await prisma.billingPeriod.upsert({
-            where: {
-              orgId_buildingId_periodKey: {
-                orgId,
-                buildingId: meter.room.buildingId,
-                periodKey,
-              },
-            },
-            create: {
-              orgId,
-              buildingId: meter.room.buildingId,
-              periodKey,
-              status: 'EXCEPTION',
-              exceptionCount: 1,
-            },
-            update: {
-              status: 'EXCEPTION',
-              exceptionCount: { increment: 1 },
-            },
-          });
-        }
-
-        syncedCount++;
-        snapshotItems.push({
-          buildingId: meter.room.buildingId,
-          roomId: meter.roomId,
-          roomCode: meter.room.code,
-          meterId: meter.id,
-          hunonicDeviceId: deviceId,
-          meterType: (meter.meterType as any) || 'ROOM',
-          provider: 'HUNONIC',
-          reading: {
-            basis: (meter.readingBasis as any) || 'CUMULATIVE',
-            valueKwh: telemetry.cumulativeKwh,
-            instantPowerW: telemetry.instantPowerW,
-            measuredAt: telemetry.lastReportedAt.toISOString(),
-            quality,
-          },
-          tariff: {
-            mode: (meter.tariffMode as any) || 'custom',
-            verifiedRateVnd: meter.tariffRateVnd || 3800,
-            verifiedAt: (meter.tariffVerifiedAt || new Date()).toISOString(),
-          },
-          syncStatus: 'SUCCESS',
-        });
-      } catch (meterErr) {
-        failedCount++;
-        snapshotItems.push({
-          buildingId: meter.room.buildingId,
-          roomId: meter.roomId,
-          roomCode: meter.room.code,
-          meterId: meter.id,
-          hunonicDeviceId: deviceId,
-          meterType: (meter.meterType as any) || 'ROOM',
-          provider: 'HUNONIC',
-          reading: {
-            basis: (meter.readingBasis as any) || 'CUMULATIVE',
-            valueKwh: meter.cumulativeKwh || 0,
-            instantPowerW: 0,
-            measuredAt: new Date().toISOString(),
-            quality: 'OFFLINE',
-          },
-          tariff: {
-            mode: (meter.tariffMode as any) || 'custom',
-            verifiedRateVnd: meter.tariffRateVnd || 3800,
-            verifiedAt: (meter.tariffVerifiedAt || new Date()).toISOString(),
-          },
-          syncStatus: 'ERROR',
-        });
       }
-    }
 
-    // 5. Assemble standard JSON snapshot
+      if (device && value !== null) synced++;
+      else failed++;
+      items.push({
+        buildingId: meter.room.buildingId,
+        roomId: meter.roomId,
+        roomCode: meter.room.code,
+        meterId: meter.id,
+        hunonicDeviceId: meter.hunonicDeviceId!,
+        meterType: meter.meterType as "ROOM",
+        provider: "HUNONIC",
+        reading: {
+          basis,
+          valueKwh: value,
+          instantPowerW: device?.instantPowerW ?? null,
+          measuredAt: device?.providerReportedAt ?? null,
+          quality,
+        },
+        tariff: {
+          mode: meter.tariffMode as "custom",
+          verifiedRateVnd: meter.tariffRateVnd,
+          verifiedAt: meter.tariffVerifiedAt?.toISOString() || null,
+        },
+        syncStatus: device && value !== null ? "SUCCESS" : "ERROR",
+      });
+      await prisma.integrationSyncJob.update({
+        where: { id: jobId },
+        data: { syncedItems: synced, failedItems: failed },
+      });
+    }
+    const history = await syncHunonicHistory(
+      orgId,
+      phone,
+      session.token,
+      devices,
+    );
+    const historyFailed = history.failedDeviceIds.length;
     const snapshot: HunonicJsonSnapshot = {
       schemaVersion: 1,
       orgId,
       syncJobId: jobId,
-      exportedAt: new Date().toISOString(),
-      status: failedCount === 0 ? 'SUCCESS' : syncedCount > 0 ? 'PARTIAL' : 'ERROR',
+      exportedAt: fetchedAt.toISOString(),
+      inventorySource: "HUNONIC_V2",
+      inventoryAccount: phone,
+      inventoryFetchedAt: fetchedAt.toISOString(),
+      devices,
+      status:
+        failed === 0 && historyFailed === 0
+          ? "SUCCESS"
+          : devices.length > 0
+            ? "PARTIAL"
+            : "ERROR",
       summary: {
         totalMeters: meters.length,
-        syncedMeters: syncedCount,
-        failedMeters: failedCount,
+        syncedMeters: synced,
+        failedMeters: failed,
       },
-      meters: snapshotItems,
+      meters: items,
     };
-
-    // 6. Atomically export JSON snapshot
     const snapshotPath = await exportAtomicJsonSnapshot(snapshot);
-
-    // 7. Update Sync Job record
     await prisma.integrationSyncJob.update({
       where: { id: jobId },
       data: {
         status: snapshot.status,
-        totalItems: meters.length,
-        syncedItems: syncedCount,
-        failedItems: failedCount,
+        totalItems: meters.length || devices.length,
+        syncedItems: meters.length ? synced : devices.length,
+        failedItems: failed + historyFailed,
         snapshotPath,
         completedAt: new Date(),
+        errorMessage: historyFailed
+          ? `${historyFailed} thiết bị chưa tải được lịch sử Hunonic; lịch sử cũ được giữ nguyên.`
+          : failed
+            ? `${failed} công tơ chưa có dữ liệu từ Hunonic; xem trạng thái từng thiết bị.`
+            : null,
       },
     });
-
-    // 8. Update IntegrationConnection lastSyncedAt
     await prisma.integrationConnection.updateMany({
-      where: { orgId, providerId: 'HUNONIC' },
+      where: { orgId, providerId: "HUNONIC", updatedAt: connection.updatedAt },
       data: {
-        lastSyncedAt: new Date(),
-        status: 'VERIFIED',
+        lastSyncedAt: fetchedAt,
+        lastTestedAt: fetchedAt,
+        status: "VERIFIED",
+        lastError: null,
+        credentialsJson: {
+          ...(connection.credentialsJson as object),
+          verification: {
+            protocol: "hunonic-mobile-v2",
+            phone,
+            verifiedAt: fetchedAt.toISOString(),
+          },
+        },
       },
     });
-
     return snapshot;
-  } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Đồng bộ Hunonic thất bại.";
     await prisma.integrationSyncJob.update({
       where: { id: jobId },
       data: {
-        status: 'FAILED',
-        errorMessage: errorMsg,
+        status: "FAILED",
+        errorMessage: message,
         completedAt: new Date(),
       },
     });
-    throw err;
+    await prisma.integrationConnection.updateMany({
+      where: {
+        orgId,
+        providerId: "HUNONIC",
+        isEnabled: true,
+        ...(connectionVersion ? { updatedAt: connectionVersion } : {}),
+      },
+      data: { status: "ERROR", lastError: message },
+    });
+    throw error;
   }
 }
-

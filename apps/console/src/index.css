@@ -49,12 +49,23 @@ input::placeholder, textarea::placeholder, select option { font-size: inherit; }
 .building-form-dialog input[type="date"] { display: block; width: 100%; max-height: var(--form-control-height); -webkit-appearance: none; appearance: none; }
 .building-form-dialog input[type="date"]::-webkit-date-and-time-value { min-height: 0; line-height: 22px; text-align: left; }
 
-/* iOS Safari zooms focused controls below 16px and can render the caret offset. */
-@media (max-width: 639px) {
-  .contract-wizard input,
-  .contract-wizard select,
-  .contract-wizard textarea {
-    font-size: 16px;
+/*
+ * Mobile Safari zooms the visual viewport when an editable control resolves
+ * below 16px. Keep the desktop density, but guarantee a real 16px computed
+ * size for every mobile/touch form control. `manipulation` blocks double-tap
+ * zoom on controls while preserving page pinch zoom for accessibility.
+ */
+@media (max-width: 1024px), (hover: none) and (pointer: coarse) {
+  :root {
+    --form-control-font-size: 16px;
+  }
+
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="hidden"]),
+  select,
+  textarea,
+  [contenteditable="true"] {
+    font-size: 16px !important;
+    touch-action: manipulation;
   }
 }
 .building-form-dialog label { min-height: 0; line-height: 20px; font-weight: 500; }

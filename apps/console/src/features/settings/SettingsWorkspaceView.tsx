@@ -322,10 +322,6 @@ export const SettingsWorkspaceView: React.FC = () => {
   const hunonicIntegration = integrations.find(
     (i) => i.providerId === 'HUNONIC'
   );
-  const activeSettingsTab = SETTINGS_TABS_CONFIG.find(
-    (tab) => tab.id === settingsTab
-  );
-
   const renderStatusBadge = (status: string) => {
     if (status === 'VERIFIED') {
       return (
@@ -361,15 +357,6 @@ export const SettingsWorkspaceView: React.FC = () => {
         />
 
         <main className="min-w-0 space-y-4">
-          <div className="border-b border-slate-200/80 px-0.5 pb-3 dark:border-slate-800">
-            <h2 className="text-base font-bold text-slate-900 dark:text-white">
-              {activeSettingsTab?.label}
-            </h2>
-            <p className="mt-0.5 text-xs leading-5 text-slate-500 dark:text-slate-400">
-              {activeSettingsTab?.description}
-            </p>
-          </div>
-
       {errorMsg && (
         <div
           data-testid="settings-error-banner"

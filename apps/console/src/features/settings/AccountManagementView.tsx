@@ -297,25 +297,6 @@ export const AccountManagementView: React.FC = () => {
 
   return (
     <div className="space-y-6" data-testid="console-account-management-view">
-      {/* Header Toolbar */}
-      <div className="flex flex-wrap items-center justify-end gap-2">
-          <SettingsButton
-            type="button"
-            onClick={() => void loadAccounts()}
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-            <span>Làm mới</span>
-          </SettingsButton>
-          <SettingsButton primary
-            type="button"
-            data-testid="console-open-create-account"
-            onClick={openCreateForm}
-          >
-            <UserPlus className="w-3.5 h-3.5" />
-            <span>Thêm nhân sự</span>
-          </SettingsButton>
-      </div>
-
       {/* Status Alerts */}
       {errorMsg && (
         <div
@@ -557,6 +538,29 @@ export const AccountManagementView: React.FC = () => {
             <Users className="w-4 h-4 text-brand-primary" />
             Tài khoản nhân sự ({accounts.length})
           </h3>
+          <div className="flex shrink-0 items-center gap-2">
+            <SettingsButton
+              type="button"
+              className="h-9 w-9 p-0"
+              aria-label="Làm mới danh sách nhân sự"
+              title="Làm mới"
+              disabled={isLoading}
+              onClick={() => void loadAccounts()}
+            >
+              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} aria-hidden="true" />
+            </SettingsButton>
+            <SettingsButton
+              primary
+              type="button"
+              className="h-9 w-9 p-0"
+              aria-label="Thêm nhân sự"
+              title="Thêm nhân sự"
+              data-testid="console-open-create-account"
+              onClick={openCreateForm}
+            >
+              <UserPlus className="h-4 w-4" aria-hidden="true" />
+            </SettingsButton>
+          </div>
         </div>
 
         {isLoading ? (

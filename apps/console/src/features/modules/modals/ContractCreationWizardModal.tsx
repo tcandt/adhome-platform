@@ -449,7 +449,7 @@ export const ContractCreationWizardModal: React.FC<Props> = ({
   return (
     <div
       data-testid="contract-creation-wizard-modal"
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/70 backdrop-blur-sm overflow-y-auto"
+      className="contract-wizard fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/70 backdrop-blur-sm overflow-y-auto"
     >
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="contract-wizard-title" className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col my-auto max-h-[95vh]">
         {/* MODAL HEADER */}
@@ -738,9 +738,12 @@ export const ContractCreationWizardModal: React.FC<Props> = ({
                         </label>
                         <input
                           data-testid="wizard-new-cust-phone"
-                          type="text"
+                          type="tel"
+                          inputMode="numeric"
+                          autoComplete="tel"
+                          maxLength={10}
                           value={newCustPhone}
-                          onChange={(e) => setNewCustPhone(e.target.value)}
+                          onChange={(e) => setNewCustPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
                           placeholder="0912345678"
                           className="w-full text-xs p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
                         />
@@ -750,7 +753,10 @@ export const ContractCreationWizardModal: React.FC<Props> = ({
                           Số CCCD / CMND
                         </label>
                         <input
-                          type="text"
+                          type="tel"
+                          inputMode="numeric"
+                          autoComplete="tel"
+                          maxLength={10}
                           value={newCustIdNumber}
                           onChange={(e) => setNewCustIdNumber(e.target.value)}
                           placeholder="12 chữ số"
@@ -1025,7 +1031,7 @@ export const ContractCreationWizardModal: React.FC<Props> = ({
                           type="text"
                           placeholder="SĐT"
                           value={occ.phone}
-                          onChange={(e) => updateCoOccupant(idx, 'phone', e.target.value)}
+                          onChange={(e) => updateCoOccupant(idx, 'phone', e.target.value.replace(/\D/g, '').slice(0, 10))}
                           className="text-xs p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
                         />
                         <input

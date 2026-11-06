@@ -17,6 +17,58 @@
   --sidebar-width-expanded: 256px;
   --sidebar-width-collapsed: 72px;
   --header-height: 64px;
+  --form-control-font-size: 13px;
+  --form-label-font-size: 13px;
+  --form-control-height: 38px;
+}
+
+/* Shared form typography, including native date/select controls and popup portals. */
+:is([role="dialog"], [data-testid^="modal-"], .rental-workspace) {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="hidden"]),
+select, textarea {
+  font-size: var(--form-control-font-size) !important;
+  font-family: inherit;
+  letter-spacing: 0;
+}
+input::placeholder, textarea::placeholder, select option { font-size: inherit; }
+:is([role="dialog"], [data-testid^="modal-"], .rental-workspace) :is(label, button) {
+  font-size: var(--form-label-font-size) !important;
+  letter-spacing: 0;
+}
+.building-form-dialog { font-size: var(--form-control-font-size); }
+.building-form-dialog :is(input, select) {
+  height: var(--form-control-height);
+  min-height: var(--form-control-height);
+  padding-block: 7px;
+  border-radius: 6px;
+  line-height: 22px;
+}
+.building-form-dialog input[type="date"] { display: block; width: 100%; max-height: var(--form-control-height); -webkit-appearance: none; appearance: none; }
+.building-form-dialog input[type="date"]::-webkit-date-and-time-value { min-height: 0; line-height: 22px; text-align: left; }
+
+/* iOS Safari zooms focused controls below 16px and can render the caret offset. */
+@media (max-width: 639px) {
+  .contract-wizard input,
+  .contract-wizard select,
+  .contract-wizard textarea {
+    font-size: 16px;
+  }
+}
+.building-form-dialog label { min-height: 0; line-height: 20px; font-weight: 500; }
+.building-form-dialog form > div > fieldset > .grid { align-items: end; }
+.building-form-dialog h3 { font-size: 14px; line-height: 20px; }
+.building-form-dialog :is([data-testid="create-building-header"], [data-testid="edit-building-header"]) { padding: 12px 16px; }
+.building-form-dialog .building-form-footer { padding: 10px 12px max(10px, env(safe-area-inset-bottom)); }
+.building-form-dialog .building-form-footer button { min-height: 36px; padding: 7px 10px; border-radius: 6px; white-space: nowrap; }
+.building-form-dialog button:disabled { opacity: .5; cursor: default; }
+.building-form-dialog :is(input, select, button):focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 2px; }
+@media (max-width: 380px) {
+  .building-form-dialog form > [data-testid$="-content"] { padding: 12px; }
+  .building-form-dialog .building-form-footer { gap: 4px; }
+  .building-form-dialog .building-form-footer button { padding-inline: 7px; }
 }
 
 .dark {
@@ -28,6 +80,16 @@
   --border: #1E293B;
 }
 
+.room-detail-header button { width: 34px; height: 34px; border-radius: 6px; }
+.room-detail-header > div:first-child { align-items: center; }
+.room-detail-header > div:first-child > div:first-child { padding-top: 0; }
+.room-detail-popup .room-detail-tab { font-size: 12px !important; }
+.room-contract-details > div { display: grid; grid-template-columns: 108px minmax(0, 1fr); align-items: start; gap: 12px; }
+.room-contract-details > div > span { color: #64748b; }
+.room-contract-details b { font-weight: 500; text-align: right; overflow-wrap: anywhere; }
+.room-contract-card > div:first-child { gap: 8px; }
+.room-contract-card > div:first-child > span:first-child { flex: 1; }
+.room-contract-card > div:first-child > span:last-child { flex-shrink: 0; font-size: 11px; }
 /* Custom scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
@@ -67,6 +129,7 @@ html[data-motion="reduced"] ::after {
 .mobile-overview-scope > button { width: 100%; max-width: none; min-height: 44px; }
 .mobile-overview-scope > button > span { flex: 1; text-align: left; }
 [data-testid="console-mobile-shell"] button:focus-visible,
+[data-testid="console-mobile-bottom-nav"] button:focus-visible,
 [data-testid="console-mobile-shell"] input:focus-visible {
   outline: 2px solid #2563eb;
   outline-offset: 3px;
@@ -75,3 +138,39 @@ html[data-motion="reduced"] ::after {
 .mobile-overview-scope [role="listbox"] { width: 100%; }
 .mobile-overview-scope [role="listbox"] button { min-height: 44px; }
 .mobile-overview-scope [role="listbox"] input { min-height: 44px; }
+
+/* Floor branches follow the expanded panel height, keeping every floor connected. */
+.building-floor-node::before {
+  content: "";
+  position: absolute;
+  left: -12px;
+  top: -8px;
+  bottom: -8px;
+  border-left: 1px solid #cbd5e1;
+  pointer-events: none;
+}
+.building-floor-node:first-child::before { top: 32px; }
+.building-floor-node:last-child::before { bottom: calc(100% - 32px); }
+.building-floor-node::after {
+  content: "";
+  position: absolute;
+  left: -12px;
+  top: 32px;
+  width: calc(12px + var(--floor-indent, 0px));
+  border-top: 1px solid #cbd5e1;
+  pointer-events: none;
+}
+.dark .building-floor-node::before,
+.dark .building-floor-node::after { border-color: #475569; }
+
+.room-config-fields input:not([type="checkbox"]),
+.room-config-fields select,
+.room-config-fields textarea { outline: none; }
+.room-config-fields input:not([type="checkbox"]),
+.room-config-fields select { min-height: 44px; }
+.room-config-fields input:focus-visible,
+.room-config-fields select:focus-visible,
+.room-config-fields textarea:focus-visible {
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 2px rgb(37 99 235 / 0.12);
+}

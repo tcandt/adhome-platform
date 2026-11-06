@@ -3,7 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5, user-scalable=yes" />
+    <script>
+      (() => {
+        const viewport = document.querySelector('meta[name="viewport"]');
+        if (!viewport) return;
+        const accessibleViewport = 'width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5, user-scalable=yes';
+        const resetViewport = () => {
+          viewport.setAttribute('content', 'width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no');
+          requestAnimationFrame(() => requestAnimationFrame(() => {
+            viewport.setAttribute('content', accessibleViewport);
+          }));
+        };
+        resetViewport();
+        window.addEventListener('pageshow', resetViewport);
+      })();
+    </script>
     <meta name="description" content="AdHome Console V2 — Nền tảng SaaS quản lý căn hộ dịch vụ và vận hành cơ sở lưu trú." />
     <title>AdHome — Console Quản lý Căn hộ Dịch vụ</title>
     <!-- Google Fonts: Inter -->

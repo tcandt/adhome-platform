@@ -65,6 +65,13 @@ interface TariffHistoryItem {
   createdAt: string;
   metadata?: { rootId?: string; mode?: string; rateVnd?: number };
 }
+interface HunonicCronJob {
+  jobKey: string;
+  cronExpression: string;
+  isEnabled: boolean;
+  lastRunStatus?: string;
+  lastRunAt?: string | null;
+}
 export interface HunonicSettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -109,6 +116,27 @@ async function request(path: string, method = "GET", body?: unknown) {
     );
   return data;
 }
+async function settingsRequest(path = "", method = "GET", body?: unknown) {
+  const response = await fetch(`/api/v1/console/v2/settings${path}`, {
+    method,
+    credentials: "include",
+    headers: { Accept: "application/json", ...(method === "GET" ? {} : { "Content-Type": "application/json", "X-Requested-With": CONSOLE_CSRF_HEADER }) },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) throw new Error(data.message || "Không thể lưu lịch đồng bộ.");
+  return data;
+}
+const cronToMinutes = (expression?: string) => {
+  if (!expression) return 60;
+  const minute = expression.match(/^\*\/(\d+) \* \* \* \*$/);
+  if (minute) return Number(minute[1]);
+  if (expression === "0 * * * *") return 60;
+  const hour = expression.match(/^0 \*\/(\d+) \* \* \*$/);
+  if (hour) return Number(hour[1]) * 60;
+  if (expression === "0 0 * * *") return 1440;
+  return 60;
+};
 
 export const HunonicSettingsModal: React.FC<HunonicSettingsModalProps> = ({
   isOpen,
@@ -164,6 +192,9 @@ export const HunonicSettingsModal: React.FC<HunonicSettingsModalProps> = ({
   const [tariffLoadedAt, setTariffLoadedAt] = useState<string | null>(null);
   const [tariffHistory, setTariffHistory] = useState<TariffHistoryItem[]>([]);
   const [tariffLoaded, setTariffLoaded] = useState(false);
+  const [syncIntervalMinutes, setSyncIntervalMinutes] = useState(60);
+  const [syncScheduleEnabled, setSyncScheduleEnabled] = useState(false);
+  const [syncCronJob, setSyncCronJob] = useState<HunonicCronJob | null>(null);
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const generation = useRef(0);
 
@@ -183,8 +214,8 @@ export const HunonicSettingsModal: React.FC<HunonicSettingsModalProps> = ({
     setTariffLoadedAt(null);
     setTariffHistory([]);
     setLoading(true);
-    Promise.all([request("config"), request("meters"), request("sync-jobs")])
-      .then(([config, list, history]) => {
+    Promise.all([request("config"), request("meters"), request("sync-jobs"), settingsRequest().catch(() => ({ cronJobs: [] }))])
+      .then(([config, list, history, settings]) => {
         if (generation.current !== version) return;
         const connection = config.connection;
         setPhone(connection.phone || "");
@@ -198,6 +229,10 @@ export const HunonicSettingsModal: React.FC<HunonicSettingsModalProps> = ({
         setInventoryAt(list.syncedAt || null);
         setJobs(history.syncJobs || []);
         setElectricHistory(history.history || null);
+        const cron = (settings.cronJobs || []).find((job: HunonicCronJob) => job.jobKey === "HUNONIC_HOURLY_SYNC") || null;
+        setSyncCronJob(cron);
+        setSyncScheduleEnabled(Boolean(cron?.isEnabled));
+        setSyncIntervalMinutes(cronToMinutes(cron?.cronExpression));
         if (connection.lastError)
           setMessage({ error: true, text: connection.lastError });
       })
@@ -1351,6 +1386,42 @@ export const HunonicSettingsModal: React.FC<HunonicSettingsModalProps> = ({
                         />
                         {runningJob ? "Đang đồng bộ" : "Đồng bộ ngay"}
                       </AnimatedButton>
+                      <div className="space-y-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <h4 className="text-xs font-semibold">Lịch đồng bộ tự động</h4>
+                            <p className="mt-1 text-[11px] text-slate-500">Dùng chung với tác vụ Hunonic trong Cài đặt → Cron.</p>
+                          </div>
+                          <label className="inline-flex items-center gap-2 text-xs font-semibold">
+                            <input type="checkbox" checked={syncScheduleEnabled} onChange={(event) => setSyncScheduleEnabled(event.target.checked)} className="h-4 w-4 accent-blue-600" />
+                            {syncScheduleEnabled ? "Bật" : "Tắt"}
+                          </label>
+                        </div>
+                        <div className="flex items-end gap-3">
+                          <div className="min-w-0 flex-1">
+                            <label htmlFor="hunonic-sync-minutes" className="mb-1.5 block text-[11px] text-slate-500">Chu kỳ (phút)</label>
+                            <input id="hunonic-sync-minutes" type="number" min="1" max="1440" step="1" value={syncIntervalMinutes} onChange={(event) => setSyncIntervalMinutes(Number(event.target.value))} className={inputClass} />
+                          </div>
+                          <AnimatedButton
+                            type="button"
+                            disabled={busy || syncIntervalMinutes < 1 || syncIntervalMinutes > 1440 || (syncIntervalMinutes > 59 && syncIntervalMinutes !== 1440 && syncIntervalMinutes % 60 !== 0)}
+                            className={buttonClass}
+                            onClick={() => void run(async (current) => {
+                              const data = await settingsRequest("/cron", "PATCH", { jobKey: "HUNONIC_HOURLY_SYNC", intervalMinutes: syncIntervalMinutes, isEnabled: syncScheduleEnabled });
+                              if (!current()) return;
+                              setSyncCronJob(data.cronJob || null);
+                              setMessage({ error: false, text: `Đã lưu lịch đồng bộ mỗi ${syncIntervalMinutes} phút.` });
+                            })}
+                          >
+                            <Save className="h-3.5 w-3.5" />
+                            Lưu lịch
+                          </AnimatedButton>
+                        </div>
+                        {syncIntervalMinutes > 59 && syncIntervalMinutes !== 1440 && syncIntervalMinutes % 60 !== 0 && (
+                          <p role="alert" className="text-[11px] text-amber-700 dark:text-amber-300">Trên 59 phút, nhập theo giờ tròn: 60, 120, 180… hoặc 1440 phút.</p>
+                        )}
+                        {syncCronJob?.lastRunAt && <p className="text-[11px] text-slate-500">Lần chạy cron gần nhất: {dateLabel(syncCronJob.lastRunAt)} · {syncCronJob.lastRunStatus || "Chưa có trạng thái"}</p>}
+                      </div>
                       {connected && assignedMeters.length === 0 && (
                         <p className="text-[11px] text-amber-700 dark:text-amber-300">Cần gán ít nhất một công tơ vào phòng trước khi đồng bộ.</p>
                       )}

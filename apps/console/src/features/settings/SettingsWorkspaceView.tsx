@@ -13,6 +13,7 @@ import {
   RefreshCw,
   Save,
   ShieldCheck,
+  Sliders,
   Zap,
 } from 'lucide-react';
 import { SETTINGS_TABS_CONFIG } from '@/app/navigation/navigationConfig';
@@ -27,6 +28,7 @@ import { VndAmountInput } from '@/shared/ui/VndAmountInput';
 import { SettingsNavigation } from './SettingsNavigation';
 import { SettingsDialog } from '@/shared/ui/SettingsDialog';
 import { SettingsButton } from '@/shared/ui/SettingsButton';
+import { HunonicSettingsModal } from '@/features/modules/modals/HunonicSettingsModal';
 
 interface IntegrationRow {
   id: string;
@@ -98,6 +100,17 @@ interface LoginAuditRow {
   createdAt: string;
 }
 
+const cronToMinutes = (expression?: string) => {
+  if (!expression) return 60;
+  const minute = expression.match(/^\*\/(\d+) \* \* \* \*$/);
+  if (minute) return Number(minute[1]);
+  if (expression === '0 * * * *') return 60;
+  const hour = expression.match(/^0 \*\/(\d+) \* \* \*$/);
+  if (hour) return Number(hour[1]) * 60;
+  if (expression === '0 0 * * *') return 1440;
+  return 60;
+};
+
 export const SettingsWorkspaceView: React.FC = () => {
   const { user, hasCapability } = useAuth();
   const canManageSettings = hasCapability('canManageSettings');
@@ -108,6 +121,7 @@ export const SettingsWorkspaceView: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [hunonicModalOpen, setHunonicModalOpen] = useState(false);
 
   // Organization form
   const [orgName, setOrgName] = useState('');
@@ -896,6 +910,14 @@ export const SettingsWorkspaceView: React.FC = () => {
                 >
                   {isSaving ? 'Đang xác minh…' : 'Kết nối Hunonic'}
                 </SettingsButton>
+                <SettingsButton
+                  type="button"
+                  onClick={() => setHunonicModalOpen(true)}
+                  className="ml-2"
+                >
+                  <Sliders className="h-4 w-4" />
+                  Mở cấu hình đầy đủ
+                </SettingsButton>
               </div>
             </div>
           )}
@@ -932,13 +954,16 @@ export const SettingsWorkspaceView: React.FC = () => {
 
                     <div className="flex items-center gap-2">
                       <input
-                        type="text"
-                        value={job.cronExpression}
+                        type={job.jobKey === 'HUNONIC_HOURLY_SYNC' ? 'number' : 'text'}
+                        min={job.jobKey === 'HUNONIC_HOURLY_SYNC' ? 1 : undefined}
+                        max={job.jobKey === 'HUNONIC_HOURLY_SYNC' ? 1440 : undefined}
+                        aria-label={job.jobKey === 'HUNONIC_HOURLY_SYNC' ? 'Chu kỳ đồng bộ Hunonic theo phút' : undefined}
+                        value={job.jobKey === 'HUNONIC_HOURLY_SYNC' ? cronToMinutes(job.cronExpression) : job.cronExpression}
                         onChange={(e) => {
                           const val = e.target.value;
                           setCronJobs((prev) =>
                             prev.map((j, i) =>
-                              i === idx ? { ...j, cronExpression: val } : j
+                              i === idx ? { ...j, cronExpression: job.jobKey === 'HUNONIC_HOURLY_SYNC' ? Number(val) < 60 ? `*/${Number(val)} * * * *` : Number(val) === 1440 ? '0 0 * * *' : `0 */${Math.max(1, Math.trunc(Number(val) / 60))} * * *` : val } : j
                             )
                           );
                         }}
@@ -971,6 +996,7 @@ export const SettingsWorkspaceView: React.FC = () => {
                             {
                               jobKey: job.jobKey,
                               cronExpression: job.cronExpression,
+                              ...(job.jobKey === 'HUNONIC_HOURLY_SYNC' ? { intervalMinutes: cronToMinutes(job.cronExpression) } : {}),
                               isEnabled: job.isEnabled,
                             },
                             `Đã lưu lịch tự động: ${job.displayName}`
@@ -1066,6 +1092,11 @@ export const SettingsWorkspaceView: React.FC = () => {
       )}
         </main>
       </div>
+      <HunonicSettingsModal
+        isOpen={hunonicModalOpen}
+        onClose={() => setHunonicModalOpen(false)}
+        onSyncTriggered={async () => { await Promise.all([loadSettings(), refreshPortfolio()]); }}
+      />
     </div>
   );
 };

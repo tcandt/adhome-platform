@@ -9389,10 +9389,21 @@ export async function handleConsoleV2Api(
           });
         }
 
-        const cronExpression =
+        let cronExpression =
           typeof body.cronExpression === 'string' && body.cronExpression.trim()
             ? body.cronExpression.trim()
             : existing.cronExpression;
+        if (existing.jobKey === 'HUNONIC_HOURLY_SYNC' && body.intervalMinutes !== undefined) {
+          const minutes = Math.trunc(Number(body.intervalMinutes));
+          if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440 || (minutes > 59 && minutes !== 1440 && minutes % 60 !== 0)) {
+            return sendJson(res, 422, { ok: false, errorCode: 'INVALID_INTERVAL', message: 'Lịch Hunonic hỗ trợ 1-59 phút, theo giờ tròn hoặc 1440 phút.' });
+          }
+          cronExpression = minutes < 60
+            ? `*/${minutes} * * * *`
+            : minutes === 1440
+              ? '0 0 * * *'
+              : `0 */${minutes / 60} * * *`;
+        }
         const isEnabled =
           typeof body.isEnabled === 'boolean'
             ? body.isEnabled
@@ -9418,7 +9429,7 @@ export async function handleConsoleV2Api(
           });
         });
 
-        return sendJson(res, 200, { ok: true });
+        return sendJson(res, 200, { ok: true, cronJob: { ...existing, cronExpression, isEnabled } });
       }
     }
   }

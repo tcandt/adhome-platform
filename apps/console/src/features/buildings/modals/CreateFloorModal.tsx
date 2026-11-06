@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Layers, Loader2, Plus, X } from 'lucide-react';
 import { usePortfolio } from '@/app/providers/PortfolioContext';
+import { NumberInput } from '@/shared/ui/NumberInput';
 
 interface CreateFloorModalProps {
   isOpen: boolean;
@@ -90,7 +91,7 @@ export const CreateFloorModal: React.FC<CreateFloorModalProps> = ({
       data-testid="modal-create-floor"
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm"
     >
-      <div className="relative w-full max-w-md bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden">
+      <div className="relative w-full max-w-md bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl max-h-[92dvh] overflow-y-auto">
         <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/80 dark:bg-slate-900/60">
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-blue-100 dark:bg-blue-950 text-brand-primary">
@@ -172,15 +173,14 @@ export const CreateFloorModal: React.FC<CreateFloorModalProps> = ({
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                 Số tầng (-3 đến 99) *
               </label>
-              <input
+              <NumberInput
                 data-testid="input-floor-number"
-                type="number"
                 min={-3}
                 max={99}
                 step={1}
                 value={floorNumber}
-                onChange={(e) => {
-                  const val = parseInt(e.target.value, 10) || 0;
+                onValueChange={(value) => {
+                  const val = Math.trunc(value);
                   setFloorNumber(val);
                   if (floorPreset === 'numbered') {
                     setName(`Tầng ${val}`);

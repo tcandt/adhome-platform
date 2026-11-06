@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Globe, Home, Loader2, Plus, Sparkles, X } from 'lucide-react';
 import { MoneyInput } from '@/shared/ui/MoneyInput';
+import { NumberInput } from '@/shared/ui/NumberInput';
 import { useAuth } from '@/app/providers/AuthContext';
 import { usePortfolio } from '@/app/providers/PortfolioContext';
 import type { CreateRoomInput } from '@/shared/types/portfolio';
@@ -19,13 +20,13 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
   onClose,
 }) => {
   const { user } = useAuth();
-  const { activeBuildings, createRoom, batchCreateRooms } = usePortfolio();
+  const { activeBuildings, rooms, createRoom, batchCreateRooms } = usePortfolio();
 
   const canPublish =
     user?.backendRole === 'ADMIN' ||
     Boolean(user?.permissions.includes('rooms.publish.write'));
 
-  const [mode, setMode] = useState<'single' | 'batch'>('single');
+  const [mode, setMode] = useState<'single' | 'batch' | 'smart'>('single');
   const [buildingId, setBuildingId] = useState<string>('');
   const [floorId, setFloorId] = useState<string>('');
 
@@ -54,6 +55,30 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
 
   const selectedBuilding =
     activeBuildings.find((b) => b.id === buildingId) || activeBuildings[0];
+
+  const floorRooms = rooms.filter((room) => room.floorId === floorId);
+  const patterns = floorRooms.reduce((groups, room) => {
+    const match = room.code.match(/^(.*?)(\d+)$/);
+    if (match) {
+      const key = `${match[1]}|${match[2].length}`;
+      const group = groups.get(key) || { prefix: match[1], width: match[2].length, numbers: [] as number[] };
+      group.numbers.push(Number(match[2]));
+      groups.set(key, group);
+    }
+    return groups;
+  }, new Map<string, { prefix: string; width: number; numbers: number[] }>());
+  const rankedPatterns = [...patterns.values()].sort((a, b) => b.numbers.length - a.numbers.length);
+  const rule = rankedPatterns[0]?.numbers.length > (rankedPatterns[1]?.numbers.length || 0)
+    ? rankedPatterns[0] : undefined;
+  const existingCodes = new Set(rooms.filter((room) => room.buildingId === buildingId).map((room) => room.code.toUpperCase()));
+  const smartCodes: string[] = [];
+  if (rule) {
+    let number = Math.max(...rule.numbers) + 1;
+    while (smartCodes.length < Math.max(1, Math.min(30, Math.trunc(batchCount || 1)))) {
+      const next = `${rule.prefix}${String(number++).padStart(rule.width, '0')}`.toUpperCase();
+      if (!existingCodes.has(next)) smartCodes.push(next);
+    }
+  }
 
   useEffect(() => {
     if (isOpen) {
@@ -116,10 +141,14 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
       setError('Vui lòng chọn tòa nhà và tầng.');
       return;
     }
+    if (mode === 'smart' && !rule) {
+      setError('Tầng này chưa có mã phòng theo quy tắc số để suy ra phòng tiếp theo.');
+      return;
+    }
     const count = Math.max(1, Math.min(30, Math.trunc(Number(batchCount) || 1)));
     const items: CreateRoomInput[] = [];
     for (let i = 0; i < count; i++) {
-      const roomCode = `${batchPrefix.trim().toUpperCase()}${String(
+      const roomCode = mode === 'smart' ? smartCodes[i] : `${batchPrefix.trim().toUpperCase()}${String(
         batchStartNum + i
       ).padStart(2, '0')}`;
       items.push({
@@ -202,6 +231,13 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
             <Sparkles className="w-3.5 h-3.5 text-amber-500" /> Tạo hàng loạt
             theo tầng
           </button>
+          <button
+            type="button"
+            onClick={() => { setMode('smart'); setError(null); }}
+            className={`flex-1 py-1.5 text-xs font-semibold rounded-lg flex items-center justify-center gap-1 ${mode === 'smart' ? 'bg-white dark:bg-slate-700 text-brand-primary dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'}`}
+          >
+            <Sparkles className="w-3.5 h-3.5" /> Tạo nhanh
+          </button>
         </div>
 
         <div className="overflow-y-auto flex-1">
@@ -272,6 +308,8 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
                   </label>
                   <input
                     data-testid="input-room-code"
+                    pattern="[A-Za-z0-9.\-]+"
+                    title="Mã phòng gồm chữ, số, dấu chấm (.) hoặc gạch ngang (-)"
                     type="text"
                     placeholder="VD: P101, 31-05"
                     value={code}
@@ -318,14 +356,13 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                     Diện tích (m²) *
                   </label>
-                  <input
+                  <NumberInput
                     data-testid="input-room-area"
-                    type="number"
                     min={10}
                     max={500}
                     step={0.5}
                     value={area}
-                    onChange={(e) => setArea(parseFloat(e.target.value) || 0)}
+                    onValueChange={setArea}
                     className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl"
                     required
                   />
@@ -348,14 +385,11 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                     Tháng cọc
                   </label>
-                  <input
-                    type="number"
+                  <NumberInput
                     min={0}
                     max={12}
                     value={depositMonths}
-                    onChange={(e) =>
-                      setDepositMonths(parseInt(e.target.value, 10) || 1)
-                    }
+                    onValueChange={value => setDepositMonths(Math.trunc(value))}
                     className="w-full text-xs px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl"
                   />
                 </div>
@@ -363,14 +397,11 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                     Số người tối đa
                   </label>
-                  <input
-                    type="number"
+                  <NumberInput
                     min={1}
                     max={12}
                     value={maxOccupants}
-                    onChange={(e) =>
-                      setMaxOccupants(parseInt(e.target.value, 10) || 2)
-                    }
+                    onValueChange={value => setMaxOccupants(Math.trunc(value))}
                     className="w-full text-xs px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl"
                   />
                 </div>
@@ -486,26 +517,22 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
 
               <div className="p-3.5 bg-blue-50/60 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900 rounded-xl space-y-2.5">
                 <span className="text-xs font-bold text-brand-primary flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5" /> Quy tắc đánh mã phòng tự
-                  động
+                  <Sparkles className="w-3.5 h-3.5" /> {mode === 'smart' ? 'Mã phòng tiếp theo' : 'Quy tắc đánh mã phòng tự động'}
                 </span>
-                <div className="grid grid-cols-3 gap-2">
+                <div className={mode === 'smart' ? 'grid grid-cols-1 gap-2' : 'grid grid-cols-3 gap-2'}>
                   <div>
                     <span className="text-[11px] text-slate-500 block mb-1">
                       Số lượng (1–30)
                     </span>
-                    <input
-                      type="number"
+                    <NumberInput
                       min={1}
                       max={30}
                       value={batchCount}
-                      onChange={(e) =>
-                        setBatchCount(parseInt(e.target.value, 10) || 1)
-                      }
+                      onValueChange={value => setBatchCount(Math.trunc(value))}
                       className="w-full text-xs px-2.5 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg font-bold"
                     />
                   </div>
-                  <div>
+                  {mode === 'batch' && <div>
                     <span className="text-[11px] text-slate-500 block mb-1">
                       Tiền tố mã
                     </span>
@@ -518,23 +545,24 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
                       placeholder="VD: P2"
                       className="w-full text-xs px-2.5 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg font-mono font-bold uppercase"
                     />
-                  </div>
-                  <div>
+                  </div>}
+                  {mode === 'batch' && <div>
                     <span className="text-[11px] text-slate-500 block mb-1">
                       Bắt đầu từ
                     </span>
-                    <input
-                      type="number"
+                    <NumberInput
                       min={1}
                       value={batchStartNum}
-                      onChange={(e) =>
-                        setBatchStartNum(parseInt(e.target.value, 10) || 1)
-                      }
+                      onValueChange={value => setBatchStartNum(Math.trunc(value))}
                       className="w-full text-xs px-2.5 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg font-bold"
                     />
-                  </div>
+                  </div>}
                 </div>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                {mode === 'smart' ? (
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    {rule ? `Theo mẫu trên tầng: ${smartCodes.join(', ')}` : 'Chưa có quy tắc mã phòng rõ ràng trên tầng này. Chọn chế độ hàng loạt để đặt quy tắc.'}
+                  </p>
+                ) : <p className="text-[11px] text-slate-500 dark:text-slate-400">
                   Xem trước:{' '}
                   <b className="font-mono">
                     {batchPrefix}
@@ -546,7 +574,7 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
                     {String(batchStartNum + 1).padStart(2, '0')}
                   </b>{' '}
                   … ({batchCount} phòng)
-                </p>
+                </p>}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -564,13 +592,10 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                     Diện tích trung bình (m²) *
                   </label>
-                  <input
-                    type="number"
+                  <NumberInput
                     min={10}
                     value={batchArea}
-                    onChange={(e) =>
-                      setBatchArea(parseFloat(e.target.value) || 25)
-                    }
+                    onValueChange={setBatchArea}
                     className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl"
                     required
                   />
@@ -588,7 +613,7 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
                 <button
                   data-testid="submit-batch-create-rooms"
                   type="submit"
-                  disabled={isSaving || !floorId}
+                  disabled={isSaving || !floorId || (mode === 'smart' && !rule)}
                   className="px-4 py-2 text-xs font-bold bg-brand-primary hover:bg-brand-hover text-white rounded-xl shadow-sm flex items-center gap-1.5 disabled:opacity-50"
                 >
                   {isSaving ? (

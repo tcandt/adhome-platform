@@ -21,6 +21,7 @@ import {
 import { usePortfolio } from '../../../app/providers/PortfolioContext';
 import { ConsoleRoomDto, ConsoleTenantDto } from '../../../shared/types/portfolio';
 import { MoneyInput } from '../../../shared/ui/MoneyInput';
+import { NumberInput } from '../../../shared/ui/NumberInput';
 
 interface Props {
   isOpen: boolean;
@@ -559,6 +560,7 @@ export const ContractCreationWizardModal: React.FC<Props> = ({
                       setSelectedRoomId(e.target.value);
                       const rm = rooms.find((r) => r.id === e.target.value);
                       if (rm) {
+                        setRentalModel(rm.rentalModel === 'SHARED_ROOM' ? 'SHARED_ROOM' : 'ENTIRE_ROOM');
                         setMonthlyRentVnd(rm.listPriceVnd);
                         setRequiredDepositVnd(rm.listPriceVnd * (rm.depositMonths || 1));
                       }
@@ -589,6 +591,7 @@ export const ContractCreationWizardModal: React.FC<Props> = ({
                       type="button"
                       data-testid="wizard-rental-model-entire"
                       onClick={() => setRentalModel('ENTIRE_ROOM')}
+                      disabled={Boolean(selectedRoom?.activeContract && selectedRoom.rentalModel === 'SHARED_ROOM')}
                       className={`p-3 rounded-xl border text-left transition-all ${
                         rentalModel === 'ENTIRE_ROOM'
                           ? 'border-brand-primary bg-blue-50/60 dark:bg-blue-950/40 ring-1 ring-brand-primary'
@@ -606,6 +609,7 @@ export const ContractCreationWizardModal: React.FC<Props> = ({
                       type="button"
                       data-testid="wizard-rental-model-shared"
                       onClick={() => setRentalModel('SHARED_ROOM')}
+                      disabled={Boolean(selectedRoom?.activeContract && selectedRoom.rentalModel !== 'SHARED_ROOM')}
                       className={`p-3 rounded-xl border text-left transition-all ${
                         rentalModel === 'SHARED_ROOM'
                           ? 'border-brand-primary bg-blue-50/60 dark:bg-blue-950/40 ring-1 ring-brand-primary'
@@ -795,12 +799,11 @@ export const ContractCreationWizardModal: React.FC<Props> = ({
                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                       Thời hạn giữ chỗ (ngày)
                     </label>
-                    <input
-                      type="number"
+                    <NumberInput
                       min={1}
                       max={30}
                       value={holdDays}
-                      onChange={(e) => setHoldDays(Number(e.target.value))}
+                      onValueChange={value => setHoldDays(Math.trunc(value))}
                       className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
                     />
                   </div>

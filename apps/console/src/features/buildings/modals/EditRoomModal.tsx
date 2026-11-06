@@ -14,6 +14,7 @@ import {
   Wifi,
 } from "lucide-react";
 import { MoneyInput } from "@/shared/ui/MoneyInput";
+import { NumberInput } from "@/shared/ui/NumberInput";
 import { HunonicSettingsModal } from "@/features/modules/modals/HunonicSettingsModal";
 import { useAuth } from "@/app/providers/AuthContext";
 import { usePortfolio } from "@/app/providers/PortfolioContext";
@@ -284,12 +285,11 @@ export const EditRoomModal: React.FC<EditRoomModalProps> = ({
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                     Diện tích (m²)
                   </label>
-                  <input
-                    type="number"
+                  <NumberInput
                     min={10}
                     step={0.5}
                     value={area}
-                    onChange={(e) => setArea(parseFloat(e.target.value) || 0)}
+                    onValueChange={setArea}
                     className="w-full min-h-11 text-sm px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl"
                   />
                 </div>
@@ -297,14 +297,11 @@ export const EditRoomModal: React.FC<EditRoomModalProps> = ({
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                     Tháng cọc
                   </label>
-                  <input
-                    type="number"
+                  <NumberInput
                     min={0}
                     max={12}
                     value={depositMonths}
-                    onChange={(e) =>
-                      setDepositMonths(parseInt(e.target.value, 10) || 1)
-                    }
+                    onValueChange={value => setDepositMonths(Math.trunc(value))}
                     className="w-full min-h-11 text-sm px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl"
                   />
                 </div>
@@ -312,14 +309,11 @@ export const EditRoomModal: React.FC<EditRoomModalProps> = ({
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                     Tối đa (người)
                   </label>
-                  <input
-                    type="number"
+                  <NumberInput
                     min={1}
                     max={12}
                     value={maxOccupants}
-                    onChange={(e) =>
-                      setMaxOccupants(parseInt(e.target.value, 10) || 1)
-                    }
+                    onValueChange={value => setMaxOccupants(Math.trunc(value))}
                     className="w-full min-h-11 text-sm px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl"
                   />
                 </div>

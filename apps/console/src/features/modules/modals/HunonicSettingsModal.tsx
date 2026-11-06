@@ -23,6 +23,7 @@ import {
 import { CONSOLE_CSRF_HEADER, useAuth } from "@/app/providers/AuthContext";
 import { usePortfolio } from "@/app/providers/PortfolioContext";
 import { MoneyInput } from "@/shared/ui/MoneyInput";
+import { NumberInput } from "@/shared/ui/NumberInput";
 
 type Tab = "api" | "meters" | "tariff" | "schedule" | "history";
 interface Meter {
@@ -1400,7 +1401,7 @@ export const HunonicSettingsModal: React.FC<HunonicSettingsModalProps> = ({
                         <div className="flex items-end gap-3">
                           <div className="min-w-0 flex-1">
                             <label htmlFor="hunonic-sync-minutes" className="mb-1.5 block text-[11px] text-slate-500">Chu kỳ (phút)</label>
-                            <input id="hunonic-sync-minutes" type="number" min="1" max="1440" step="1" value={syncIntervalMinutes} onChange={(event) => setSyncIntervalMinutes(Number(event.target.value))} className={inputClass} />
+                            <NumberInput id="hunonic-sync-minutes" min={1} max={1440} step={1} value={syncIntervalMinutes} onValueChange={setSyncIntervalMinutes} className={inputClass} />
                           </div>
                           <AnimatedButton
                             type="button"

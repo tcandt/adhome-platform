@@ -28,6 +28,7 @@ import { VndAmountInput } from '@/shared/ui/VndAmountInput';
 import { SettingsNavigation } from './SettingsNavigation';
 import { SettingsDialog } from '@/shared/ui/SettingsDialog';
 import { SettingsButton } from '@/shared/ui/SettingsButton';
+import { NumberInput } from '@/shared/ui/NumberInput';
 import { HunonicSettingsModal } from '@/features/modules/modals/HunonicSettingsModal';
 
 interface IntegrationRow {
@@ -619,14 +620,11 @@ export const SettingsWorkspaceView: React.FC = () => {
                   <label className="block text-xs font-semibold mb-1">
                     Số tháng đặt cọc mặc định
                   </label>
-                  <input
-                    type="number"
+                  <NumberInput
                     min={0}
                     max={12}
                     value={defaultDepositMonths}
-                    onChange={(e) =>
-                      setDefaultDepositMonths(parseInt(e.target.value, 10) || 1)
-                    }
+                    onValueChange={value => setDefaultDepositMonths(Math.trunc(value))}
                     className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold"
                   />
                 </div>
@@ -953,22 +951,20 @@ export const SettingsWorkspaceView: React.FC = () => {
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <input
-                        type={job.jobKey === 'HUNONIC_HOURLY_SYNC' ? 'number' : 'text'}
+                      {job.jobKey === 'HUNONIC_HOURLY_SYNC' ? <NumberInput
                         min={job.jobKey === 'HUNONIC_HOURLY_SYNC' ? 1 : undefined}
                         max={job.jobKey === 'HUNONIC_HOURLY_SYNC' ? 1440 : undefined}
                         aria-label={job.jobKey === 'HUNONIC_HOURLY_SYNC' ? 'Chu kỳ đồng bộ Hunonic theo phút' : undefined}
-                        value={job.jobKey === 'HUNONIC_HOURLY_SYNC' ? cronToMinutes(job.cronExpression) : job.cronExpression}
-                        onChange={(e) => {
-                          const val = e.target.value;
+                        value={cronToMinutes(job.cronExpression)}
+                        onValueChange={(value) => {
                           setCronJobs((prev) =>
                             prev.map((j, i) =>
-                              i === idx ? { ...j, cronExpression: job.jobKey === 'HUNONIC_HOURLY_SYNC' ? Number(val) < 60 ? `*/${Number(val)} * * * *` : Number(val) === 1440 ? '0 0 * * *' : `0 */${Math.max(1, Math.trunc(Number(val) / 60))} * * *` : val } : j
+                              i === idx ? { ...j, cronExpression: value < 60 ? `*/${Math.trunc(value)} * * * *` : value === 1440 ? '0 0 * * *' : `0 */${Math.max(1, Math.trunc(value / 60))} * * *` } : j
                             )
                           );
                         }}
                         className="w-36 px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-xs"
-                      />
+                      /> : <input type="text" value={job.cronExpression} onChange={e => setCronJobs(prev => prev.map((j, i) => i === idx ? { ...j, cronExpression: e.target.value } : j))} className="w-36 px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-xs" />}
                       <label className="inline-flex items-center gap-1.5 cursor-pointer">
                         <input
                           type="checkbox"

@@ -58,6 +58,13 @@ interface SyncJob {
   completedAt?: string | null;
   errorMessage?: string;
 }
+interface TariffHistoryItem {
+  id: string;
+  actorEmail: string;
+  summary: string;
+  createdAt: string;
+  metadata?: { rootId?: string; mode?: string; rateVnd?: number };
+}
 export interface HunonicSettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -153,6 +160,10 @@ export const HunonicSettingsModal: React.FC<HunonicSettingsModalProps> = ({
   const [tariffMode, setTariffMode] = useState<"custom" | "residential">(
     "custom",
   );
+  const [tariffLoading, setTariffLoading] = useState(false);
+  const [tariffLoadedAt, setTariffLoadedAt] = useState<string | null>(null);
+  const [tariffHistory, setTariffHistory] = useState<TariffHistoryItem[]>([]);
+  const [tariffLoaded, setTariffLoaded] = useState(false);
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const generation = useRef(0);
 
@@ -168,6 +179,9 @@ export const HunonicSettingsModal: React.FC<HunonicSettingsModalProps> = ({
     setPassword("");
     setShowPassword(false);
     setConnected(false);
+    setTariffLoaded(false);
+    setTariffLoadedAt(null);
+    setTariffHistory([]);
     setLoading(true);
     Promise.all([request("config"), request("meters"), request("sync-jobs")])
       .then(([config, list, history]) => {
@@ -201,6 +215,46 @@ export const HunonicSettingsModal: React.FC<HunonicSettingsModalProps> = ({
   useEffect(() => {
     bodyRef.current?.scrollTo(0, 0);
   }, [activeTab]);
+  useEffect(() => {
+    if (!isOpen || activeTab !== "tariff" || !connected || tariffLoaded || tariffLoading)
+      return;
+    const version = generation.current;
+    setTariffLoading(true);
+    request("tariff")
+      .then((data) => {
+        if (generation.current !== version) return;
+        const tariffs = new Map<string, { mode: string | null; rateVnd: number | null; verifiedAt: string | null; error?: string | null }>(
+          (data.tariffs || []).map((item: any) => [item.rootId, item]),
+        );
+        const nextMeters = meters.map((meter) => {
+          const current = tariffs.get(meter.hunonicDeviceId || "");
+          return current
+            ? { ...meter, tariffMode: current.mode, tariffRateVnd: current.rateVnd, tariffVerifiedAt: current.verifiedAt }
+            : meter;
+        });
+        setMeters(nextMeters);
+        setTariffHistory(data.history || []);
+        setTariffLoadedAt(data.loadedAt || null);
+        setTariffLoaded(true);
+        const configured = nextMeters.filter((meter) => meter.tariffMode && meter.tariffRateVnd != null);
+        if (configured.length) {
+          const firstMode = configured[0].tariffMode as "custom" | "residential";
+          const sameMode = configured.every((meter) => meter.tariffMode === firstMode);
+          const sameRate = configured.every((meter) => meter.tariffRateVnd === configured[0].tariffRateVnd);
+          if (sameMode) setTariffMode(firstMode);
+          if (sameMode && sameRate && configured[0].tariffRateVnd != null) setRate(configured[0].tariffRateVnd);
+        }
+      })
+      .catch((error) => {
+        if (generation.current === version) {
+          setTariffLoaded(true);
+          setMessage({ error: true, text: error instanceof Error ? error.message : "Không tải được biểu giá Hunonic." });
+        }
+      })
+      .finally(() => {
+        if (generation.current === version) setTariffLoading(false);
+      });
+  }, [activeTab, connected, isOpen, meters, tariffLoaded, tariffLoading]);
 
   async function run(action: (current: () => boolean) => Promise<void>) {
     if (busy) return;
@@ -911,8 +965,30 @@ export const HunonicSettingsModal: React.FC<HunonicSettingsModalProps> = ({
                       className="space-y-4"
                       data-testid="card-hunonic-tariff-versioning"
                     >
+                      {tariffLoading && (
+                        <div role="status" className="flex min-h-11 items-center justify-between gap-3 rounded-lg border border-blue-100 bg-blue-50 px-3 text-xs text-blue-700 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-300">
+                          <span>Đang đọc cấu hình thực từ Hunonic</span>
+                          <ShimmeringText text="Đang tải…" color="currentColor" shimmeringColor="#93c5fd" duration={1.4} />
+                        </div>
+                      )}
+                      {!tariffLoading && tariffLoadedAt && (
+                        <div className="flex items-center justify-between gap-3 text-[11px] text-slate-500">
+                          <span>Đã đọc trực tiếp từ Hunonic</span>
+                          <span className="flex items-center gap-2">
+                            {dateLabel(tariffLoadedAt)}
+                            <AnimatedButton
+                              type="button"
+                              aria-label="Tải lại biểu giá từ Hunonic"
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700"
+                              onClick={() => setTariffLoaded(false)}
+                            >
+                              <RefreshCw className="h-3.5 w-3.5" />
+                            </AnimatedButton>
+                          </span>
+                        </div>
+                      )}
                       <fieldset
-                        disabled={busy}
+                        disabled={busy || tariffLoading}
                         className="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700"
                       >
                         <label className="flex min-h-11 items-center gap-3 border-b border-slate-100 px-3 text-xs font-semibold dark:border-slate-700">
@@ -976,13 +1052,15 @@ export const HunonicSettingsModal: React.FC<HunonicSettingsModalProps> = ({
                                   meter.hunonicDeviceId!,
                                 )}
                                 onChange={(event) =>
-                                  setSelectedDeviceIds((ids) =>
-                                    event.target.checked
+                                  setSelectedDeviceIds((ids) => {
+                                    if (event.target.checked && meter.tariffMode) {
+                                      setTariffMode(meter.tariffMode as "custom" | "residential");
+                                      if (meter.tariffRateVnd != null) setRate(meter.tariffRateVnd);
+                                    }
+                                    return event.target.checked
                                       ? [...ids, meter.hunonicDeviceId!]
-                                      : ids.filter(
-                                          (id) => id !== meter.hunonicDeviceId,
-                                        ),
-                                  )
+                                      : ids.filter((id) => id !== meter.hunonicDeviceId);
+                                  })
                                 }
                                 className="h-4 w-4 shrink-0 accent-blue-600"
                               />
@@ -999,13 +1077,15 @@ export const HunonicSettingsModal: React.FC<HunonicSettingsModalProps> = ({
                                 {meter.tariffVerifiedAt && meter.tariffRateVnd != null ? (
                                   <>
                                     <span className="block font-semibold text-emerald-700 dark:text-emerald-300">
-                                      {meter.tariffRateVnd.toLocaleString('vi-VN')} đ/kWh
+                                      {meter.tariffMode === 'residential'
+                                        ? 'Theo bậc EVN'
+                                        : `${meter.tariffRateVnd.toLocaleString('vi-VN')} đ/kWh`}
                                     </span>
                                     <span className="block text-[10px] text-slate-500">
                                       {meter.tariffMode === 'residential' ? 'EVN · ' : 'Cố định · '}Đã xác minh
                                     </span>
                                   </>
-                                ) : <span className="text-slate-400">Chưa xác minh giá</span>}
+                                ) : <span className="text-slate-400">Chưa đọc được giá</span>}
                               </span>
                             </label>
                           ))}
@@ -1018,7 +1098,7 @@ export const HunonicSettingsModal: React.FC<HunonicSettingsModalProps> = ({
                           </label>
                           <select
                             aria-label="Loại biểu giá"
-                            disabled={busy}
+                            disabled={busy || tariffLoading}
                             value={tariffMode}
                             onChange={(event) =>
                               setTariffMode(
@@ -1038,7 +1118,7 @@ export const HunonicSettingsModal: React.FC<HunonicSettingsModalProps> = ({
                             <p className="mb-2 text-xs">Đơn giá (đ/kWh)</p>
                             <MoneyInput
                               className="h-11"
-                              disabled={busy}
+                              disabled={busy || tariffLoading}
                               value={rate}
                               onChange={setRate}
                             />
@@ -1137,6 +1217,7 @@ export const HunonicSettingsModal: React.FC<HunonicSettingsModalProps> = ({
                               })));
                               setInventoryAt(list.syncedAt || null);
                               if (failed.length) {
+                                setTariffLoaded(false);
                                 setSelectedDeviceIds(
                                   failed.map((item) => item.id),
                                 );
@@ -1150,6 +1231,7 @@ export const HunonicSettingsModal: React.FC<HunonicSettingsModalProps> = ({
                                 error: false,
                                 text: `Đã xác minh biểu giá cho ${targets.length} công tơ.`,
                               });
+                              setTariffLoaded(false);
                             })
                           }
                         >
@@ -1189,6 +1271,24 @@ export const HunonicSettingsModal: React.FC<HunonicSettingsModalProps> = ({
                           </ul>
                         </details>
                       )}
+                      <details className="rounded-lg border border-slate-200 px-3 py-2 text-xs dark:border-slate-700">
+                        <summary className="cursor-pointer font-semibold">Lịch sử thiết lập ({tariffHistory.length})</summary>
+                        {!tariffHistory.length ? (
+                          <p className="py-3 text-[11px] text-slate-500">Chưa có lần thay đổi biểu giá được ghi nhận.</p>
+                        ) : (
+                          <div className="mt-2 divide-y divide-slate-100 dark:divide-slate-800">
+                            {tariffHistory.map((item) => (
+                              <div key={item.id} className="py-2">
+                                <div className="flex items-center justify-between gap-3">
+                                  <span className="font-medium">{item.metadata?.mode === "residential" ? "EVN" : item.metadata?.mode === "custom" ? "Tự thiết lập" : "Cập nhật biểu giá"}</span>
+                                  <span className="text-[10px] text-slate-400">{dateLabel(item.createdAt)}</span>
+                                </div>
+                                <p className="mt-1 break-words text-[11px] text-slate-500">{item.metadata?.rootId ? `${item.metadata.rootId} · ` : ""}{item.metadata?.rateVnd != null ? `${item.metadata.rateVnd.toLocaleString("vi-VN")} đ/kWh · ` : ""}{item.actorEmail}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </details>
                     </div>
                   )}
                   {activeTab === "schedule" && (

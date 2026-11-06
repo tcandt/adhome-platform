@@ -1,3 +1,13 @@
+import { availableDeposit, allocateInitialReceipt, vnd } from './rentalFinance';
+import { handleRentalWorkflow, saveRentalProfile } from './rentalWorkflowApi';
+import { handleDataManagement } from './dataManagementApi';
+import { handleContractDocuments } from './contractDocumentsApi';
+import { handlePaymentIntegrations } from './paymentIntegrationApi';
+import { handleZaloBotSettings } from './zaloBotSettings';
+import { splitSharedCharge, sharedWaterCharge } from './sharedRoomBilling';
+import { handleConsoleRoomImages, publicRoomImages, roomImages } from './roomImagesApi';
+import { normalizeBuildingLandlord, readBuildingLandlords, writeBuildingLandlord } from './buildingLandlord';
+import { readHunonicHistory } from "./hunonicHistory";
 import crypto from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Prisma, type PrismaClient } from '@prisma/client';
@@ -19,8 +29,12 @@ import {
   type HunonicJsonSnapshot,
   readJsonSnapshot,
   exportAtomicJsonSnapshot,
+  cacheHunonicInventory,
+  isHunonicInventoryForAccount,
 } from './hunonicAdapter';
 import { executeHunonicBackgroundSync } from './hunonicSyncWorker';
+import { readHunonicCredentials } from './hunonicCredentials';
+import { serializeHunonicInventory } from './hunonicInventory';
 
 export interface ConsoleBusinessApiDeps {
   executeSeoSyncJobWithRetry: (
@@ -284,7 +298,7 @@ async function handleWithIdempotency(
       return sendJson(res, statusCode, {
         ok: false,
         errorCode: err.errorCode || 'INTERNAL_ERROR',
-        message: err.message || 'Lỗi xử lý nghiệp vụ.',
+        message: statusCode < 500 ? err.message || 'Kiểm tra lại thông tin.' : 'Không thể lưu giao dịch. Vui lòng thử lại hoặc liên hệ quản lý.',
       });
     }
   }
@@ -442,7 +456,7 @@ async function handleWithIdempotency(
           responseBody: {
             ok: false,
             errorCode: err.errorCode || 'INTERNAL_ERROR',
-            message: err.message,
+            message: err.statusCode && err.statusCode < 500 ? err.message : 'Không thể lưu giao dịch. Vui lòng thử lại hoặc liên hệ quản lý.',
           },
         },
       });
@@ -453,7 +467,7 @@ async function handleWithIdempotency(
     return sendJson(res, statusCode, {
       ok: false,
       errorCode: err.errorCode || 'INTERNAL_ERROR',
-      message: err.message || 'Lỗi xử lý nghiệp vụ.',
+      message: statusCode < 500 ? err.message || 'Kiểm tra lại thông tin.' : 'Không thể lưu giao dịch. Vui lòng thử lại hoặc liên hệ quản lý.',
     });
   }
 }
@@ -702,6 +716,7 @@ export async function ensureConsoleV2Bootstrap(
               listPriceVnd: BigInt(pub.price),
               depositMonths: pub.depositMonths,
               maxOccupants: parseMaxOccupantsNumber(pub.maxOccupants),
+              rentalModel: pub.rentalModel || 'ENTIRE_ROOM',
               occupancyStatus: mappedOccupancy,
               furnishedLevel: VALID_FURNISHED_LEVELS.has(pub.furnishedLevel)
                 ? pub.furnishedLevel
@@ -875,6 +890,12 @@ export async function handleConsoleV2Api(
   await ensureConsoleV2Bootstrap(prisma);
 
   const method = req.method || 'GET';
+  if (await handleConsoleRoomImages(req, res, pathname, prisma, actor)) return;
+  if (await handleZaloBotSettings(req, res, pathname, prisma, actor, { sendJson, readJsonBody })) return;
+  if (await handlePaymentIntegrations(req, res, pathname, prisma, actor, { sendJson, readJsonBody })) return;
+  if (await handleContractDocuments(req, res, pathname, prisma, actor, { sendJson, readJsonBody })) return;
+  if (await handleRentalWorkflow(req, res, pathname, prisma, actor, { sendJson, readJsonBody, calculateFirstPeriodRent, handleWithIdempotency })) return;
+  if (await handleDataManagement(req, res, pathname, prisma, actor)) return;
   const periodParam = urlObj.searchParams.get('period');
   const activePeriod =
     periodParam && /^\d{4}-\d{2}$/.test(periodParam)
@@ -1065,6 +1086,8 @@ export async function handleConsoleV2Api(
         return bId ? effectiveBuildingSet.has(bId) : actor.role === 'ADMIN';
       });
 
+    const canReadLandlord = actorHasPermission(actor, 'buildings.manage') || actorHasPermission(actor, 'contracts.manage');
+    const buildingLandlords = canReadLandlord ? await readBuildingLandlords(prisma, actor.orgId, authorizedBuildingIds) : new Map();
     const buildingsDto = authorizedBuildings.map((b) => {
       const bRooms = allAuthorizedRooms.filter(
         (r) => r.buildingId === b.id && r.occupancyStatus !== 'ARCHIVED'
@@ -1083,6 +1106,7 @@ export async function handleConsoleV2Api(
         description: b.description || '',
         managerName: b.managerName || '',
         managerPhone: b.managerPhone || '',
+        landlord: canReadLandlord ? buildingLandlords.get(b.id) || {} : undefined,
         electricRateVnd:
           b.electricRateVnd ?? org?.defaultElectricRateVnd ?? 3800,
         waterBillingMethod:
@@ -1126,6 +1150,9 @@ export async function handleConsoleV2Api(
       activeReservations.map((res) => [res.roomId, res])
     );
 
+    const latestHunonicSnapshot = await readJsonSnapshot(actor.orgId);
+    const cloudDevices = isHunonicInventoryForAccount(latestHunonicSnapshot, readHunonicCredentials(hunonicConn?.credentialsJson).phone) ? latestHunonicSnapshot!.devices || [] : [];
+    const cloudById = new Map(cloudDevices.map(device => [device.id, device]));
     const roomsDto = filteredRooms.map((r) => {
       const contract = contractByRoomId.get(r.id);
       const tenant = contract?.tenant || tenantByRoomId.get(r.id) || null;
@@ -1141,12 +1168,14 @@ export async function handleConsoleV2Api(
         org?.defaultWaterRateVnd ??
         15000;
       const effectiveElectricRateVnd =
+        (r.electricBillingMode === 'HUNONIC_AUTO' && r.electricMeter?.tariffVerifiedAt && r.electricMeter.tariffMode === 'custom' ? r.electricMeter.tariffRateVnd : null) ??
         r.electricRateVnd ??
         r.building.electricRateVnd ??
         org?.defaultElectricRateVnd ??
         3800;
 
       const resv = activeReservationByRoomId.get(r.id);
+      const cloudMeter = r.electricMeter?.hunonicDeviceId ? cloudById.get(r.electricMeter.hunonicDeviceId) : undefined;
 
       return {
         id: r.id,
@@ -1168,6 +1197,7 @@ export async function handleConsoleV2Api(
         occupancyStatus: r.occupancyStatus,
         furnishedLevel: r.furnishedLevel,
         amenities: Array.isArray(r.amenities) ? (r.amenities as string[]) : [],
+        images: roomImages(r.images),
         availableFrom: r.availableFrom,
         waterBillingMethod: r.waterBillingMethod,
         waterRateVnd: r.waterRateVnd,
@@ -1179,13 +1209,18 @@ export async function handleConsoleV2Api(
         isPublishedToLanding: r.isPublishedToLanding,
         publicSlug: r.publicSlug,
         internalNotes: r.internalNotes || '',
-        meterStatus: r.electricMeter?.connectionStatus || 'UNCONFIGURED',
+        meterStatus: cloudMeter?.connectionStatus || 'UNCONFIGURED',
         meterLastSyncedAt: r.electricMeter?.lastSyncedAt?.toISOString() || null,
         electricMeter: r.electricMeter
           ? {
               id: r.electricMeter.id,
               hunonicDeviceId: r.electricMeter.hunonicDeviceId,
               meterSerial: r.electricMeter.meterSerial,
+              deviceName: cloudMeter?.name || null,
+              providerDeviceId: cloudMeter?.providerDeviceId || null,
+              monthReportedKwh: cloudMeter?.monthReportedKwh ?? null,
+              reportedMonth: cloudMeter?.reportedMonth || null,
+              providerReportedAt: cloudMeter?.providerReportedAt || null,
               meterMode: (r.electricMeter as any).meterMode || 'HUNONIC_AUTO',
               meterType: (r.electricMeter as any).meterType || 'ROOM',
               tariffMode: (r.electricMeter as any).tariffMode || 'custom',
@@ -1193,8 +1228,8 @@ export async function handleConsoleV2Api(
               tariffVerifiedAt: (r.electricMeter as any).tariffVerifiedAt?.toISOString() || null,
               readingBasis: (r.electricMeter as any).readingBasis || 'CUMULATIVE',
               connectionStatus: r.electricMeter.connectionStatus,
-              cumulativeKwh: r.electricMeter.cumulativeKwh,
-              instantPowerW: r.electricMeter.instantPowerW,
+              cumulativeKwh: cloudMeter?.cumulativeKwh ?? null,
+              instantPowerW: cloudMeter?.instantPowerW ?? null,
               lastSyncedAt: r.electricMeter.lastSyncedAt?.toISOString() || null,
             }
           : null,
@@ -1239,6 +1274,7 @@ export async function handleConsoleV2Api(
               status: contract.status,
             }
           : null,
+        activeContracts: activeContracts.filter(item => item.roomId === r.id).map(item => ({ id: item.id, contractCode: item.contractCode, tenantId: item.tenantId, tenantName: item.tenant.fullName, status: item.status })),
         unpaidInvoicesCount: unpaid.count,
         unpaidAmountVnd: unpaid.amountVnd,
         updatedAt: r.updatedAt.toISOString(),
@@ -1554,11 +1590,10 @@ export async function handleConsoleV2Api(
     }
 
     const body = await readJsonBody(req);
-    const name = String(body.name || '').trim();
     const rawCode = String(body.code || '')
       .trim()
-      .toUpperCase()
-      .replace(/[^A-Z0-9-]/g, '');
+      .toUpperCase();
+    const name = String(body.name || '').trim() || rawCode;
     const streetAddress = String(body.streetAddress || '').trim();
     const ward = String(body.ward || '').trim();
     const province = String(body.province || '').trim();
@@ -1571,12 +1606,12 @@ export async function handleConsoleV2Api(
       Math.min(20, Math.trunc(Number(body.initialFloorsCount ?? 0) || 0))
     );
 
-    if (!name || !rawCode || !streetAddress || !ward || !province) {
+    if (!/^[A-Z0-9][A-Z0-9.-]*$/.test(rawCode)) {
       return sendJson(res, 422, {
         ok: false,
         errorCode: 'VALIDATION_ERROR',
         message:
-          'Vui lòng điền đầy đủ Tên tòa nhà, Mã tòa nhà, Địa chỉ, Phường/Xã và Tỉnh/Thành.',
+          'Vui lòng nhập mã tòa nhà hợp lệ.',
       });
     }
 
@@ -1596,6 +1631,9 @@ export async function handleConsoleV2Api(
       });
     }
 
+    let landlord: Record<string, string> = {};
+    try { if (body.landlord !== undefined) landlord = normalizeBuildingLandlord(body.landlord); }
+    catch (error: any) { return sendJson(res, 422, { ok: false, message: error.message }); }
     const bldId = `bld-${rawCode.toLowerCase()}-${crypto
       .randomBytes(2)
       .toString('hex')}`;
@@ -1614,14 +1652,16 @@ export async function handleConsoleV2Api(
           ward,
           province,
           buildingType,
-          status: 'ACTIVE',
-          isActive: true,
+          status: body.status === 'ARCHIVED' ? 'ARCHIVED' : 'ACTIVE',
+          isActive: body.status !== 'ARCHIVED',
           description,
           managerName,
           managerPhone,
           displayOrder: currentCount + 1,
         },
       });
+
+      if (body.landlord !== undefined) await writeBuildingLandlord(tx, actor.orgId, bld.id, landlord);
 
       for (let i = 1; i <= initialFloorsCount; i++) {
         await tx.floor.create({
@@ -1652,7 +1692,7 @@ export async function handleConsoleV2Api(
         },
       });
 
-      return bld;
+      return { ...bld, landlord };
     });
 
     return sendJson(res, 201, {
@@ -1760,6 +1800,12 @@ export async function handleConsoleV2Api(
 
     if (method === 'PATCH') {
       const body = await readJsonBody(req);
+      try { if (body.landlord !== undefined) normalizeBuildingLandlord(body.landlord); }
+      catch (error: any) { return sendJson(res, 422, { ok: false, message: error.message }); }
+      if (body.floorsCount !== undefined &&
+        (typeof body.floorsCount !== 'number' || !Number.isInteger(body.floorsCount) || body.floorsCount < 0 || body.floorsCount > 103)) {
+        return sendJson(res, 422, { ok: false, errorCode: 'VALIDATION_ERROR', message: 'Số tầng phải là số nguyên từ 0 đến 103.' });
+      }
       const nextName =
         typeof body.name === 'string' && body.name.trim()
           ? body.name.trim()
@@ -1769,8 +1815,10 @@ export async function handleConsoleV2Api(
           ? body.code
               .trim()
               .toUpperCase()
-              .replace(/[^A-Z0-9-]/g, '')
           : existing.code;
+      if (!/^[A-Z0-9][A-Z0-9.-]*$/.test(nextCode)) {
+        return sendJson(res, 422, { ok: false, errorCode: 'VALIDATION_ERROR', message: 'Mã tòa nhà chỉ gồm chữ không dấu, số, dấu chấm và gạch ngang.' });
+      }
       const nextStatus =
         body.status === 'ARCHIVED' || body.status === 'ACTIVE'
           ? body.status
@@ -1799,21 +1847,51 @@ export async function handleConsoleV2Api(
 
       let seoJobId: string | null = null;
       const updated = await prisma.$transaction(async (tx) => {
+        if (body.floorsCount !== undefined) {
+          const floors = await tx.floor.findMany({
+            where: { buildingId: existing.id },
+            orderBy: { floorNumber: 'desc' },
+            include: { _count: { select: { rooms: true } } },
+          });
+          const target = body.floorsCount as number;
+          if (target < floors.length) {
+            const removed = floors.slice(0, floors.length - target);
+            const occupied = removed.filter(floor => floor._count.rooms > 0);
+            if (occupied.length) {
+              return { ok: false as const, message: `Không thể giảm số tầng: ${occupied.map(floor => floor.name).join(', ')} đang có phòng. Vui lòng chuyển hoặc xóa phòng trước.` };
+            }
+            await tx.floor.deleteMany({ where: { id: { in: removed.map(floor => floor.id) }, buildingId: existing.id } });
+          } else if (target > floors.length) {
+            const used = new Set(floors.map(floor => floor.floorNumber));
+            const available = Array.from({ length: 99 }, (_, i) => i + 1).filter(number => !used.has(number));
+            const needed = target - floors.length;
+            if (needed > available.length) {
+              return { ok: false as const, message: 'Không còn số tầng khả dụng trong khoảng 1 đến 99.' };
+            }
+            await tx.floor.createMany({ data: available.slice(0, needed).map(number => ({
+              id: `FLR-${existing.id}-${number}-${crypto.randomBytes(4).toString('hex')}`,
+              orgId: actor.orgId,
+              buildingId: existing.id,
+              floorNumber: number,
+              name: `Tầng ${number}`,
+            })) });
+          }
+        }
         const bld = await tx.building.update({
           where: { id: existing.id },
           data: {
             name: nextName,
             code: nextCode,
             streetAddress:
-              typeof body.streetAddress === 'string' && body.streetAddress.trim()
+              typeof body.streetAddress === 'string'
                 ? body.streetAddress.trim()
                 : existing.streetAddress,
             ward:
-              typeof body.ward === 'string' && body.ward.trim()
+              typeof body.ward === 'string'
                 ? body.ward.trim()
                 : existing.ward,
             province:
-              typeof body.province === 'string' && body.province.trim()
+              typeof body.province === 'string'
                 ? body.province.trim()
                 : existing.province,
             buildingType:
@@ -1850,6 +1928,10 @@ export async function handleConsoleV2Api(
                 : existing.waterRateVnd,
           },
         });
+
+        const landlords = await readBuildingLandlords(tx, actor.orgId, [existing.id]);
+        const landlord = body.landlord === undefined ? landlords.get(existing.id) || {} : normalizeBuildingLandlord(body.landlord, landlords.get(existing.id));
+        if (body.landlord !== undefined) await writeBuildingLandlord(tx, actor.orgId, existing.id, landlord);
 
         if (nextStatus === 'ARCHIVED') {
           await tx.consoleRoom.updateMany({
@@ -1892,14 +1974,17 @@ export async function handleConsoleV2Api(
           },
         });
 
-        return bld;
+        return { ok: true as const, building: { ...bld, landlord } };
       });
 
+      if (!updated.ok) {
+        return sendJson(res, 409, { ok: false, errorCode: 'FLOOR_COUNT_CONFLICT', message: updated.message });
+      }
       if (seoJobId) {
         await deps.executeSeoSyncJobWithRetry(seoJobId);
       }
 
-      return sendJson(res, 200, { ok: true, building: updated });
+      return sendJson(res, 200, { ok: true, building: updated.building });
     }
 
     // DELETE Building
@@ -2240,7 +2325,7 @@ export async function handleConsoleV2Api(
       const code = String(raw.code || '')
         .trim()
         .toUpperCase()
-        .replace(/[^A-Z0-9-]/g, '');
+        .replace(/[^A-Z0-9.-]/g, '');
       const area = Number(raw.area);
       const listPriceVnd = Math.trunc(Number(raw.listPriceVnd ?? raw.price));
       const depositMonths = Math.max(
@@ -2369,6 +2454,7 @@ export async function handleConsoleV2Api(
               shortTitle: item.title,
               title: item.title,
               roomType: item.roomType,
+              rentalModel: item.rentalModel || 'ENTIRE_ROOM',
               buildingCode: bld.code,
               buildingName: bld.name,
               buildingAddress: `${bld.streetAddress}, ${bld.ward}, ${bld.province}`,
@@ -2392,13 +2478,7 @@ export async function handleConsoleV2Api(
               amenities: item.amenities as Prisma.InputJsonValue,
               furnishedLevel: item.furnishedLevel,
               furnishedLabel: mapFurnishedLabel(item.furnishedLevel),
-              images: [
-                {
-                  url: '/images/rooms/lk01-101-main.webp',
-                  alt: item.title,
-                  caption: item.title,
-                },
-              ] as Prisma.InputJsonValue,
+              images: [] as Prisma.InputJsonValue,
               serviceFees: {
                 electricity: 'Theo đồng hồ riêng từng phòng',
                 water: 'Theo quy định tòa nhà',
@@ -2611,7 +2691,7 @@ export async function handleConsoleV2Api(
           ? body.code
               .trim()
               .toUpperCase()
-              .replace(/[^A-Z0-9-]/g, '')
+              .replace(/[^A-Z0-9.-]/g, '')
           : existing.code;
 
       if (nextCode !== existing.code) {
@@ -2666,6 +2746,9 @@ export async function handleConsoleV2Api(
         VALID_OCCUPANCY_STATUSES.has(body.occupancyStatus)
           ? body.occupancyStatus
           : existing.occupancyStatus;
+      const nextRentalModel = body.rentalModel === undefined ? existing.rentalModel : String(body.rentalModel);
+      if (!['ENTIRE_ROOM', 'SHARED_ROOM'].includes(nextRentalModel)) return sendJson(res, 422, { ok: false, message: 'Dạng phòng không hợp lệ.' });
+      if (nextRentalModel !== existing.rentalModel && await prisma.contract.count({ where: { roomId: existing.id, status: { in: ['DRAFT', ...ACTIVE_CONTRACT_STATUSES] }, rentalModel: { not: nextRentalModel } } })) return sendJson(res, 409, { ok: false, message: 'Không thể đổi dạng phòng khi hợp đồng hiện tại thuộc dạng khác.' });
 
       const nextPublished =
         typeof body.isPublishedToLanding === 'boolean'
@@ -2747,6 +2830,11 @@ export async function handleConsoleV2Api(
 
       let seoJobId: string | null = null;
       const updated = await prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT id FROM "console_rooms" WHERE id = ${existing.id} FOR UPDATE`;
+        if (nextRentalModel !== existing.rentalModel) {
+          const conflicting = await tx.contract.count({ where: { roomId: existing.id, status: { in: ['DRAFT', ...ACTIVE_CONTRACT_STATUSES] }, rentalModel: { not: nextRentalModel } } });
+          if (conflicting) return null;
+        }
         let publicListingId = existing.publicListingId;
         let publicSlug = existing.publicSlug;
 
@@ -2760,6 +2848,7 @@ export async function handleConsoleV2Api(
                 shortTitle: nextTitle,
                 title: nextTitle,
                 roomType: nextRoomType,
+                rentalModel: nextRentalModel,
                 area: nextArea,
                 price: nextPriceVnd,
                 depositMonths: nextDepositMonths,
@@ -2797,6 +2886,7 @@ export async function handleConsoleV2Api(
                 title: nextTitle,
                 roomType: nextRoomType,
                 buildingCode: existing.building.code,
+                rentalModel: nextRentalModel,
                 buildingName: existing.building.name,
                 buildingAddress: `${existing.building.streetAddress}, ${existing.building.ward}, ${existing.building.province}`,
                 floorNumber: existing.floor.floorNumber,
@@ -2817,13 +2907,7 @@ export async function handleConsoleV2Api(
                 amenities: nextAmenities as Prisma.InputJsonValue,
                 furnishedLevel: nextFurnished,
                 furnishedLabel: mapFurnishedLabel(nextFurnished),
-                images: [
-                  {
-                    url: '/images/rooms/lk01-101-main.webp',
-                    alt: nextTitle,
-                    caption: nextTitle,
-                  },
-                ] as Prisma.InputJsonValue,
+                images: publicRoomImages(existing.id, existing.images) as Prisma.InputJsonValue,
                 serviceFees: {
                   electricity: 'Theo đồng hồ riêng từng phòng',
                   water: 'Theo quy định tòa nhà',
@@ -2869,6 +2953,7 @@ export async function handleConsoleV2Api(
             depositMonths: nextDepositMonths,
             maxOccupants: nextMaxOccupants,
             occupancyStatus: nextOccupancy,
+            rentalModel: nextRentalModel,
             furnishedLevel: nextFurnished,
             amenities: nextAmenities as Prisma.InputJsonValue,
             availableFrom: nextAvailableFrom,
@@ -2904,6 +2989,7 @@ export async function handleConsoleV2Api(
 
         return rm;
       });
+      if (!updated) return sendJson(res, 409, { ok: false, message: 'Không thể đổi dạng phòng khi hợp đồng hiện tại thuộc dạng khác.' });
 
       if (seoJobId) {
         await deps.executeSeoSyncJobWithRetry(seoJobId);
@@ -3095,12 +3181,17 @@ export async function handleConsoleV2Api(
           message: 'Vui lòng nhập họ và tên người lưu trú.',
         });
       }
+      if (rm.rentalModel === 'SHARED_ROOM') return sendJson(res, 409, { ok: false, errorCode: 'SHARED_ROOM_CONTRACT_REQUIRED', message: 'Khách ở ghép phải có hợp đồng riêng. Hãy dùng Thêm khách thuê.' });
+      if (relationToPrimary === 'ROOMMATE' || relationToPrimary === 'PRIMARY') return sendJson(res, 409, { ok: false, errorCode: 'WHOLE_ROOM_OCCUPANT_ONLY', message: 'Phòng nguyên căn chỉ thêm người cùng ở trong hợp đồng đại diện.' });
 
       // Check active contract on room to link if any
       const activeContract = await prisma.contract.findFirst({
         where: { roomId: rm.id, status: { in: [...ACTIVE_CONTRACT_STATUSES] } },
       });
 
+      if (!activeContract) return sendJson(res, 409, { ok: false, message: 'Phòng chưa có hợp đồng đại diện.' });
+      const occupiedCount = await prisma.roomOccupant.count({ where: { roomId: rm.id, isActive: true } });
+      if (occupiedCount >= rm.maxOccupants) return sendJson(res, 409, { ok: false, message: 'Phòng đã đủ số người tối đa.' });
       const occ = await prisma.roomOccupant.create({
         data: {
           orgId: actor.orgId,
@@ -3173,7 +3264,8 @@ export async function handleConsoleV2Api(
     }
 
     if (method === 'DELETE') {
-      const body = await readJsonBody(req).catch(() => ({}));
+      if (existing.room.rentalModel === 'SHARED_ROOM' && existing.contractId) return sendJson(res, 409, { ok: false, message: 'Khách ghép có hợp đồng riêng; hãy thanh lý hợp đồng để trả chỗ.' });
+      const body: Record<string, unknown> = await readJsonBody(req).catch(() => ({}));
       const moveOutDate =
         typeof body?.moveOutDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.moveOutDate)
           ? body.moveOutDate
@@ -3212,6 +3304,7 @@ export async function handleConsoleV2Api(
 
     if (method === 'PATCH') {
       const body = await readJsonBody(req);
+      if (existing.room.rentalModel === 'SHARED_ROOM' && existing.contractId && (body.isActive === false || body.moveOutDate || body.relationToPrimary)) return sendJson(res, 409, { ok: false, message: 'Khách ghép có hợp đồng riêng; hãy điều chỉnh hoặc thanh lý hợp đồng.' });
       const dataToUpdate: any = {};
       if (typeof body.fullName === 'string' && body.fullName.trim()) dataToUpdate.fullName = body.fullName.trim();
       if (typeof body.phone === 'string') dataToUpdate.phone = body.phone.trim() || null;
@@ -3255,6 +3348,17 @@ export async function handleConsoleV2Api(
       });
     }
 
+    if (urlObj.searchParams.get('checkDuplicates') === '1') {
+      const phone = normalizeVnPhone(String(urlObj.searchParams.get('phone') || '').trim());
+      const idNumber = String(urlObj.searchParams.get('idNumber') || '').trim();
+      const excludeId = String(urlObj.searchParams.get('excludeId') || '').trim();
+      const where = { orgId: actor.orgId, ...(excludeId ? { id: { not: excludeId } } : {}) };
+      const [phoneMatch, idMatch] = await Promise.all([
+        phone ? prisma.tenant.findFirst({ where: { ...where, normalizedPhone: phone }, select: { id: true } }) : null,
+        idNumber ? prisma.tenant.findFirst({ where: { ...where, idNumber }, select: { id: true } }) : null,
+      ]);
+      return sendJson(res, 200, { ok: true, duplicatePhone: !!phoneMatch, duplicateIdNumber: !!idMatch });
+    }
     const { authorizedBuildings } = await resolveScopedBuildings(prisma, actor, null, true);
     const authorizedBuildingIds = authorizedBuildings.map((b) => b.id);
     const q = String(urlObj.searchParams.get('q') || '').trim().toLowerCase();
@@ -3707,7 +3811,7 @@ export async function handleConsoleV2Api(
       if (item.roomId) {
         room = await prisma.consoleRoom.findUnique({
           where: { id: String(item.roomId).trim() },
-          include: { building: true, contracts: { where: { status: 'ACTIVE' } } },
+          include: { building: true, contracts: { where: { status: { in: ['DRAFT', ...ACTIVE_CONTRACT_STATUSES] } } } },
         });
       } else if (item.roomCode) {
         const roomCode = String(item.roomCode).trim().toUpperCase();
@@ -3717,7 +3821,7 @@ export async function handleConsoleV2Api(
             code: { equals: roomCode, mode: 'insensitive' },
             buildingId: item.buildingId ? String(item.buildingId).trim() : undefined,
           },
-          include: { building: true, contracts: { where: { status: 'ACTIVE' } } },
+          include: { building: true, contracts: { where: { status: { in: ['DRAFT', ...ACTIVE_CONTRACT_STATUSES] } } } },
         });
         if (foundRooms.length === 1) {
           room = foundRooms[0];
@@ -3731,11 +3835,11 @@ export async function handleConsoleV2Api(
       } else if (!authorizedBuildingIds.has(room.buildingId)) {
         errors.push(`Không có quyền truy cập tòa nhà ${room.building?.name || room.buildingId}.`);
       } else {
-        if (room.contracts && room.contracts.length > 0) {
-          if (room.rentalModel === 'ENTIRE_ROOM') {
-            warnings.push(`Phòng ${room.code} hiện đã có hợp đồng hoạt động (${room.contracts[0].contractCode}). Nhập mới sẽ thay thế người thuê chính.`);
-          }
-        }
+        const model = item.rentalModel === 'SHARED_ROOM' ? 'SHARED_ROOM' : item.rentalModel === 'ENTIRE_ROOM' ? 'ENTIRE_ROOM' : room.rentalModel;
+        const people = 1 + (Array.isArray(item.occupants) ? item.occupants.length : 0);
+        if (model === 'SHARED_ROOM' && people !== 1) errors.push('Mỗi khách ghép phải có hợp đồng riêng.');
+        if (room.contracts?.length && (model !== 'SHARED_ROOM' || room.rentalModel !== 'SHARED_ROOM' || room.contracts.some((contract: any) => contract.rentalModel !== 'SHARED_ROOM'))) errors.push('Phòng đang có hợp đồng không tương thích với dạng thuê mới.');
+        if ((room.contracts || []).reduce((sum: number, contract: any) => sum + contract.occupantsCount, 0) + people > room.maxOccupants) errors.push('Số người vượt sức chứa phòng.');
       }
 
       // 2. Validate tenant
@@ -3907,6 +4011,13 @@ export async function handleConsoleV2Api(
             if (!room || room.orgId !== actor.orgId || !authorizedBuildingIds.has(room.buildingId)) {
               continue;
             }
+            await tx.$executeRaw`SELECT id FROM "console_rooms" WHERE id = ${room.id} FOR UPDATE`;
+            const importModel = item.rentalModel === 'SHARED_ROOM' ? 'SHARED_ROOM' : item.rentalModel === 'ENTIRE_ROOM' ? 'ENTIRE_ROOM' : room.rentalModel;
+            const importPeople = 1 + (Array.isArray(item.occupants) ? item.occupants.length : 0);
+            const currentContracts = await tx.contract.findMany({ where: { roomId: room.id, status: { in: ['DRAFT', ...ACTIVE_CONTRACT_STATUSES] } }, select: { rentalModel: true, occupantsCount: true } });
+            if (importModel === 'SHARED_ROOM' && importPeople !== 1 || currentContracts.length && (importModel !== 'SHARED_ROOM' || room.rentalModel !== 'SHARED_ROOM' || currentContracts.some(contract => contract.rentalModel !== 'SHARED_ROOM')) || currentContracts.reduce((sum, contract) => sum + contract.occupantsCount, 0) + importPeople > room.maxOccupants) {
+              importedResults.push({ roomCode: room.code, skipped: true, reason: 'ROOM_MODEL_OR_CAPACITY_CONFLICT' }); continue;
+            }
 
             const fullName = String(item.tenantName || item.fullName || '').trim();
             const rawPhone = String(item.tenantPhone || item.phone || '').trim();
@@ -3968,7 +4079,7 @@ export async function handleConsoleV2Api(
                 roomId: room.id,
                 tenantId: tenant.id,
                 contractCode,
-                rentalModel: item.rentalModel || room.rentalModel || 'ENTIRE_ROOM',
+                rentalModel: importModel,
                 startDate,
                 endDate,
                 signedAt: new Date(startDate),
@@ -4011,9 +4122,10 @@ export async function handleConsoleV2Api(
             // Update ConsoleRoom occupancyStatus
             await tx.consoleRoom.update({
               where: { id: room.id },
-              data: { occupancyStatus: 'OCCUPIED' },
+              data: { occupancyStatus: 'OCCUPIED', rentalModel: importModel },
             });
-            totalRoomsOccupied++;
+            if (room.publicListingId) await tx.publicRoomListing.update({ where: { id: room.publicListingId }, data: { status: 'OCCUPIED', rentalModel: importModel, currentTenantName: importModel === 'SHARED_ROOM' ? null : fullName, currentTenantPhone: importModel === 'SHARED_ROOM' ? null : rawPhone } });
+            if (currentContracts.length === 0) totalRoomsOccupied++;
 
             // Create primary RoomOccupant
             await tx.roomOccupant.create({
@@ -4726,6 +4838,7 @@ export async function handleConsoleV2Api(
       idNumber?: string;
       relationToPrimary?: string;
     }> = Array.isArray(body.coOccupants) ? body.coOccupants : [];
+    if (rentalModel === 'SHARED_ROOM' && (occupantsCount !== 1 || coOccupants.length)) return sendJson(res, 422, { ok: false, message: 'Mỗi khách ghép phải có hợp đồng riêng và một người đứng tên.' });
 
     if (
       !roomId ||
@@ -4816,17 +4929,28 @@ export async function handleConsoleV2Api(
         // Concurrency Row-Level Lock on room row
         await tx.$executeRaw`SELECT id FROM "console_rooms" WHERE id = ${rm.id} FOR UPDATE`;
 
-        const existingActive = await tx.contract.count({
+        const existingContracts = await tx.contract.findMany({
           where: {
             roomId: rm.id,
             status: { in: ['DRAFT', ...ACTIVE_CONTRACT_STATUSES] },
           },
         });
-        if (existingActive > 0) {
+        if (existingContracts.length && (rm.rentalModel !== 'SHARED_ROOM' || rentalModel !== 'SHARED_ROOM' || existingContracts.some(contract => contract.rentalModel !== 'SHARED_ROOM'))) {
           const err: any = new Error(`Phòng ${rm.code} đang có hợp đồng hiệu lực hoặc chờ bàn giao.`);
           err.code = 'ROOM_ALREADY_HAS_CONTRACT';
           err.statusCode = 409;
           throw err;
+        }
+        if (existingContracts.reduce((sum, contract) => sum + contract.occupantsCount, 0) + occupantsCount > rm.maxOccupants) {
+          const err: any = new Error('Phòng ghép đã hết chỗ.');
+          err.code = 'ROOM_CAPACITY_EXCEEDED'; err.statusCode = 409; throw err;
+        }
+        if (existingContracts.some(contract => contract.tenantId === tenant.id)) {
+          const err: any = new Error('Khách đã có hợp đồng tại phòng này.');
+          err.code = 'TENANT_ALREADY_CONTRACTED'; err.statusCode = 409; throw err;
+        }
+        if (rentalModel === 'SHARED_ROOM' && coOccupants.length) {
+          const err: any = new Error('Mỗi khách ghép phải có hợp đồng riêng.'); err.code = 'SHARED_CONTRACT_PER_PERSON'; err.statusCode = 409; throw err;
         }
 
         // Check if room is currently held by an active reservation (P0 Room Conflict)
@@ -4901,6 +5025,8 @@ export async function handleConsoleV2Api(
                 fullName: occ.fullName.trim(),
                 phone: occ.phone?.trim() || null,
                 idNumber: occ.idNumber?.trim() || null,
+                dateOfBirth: (occ as any).birthDate || null,
+                gender: (occ as any).gender || null,
                 relationToPrimary: occ.relationToPrimary || 'ROOMMATE',
                 residenceRegStatus: 'PENDING',
                 moveInDate: startDate,
@@ -4950,7 +5076,7 @@ export async function handleConsoleV2Api(
 
         // Generate First Combined Invoice with Prorate Engine (C4-BILL-01 & C4-BILL-02)
         const firstRentCalc = calculateFirstPeriodRent(
-          String(body.firstPeriodBillingPolicy || org?.billingCyclePolicy || 'CALENDAR_PRORATE'),
+          String(body.firstPeriodBillingPolicy || 'CALENDAR_PRORATE'),
           startDate,
           monthlyRentVnd,
           body.customFirstPeriodVnd !== undefined ? Number(body.customFirstPeriodVnd) : undefined
@@ -5011,13 +5137,14 @@ export async function handleConsoleV2Api(
 
         await tx.consoleRoom.update({
           where: { id: rm.id },
-          data: { occupancyStatus: 'RESERVED' },
+          data: { occupancyStatus: existingContracts.some(contract => contract.status !== 'DRAFT') ? 'OCCUPIED' : 'RESERVED', rentalModel },
         });
         if (rm.publicListingId) {
           await tx.publicRoomListing.update({
             where: { id: rm.publicListingId },
             data: {
-              status: 'RESERVED',
+              status: existingContracts.some(contract => contract.status !== 'DRAFT') ? 'OCCUPIED' : 'RESERVED',
+              rentalModel,
               currentTenantName: null,
               currentTenantPhone: null,
             },
@@ -5025,10 +5152,7 @@ export async function handleConsoleV2Api(
         }
         await tx.tenant.update({
           where: { id: tenant.id },
-          data: {
-            currentRoomId: rm.id,
-            primaryBuildingId: rm.buildingId,
-          },
+          data: { primaryBuildingId: rm.buildingId },
         });
 
         await tx.consoleAuditLog.create({
@@ -5129,6 +5253,7 @@ export async function handleConsoleV2Api(
     const depositSummary = await prisma.deposit.aggregate({
       where: {
         contractId: ct.id,
+        depositType: 'CONTRACT',
         status: { in: ['HELD', 'PAID'] },
       },
       _sum: {
@@ -5157,14 +5282,12 @@ export async function handleConsoleV2Api(
 
       // Check permission for partial deposit handover approval
       const canApproveOverride =
-        actor.role === 'ADMIN' ||
-        actorHasPermission(actor, 'finance.override') ||
-        actorHasPermission(actor, 'contracts.manage');
+        actor.role === 'ADMIN';
       if (!canApproveOverride) {
         return sendJson(res, 403, {
           ok: false,
           errorCode: 'INSUFFICIENT_PERMISSION_OVERRIDE',
-          message: 'Chỉ Quản trị viên (ADMIN) hoặc tài khoản có quyền finance.override mới được phê duyệt bàn giao khi còn nợ cọc.',
+          message: 'Chỉ Quản trị viên (ADMIN) được phê duyệt bàn giao khi còn nợ cọc.',
         });
       }
 
@@ -5191,7 +5314,7 @@ export async function handleConsoleV2Api(
       ct.room.electricMeter ||
       (ct.room.electricRateVnd && ct.room.electricRateVnd > 0)
     );
-    if (isMeteredRoom && (handoverMeterKwh === null || handoverMeterKwh === undefined || isNaN(handoverMeterKwh))) {
+    if (ct.room.rentalModel !== 'SHARED_ROOM' && isMeteredRoom && (handoverMeterKwh === null || handoverMeterKwh === undefined || isNaN(handoverMeterKwh))) {
       return sendJson(res, 422, {
         ok: false,
         errorCode: 'MISSING_INITIAL_METER_READING',
@@ -5200,7 +5323,7 @@ export async function handleConsoleV2Api(
     }
 
     const isWaterMetered = ct.waterBillingMethod === 'PER_M3' || ct.room.waterBillingMethod === 'PER_M3';
-    if (isWaterMetered && (handoverWaterM3 === null || handoverWaterM3 === undefined || isNaN(handoverWaterM3))) {
+    if (ct.room.rentalModel !== 'SHARED_ROOM' && isWaterMetered && (handoverWaterM3 === null || handoverWaterM3 === undefined || isNaN(handoverWaterM3))) {
       return sendJson(res, 422, {
         ok: false,
         errorCode: 'MISSING_INITIAL_WATER_READING',
@@ -5257,6 +5380,11 @@ export async function handleConsoleV2Api(
           throw err;
         }
 
+        const lockedDeposit = await tx.deposit.findMany({ where: { contractId: ct.id, depositType: 'CONTRACT' } });
+        const actualDeposit = lockedDeposit.reduce((sum, d) => sum + availableDeposit(d), 0);
+        if (actualDeposit < Number(freshCt.depositVnd) && (!allowPartialWithApproval || actor.role !== 'ADMIN' || !String(body.depositOverrideReason || body.overrideReason || '').trim())) {
+          throw Object.assign(new Error('Tiền cọc đã thay đổi hoặc chưa đủ. Hãy tải lại trước khi bàn giao.'), { statusCode: 422 });
+        }
         const c = await tx.contract.update({
           where: { id: ct.id },
           data: {
@@ -5276,9 +5404,10 @@ export async function handleConsoleV2Api(
             moveInDate,
           },
         });
+        await tx.tenant.update({ where: { id: ct.tenantId }, data: { currentRoomId: ct.roomId, primaryBuildingId: ct.buildingId } });
 
         // If meter reading provided and meter exists, record baseline reading
-        if (handoverMeterKwh !== null && ct.room.electricMeter) {
+        if (ct.room.rentalModel !== 'SHARED_ROOM' && handoverMeterKwh !== null && ct.room.electricMeter) {
           await tx.meterReading.create({
             data: {
               meterId: ct.room.electricMeter.id,
@@ -5300,8 +5429,8 @@ export async function handleConsoleV2Api(
             where: { id: ct.room.publicListingId },
             data: {
               status: 'OCCUPIED',
-              currentTenantName: handoverTo || ct.tenant.fullName,
-              currentTenantPhone: ct.tenant.phone,
+              currentTenantName: ct.room.rentalModel === 'SHARED_ROOM' ? null : handoverTo || ct.tenant.fullName,
+              currentTenantPhone: ct.room.rentalModel === 'SHARED_ROOM' ? null : ct.tenant.phone,
             },
           });
         }
@@ -5433,7 +5562,7 @@ export async function handleConsoleV2Api(
       prisma,
       actor.orgId,
       'CREATE_RESERVATION',
-      req.headers['idempotency-key'] || body.idempotencyKey,
+      req.headers['idempotency-key'] || (typeof body.idempotencyKey === 'string' ? body.idempotencyKey : undefined),
       { roomId, customerName, customerPhone, holdAmountVnd, expectedMoveIn, holdDays, paymentConfirmed, paymentMethod },
       res,
       async () => {
@@ -5686,8 +5815,8 @@ export async function handleConsoleV2Api(
             return { updatedResv: currentResv, pendingDep: existingPaidDep, alreadyConfirmed: true };
           }
 
-          let pendingDep = currentResv.deposits.find((d) => d.paymentStatus === 'PENDING');
-          const amountToConfirm = pendingDep ? Number(pendingDep.amountVnd) : Number(resv.holdAmountVnd);
+          let pendingDep = currentResv.deposits.find((d) => d.depositType === 'BOOKING' && ['PENDING', 'PARTIALLY_PAID'].includes(d.paymentStatus));
+          const amountToConfirm = pendingDep ? Math.max(0, Number(pendingDep.amountVnd) - Number(pendingDep.paidAmountVnd)) : Number(resv.holdAmountVnd);
 
           if (!pendingDep && amountToConfirm > 0) {
             pendingDep = await tx.deposit.create({
@@ -5818,10 +5947,13 @@ export async function handleConsoleV2Api(
     const resvId = decodeURIComponent(resvCancelMatch[1]);
     const body = await readJsonBody(req);
     const reason = String(body.reason || 'Khách hủy giữ chỗ').trim();
-    const refundAmountVnd = Math.max(0, Math.trunc(Number(body.refundAmountVnd) || 0));
-    const deductionAmountVnd = Math.max(0, Math.trunc(Number(body.deductionAmountVnd) || 0));
+    const refundAmountVnd = vnd(body.refundAmountVnd ?? 0);
+    const deductionAmountVnd = vnd(body.deductionAmountVnd ?? 0);
     const forfeitAmountVnd = Math.max(0, Math.trunc(Number(body.forfeitAmountVnd) || 0));
     const forfeit = Boolean(body.forfeit);
+    const refundPending = body.refundPending === true;
+    for (const n of [body.refundAmountVnd ?? 0, body.deductionAmountVnd ?? 0, body.forfeitAmountVnd ?? 0]) vnd(n);
+    if (!reason) return sendJson(res, 422, { ok: false, message: 'Nhập lý do hủy cọc.' });
 
     // P0-07: Financial permission check - any money movement requires finance.write
     const touchesMoney = refundAmountVnd > 0 || deductionAmountVnd > 0 || forfeitAmountVnd > 0 || forfeit;
@@ -5851,20 +5983,12 @@ export async function handleConsoleV2Api(
         message: 'Không có quyền xử lý giữ chỗ ngoài tòa nhà phụ trách.',
       });
     }
-    if (resv.status !== 'CONFIRMED' && resv.status !== 'PENDING') {
-      return sendJson(res, 422, {
-        ok: false,
-        errorCode: 'INVALID_STATUS',
-        message: `Không thể hủy phiếu giữ chỗ đang ở trạng thái ${resv.status}.`,
-      });
-    }
-
     return handleWithIdempotency(
       prisma,
       actor.orgId,
       'RESERVATION_CANCEL',
       req.headers['idempotency-key'],
-      { resvId, refundAmountVnd, deductionAmountVnd, forfeitAmountVnd, forfeit, reason },
+      { resvId, refundAmountVnd, deductionAmountVnd, forfeitAmountVnd, forfeit, reason, refundPending },
       res,
       async () => {
         const updated = await prisma.$transaction(async (tx) => {
@@ -5897,19 +6021,9 @@ export async function handleConsoleV2Api(
           });
 
           const paidDeposits = freshDeposits.filter(
-            (d) => (d.status === 'HELD' || d.status === 'PARTIALLY_REFUNDED') && d.paymentStatus === 'PAID'
+            (d) => d.depositType === 'BOOKING' && availableDeposit(d) > 0
           );
-          const freshAvailPaid = paidDeposits.reduce((sum, d) => {
-            const avail = Math.max(
-              0,
-              Number(d.paidAmountVnd || 0) -
-                Number(d.refundedVnd || 0) -
-                Number(d.deductedAmountVnd || 0) -
-                Number(d.forfeitedAmountVnd || 0) -
-                Number(d.transferredAmountVnd || 0)
-            );
-            return sum + avail;
-          }, 0);
+          const freshAvailPaid = paidDeposits.reduce((sum, d) => sum + availableDeposit(d), 0);
 
           let targetRefund = refundAmountVnd;
           let targetDeduction = deductionAmountVnd;
@@ -5966,15 +6080,8 @@ export async function handleConsoleV2Api(
           let remForfeit = targetForfeit;
 
           for (const d of freshDeposits) {
-            if (d.paymentStatus === 'PAID' && (d.status === 'HELD' || d.status === 'PARTIALLY_REFUNDED')) {
-              const availDep = Math.max(
-                0,
-                Number(d.paidAmountVnd || 0) -
-                  Number(d.refundedVnd || 0) -
-                  Number(d.deductedAmountVnd || 0) -
-                  Number(d.forfeitedAmountVnd || 0) -
-                  Number(d.transferredAmountVnd || 0)
-              );
+            if (d.depositType === 'BOOKING' && availableDeposit(d) > 0) {
+              const availDep = availableDeposit(d);
               if (availDep <= 0) continue;
 
               let depCap = availDep;
@@ -5994,18 +6101,19 @@ export async function handleConsoleV2Api(
               remForfeit -= allocForfeit;
               depCap -= allocForfeit;
 
-              const nextRefunded = Number(d.refundedVnd || 0) + allocRefund;
+              const nextRefunded = Number(d.refundedVnd || 0) + (refundPending ? 0 : allocRefund);
               const nextDeducted = Number(d.deductedAmountVnd || 0) + allocDeduction;
               const nextForfeited = Number(d.forfeitedAmountVnd || 0) + allocForfeit;
 
-              const totalUsed = nextRefunded + nextDeducted + nextForfeited + Number(d.transferredAmountVnd || 0);
+              const nextTransferred = Number(d.transferredAmountVnd || 0) + (refundPending ? allocRefund : 0);
+              const totalUsed = nextRefunded + nextDeducted + nextForfeited + nextTransferred;
               const isFullyAllocated = totalUsed >= Number(d.paidAmountVnd || 0);
 
               const nextStatus = isFullyAllocated
-                ? (nextRefunded > 0 ? 'REFUNDED' : 'FORFEITED')
+                ? (nextTransferred > 0 ? 'APPLIED_TO_REFUND' : nextRefunded > 0 ? 'REFUNDED' : 'FORFEITED')
                 : 'PARTIALLY_REFUNDED';
               const nextPaymentStatus = isFullyAllocated
-                ? (nextRefunded > 0 ? 'REFUNDED' : 'FORFEITED')
+                ? (nextTransferred > 0 ? 'TRANSFERRED' : nextRefunded > 0 ? 'REFUNDED' : 'FORFEITED')
                 : 'PARTIALLY_PAID';
 
               await tx.deposit.update({
@@ -6014,6 +6122,7 @@ export async function handleConsoleV2Api(
                   status: nextStatus,
                   paymentStatus: nextPaymentStatus,
                   refundedVnd: BigInt(nextRefunded),
+                  transferredAmountVnd: BigInt(nextTransferred),
                   deductedAmountVnd: BigInt(nextDeducted),
                   forfeitedAmountVnd: BigInt(nextForfeited),
                   notes: d.notes
@@ -6021,7 +6130,7 @@ export async function handleConsoleV2Api(
                     : `Phân bổ hủy: Hoàn ${allocRefund.toLocaleString('vi-VN')}đ, Khấu trừ ${allocDeduction.toLocaleString('vi-VN')}đ, Tịch thu ${allocForfeit.toLocaleString('vi-VN')}đ`,
                 },
               });
-            } else if (d.paymentStatus !== 'PAID') {
+            } else if (d.depositType === 'BOOKING' && Number(d.paidAmountVnd) === 0) {
               await tx.deposit.update({
                 where: { id: d.id },
                 data: {
@@ -6043,7 +6152,7 @@ export async function handleConsoleV2Api(
           }
 
           // P0-01: Create Ledger entries ONCE for the entire cancellation transaction
-          if (targetRefund > 0) {
+          if (targetRefund > 0 && !refundPending) {
             await tx.ledgerEntry.create({
               data: {
                 orgId: actor.orgId,
@@ -6062,44 +6171,11 @@ export async function handleConsoleV2Api(
             });
           }
 
-          if (targetDeduction > 0) {
-            await tx.ledgerEntry.create({
-              data: {
-                orgId: actor.orgId,
-                buildingId: currentResv.buildingId,
-                periodKey: getCurrentVnPeriodKey(),
-                entryCode: `PT-${getCurrentVnPeriodKey().replace('-', '')}-${crypto
-                  .randomBytes(2)
-                  .toString('hex')
-                  .toUpperCase()}`,
-                entryType: 'INCOME',
-                category: 'Khấu trừ tiền cọc giữ chỗ',
-                amountVnd: BigInt(targetDeduction),
-                description: `Khấu trừ cọc giữ chỗ ${currentResv.reservationCode} của khách ${currentResv.customerName}`,
-                recordedBy: actor.email,
-              },
-            });
+          if (refundPending && targetRefund > 0) {
+            await tx.deposit.create({ data: { orgId: actor.orgId, reservationId: currentResv.id,
+              depositType: 'CANCELLATION_REFUND', amountVnd: BigInt(targetRefund), paidAmountVnd: BigInt(targetRefund),
+              paymentStatus: 'PENDING', status: 'PENDING_REFUND', notes: `Chờ hoàn phiếu ${currentResv.reservationCode}: ${reason}` } });
           }
-
-          if (targetForfeit > 0) {
-            await tx.ledgerEntry.create({
-              data: {
-                orgId: actor.orgId,
-                buildingId: currentResv.buildingId,
-                periodKey: getCurrentVnPeriodKey(),
-                entryCode: `PT-${getCurrentVnPeriodKey().replace('-', '')}-${crypto
-                  .randomBytes(2)
-                  .toString('hex')
-                  .toUpperCase()}`,
-                entryType: 'INCOME',
-                category: 'Thu phạt hủy hợp đồng/giữ chỗ',
-                amountVnd: BigInt(targetForfeit),
-                description: `Thu phạt hủy cọc giữ chỗ ${currentResv.reservationCode} của khách ${currentResv.customerName}`,
-                recordedBy: actor.email,
-              },
-            });
-          }
-
           await tx.consoleAuditLog.create({
             data: {
               orgId: actor.orgId,
@@ -6111,7 +6187,7 @@ export async function handleConsoleV2Api(
               entityId: currentResv.id,
               action: 'CANCEL_RESERVATION',
               summary: `Hủy phiếu giữ chỗ ${currentResv.reservationCode} (Lý do: ${reason})`,
-              metadata: { clientIp, refundAmountVnd: targetRefund, deductionAmountVnd: targetDeduction, forfeitAmountVnd: targetForfeit },
+              metadata: { clientIp, refundAmountVnd: targetRefund, deductionAmountVnd: targetDeduction, forfeitAmountVnd: targetForfeit, refundPending },
             },
           });
 
@@ -6181,16 +6257,18 @@ export async function handleConsoleV2Api(
           throw err;
         }
 
+        const org = await prisma.organization.findUnique({ where: { id: actor.orgId } });
         const startDate = String(body.startDate || resv.expectedMoveIn || getTodayIsoVn()).trim();
         const endDate = String(body.endDate || '').trim();
         const monthlyRentVnd = Math.trunc(
           Number(body.monthlyRentVnd || resv.room.listPriceVnd || 4500000)
         );
         const requiredDepositVnd = Math.trunc(Number(body.depositVnd ?? monthlyRentVnd));
-        const occupantsCount = Math.max(1, Math.min(12, Math.trunc(Number(body.occupantsCount || 1))));
+        const occupantsCount = 1 + (Array.isArray(body.coOccupants) ? body.coOccupants.length : 0);
         const rentalModel = ['ENTIRE_ROOM', 'SHARED_ROOM'].includes(String(body.rentalModel || ''))
           ? String(body.rentalModel)
           : 'ENTIRE_ROOM';
+        if (rentalModel === 'SHARED_ROOM' && occupantsCount !== 1) throw Object.assign(new Error('Mỗi khách ghép phải có hợp đồng riêng.'), { statusCode: 409 });
         const surplusAction = String(body.surplusAction || 'RENT_CREDIT'); // RENT_CREDIT | REFUND
         if (surplusAction === 'REFUND' && !actorHasPermission(actor, 'finance.write')) {
           const err: any = new Error('Tài khoản không có quyền hoàn tiền cọc dôi dư (yêu cầu finance.write).');
@@ -6286,25 +6364,17 @@ export async function handleConsoleV2Api(
           orderBy: { id: 'asc' },
         });
 
-        const paidBookingDeposits = lockedDeposits.filter(
-          (d) =>
-            (d.status === 'HELD' || d.status === 'PARTIALLY_REFUNDED') &&
-            d.paymentStatus !== 'TRANSFERRED' &&
-            d.transferredToDepositId === null
-        );
-
-        const B = paidBookingDeposits.reduce((sum, d) => {
-          const actualAvail = Math.max(
-            0,
-            Number(d.paidAmountVnd || 0) - Number(d.refundedVnd || 0) - Number(d.deductedAmountVnd || 0)
-          );
-          return sum + actualAvail;
-        }, 0);
-
+        const paidBookingDeposits = lockedDeposits.filter(d => d.depositType === 'BOOKING' && availableDeposit(d) > 0);
+        const B = paidBookingDeposits.reduce((sum, d) => sum + availableDeposit(d), 0);
+        if (body.expectedBookingBalance !== undefined && Number(body.expectedBookingBalance) !== B) {
+          throw Object.assign(new Error('Số dư cọc đã thay đổi. Vui lòng xem lại quyết toán.'), { statusCode: 409 });
+        }
+        vnd(requiredDepositVnd, 'Cọc hợp đồng');
+        if (!Number.isSafeInteger(monthlyRentVnd) || monthlyRentVnd < 500000 || !['RENT_CREDIT', 'REFUND'].includes(surplusAction)) throw Object.assign(new Error('Giá thuê hoặc phương án xử lý dư không hợp lệ.'), { statusCode: 422 });
         const C = requiredDepositVnd;
         // Calculate first period rent with Prorate Engine (C4-BILL-01 & C4-BILL-02)
         const firstRentCalc = calculateFirstPeriodRent(
-          String(body.firstPeriodBillingPolicy || org?.billingCyclePolicy || 'CALENDAR_PRORATE'),
+          String(body.firstPeriodBillingPolicy || 'CALENDAR_PRORATE'),
           startDate,
           monthlyRentVnd,
           body.customFirstPeriodVnd !== undefined ? Number(body.customFirstPeriodVnd) : undefined
@@ -6341,6 +6411,7 @@ export async function handleConsoleV2Api(
           .toString('hex')
           .toUpperCase()}`;
 
+        if (coOccupants.length + 1 > currentResv.room.maxOccupants) throw Object.assign(new Error('Số người vượt sức chứa phòng.'), { statusCode: 422 });
         // Create Contract (DRAFT status, room RESERVED) with proper rate inheritance (C4-HUN-02)
         const ct = await tx.contract.create({
           data: {
@@ -6360,7 +6431,7 @@ export async function handleConsoleV2Api(
             occupantsCount,
             electricRateVnd:
               resv.room.electricBillingMode === 'HUNONIC_AUTO'
-                ? null
+                ? 0
                 : (resv.room.electricRateVnd ?? resv.room.building?.electricRateVnd ?? org?.defaultElectricRateVnd ?? 3800),
             waterBillingMethod:
               resv.room.waterBillingMethod || resv.room.building?.waterBillingMethod || org?.defaultWaterMethod || 'PER_M3',
@@ -6381,7 +6452,9 @@ export async function handleConsoleV2Api(
             tenantId: finalTenantId,
             fullName: finalTenantRecord.fullName,
             phone: finalTenantRecord.phone,
-            idNumber: finalTenantRecord.idNumber,
+            idNumber: (body.documentProfile as any)?.tenant?.idNumber || finalTenantRecord.idNumber,
+            dateOfBirth: (body.documentProfile as any)?.tenant?.birthDate || null,
+            gender: (body.documentProfile as any)?.tenant?.gender || null,
             relationToPrimary: 'PRIMARY',
             residenceRegStatus: finalTenantRecord.residenceRegStatus || 'PENDING',
             moveInDate: startDate,
@@ -6401,6 +6474,8 @@ export async function handleConsoleV2Api(
                 fullName: occ.fullName.trim(),
                 phone: occ.phone?.trim() || null,
                 idNumber: occ.idNumber?.trim() || null,
+                dateOfBirth: (occ as any).birthDate || null,
+                gender: (occ as any).gender || null,
                 relationToPrimary: occ.relationToPrimary || 'ROOMMATE',
                 residenceRegStatus: 'PENDING',
                 moveInDate: startDate,
@@ -6460,13 +6535,7 @@ export async function handleConsoleV2Api(
 
         // Update original booking deposits without altering amountVnd!
         for (const bd of paidBookingDeposits) {
-          const bdAvail = Math.max(
-            0,
-            Number(bd.paidAmountVnd || 0) -
-              Number(bd.refundedVnd || 0) -
-              Number(bd.deductedAmountVnd || 0) -
-              Number(bd.forfeitedAmountVnd || 0)
-          );
+          const bdAvail = availableDeposit(bd);
           await tx.deposit.update({
             where: { id: bd.id },
             data: {
@@ -6590,13 +6659,14 @@ export async function handleConsoleV2Api(
 
         await tx.consoleRoom.update({
           where: { id: resv.roomId },
-          data: { occupancyStatus: 'RESERVED' },
+          data: { occupancyStatus: 'RESERVED', rentalModel },
         });
         if (resv.room.publicListingId) {
           await tx.publicRoomListing.update({
             where: { id: resv.room.publicListingId },
             data: {
               status: 'RESERVED',
+              rentalModel,
               currentTenantName: null,
               currentTenantPhone: null,
             },
@@ -6604,7 +6674,7 @@ export async function handleConsoleV2Api(
         }
         await tx.tenant.update({
           where: { id: finalTenantId },
-          data: { currentRoomId: resv.roomId, primaryBuildingId: resv.buildingId },
+          data: { primaryBuildingId: resv.buildingId },
         });
 
         await tx.consoleAuditLog.create({
@@ -6628,6 +6698,7 @@ export async function handleConsoleV2Api(
           },
         });
 
+        await saveRentalProfile(tx, actor, currentResv.room, ct.id, body.documentProfile);
         return {
           contract: ct,
           invoice,
@@ -6712,8 +6783,8 @@ export async function handleConsoleV2Api(
 
     const depId = decodeURIComponent(depositRefundMatch[1]);
     const body = await readJsonBody(req);
-    const refundAmountVnd = Math.max(0, Math.trunc(Number(body.refundAmountVnd) || 0));
-    const deductionAmountVnd = Math.max(0, Math.trunc(Number(body.deductionAmountVnd) || 0));
+    const refundAmountVnd = vnd(body.refundAmountVnd ?? 0);
+    const deductionAmountVnd = vnd(body.deductionAmountVnd ?? 0);
     const deductionReason = String(body.deductionReason || '').trim();
 
     // P0-01: Deduction reason is mandatory if deductionAmountVnd > 0
@@ -6748,47 +6819,6 @@ export async function handleConsoleV2Api(
         ok: false,
         errorCode: 'FORBIDDEN_BUILDING_SCOPE',
         message: 'Tài khoản không có quyền tài chính trên tòa nhà của khoản cọc này.',
-      });
-    }
-
-    // P0.5: Transferred deposit guard (cannot refund from source record)
-    if (
-      dep.status === 'APPLIED_TO_CONTRACT' ||
-      dep.paymentStatus === 'TRANSFERRED' ||
-      dep.transferredToDepositId !== null
-    ) {
-      return sendJson(res, 422, {
-        ok: false,
-        errorCode: 'DEPOSIT_ALREADY_TRANSFERRED',
-        message:
-          'Khoản cọc đã được chuyển sang hợp đồng khác, không thể hoàn trực tiếp từ bản ghi nguồn.',
-      });
-    }
-
-    // P0.1: Strictly calculate available refund from paidAmountVnd - zero fallback to amountVnd
-    const effectivePaid = Math.max(0, Number(dep.paidAmountVnd || 0));
-    if (effectivePaid <= 0 || (dep.paymentStatus === 'PENDING' && dep.status !== 'PENDING_REFUND')) {
-      return sendJson(res, 422, {
-        ok: false,
-        errorCode: 'DEPOSIT_NOT_COLLECTED',
-        message:
-          'Khoản cọc chưa được thu tiền thực tế, không thể thực hiện hoàn tiền.',
-      });
-    }
-
-    const totalAvailable = Math.max(
-      0,
-      effectivePaid - Number(dep.refundedVnd || 0) - Number(dep.deductedAmountVnd || 0)
-    );
-    if (refundAmountVnd + deductionAmountVnd > totalAvailable) {
-      return sendJson(res, 422, {
-        ok: false,
-        errorCode: 'EXCEEDS_DEPOSIT_BALANCE',
-        message: `Tổng số tiền hoàn (${refundAmountVnd.toLocaleString(
-          'vi-VN'
-        )}đ) và khấu trừ (${deductionAmountVnd.toLocaleString(
-          'vi-VN'
-        )}đ) vượt quá số dư cọc khả dụng (${totalAvailable.toLocaleString('vi-VN')}đ).`,
       });
     }
 
@@ -6837,7 +6867,7 @@ export async function handleConsoleV2Api(
               0,
               currentEffectivePaid -
                 Number(currentDep.refundedVnd || 0) -
-                Number(currentDep.deductedAmountVnd || 0)
+                Number(currentDep.deductedAmountVnd || 0) - Number(currentDep.forfeitedAmountVnd || 0) - Number(currentDep.transferredAmountVnd || 0)
             );
             if (refundAmountVnd + deductionAmountVnd > currentAvail) {
               const err: any = new Error(
@@ -6985,8 +7015,10 @@ export async function handleConsoleV2Api(
     const rawExternalTxId = typeof body.externalTxId === 'string' ? body.externalTxId.trim() : '';
     const payerName = typeof body.payerName === 'string' ? body.payerName.trim() : null;
     const referenceText = typeof body.referenceText === 'string' ? body.referenceText.trim() : null;
+    const initialElectric = body.handoverMeterKwh === '' || body.handoverMeterKwh == null ? null : Number(body.handoverMeterKwh);
+    const initialWater = body.handoverWaterM3 === '' || body.handoverWaterM3 == null ? null : Number(body.handoverWaterM3);
     const clientSpecifiedKey = typeof body.idempotencyKey === 'string' ? body.idempotencyKey.trim() : '';
-    const idKey = (req.headers['idempotency-key'] as string) || clientSpecifiedKey || `pay-${invoiceId}-${rawExternalTxId || Date.now()}`;
+    const idKey = (req.headers['idempotency-key'] as string) || clientSpecifiedKey || `pay-${invoiceId}-${rawExternalTxId || crypto.randomUUID()}`;
 
     if (amountVnd <= 0) {
       return sendJson(res, 422, {
@@ -7029,7 +7061,7 @@ export async function handleConsoleV2Api(
       actor.orgId,
       'INVOICE_PAY',
       idKey,
-      { invoiceId, amountVnd, providerId, externalTxId: rawExternalTxId || null },
+      { invoiceId, amountVnd, providerId, externalTxId: rawExternalTxId || null, initialElectric, initialWater },
       res,
       async () => {
         const externalTxId = rawExternalTxId || `TX-${Date.now()}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
@@ -7077,27 +7109,42 @@ export async function handleConsoleV2Api(
             },
           });
 
-          if (nextStatus === 'PAID' && currentInv.contractId) {
-            const pendingDep = await tx.deposit.findFirst({
-              where: {
-                contractId: currentInv.contractId,
-                depositType: 'CONTRACT',
-                paymentStatus: { in: ['PENDING', 'PARTIALLY_PAID'] },
-              },
-            });
-            if (pendingDep) {
-              await tx.deposit.update({
-                where: { id: pendingDep.id },
-                data: {
-                  paidAmountVnd: pendingDep.amountVnd,
-                  paymentStatus: 'PAID',
-                  receivedAt: new Date(),
-                  status: 'HELD',
-                  notes: pendingDep.notes
-                    ? `${pendingDep.notes} | Đã hoàn tất thanh toán cọc theo hóa đơn ${currentInv.invoiceCode}`
-                    : `Đã hoàn tất thanh toán cọc theo hóa đơn ${currentInv.invoiceCode}`,
-                },
-              });
+          await allocateInitialReceipt(tx, currentInv, nextPaid);
+
+          let handedOver = false;
+          if (nextStatus === 'PAID' && currentInv.contractId && (currentInv.policySnapshot as any)?.type === 'FIRST_COMBINED_INVOICE') {
+            await tx.$executeRaw`SELECT id FROM "contracts" WHERE id = ${currentInv.contractId} FOR UPDATE`;
+            const contract = await tx.contract.findUnique({ where: { id: currentInv.contractId },
+              include: { room: { include: { electricMeter: true } }, tenant: true } });
+            if (contract?.status === 'DRAFT') {
+              const deposits = await tx.deposit.findMany({ where: { contractId: contract.id, depositType: 'CONTRACT' } });
+              if (deposits.reduce((sum, deposit) => sum + availableDeposit(deposit), 0) < Number(contract.depositVnd)) {
+                throw Object.assign(new Error('Hóa đơn đã đủ nhưng cọc hợp đồng chưa đủ để bàn giao. Kiểm tra lại phân bổ tiền.'), { statusCode: 422, errorCode: 'UNPAID_DEPOSIT_REQUIRED' });
+              }
+              const electricRequired = Boolean(contract.room.electricMeter || (contract.room.electricRateVnd && contract.room.electricRateVnd > 0));
+              const waterRequired = contract.waterBillingMethod === 'PER_M3' || contract.room.waterBillingMethod === 'PER_M3';
+              if ((contract.room.rentalModel !== 'SHARED_ROOM' && electricRequired && initialElectric === null) || (contract.room.rentalModel !== 'SHARED_ROOM' && waterRequired && initialWater === null) ||
+                  (initialElectric !== null && (!Number.isFinite(initialElectric) || initialElectric < 0)) ||
+                  (initialWater !== null && (!Number.isFinite(initialWater) || initialWater < 0))) {
+                throw Object.assign(new Error('Nhập chỉ số điện và nước đầu kỳ hợp lệ trước khi thu đủ hóa đơn để bàn giao tự động.'), { statusCode: 422, errorCode: 'MISSING_INITIAL_METER_READING' });
+              }
+              const moveInDate = getTodayIsoVn();
+              await tx.contract.update({ where: { id: contract.id }, data: { status: 'ACTIVE', moveInDate,
+                handoverMeterKwh: initialElectric, handoverWaterM3: initialWater } });
+              await tx.roomOccupant.updateMany({ where: { contractId: contract.id }, data: { isActive: true, occupancyStatus: 'ACTIVE', moveInDate } });
+              await tx.tenant.update({ where: { id: contract.tenantId }, data: { currentRoomId: contract.roomId, primaryBuildingId: contract.buildingId } });
+              if (contract.room.rentalModel !== 'SHARED_ROOM' && initialElectric !== null && contract.room.electricMeter) await tx.meterReading.create({ data: {
+                meterId: contract.room.electricMeter.id, periodKey: getCurrentVnPeriodKey(), readingKwh: initialElectric,
+                source: 'MANUAL_OVERRIDE', recordedByActor: actor.email,
+                overrideReason: `Bàn giao tự động sau thanh toán hóa đơn ${currentInv.invoiceCode}` } });
+              await tx.consoleRoom.update({ where: { id: contract.roomId }, data: { occupancyStatus: 'OCCUPIED' } });
+              if (contract.room.publicListingId) await tx.publicRoomListing.update({ where: { id: contract.room.publicListingId }, data: {
+                status: 'OCCUPIED', currentTenantName: contract.room.rentalModel === 'SHARED_ROOM' ? null : contract.tenant.fullName, currentTenantPhone: contract.room.rentalModel === 'SHARED_ROOM' ? null : contract.tenant.phone } });
+              await tx.consoleAuditLog.create({ data: { orgId: actor.orgId, buildingId: contract.buildingId,
+                actorId: actor.id, actorEmail: actor.email, actorRole: actor.role, entityType: 'CONTRACT', entityId: contract.id,
+                action: 'HANDOVER_ROOM', summary: `Tự động bàn giao phòng ${contract.room.code} sau khi thu đủ hóa đơn ${currentInv.invoiceCode}`,
+                metadata: { clientIp, invoiceId: currentInv.id, initialElectric, initialWater, moveInDate } } });
+              handedOver = true;
             }
           }
 
@@ -7150,7 +7197,7 @@ export async function handleConsoleV2Api(
             },
           });
 
-          return { invoice: updatedInv, transaction: paymentTx, replay: false };
+          return { invoice: updatedInv, transaction: paymentTx, replay: false, handedOver };
         });
 
         return {
@@ -7172,6 +7219,7 @@ export async function handleConsoleV2Api(
             },
             reconcileState: result.transaction.reconcileState,
             replay: result.replay,
+            handedOver: result.handedOver || false,
           },
         };
       }
@@ -7285,26 +7333,7 @@ export async function handleConsoleV2Api(
             },
           });
 
-          if (nextStatus === 'PAID' && currentInv.contractId) {
-            const pendingDep = await tx.deposit.findFirst({
-              where: {
-                contractId: currentInv.contractId,
-                depositType: 'CONTRACT',
-                paymentStatus: { in: ['PENDING', 'PARTIALLY_PAID'] },
-              },
-            });
-            if (pendingDep) {
-              await tx.deposit.update({
-                where: { id: pendingDep.id },
-                data: {
-                  paidAmountVnd: pendingDep.amountVnd,
-                  paymentStatus: 'PAID',
-                  receivedAt: new Date(),
-                  status: 'HELD',
-                },
-              });
-            }
-          }
+          await allocateInitialReceipt(tx, currentInv, nextPaid);
 
           const paymentTx = await tx.paymentTransaction.create({
             data: {
@@ -7374,7 +7403,7 @@ export async function handleConsoleV2Api(
       where: { id: invoiceId },
       include: {
         building: true,
-        room: true,
+        room: { include: { electricMeter: true } },
         tenant: true,
         payments: { orderBy: { verifiedAt: 'desc' } },
       },
@@ -7387,8 +7416,14 @@ export async function handleConsoleV2Api(
       });
     }
 
+    const initialContract = inv.contractId && (inv.policySnapshot as any)?.type === 'FIRST_COMBINED_INVOICE'
+      ? await prisma.contract.findFirst({ where: { id: inv.contractId, orgId: actor.orgId }, select: { status: true, waterBillingMethod: true } }) : null;
     return sendJson(res, 200, {
       ok: true,
+      automaticHandover: initialContract?.status === 'DRAFT' ? {
+        electricRequired: Boolean(inv.room.electricMeter || (inv.room.electricRateVnd && inv.room.electricRateVnd > 0)),
+        waterRequired: initialContract.waterBillingMethod === 'PER_M3' || inv.room.waterBillingMethod === 'PER_M3',
+      } : null,
       invoice: {
         ...inv,
         totalAmountVnd: toSafeVndNumber(inv.totalAmountVnd),
@@ -7567,6 +7602,7 @@ export async function handleConsoleV2Api(
         message: 'Phòng đích trùng với phòng hiện tại.',
       });
     }
+    if (ct.rentalModel !== newRoom.rentalModel) return sendJson(res, 409, { ok: false, message: 'Dạng phòng đích không phù hợp với hợp đồng.' });
 
     try {
       const updated = await prisma.$transaction(async (tx) => {
@@ -7581,6 +7617,10 @@ export async function handleConsoleV2Api(
           const err: any = new Error(`Phòng ${newRoom.code} đang có hợp đồng thuê hoạt động.`);
           err.statusCode = 409;
           throw err;
+        }
+        const remainingInOldRoom = await tx.contract.count({ where: { roomId: ct.roomId, id: { not: ct.id }, status: { in: [...ACTIVE_CONTRACT_STATUSES] } } });
+        if (remainingInOldRoom > 0) {
+          const err: any = new Error('Phòng ghép còn hợp đồng khác; chưa hỗ trợ chuyển riêng một hợp đồng sang phòng khác.'); err.statusCode = 409; throw err;
         }
 
         // Release old room
@@ -7715,15 +7755,17 @@ export async function handleConsoleV2Api(
           notes: ct.notes ? `${ct.notes} | [THANH LÝ]: ${reason}` : `[THANH LÝ]: ${reason}`,
         },
       });
+      const remainingContracts = await tx.contract.count({ where: { roomId: ct.roomId, id: { not: ct.id }, status: { in: ['DRAFT', ...ACTIVE_CONTRACT_STATUSES] } } });
+      const effectiveRoomStatus = remainingContracts ? 'OCCUPIED' : roomNextStatus;
 
       await tx.consoleRoom.update({
         where: { id: ct.roomId },
-        data: { occupancyStatus: roomNextStatus },
+        data: { occupancyStatus: effectiveRoomStatus },
       });
       if (ct.room.publicListingId) {
         await tx.publicRoomListing.update({
           where: { id: ct.room.publicListingId },
-          data: { status: roomNextStatus === 'MAINTENANCE' ? 'MAINTENANCE' : 'AVAILABLE' },
+          data: { status: effectiveRoomStatus === 'MAINTENANCE' ? 'MAINTENANCE' : effectiveRoomStatus },
         });
       }
 
@@ -7793,207 +7835,19 @@ export async function handleConsoleV2Api(
     );
     const bldIds = hunonicScoped.selectedBuildingIds;
 
-    const allowMock =
-      process.env.HUNONIC_ALLOW_MOCK === 'true' ||
-      process.env.HUNONIC_MOCK_MODE === 'true' ||
-      process.env.NODE_ENV === 'test';
-
-    const conn = await prisma.integrationConnection.findUnique({
-      where: { orgId_providerId: { orgId: actor.orgId, providerId: 'HUNONIC' } },
-    });
-
-    let decryptedSecret = '';
-    if (conn?.credentialsJson && typeof conn.credentialsJson === 'object') {
-      const enc = (conn.credentialsJson as Record<string, unknown>).encryptedSecret;
-      decryptedSecret = decryptSecret(enc) || '';
-    }
-
-    if (!decryptedSecret || !conn?.isEnabled) {
-      if (!allowMock) {
-        return sendJson(res, 422, {
-          ok: false,
-          errorCode: 'HUNONIC_CREDENTIALS_REQUIRED',
-          message:
-            'Chưa cấu hình tài khoản kết nối Hunonic Cloud hoặc kết nối chưa được kích hoạt trong Cài đặt.',
-        });
-      }
-    }
-
-    const phone = decryptedSecret.includes(':')
-      ? decryptedSecret.split(':')[0]
-      : decryptedSecret || (allowMock ? '0901234567' : '');
-    const password = decryptedSecret.includes(':')
-      ? decryptedSecret.split(':')[1]
-      : undefined;
-
-    if (!phone && !allowMock) {
-      return sendJson(res, 422, {
-        ok: false,
-        errorCode: 'HUNONIC_CREDENTIALS_INVALID',
-        message: 'Số điện thoại tài khoản Hunonic Cloud không hợp lệ.',
-      });
-    }
-
-    const hunonicClient = new HunonicCloudClient();
-    let authToken = '';
-    let isMockSession = false;
     try {
-      const loginRes = await hunonicClient.login(phone, password);
-      authToken = loginRes.token;
-      isMockSession = authToken.startsWith('mock_hunonic_token_');
-    } catch (err: any) {
-      if (!allowMock) {
-        return sendJson(res, 502, {
-          ok: false,
-          errorCode: 'HUNONIC_AUTH_FAILED',
-          message: `Đăng nhập Hunonic Cloud thất bại: ${err?.message || 'Không thể xác thực'}.`,
-        });
-      }
-      authToken = 'mock_hunonic_token_sandbox';
-      isMockSession = true;
-    }
-
-    const meters = await prisma.electricMeter.findMany({
-      where: {
-        orgId: actor.orgId,
-        room: { buildingId: { in: bldIds } },
-      },
-      include: { room: { include: { building: true } } },
-    });
-
-    const currentPeriod = getCurrentVnPeriodKey();
-    const results = [];
-    let offlineCount = 0;
-    let staleCount = 0;
-    let syncedCount = 0;
-    let unmappedCount = 0;
-    let anomalousCount = 0;
-
-    for (const m of meters) {
-      const hasMappedDevice = Boolean(m.hunonicDeviceId && m.hunonicDeviceId.trim());
-      if (!hasMappedDevice && !allowMock) {
-        unmappedCount++;
-        results.push({
-          meterId: m.id,
-          roomCode: m.room.code,
-          deviceId: null,
-          status: 'UNCONFIGURED',
-          message: 'Phòng chưa được ánh xạ mã công tơ Hunonic (hunonicDeviceId)',
-          validation: { isValid: false, warning: 'Chưa liên kết thiết bị công tơ' },
-        });
-        continue;
-      }
-
-      const deviceId =
-        m.hunonicDeviceId || (allowMock ? `MOCK-${m.room.building.code}-${m.room.code}` : '');
-      if (!deviceId) continue;
-
-      let telemetry;
-      try {
-        telemetry = await hunonicClient.fetchDeviceTelemetry(
-          authToken,
-          deviceId,
-          m.cumulativeKwh || 120.0
-        );
-      } catch (err: any) {
-        offlineCount++;
-        results.push({
-          meterId: m.id,
-          roomCode: m.room.code,
-          deviceId,
-          status: 'OFFLINE',
-          error: err?.message || 'Không thể đọc dữ liệu thiết bị',
-        });
-        continue;
-      }
-
-      if (telemetry.status === 'OFFLINE') offlineCount++;
-      if (telemetry.status === 'STALE') staleCount++;
-      if (telemetry.status === 'ONLINE') syncedCount++;
-
-      const validation = validateKwhReading(m.cumulativeKwh, telemetry.cumulativeKwh);
-      const isAnomalous = !validation.isValid;
-      if (isAnomalous) anomalousCount++;
-
-      // Distinguish reading sources: MOCK vs HUNONIC_VERIFIED vs FLAGGED_ANOMALOUS
-      const readingSource = isAnomalous
-        ? 'FLAGGED_ANOMALOUS'
-        : isMockSession
-        ? 'MOCK'
-        : 'HUNONIC_VERIFIED';
-
-      await prisma.$transaction(async (tx) => {
-        // Only update meter cumulativeKwh if telemetry is valid!
-        // Anomalous readings are quarantined and never contaminate billable consumption.
-        await tx.electricMeter.update({
-          where: { id: m.id },
-          data: {
-            hunonicDeviceId: m.hunonicDeviceId || (allowMock ? deviceId : null),
-            connectionStatus: isAnomalous ? 'WARNING' : telemetry.status,
-            instantPowerW: telemetry.instantPowerW,
-            ...(validation.isValid ? { cumulativeKwh: telemetry.cumulativeKwh } : {}),
-            lastSyncedAt: new Date(),
-          },
-        });
-
-        await tx.meterReading.create({
-          data: {
-            meterId: m.id,
-            periodKey: currentPeriod,
-            readingKwh: telemetry.cumulativeKwh,
-            source: readingSource,
-            overrideReason: validation.warning || null,
-          },
-        });
+      const snapshot = await executeHunonicBackgroundSync({ prisma, orgId: actor.orgId, actorId: actor.id, buildingIds: bldIds });
+      return sendJson(res, 200, {
+        ok: snapshot.status !== 'ERROR', isMockSession: false,
+        syncedCount: snapshot.summary.syncedMeters, totalMeters: snapshot.summary.totalMeters,
+        offlineCount: snapshot.meters.filter(meter => meter.reading.quality === 'OFFLINE').length,
+        staleCount: snapshot.meters.filter(meter => meter.reading.quality === 'STALE').length,
+        anomalousCount: snapshot.meters.filter(meter => meter.reading.quality === 'SUSPICIOUS').length,
+        unmappedCount: snapshot.meters.filter(meter => meter.reading.quality === 'MISSING').length,
+        message: snapshot.status === 'ERROR' ? 'Chưa lấy được chỉ số từ công tơ đã gán.' : 'Đã cập nhật dữ liệu Hunonic.',
+        meters: snapshot.meters,
       });
-
-      results.push({
-        meterId: m.id,
-        roomCode: m.room.code,
-        deviceId,
-        status: telemetry.status,
-        source: readingSource,
-        instantPowerW: telemetry.instantPowerW,
-        cumulativeKwh: telemetry.cumulativeKwh,
-        isValid: validation.isValid,
-        validation,
-      });
-    }
-
-    await prisma.consoleAuditLog.create({
-      data: {
-        orgId: actor.orgId,
-        actorId: actor.id,
-        actorEmail: actor.email,
-        actorRole: actor.role,
-        entityType: 'INTEGRATION',
-        entityId: conn?.id || actor.orgId,
-        action: 'HUNONIC_SYNC_METERS',
-        summary: `Đồng bộ Hunonic cho ${meters.length} công tơ: ${syncedCount} online, ${offlineCount} offline, ${staleCount} stale, ${anomalousCount} bất thường, ${unmappedCount} chưa map`,
-        metadata: {
-          clientIp,
-          isMockSession,
-          syncedCount,
-          offlineCount,
-          staleCount,
-          anomalousCount,
-          unmappedCount,
-        },
-      },
-    });
-
-    return sendJson(res, 200, {
-      ok: true,
-      isMockSession,
-      syncedCount,
-      offlineCount,
-      staleCount,
-      anomalousCount,
-      unmappedCount,
-      totalMeters: meters.length,
-      meters: results,
-    });
-
+    } catch { return sendJson(res, 502, { ok: false, message: 'Không thể đồng bộ dữ liệu Hunonic. Kiểm tra kết nối và lịch sử đồng bộ.' }); }
   }
 
   // ===========================================================================
@@ -8004,53 +7858,9 @@ export async function handleConsoleV2Api(
   // Console strictly reads persisted atomic JSON snapshot via Internal API. Zero direct Hunonic calls during page load!
   if (method === 'GET' && pathname === '/api/v1/console/integrations/hunonic/snapshot') {
     const cachedSnapshot = await readJsonSnapshot(actor.orgId);
-    if (cachedSnapshot) {
-      return sendJson(res, 200, { ok: true, snapshot: cachedSnapshot, cached: true });
-    }
-
-    // Build initial authoritative snapshot from PostgreSQL state
-    const meters = await prisma.electricMeter.findMany({
-      where: { orgId: actor.orgId },
-      include: { room: { select: { id: true, code: true, buildingId: true } } },
-    });
-
-    const initialSnapshot: HunonicJsonSnapshot = {
-      schemaVersion: 1,
-      orgId: actor.orgId,
-      syncJobId: `init_snap_${Date.now()}`,
-      exportedAt: new Date().toISOString(),
-      status: 'SUCCESS',
-      summary: {
-        totalMeters: meters.length,
-        syncedMeters: meters.length,
-        failedMeters: 0,
-      },
-      meters: meters.map((m) => ({
-        buildingId: m.room.buildingId,
-        roomId: m.roomId,
-        roomCode: m.room.code,
-        meterId: m.id,
-        hunonicDeviceId: m.hunonicDeviceId || `MOCK-${m.room.code}`,
-        meterType: ((m as any).meterType as any) || 'ROOM',
-        provider: 'HUNONIC',
-        reading: {
-          basis: ((m as any).readingBasis as any) || 'CUMULATIVE',
-          valueKwh: m.cumulativeKwh || 125.5,
-          instantPowerW: m.instantPowerW || 0,
-          measuredAt: (m.lastSyncedAt || new Date()).toISOString(),
-          quality: (m.connectionStatus === 'STALE' ? 'STALE' : m.connectionStatus === 'OFFLINE' ? 'OFFLINE' : 'VALID') as any,
-        },
-        tariff: {
-          mode: ((m as any).tariffMode as any) || 'custom',
-          verifiedRateVnd: (m as any).tariffRateVnd || 3800,
-          verifiedAt: ((m as any).tariffVerifiedAt || new Date()).toISOString(),
-        },
-        syncStatus: 'SUCCESS',
-      })),
-    };
-
-    await exportAtomicJsonSnapshot(initialSnapshot);
-    return sendJson(res, 200, { ok: true, snapshot: initialSnapshot, cached: false });
+    const config = await prisma.integrationConnection.findUnique({ where: { orgId_providerId: { orgId: actor.orgId, providerId: 'HUNONIC' } } });
+    const verified = isHunonicInventoryForAccount(cachedSnapshot, readHunonicCredentials(config?.credentialsJson).phone);
+    return sendJson(res, 200, { ok: true, snapshot: verified ? cachedSnapshot : null, cached: verified });
   }
 
   // GET /api/v1/console/integrations/hunonic/meters
@@ -8069,7 +7879,27 @@ export async function handleConsoleV2Api(
       },
       orderBy: { createdAt: 'asc' },
     });
-    return sendJson(res, 200, { ok: true, meters });
+    const snapshot = await readJsonSnapshot(actor.orgId);
+    const config = await prisma.integrationConnection.findUnique({ where: { orgId_providerId: { orgId: actor.orgId, providerId: 'HUNONIC' } } });
+    const verified = isHunonicInventoryForAccount(snapshot, readHunonicCredentials(config?.credentialsJson).phone);
+    return sendJson(res, 200, { ok: true, meters: serializeHunonicInventory(verified ? snapshot!.devices : undefined, meters, verified ? snapshot!.inventoryFetchedAt || null : null), syncedAt: verified ? snapshot!.inventoryFetchedAt : null });
+  }
+
+  // Explicit refresh only: discover real cloud devices without inventing readings.
+  if (method === 'GET' && pathname === '/api/v1/console/integrations/hunonic/devices') {
+    if (!actorHasPermission(actor, 'settings.manage')) return sendJson(res, 403, { ok: false, message: 'Không có quyền tải thiết bị Hunonic.' });
+    const connection = await prisma.integrationConnection.findUnique({ where: { orgId_providerId: { orgId: actor.orgId, providerId: 'HUNONIC' } } });
+    const credentials = readHunonicCredentials(connection?.credentialsJson);
+    if (!connection?.isEnabled || !credentials.phone || !credentials.password) return sendJson(res, 422, { ok: false, message: 'Lưu kết nối Hunonic trước khi tải thiết bị.' });
+    try {
+      const client = new HunonicCloudClient();
+      const session = await client.login(credentials.phone, credentials.password);
+      if (session.token.startsWith('mock_hunonic_token_')) return sendJson(res, 422, { ok: false, message: 'Không thể tải thiết bị thực từ chế độ thử nghiệm.' });
+      const devices = await client.listElectricMeters(session.token);
+      const mapped = await prisma.electricMeter.findMany({ where: { orgId: actor.orgId }, include: { room: { select: { id: true, code: true, buildingId: true } } } });
+      const snapshot = await cacheHunonicInventory(actor.orgId, devices, credentials.phone);
+      return sendJson(res, 200, { ok: true, meters: serializeHunonicInventory(devices, mapped, snapshot.inventoryFetchedAt || null), syncedAt: snapshot.inventoryFetchedAt });
+    } catch { return sendJson(res, 502, { ok: false, message: 'Không thể tải thiết bị từ Hunonic. Kiểm tra lại kết nối.' }); }
   }
 
   // POST /api/v1/console/integrations/hunonic/sync-jobs (Background Sync Worker trigger - HUN-03)
@@ -8086,7 +7916,9 @@ export async function handleConsoleV2Api(
     }
 
     // Trigger async worker in background without blocking the HTTP request!
+    const jobId = `sync_job_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
     executeHunonicBackgroundSync({
+      jobId,
       prisma,
       orgId: actor.orgId,
       actorId: actor.id,
@@ -8099,6 +7931,7 @@ export async function handleConsoleV2Api(
       ok: true,
       message: 'Tiến trình đồng bộ công tơ Hunonic nền đã được khởi tạo.',
       status: 'RUNNING',
+      jobId,
     });
   }
 
@@ -8109,7 +7942,51 @@ export async function handleConsoleV2Api(
       orderBy: { startedAt: 'desc' },
       take: 20,
     });
-    return sendJson(res, 200, { ok: true, syncJobs });
+    const connection = await prisma.integrationConnection.findUnique({ where: { orgId_providerId: { orgId: actor.orgId, providerId: 'HUNONIC' } } });
+    const history = actorHasPermission(actor, 'settings.manage') ? await readHunonicHistory(actor.orgId, readHunonicCredentials(connection?.credentialsJson).phone) : null;
+    return sendJson(res, 200, { ok: true, syncJobs, history });
+  }
+
+  // GET /api/v1/console/integrations/hunonic/tariff (read current provider configuration + audit history)
+  if (method === 'GET' && pathname === '/api/v1/console/integrations/hunonic/tariff') {
+    if (!actorHasPermission(actor, 'settings.manage')) return sendJson(res, 403, { ok: false, message: 'Chỉ Quản trị viên được phép đọc biểu giá Hunonic.' });
+    const connection = await prisma.integrationConnection.findUnique({ where: { orgId_providerId: { orgId: actor.orgId, providerId: 'HUNONIC' } } });
+    const credentials = readHunonicCredentials(connection?.credentialsJson);
+    if (!connection?.isEnabled || !credentials.phone || !credentials.password) return sendJson(res, 422, { ok: false, message: 'Chưa có kết nối Hunonic đã lưu.' });
+    try {
+      const client = new HunonicCloudClient();
+      const session = await client.login(credentials.phone, credentials.password);
+      if (session.token.startsWith('mock_hunonic_token_')) return sendJson(res, 422, { ok: false, message: 'Không thể đọc biểu giá thực trong chế độ thử nghiệm.' });
+      const [devices, mapped, history] = await Promise.all([
+        client.listElectricMeters(session.token),
+        prisma.electricMeter.findMany({ where: { orgId: actor.orgId, hunonicDeviceId: { not: null } }, select: { id: true, hunonicDeviceId: true, tariffMode: true, tariffRateVnd: true, tariffVerifiedAt: true } }),
+        prisma.consoleAuditLog.findMany({ where: { orgId: actor.orgId, action: 'UPDATE_HUNONIC_TARIFF' }, orderBy: { createdAt: 'desc' }, take: 30, select: { id: true, actorEmail: true, summary: true, metadata: true, createdAt: true } }),
+      ]);
+      const byRootId = new Map(mapped.map(meter => [meter.hunonicDeviceId, meter]));
+      const tariffs: Array<Record<string, unknown>> = [];
+      const verifiedAt = new Date();
+      for (let offset = 0; offset < devices.length; offset += 5) {
+        const batch = devices.slice(offset, offset + 5);
+        const results = await Promise.all(batch.map(async device => {
+          const saved = byRootId.get(device.id);
+          try {
+            const groups = await client.fetchElectricityRateGroups(session.token, device.id);
+            const mode = device.electricityGroupId === '2' ? 'residential' : device.electricityGroupId === '1' ? 'custom' : null;
+            const selectedGroup = mode ? groups.find(group => group.id === (mode === 'custom' ? '1' : '2')) : null;
+            const price = selectedGroup?.rates.find(rate => typeof rate.price === 'number' && Number.isFinite(rate.price))?.price ?? null;
+            if (!mode || price === null) return { rootId: device.id, mode, rateVnd: price, verifiedAt: null, error: 'Hunonic chưa trả về đầy đủ nhóm giá đang áp dụng.' };
+            if (saved) await prisma.electricMeter.update({ where: { id: saved.id }, data: { tariffMode: mode, tariffRateVnd: price, tariffVerifiedAt: verifiedAt } });
+            return { rootId: device.id, mode, rateVnd: price, verifiedAt: verifiedAt.toISOString(), error: null };
+          } catch (error) {
+            return { rootId: device.id, mode: saved?.tariffMode || null, rateVnd: saved?.tariffRateVnd ?? null, verifiedAt: saved?.tariffVerifiedAt?.toISOString() || null, error: error instanceof Error ? error.message.replace(/https?:\/\/\S+/g, '[Hunonic]').slice(0, 180) : 'Không đọc được biểu giá.' };
+          }
+        }));
+        tariffs.push(...results);
+      }
+      return sendJson(res, 200, { ok: true, tariffs, loadedAt: verifiedAt.toISOString(), history });
+    } catch (error) {
+      return sendJson(res, 502, { ok: false, message: 'Không thể tải cấu hình biểu giá từ Hunonic.', detail: error instanceof Error ? error.message.replace(/https?:\/\/\S+/g, '[Hunonic]').slice(0, 240) : undefined });
+    }
   }
 
   // POST /api/v1/console/integrations/hunonic/tariff (HUN-02 Tab 3: Read/Write/Verify Tariff)
@@ -8124,14 +8001,25 @@ export async function handleConsoleV2Api(
 
     const body = await readJsonBody(req);
     const mode = body.mode === 'residential' ? 'residential' : 'custom';
-    const customRateVnd = Math.max(0, Math.trunc(Number(body.customRateVnd) || 3800));
+    const customRateVnd = Number(body.customRateVnd);
+    if (mode === 'custom' && (!Number.isSafeInteger(customRateVnd) || customRateVnd < 0)) return sendJson(res, 422, { ok: false, message: 'Đơn giá phải là số nguyên không âm.' });
 
     const client = new HunonicCloudClient();
-    const result = await client.applyElectricityRate('mock_hunonic_token_sandbox', 'root_main', mode, customRateVnd);
+    const rootId = typeof body.rootId === 'string' ? body.rootId.trim() : '';
+    if (!rootId || rootId.startsWith('MOCK-')) return sendJson(res, 422, { ok: false, message: 'Chọn mã thiết bị Hunonic thực để cập nhật biểu giá.' });
+    const connection = await prisma.integrationConnection.findUnique({ where: { orgId_providerId: { orgId: actor.orgId, providerId: 'HUNONIC' } } });
+    const credentials = readHunonicCredentials(connection?.credentialsJson);
+    if (!connection?.isEnabled || !credentials.phone || !credentials.password) return sendJson(res, 422, { ok: false, message: 'Chưa có kết nối Hunonic đã lưu.' });
+    let result;
+    try {
+      const session = await client.login(credentials.phone, credentials.password);
+      if (session.token.startsWith('mock_hunonic_token_')) return sendJson(res, 422, { ok: false, message: 'Không thể xác minh biểu giá thực trong chế độ thử nghiệm.' });
+      result = await client.applyElectricityRate(session.token, rootId, mode, customRateVnd, { phone: credentials.phone, password: credentials.password });
+    } catch (error) { return sendJson(res, 502, { ok: false, errorCode: error instanceof Error && 'code' in error && typeof error.code === 'string' ? error.code : 'HUNONIC_TARIFF_VERIFY_FAILED', message: 'Không thể xác minh biểu giá với Hunonic.', detail: error instanceof Error ? error.message.replace(/https?:\/\/\S+/g, '[Hunonic]').slice(0, 300) : 'Hunonic chưa xác nhận thay đổi.' }); }
 
     // Persist verified tariff to ElectricMeter records
     await prisma.electricMeter.updateMany({
-      where: { orgId: actor.orgId },
+      where: { orgId: actor.orgId, hunonicDeviceId: rootId },
       data: {
         tariffMode: result.mode,
         tariffRateVnd: result.verifiedRateVnd,
@@ -8139,43 +8027,11 @@ export async function handleConsoleV2Api(
       },
     });
 
-    // Update snapshot with verified tariff
-    const meters = await prisma.electricMeter.findMany({
-      where: { orgId: actor.orgId },
-      include: { room: { select: { id: true, code: true, buildingId: true } } },
-    });
-
-    const updatedSnapshot: HunonicJsonSnapshot = {
-      schemaVersion: 1,
-      orgId: actor.orgId,
-      syncJobId: `tariff_update_${Date.now()}`,
-      exportedAt: new Date().toISOString(),
-      status: 'SUCCESS',
-      summary: { totalMeters: meters.length, syncedMeters: meters.length, failedMeters: 0 },
-      meters: meters.map((m) => ({
-        buildingId: m.room.buildingId,
-        roomId: m.roomId,
-        roomCode: m.room.code,
-        meterId: m.id,
-        hunonicDeviceId: m.hunonicDeviceId || `MOCK-${m.room.code}`,
-        meterType: ((m as any).meterType as any) || 'ROOM',
-        provider: 'HUNONIC',
-        reading: {
-          basis: ((m as any).readingBasis as any) || 'CUMULATIVE',
-          valueKwh: m.cumulativeKwh || 125.5,
-          instantPowerW: m.instantPowerW || 0,
-          measuredAt: (m.lastSyncedAt || new Date()).toISOString(),
-          quality: 'VALID',
-        },
-        tariff: {
-          mode: result.mode,
-          verifiedRateVnd: result.verifiedRateVnd,
-          verifiedAt: result.verifiedAt.toISOString(),
-        },
-        syncStatus: 'SUCCESS',
-      })),
-    };
-    await exportAtomicJsonSnapshot(updatedSnapshot);
+    const previousSnapshot = await readJsonSnapshot(actor.orgId);
+    if (previousSnapshot?.inventorySource === 'HUNONIC_V2') {
+      await exportAtomicJsonSnapshot({ ...previousSnapshot, meters: previousSnapshot.meters.map(meter => meter.hunonicDeviceId === rootId
+        ? { ...meter, tariff: { mode: result.mode, verifiedRateVnd: result.verifiedRateVnd, verifiedAt: result.verifiedAt.toISOString() } } : meter) });
+    }
 
     await prisma.consoleAuditLog.create({
       data: {
@@ -8187,7 +8043,7 @@ export async function handleConsoleV2Api(
         entityId: 'HUNONIC_TARIFF',
         action: 'UPDATE_HUNONIC_TARIFF',
         summary: `Cập nhật và xác minh biểu giá Hunonic: mode=${mode}, rate=${result.verifiedRateVnd} đ/kWh`,
-        metadata: { clientIp, mode, rateVnd: result.verifiedRateVnd },
+        metadata: { clientIp, rootId, mode, rateVnd: result.verifiedRateVnd },
       },
     });
 
@@ -8218,6 +8074,20 @@ export async function handleConsoleV2Api(
     const hunonicDeviceId = String(body.hunonicDeviceId || '').trim();
     const meterType = String(body.meterType || 'ROOM').trim();
 
+    // Empty selection removes only this exact mapping; preserve historical readings.
+    if (!roomId && hunonicDeviceId) {
+      const existing = await prisma.electricMeter.findFirst({ where: { orgId: actor.orgId, hunonicDeviceId }, include: { room: true } });
+      if (!existing) return sendJson(res, 200, { ok: true, unassigned: true });
+      if (!isBuildingAllowedForActor(actor, existing.room.buildingId)) return sendJson(res, 403, { ok: false, message: 'Không có quyền bỏ gán thiết bị ngoài phạm vi tòa nhà.' });
+      const previousRoomId = String(body.previousRoomId || '').trim();
+      if (!previousRoomId || existing.roomId !== previousRoomId) return sendJson(res, 409, { ok: false, message: 'Phòng gán đã thay đổi. Vui lòng làm mới danh sách.' });
+      await prisma.electricMeter.updateMany({
+        where: { id: existing.id, orgId: actor.orgId, hunonicDeviceId, roomId: previousRoomId },
+        data: { hunonicDeviceId: null, connectionStatus: 'UNCONFIGURED', instantPowerW: null, cumulativeKwh: null, monthReportedKwh: null, providerEstVnd: null, lastSyncedAt: null, tariffVerifiedAt: null },
+      });
+      return sendJson(res, 200, { ok: true, unassigned: true });
+    }
+
     if (!roomId || !hunonicDeviceId) {
       return sendJson(res, 422, {
         ok: false,
@@ -8226,6 +8096,18 @@ export async function handleConsoleV2Api(
       });
     }
 
+    const assignedConnection = await prisma.integrationConnection.findUnique({ where: { orgId_providerId: { orgId: actor.orgId, providerId: 'HUNONIC' } } });
+    if (!assignedConnection?.isEnabled || assignedConnection.status !== 'VERIFIED') return sendJson(res, 422, { ok: false, message: 'Xác minh lại kết nối Hunonic trước khi gán thiết bị.' });
+    const assignCredentials = readHunonicCredentials(assignedConnection.credentialsJson);
+    let cloudDevice;
+    try {
+      const client = new HunonicCloudClient();
+      const session = await client.login(assignCredentials.phone, assignCredentials.password);
+      const devices = await client.listElectricMeters(session.token);
+      cloudDevice = devices.find(device => device.id === hunonicDeviceId);
+      await cacheHunonicInventory(actor.orgId, devices, assignCredentials.phone);
+    } catch { return sendJson(res, 502, { ok: false, message: 'Không thể xác minh thiết bị hiện tại với Hunonic; chưa thay đổi phòng gán.' }); }
+    if (!cloudDevice) return sendJson(res, 422, { ok: false, message: 'Mã thiết bị không có trong danh sách Hunonic hiện tại.' });
     const room = await prisma.consoleRoom.findUnique({
       where: { id: roomId },
       include: { electricMeter: true },
@@ -8238,6 +8120,8 @@ export async function handleConsoleV2Api(
       });
     }
 
+    if (!isBuildingAllowedForActor(actor, room.buildingId)) return sendJson(res, 403, { ok: false, message: 'Không có quyền gán thiết bị ngoài phạm vi tòa nhà.' });
+    if (room.electricMeter?.hunonicDeviceId && room.electricMeter.hunonicDeviceId !== hunonicDeviceId) return sendJson(res, 409, { ok: false, message: 'Phòng đã có công tơ khác. Dùng thao tác thay công tơ để giữ đúng chỉ số.' });
     // Check if hunonicDeviceId is already assigned to another room
     const dup = await prisma.electricMeter.findFirst({
       where: {
@@ -8262,7 +8146,7 @@ export async function handleConsoleV2Api(
           hunonicDeviceId,
           meterType,
           meterMode: 'HUNONIC_AUTO',
-          connectionStatus: 'ONLINE',
+          connectionStatus: 'UNCONFIGURED',
         },
       });
     } else {
@@ -8274,8 +8158,8 @@ export async function handleConsoleV2Api(
           hunonicDeviceId,
           meterType,
           meterMode: 'HUNONIC_AUTO',
-          connectionStatus: 'ONLINE',
-          cumulativeKwh: 125.5,
+          connectionStatus: 'UNCONFIGURED',
+          cumulativeKwh: null,
         },
       });
     }
@@ -8283,27 +8167,51 @@ export async function handleConsoleV2Api(
     return sendJson(res, 200, { ok: true, meter });
   }
 
-  // POST /api/v1/console/integrations/hunonic/test (Connection test)
-  if (method === 'POST' && pathname === '/api/v1/console/integrations/hunonic/test') {
-    const body = await readJsonBody(req);
-    const phone = String(body.phone || '0901234567').trim();
-    const password = body.password ? String(body.password) : undefined;
+  // Safe connection metadata; credentials never leave the server.
+  if (method === 'GET' && pathname === '/api/v1/console/integrations/hunonic/config') {
+    if (!actorHasPermission(actor, 'settings.manage') && !actorHasPermission(actor, 'settlements.manage')) {
+      return sendJson(res, 403, { ok: false, message: 'Không có quyền xem cấu hình Hunonic.' });
+    }
+    const conn = await prisma.integrationConnection.findUnique({ where: { orgId_providerId: { orgId: actor.orgId, providerId: 'HUNONIC' } } });
+    const credentials = readHunonicCredentials(conn?.credentialsJson);
+    const marker = (conn?.credentialsJson as any)?.verification;
+    const verified = marker?.protocol === 'hunonic-mobile-v2' && marker.phone === credentials.phone;
+    return sendJson(res, 200, { ok: true, connection: { phone: credentials.phone, hasPassword: Boolean(credentials.password), isEnabled: Boolean(conn?.isEnabled), status: conn?.status === 'VERIFIED' && !verified ? 'UNCONFIGURED' : conn?.status || 'UNCONFIGURED', lastTestedAt: conn?.lastTestedAt, lastError: conn?.lastError } });
+  }
 
-    const client = new HunonicCloudClient();
+  if (method === 'POST' && pathname === '/api/v1/console/integrations/hunonic/test') {
+    if (!actorHasPermission(actor, 'settings.manage')) return sendJson(res, 403, { ok: false, message: 'Chỉ quản trị viên được cấu hình kết nối Hunonic.' });
+    const body = await readJsonBody(req);
+    const conn = await prisma.integrationConnection.findUnique({ where: { orgId_providerId: { orgId: actor.orgId, providerId: 'HUNONIC' } } });
+    if (body.isEnabled === false) {
+      if (conn) await prisma.integrationConnection.update({ where: { id: conn.id }, data: { isEnabled: false, status: 'DISABLED' } });
+      return sendJson(res, 200, { ok: true, verified: false, message: 'Đã tắt tích hợp Hunonic.' });
+    }
+    const stored = readHunonicCredentials(conn?.credentialsJson);
+    const phone = typeof body.phone === 'string' ? body.phone.trim() : stored.phone;
+    // Reusing a password for a different account is never implicit.
+    const password = typeof body.password === 'string' && body.password.length ? body.password : phone === stored.phone ? stored.password : undefined;
+    if (!phone || !password) return sendJson(res, 422, { ok: false, errorCode: 'HUNONIC_CREDENTIALS_REQUIRED', message: 'Nhập tài khoản và mật khẩu Hunonic để kết nối.' });
+    let encryptedSecret;
+    try { encryptedSecret = encryptSecret(JSON.stringify({ phone, password })); }
+    catch { return sendJson(res, 503, { ok: false, errorCode: 'CREDENTIALS_VAULT_UNAVAILABLE', message: 'Máy chủ chưa cấu hình khóa mã hóa tài khoản tích hợp.' }); }
     try {
-      const loginRes = await client.login(phone, password);
-      return sendJson(res, 200, {
-        ok: true,
-        message: 'Kết nối máy chủ Hunonic Cloud thành công.',
-        tokenPreview: loginRes.token.slice(0, 10) + '••••',
+      const login = await new HunonicCloudClient().login(phone, password);
+      if (login.token.startsWith('mock_hunonic_token_')) return sendJson(res, 200, { ok: true, verified: false, message: 'Đây là chế độ thử nghiệm; chưa xác minh kết nối Hunonic thực tế.' });
+      const devices = await new HunonicCloudClient().listElectricMeters(login.token);
+      await cacheHunonicInventory(actor.orgId, devices, phone);
+      const verifiedAt = new Date();
+      const values = { isEnabled: true, status: 'VERIFIED', accountLabel: phone, credentialsJson: { phone, encryptedSecret, verification: { protocol: 'hunonic-mobile-v2', phone, verifiedAt: verifiedAt.toISOString() } } as unknown as Prisma.InputJsonValue, secretHint: 'Đã lưu mật khẩu', lastTestedAt: verifiedAt, lastError: null };
+      await prisma.integrationConnection.upsert({
+        where: { orgId_providerId: { orgId: actor.orgId, providerId: 'HUNONIC' } },
+        update: values,
+        create: { orgId: actor.orgId, providerId: 'HUNONIC', category: 'METERING', displayName: 'Đồng hồ điện thông minh Hunonic', ...values },
       });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return sendJson(res, 502, {
-        ok: false,
-        errorCode: 'HUNONIC_CONNECTION_ERROR',
-        message: msg,
-      });
+      await prisma.consoleAuditLog.create({ data: { orgId: actor.orgId, actorId: actor.id, actorEmail: actor.email, actorRole: actor.role, entityType: 'INTEGRATION', entityId: 'HUNONIC', action: 'VERIFY_HUNONIC_CONNECTION', summary: 'Xác minh và lưu kết nối Hunonic', metadata: { clientIp } } });
+      return sendJson(res, 200, { ok: true, verified: true, lastTestedAt: verifiedAt, deviceCount: devices.length, message: `Đã xác minh tài khoản và tải ${devices.length} công tơ từ Hunonic.` });
+    } catch {
+      if (conn) await prisma.integrationConnection.update({ where: { id: conn.id }, data: { status: 'ERROR', lastError: 'Không thể xác thực với Hunonic.', lastTestedAt: new Date() } });
+      return sendJson(res, 502, { ok: false, errorCode: 'HUNONIC_CONNECTION_ERROR', message: 'Không thể xác thực với Hunonic. Kiểm tra tài khoản, mật khẩu hoặc kết nối mạng máy chủ.' });
     }
   }
 
@@ -8675,7 +8583,6 @@ export async function handleConsoleV2Api(
             where: { status: 'ACTIVE' },
             include: { tenant: true },
             orderBy: { createdAt: 'desc' },
-            take: 1,
           },
           electricMeter: true,
           occupants: { where: { isActive: true } },
@@ -8686,20 +8593,24 @@ export async function handleConsoleV2Api(
       let totalBilledVnd = 0;
 
       for (const rm of rooms) {
-        const ct = rm.contracts[0];
-        if (!ct) continue;
-
+        if (!rm.contracts.length) continue;
+        const shared = rm.rentalModel === 'SHARED_ROOM';
+        const contracts = shared ? rm.contracts : rm.contracts.slice(0, 1);
+        const weights = contracts.map(contract => rm.occupants.filter(occupant => occupant.contractId === contract.id).length);
+        if (shared && weights.some(count => count === 0)) throw Object.assign(new Error('Phòng ghép có hợp đồng không có người ở; cần kiểm tra trước khi khóa sổ.'), { statusCode: 409 });
+        const electricShares = shared ? splitSharedCharge((() => { const meter = rm.electricMeter; return meter ? Math.trunc((meter.monthReportedKwh ?? 0) * (meter.tariffRateVnd || 3800)) : 0; })(), weights) : [];
+        for (const [index, ct] of contracts.entries()) {
         const rentVnd = toSafeVndNumber(ct.monthlyRentVnd);
-        const occupantsCount = Math.max(1, rm.occupants.length);
+        const occupantsCount = shared ? weights[index] : Math.max(1, rm.occupants.length);
 
         // Calculate Electric
         let electricVnd = 0;
         const meter = rm.electricMeter;
-        if (meter) {
+        if (meter && !shared) {
           const rate = meter.tariffRateVnd || 3800;
-          const kwh = meter.cumulativeKwh || 120;
-          electricVnd = Math.trunc((kwh % 100 + 10) * rate);
+          electricVnd = Math.trunc((meter.monthReportedKwh ?? 0) * rate);
         }
+        if (shared) electricVnd = electricShares[index];
 
         // Calculate Water
         const waterMethod =
@@ -8714,14 +8625,17 @@ export async function handleConsoleV2Api(
         } else {
           waterVnd = 5 * waterRate;
         }
+        if (shared) waterVnd = sharedWaterCharge(waterMethod, waterRate, occupantsCount, index, weights);
 
         const roomTotal = rentVnd + electricVnd + waterVnd;
         totalBilledVnd += roomTotal;
         totalInvoicesFrozen++;
 
-        const invoiceCode = `INV-${periodKey.replace('-', '')}-${rm.code}`;
+        const invoiceCode = `INV-${periodKey.replace('-', '')}-${rm.code}${shared ? `-${ct.contractCode}` : ''}`;
 
         // Upsert Invoice with frozen policySnapshot
+        const existingInvoice = await tx.invoice.findUnique({ where: { orgId_invoiceCode: { orgId: actor.orgId, invoiceCode } } });
+        if (existingInvoice && (existingInvoice.status === 'PAID' || existingInvoice.status === 'PARTIAL' || existingInvoice.paidAmountVnd > 0n)) throw Object.assign(new Error(`Hóa đơn ${invoiceCode} đã thu tiền; không thể ghi đè khi khóa sổ.`), { statusCode: 409 });
         await tx.invoice.upsert({
           where: {
             orgId_invoiceCode: {
@@ -8778,6 +8692,7 @@ export async function handleConsoleV2Api(
             },
           },
         });
+        }
       }
 
       await tx.consoleAuditLog.create({
@@ -9020,6 +8935,24 @@ export async function handleConsoleV2Api(
       });
     }
 
+    const auditPageMatch = pathname.match(/^\/api\/v1\/console\/v2\/settings\/(business-logs|login-logs)$/);
+    if (method === 'GET' && auditPageMatch) {
+      const page = Number(urlObj.searchParams.get('page') || '1');
+      if (!Number.isInteger(page) || page < 1 || page > 30) return sendJson(res, 422, { ok: false, message: 'Trang nhật ký phải từ 1 đến 30.' });
+      const model = auditPageMatch[1] === 'business-logs' ? prisma.consoleAuditLog : prisma.consoleLoginAudit;
+      const where = auditPageMatch[1] === 'business-logs'
+        ? { orgId: actor.orgId, entityType: { not: 'RENTAL_DOCUMENT' } }
+        : { orgId: actor.orgId };
+      const [total, rows] = await Promise.all([
+        model.count({ where }),
+        model.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip: (page - 1) * 20, take: 20 }),
+      ]);
+      const items = auditPageMatch[1] === 'business-logs'
+        ? rows.map((row: any) => ({ id: row.id, actorEmail: row.actorEmail, actorRole: row.actorRole, entityType: row.entityType, action: row.action, summary: row.summary, createdAt: row.createdAt.toISOString() }))
+        : rows.map((row: any) => ({ id: row.id, emailAttempted: row.emailAttempted, outcome: row.outcome, clientIp: row.clientIp, createdAt: row.createdAt.toISOString() }));
+      return sendJson(res, 200, { ok: true, items, page, pageSize: 20, pageCount: Math.max(1, Math.min(30, Math.ceil(total / 20))), total: Math.min(total, 600) });
+    }
+
     if (method === 'GET' && pathname === '/api/v1/console/v2/settings') {
       const [
         org,
@@ -9027,8 +8960,6 @@ export async function handleConsoleV2Api(
         integrations,
         notificationChannels,
         cronJobs,
-        consoleAudits,
-        loginAudits,
       ] = await Promise.all([
         prisma.organization.findUnique({ where: { id: actor.orgId } }),
         prisma.building.findMany({
@@ -9046,16 +8977,6 @@ export async function handleConsoleV2Api(
         prisma.cronJobConfig.findMany({
           where: { orgId: actor.orgId },
           orderBy: { createdAt: 'asc' },
-        }),
-        prisma.consoleAuditLog.findMany({
-          where: { orgId: actor.orgId },
-          orderBy: { createdAt: 'desc' },
-          take: 40,
-        }),
-        prisma.consoleLoginAudit.findMany({
-          where: { orgId: actor.orgId },
-          orderBy: { createdAt: 'desc' },
-          take: 25,
         }),
       ]);
 
@@ -9132,22 +9053,6 @@ export async function handleConsoleV2Api(
           successCount: j.successCount,
           failureCount: j.failureCount,
           lastError: j.lastError,
-        })),
-        auditLogs: consoleAudits.map((a) => ({
-          id: a.id,
-          actorEmail: a.actorEmail,
-          actorRole: a.actorRole,
-          entityType: a.entityType,
-          action: a.action,
-          summary: a.summary,
-          createdAt: a.createdAt.toISOString(),
-        })),
-        loginAudits: loginAudits.map((l) => ({
-          id: l.id,
-          emailAttempted: l.emailAttempted,
-          outcome: l.outcome,
-          clientIp: l.clientIp,
-          createdAt: l.createdAt.toISOString(),
         })),
       });
     }
@@ -9293,6 +9198,13 @@ export async function handleConsoleV2Api(
         const providerId = String(body.providerId || '')
           .trim()
           .toUpperCase();
+        if (providerId === 'HUNONIC') {
+          return sendJson(res, 409, {
+            ok: false,
+            errorCode: 'HUNONIC_VERIFICATION_REQUIRED',
+            message: 'Kết nối Hunonic cần xác minh qua mục Đồng hồ Hunonic.',
+          });
+        }
         const existing = await prisma.integrationConnection.findUnique({
           where: {
             orgId_providerId: {

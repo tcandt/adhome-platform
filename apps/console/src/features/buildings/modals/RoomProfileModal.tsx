@@ -89,6 +89,7 @@ export const RoomProfileModal: React.FC<Props> = ({
   const albumInput = useRef<HTMLInputElement>(null);
   const [documentContractId, setDocumentContractId] = useState<string | null>(null);
   const [invoiceDetailId, setInvoiceDetailId] = useState<string | null>(null);
+  const [depositDetailId, setDepositDetailId] = useState<string | null>(null);
 
   // New occupant form state
   const [isAddingOccupant, setIsAddingOccupant] = useState<boolean>(false);
@@ -271,6 +272,7 @@ export const RoomProfileModal: React.FC<Props> = ({
   const depositRows = room.rentalModel === 'SHARED_ROOM'
     ? contractDepositRows
     : [...contractDepositRows, ...reservationDepositRows].slice(0, 1);
+  const detailDeposit = depositRows.find((deposit: any) => deposit.id === depositDetailId) || null;
   const canManageContracts = hasCapability("canManageContracts");
   const printInvoice = (invoice: any) => {
     const safe = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character] || character);
@@ -839,8 +841,8 @@ export const RoomProfileModal: React.FC<Props> = ({
                   ) : (
                     <div className="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700" data-testid="room-occupants-table">
                       <table className="w-full table-fixed border-collapse text-left text-xs">
-                        <colgroup><col className="w-10" /><col /><col className="w-[31%]" /><col className="w-14" /></colgroup>
-                        <thead className="bg-slate-50 text-[10px] font-semibold uppercase text-slate-500 dark:bg-slate-800/80 dark:text-slate-400"><tr><th className="px-2 py-2 text-center">STT</th><th className="px-2 py-2">Tên khách hàng</th><th className="px-2 py-2">SĐT</th><th className="px-2 py-2 text-center">Hành động</th></tr></thead>
+                        <colgroup><col className="w-9" /><col /><col className="w-[31%]" /><col className="w-14" /></colgroup>
+                        <thead className="bg-slate-50 text-[9.5px] font-semibold uppercase text-slate-500 dark:bg-slate-800/80 dark:text-slate-400"><tr><th className="whitespace-nowrap px-2 py-2 text-center">#</th><th className="whitespace-nowrap px-2 py-2">Name</th><th className="whitespace-nowrap px-2 py-2">Phone</th><th className="whitespace-nowrap px-1 py-2 text-center">Action</th></tr></thead>
                         <tbody className="divide-y divide-slate-100 bg-white dark:divide-slate-800 dark:bg-[#111827]">{residentRows.map((resident, index) => <tr key={resident.id}><td className="px-2 py-2.5 text-center tabular-nums text-slate-500">{index + 1}</td><td className="break-words px-2 py-2.5 font-semibold text-slate-900 dark:text-white">{resident.fullName}</td><td className="break-all px-2 py-2.5 tabular-nums text-slate-600 dark:text-slate-300">{resident.phone || '—'}</td><td className="px-1 py-1 text-center">{canManageContracts && <ActionMenu ariaLabel={`Hành động cho ${resident.fullName}`} contextTitle={resident.fullName} contextSubtitle={resident.phone || 'Chưa có SĐT'} items={[{ label: 'Xem PDF hợp đồng', icon: <FileText size={16} />, disabled: !resident.contractId, onClick: () => resident.contractId && setDocumentContractId(resident.contractId) }, { label: 'Chỉnh sửa thông tin', icon: <Pencil size={16} />, onClick: () => onAddRental?.(room.id), disabled: !onAddRental }]} />}</td></tr>)}</tbody>
                       </table>
                     </div>
@@ -854,8 +856,8 @@ export const RoomProfileModal: React.FC<Props> = ({
                   {depositRows.length > 0 ? (
                     <div className="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800">
                       <table className="w-full table-fixed text-left text-[10.5px]" data-testid="room-deposits-table">
-                        <thead className="bg-slate-50 text-[10px] font-semibold uppercase text-slate-500 dark:bg-slate-800/70 dark:text-slate-400">
-                          <tr><th className="w-[17%] px-1.5 py-2.5">Ngày</th><th className="w-[17%] px-1.5 py-2.5">ID</th><th className="w-[24%] px-1.5 py-2.5">Tên khách</th><th className="w-[25%] px-1.5 py-2.5 text-right">Số tiền cọc</th><th className="w-[17%] px-1.5 py-2.5 text-center">Hành động</th></tr>
+                        <thead className="bg-slate-50 text-[9px] font-semibold uppercase text-slate-500 dark:bg-slate-800/70 dark:text-slate-400">
+                          <tr><th className="w-[18%] whitespace-nowrap px-1.5 py-2.5">Date</th><th className="w-[16%] whitespace-nowrap px-1.5 py-2.5">ID</th><th className="w-[24%] whitespace-nowrap px-1.5 py-2.5">Guest</th><th className="w-[25%] whitespace-nowrap px-1.5 py-2.5 text-right">Deposit</th><th className="w-[17%] whitespace-nowrap px-1 py-2.5 text-center">Action</th></tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                           {depositRows.map((deposit: any) => {
@@ -863,7 +865,7 @@ export const RoomProfileModal: React.FC<Props> = ({
                             const displayDate = /^\d{4}-\d{2}-\d{2}/.test(rawDate) ? rawDate.slice(0, 10).split('-').reverse().join('/') : rawDate || '—';
                             return <tr key={deposit.id} className="bg-white align-middle dark:bg-slate-900/30">
                               <td className="px-1.5 py-3 tabular-nums text-slate-600 dark:text-slate-300">{displayDate}</td>
-                              <td className="break-all px-1.5 py-3 font-mono font-semibold text-slate-700 dark:text-slate-200" title={deposit.id}>{String(deposit.id).slice(0, 8).toUpperCase()}</td>
+                              <td className="px-1.5 py-3"><button type="button" onClick={() => setDepositDetailId(deposit.id)} title={deposit.id} className="font-mono font-semibold text-blue-700 underline decoration-blue-300 underline-offset-2 dark:text-blue-300">{String(deposit.id).slice(0, 6).toUpperCase()}</button></td>
                               <td className="break-words px-1.5 py-3 font-semibold leading-4 text-slate-900 dark:text-white">{deposit.customerName}</td>
                               <td className="px-1.5 py-3 text-right font-semibold tabular-nums text-emerald-700 dark:text-emerald-300">{Number(deposit.paidAmountVnd).toLocaleString('vi-VN')} đ</td>
                               <td className="px-1 py-2 text-center"><ActionMenu ariaLabel={`Hành động cọc của ${deposit.customerName}`} contextTitle={deposit.customerName} contextSubtitle={`${Number(deposit.paidAmountVnd).toLocaleString('vi-VN')} đ`} items={[{ label: 'Xem hồ sơ thuê', icon: <FileText size={16} />, onClick: () => onAddRental?.(room.id), disabled: !onAddRental }, ...(deposit.contractId ? [{ label: 'Xem PDF hợp đồng', icon: <FileSignature size={16} />, onClick: () => setDocumentContractId(deposit.contractId) }] : [])]} /></td>
@@ -983,12 +985,12 @@ export const RoomProfileModal: React.FC<Props> = ({
                 <div className="space-y-4">
                   {roomInvoices.length > 0 ? <div className="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800">
                     <table className="w-full table-fixed text-left text-[10.5px]" data-testid="room-invoices-table">
-                      <thead className="bg-slate-50 text-[10px] font-semibold uppercase text-slate-500 dark:bg-slate-800/70 dark:text-slate-400">
+                      <thead className="bg-slate-50 text-[9px] font-semibold uppercase text-slate-500 dark:bg-slate-800/70 dark:text-slate-400">
                         <tr>
-                          <th className="w-[21%] px-2 py-2.5">Ngày tháng</th>
-                          <th className="w-[34%] px-2 py-2.5">ID hóa đơn</th>
-                          <th className="w-[23%] px-2 py-2.5">Tình trạng</th>
-                          <th className="w-[22%] px-2 py-2.5 text-right">Hành động</th>
+                          <th className="w-[20%] whitespace-nowrap px-2 py-2.5">Date</th>
+                          <th className="w-[35%] whitespace-nowrap px-2 py-2.5">Invoice</th>
+                          <th className="w-[23%] whitespace-nowrap px-2 py-2.5">Status</th>
+                          <th className="w-[22%] whitespace-nowrap px-1.5 py-2.5 text-right">Action</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
@@ -1045,6 +1047,28 @@ export const RoomProfileModal: React.FC<Props> = ({
             )}
 
             {documentContractId && <ContractDocumentDialog contractId={documentContractId} onClose={() => setDocumentContractId(null)} />}
+
+            {detailDeposit && <Dialog.Root open={Boolean(depositDetailId)} onOpenChange={open => { if (!open) setDepositDetailId(null); }}>
+              <Dialog.Portal>
+                <Dialog.Backdrop className="fixed inset-0 z-[140] bg-slate-950/60 backdrop-blur-[2px]" />
+                <Dialog.Viewport className="fixed inset-0 z-[141] flex items-center justify-center p-3">
+                  <Dialog.Popup from="bottom" className="w-full max-w-sm overflow-hidden rounded-xl border border-slate-200 bg-white text-xs text-slate-800 shadow-2xl outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" data-testid="room-deposit-detail-dialog">
+                    <header className="flex items-start justify-between gap-3 border-b border-slate-200 px-3.5 py-3 dark:border-slate-700">
+                      <div><Dialog.Title className="flex items-center gap-2 text-sm font-bold"><Wallet className="h-4 w-4 text-emerald-600" />Chi tiết tiền cọc</Dialog.Title><Dialog.Description className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">{detailDeposit.customerName}</Dialog.Description></div>
+                      <Dialog.Close aria-label="Đóng chi tiết tiền cọc" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"><X className="h-4 w-4" /></Dialog.Close>
+                    </header>
+                    <div className="px-3.5 py-2">
+                      <div className="border-b border-slate-200 py-2 dark:border-slate-700"><span className="mb-1 block text-slate-500 dark:text-slate-400">ID cọc</span><strong className="block break-all font-mono text-[11px] leading-5">{detailDeposit.id}</strong></div>
+                      <div className="flex min-h-9 items-center justify-between gap-3 border-b border-slate-200 py-1.5 dark:border-slate-700"><span className="text-slate-500 dark:text-slate-400">Ngày thu</span><strong>{(() => { const raw = String(detailDeposit.receivedAt || detailDeposit.createdAt || ''); return /^\d{4}-\d{2}-\d{2}/.test(raw) ? raw.slice(0, 10).split('-').reverse().join('/') : raw || '—'; })()}</strong></div>
+                      <div className="flex min-h-9 items-center justify-between gap-3 border-b border-slate-200 py-1.5 dark:border-slate-700"><span className="text-slate-500 dark:text-slate-400">Khách thuê</span><strong className="text-right">{detailDeposit.customerName}</strong></div>
+                      <div className="flex min-h-9 items-center justify-between gap-3 border-b border-slate-200 py-1.5 dark:border-slate-700"><span className="text-slate-500 dark:text-slate-400">Cọc yêu cầu</span><strong className="tabular-nums">{Number(detailDeposit.amountVnd || detailDeposit.paidAmountVnd).toLocaleString('vi-VN')} đ</strong></div>
+                      <div className="flex min-h-9 items-center justify-between gap-3 border-b border-slate-200 py-1.5 dark:border-slate-700"><span className="text-slate-500 dark:text-slate-400">Đã thực thu</span><strong className="tabular-nums text-emerald-700 dark:text-emerald-300">{Number(detailDeposit.paidAmountVnd).toLocaleString('vi-VN')} đ</strong></div>
+                      <div className="flex min-h-9 items-center justify-between gap-3 py-1.5"><span className="text-slate-500 dark:text-slate-400">Trạng thái</span><strong>{({ PAID: 'Đã thanh toán', PARTIALLY_PAID: 'Thu một phần', TRANSFERRED: 'Đã chuyển cọc', REFUNDED: 'Đã hoàn', FORFEITED: 'Đã khấu trừ' } as Record<string, string>)[detailDeposit.paymentStatus] || detailDeposit.paymentStatus || 'Đã ghi nhận'}</strong></div>
+                    </div>
+                  </Dialog.Popup>
+                </Dialog.Viewport>
+              </Dialog.Portal>
+            </Dialog.Root>}
 
             {detailInvoice && <Dialog.Root open={Boolean(invoiceDetailId)} onOpenChange={open => { if (!open) setInvoiceDetailId(null); }}>
               <Dialog.Portal>

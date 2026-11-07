@@ -20,6 +20,49 @@
   --form-control-font-size: 13px;
   --form-label-font-size: 13px;
   --form-control-height: 38px;
+  --ui-text-size: 13px;
+  --ui-text-line-height: 1.45;
+  --ui-section-title-size: 14px;
+  --ui-dialog-title-size: 16px;
+}
+
+/*
+ * Console typography scale.
+ * Product data, labels, badges, helper copy and actions share one readable
+ * 13px size. Only structural headings remain larger to preserve navigation.
+ */
+body {
+  font-size: var(--ui-text-size);
+  line-height: var(--ui-text-line-height);
+}
+
+:is(
+  .text-xs,
+  .text-sm,
+  [class~="text-[9px]"],
+  [class~="text-[9.5px]"],
+  [class~="text-[10px]"],
+  [class~="text-[10.5px]"],
+  [class~="text-[11px]"],
+  [class~="text-[11.5px]"],
+  [class~="text-[12px]"],
+  [class~="text-[13px]"],
+  [class~="text-[14px]"]
+) {
+  font-size: var(--ui-text-size) !important;
+  line-height: var(--ui-text-line-height);
+}
+
+h3,
+[data-ui-heading="section"] {
+  font-size: var(--ui-section-title-size) !important;
+  line-height: 1.4;
+}
+
+:is([role="dialog"], [data-testid^="modal-"]) h2,
+:is([role="dialog"], [data-testid^="modal-"]) [data-ui-heading="dialog"] {
+  font-size: var(--ui-dialog-title-size) !important;
+  line-height: 1.35;
 }
 
 /* Shared form typography, including native date/select controls and popup portals. */
@@ -66,6 +109,11 @@ input::placeholder, textarea::placeholder, select option { font-size: inherit; }
   [contenteditable="true"] {
     font-size: 16px !important;
     touch-action: manipulation;
+  }
+
+  /* Native editable controls stay at 16px to prevent Safari auto-zoom. */
+  :is(input, select, textarea, [contenteditable="true"]) {
+    line-height: 1.35;
   }
 }
 .building-form-dialog label { min-height: 0; line-height: 20px; font-weight: 500; }

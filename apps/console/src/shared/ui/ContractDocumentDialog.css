@@ -23,9 +23,6 @@
 .contract-pdf-controls > span { margin-right: auto; color: #64748b; }
 .contract-pdf-controls button { display: inline-flex; align-items: center; justify-content: center; min-width: 34px; min-height: 32px; padding: 4px 6px; border-radius: 5px; }
 .contract-pdf-controls button:hover:not(:disabled) { background: #eff6ff; }
-.contract-print-back, .contract-print-all { gap: 5px; width: auto; padding-inline: 10px !important; font-weight: 600; white-space: nowrap; }
-.contract-print-all { background: #2563eb; color: #fff; }
-.contract-print-all:hover:not(:disabled) { background: #1d4ed8 !important; color: #fff; }
 .contract-pdf-scroll { flex: 1 1 0; min-width: 0; min-height: 0; width: 100%; overflow: auto; overscroll-behavior: contain; touch-action: pan-x pan-y; -webkit-overflow-scrolling: touch; }
 .contract-pdf-pages { display: grid; gap: 12px; margin-inline: auto; padding-block: 12px; }
 .contract-pdf-page { width: 100%; overflow: hidden; background: #fff; box-shadow: 0 1px 5px rgb(15 23 42 / .14); }
@@ -79,42 +76,4 @@
   .contract-document-toolbar { padding: 4px 8px; }
   .contract-document-tools { gap: 0; }
   .contract-document-footer { padding: 10px 12px; }
-  .contract-print-package .contract-pdf-controls { flex-wrap: wrap; padding: 6px 8px; }
-  .contract-print-package .contract-pdf-controls > span { flex-basis: 100%; }
-  .contract-print-package .contract-print-back { margin-left: auto; }
-}
-
-@page { size: A4 portrait; margin: 0; }
-@media print {
-  html, body, #root { width: 210mm !important; height: auto !important; margin: 0 !important; padding: 0 !important; background: #fff !important; overflow: visible !important; }
-  body * { visibility: hidden !important; }
-  .contract-print-package, .contract-print-package * { visibility: visible !important; }
-  .contract-document-backdrop, .contract-document-header, .contract-document-toolbar, .contract-pdf-controls { display: none !important; }
-  .contract-document-viewport, .contract-document-dialog, .contract-document-body, .contract-print-package, .contract-pdf-scroll, .contract-pdf-pages {
-    position: static !important;
-    display: block !important;
-    width: 210mm !important;
-    height: auto !important;
-    max-width: none !important;
-    max-height: none !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    border: 0 !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
-    background: #fff !important;
-    overflow: visible !important;
-  }
-  .contract-print-package .contract-pdf-page {
-    width: 210mm !important;
-    height: 297mm !important;
-    margin: 0 !important;
-    border: 0 !important;
-    box-shadow: none !important;
-    break-after: page;
-    page-break-after: always;
-    overflow: hidden !important;
-  }
-  .contract-print-package .contract-pdf-page:last-child { break-after: auto; page-break-after: auto; }
-  .contract-print-package .contract-pdf-page canvas { width: 210mm !important; height: 297mm !important; object-fit: contain; }
 }

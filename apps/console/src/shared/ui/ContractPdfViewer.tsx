@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Button } from '@animate-ui/react/primitives/buttons/button';
-import { ArrowLeft, Minus, Plus, Printer } from 'lucide-react';
+import { Minus, Plus } from 'lucide-react';
 import type { PDFDocumentLoadingTask, PDFPageProxy } from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
@@ -27,13 +27,16 @@ function PdfPage({ page, onRendered }: { page: Page; onRendered?: (pageNumber: n
   return <div className="contract-pdf-page" style={{ aspectRatio: `${page.width} / ${page.height}` }} aria-label={`Trang ${page.number}`}><canvas ref={canvas} /></div>;
 }
 
-export default function ContractPdfViewer({ file, printMode = false, onExitPrintMode }: { file: Blob; printMode?: boolean; onExitPrintMode?: () => void }) {
+export type ContractPdfViewerHandle = { printAll: () => boolean };
+
+const ContractPdfViewer = forwardRef<ContractPdfViewerHandle, { file: Blob; onPrintReady?: (ready: boolean) => void }>(function ContractPdfViewer({ file, onPrintReady }, ref) {
   const [pages, setPages] = useState<Page[]>([]);
   const [error, setError] = useState('');
   const [zoom, setZoom] = useState(1);
   const [fitWidth, setFitWidth] = useState(0);
   const [renderedPages, setRenderedPages] = useState<Set<number>>(() => new Set());
   const scroll = useRef<HTMLDivElement>(null);
+  const printFrame = useRef<HTMLIFrameElement>(null);
   const zoomRef = useRef(1);
   const pinch = useRef<{ distance: number; zoom: number } | null>(null);
 
@@ -100,22 +103,48 @@ export default function ContractPdfViewer({ file, printMode = false, onExitPrint
   const changeZoom = (next: number) => { zoomRef.current = clamp(next); setZoom(zoomRef.current); };
   const markRendered = (pageNumber: number) => setRenderedPages(current => current.has(pageNumber) ? current : new Set(current).add(pageNumber));
   const printReady = pages.length > 0 && renderedPages.size === pages.length;
-  return <div className={`contract-pdf-viewer ${printMode ? 'contract-print-package' : ''}`}>
+  useEffect(() => { onPrintReady?.(printReady); }, [onPrintReady, printReady]);
+  useEffect(() => () => onPrintReady?.(false), [onPrintReady]);
+
+  useImperativeHandle(ref, () => ({
+    printAll: () => {
+      const target = printFrame.current?.contentWindow;
+      const sourceCanvases = Array.from(scroll.current?.querySelectorAll<HTMLCanvasElement>('.contract-pdf-page canvas') || []);
+      if (!target || !printReady || sourceCanvases.length !== pages.length) return false;
+      const document = target.document;
+      document.open();
+      document.write('<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>@page{size:A4 portrait;margin:0}html,body{margin:0;padding:0;background:#fff}.page{width:210mm;height:297mm;overflow:hidden;break-after:page;page-break-after:always}.page:last-child{break-after:auto;page-break-after:auto}canvas{display:block;width:210mm;height:297mm;object-fit:contain}</style></head><body></body></html>');
+      document.close();
+      sourceCanvases.forEach(source => {
+        const page = document.createElement('div');
+        page.className = 'page';
+        const canvas = document.createElement('canvas');
+        canvas.width = source.width;
+        canvas.height = source.height;
+        canvas.getContext('2d', { alpha: false })?.drawImage(source, 0, 0);
+        page.appendChild(canvas);
+        document.body.appendChild(page);
+      });
+      target.focus();
+      target.print();
+      return true;
+    },
+  }), [pages.length, printReady]);
+
+  return <div className="contract-pdf-viewer">
     <div className="contract-pdf-controls" role="group" aria-label="Phóng to PDF">
-      <span>{printMode ? (printReady ? `Đã đóng gói đủ ${pages.length} trang` : `Đang đóng gói ${renderedPages.size}/${pages.length || '…'} trang`) : (pages.length ? `${pages.length} trang` : 'Đang mở PDF…')}</span>
-      {printMode ? <>
-        <Button type="button" className="contract-print-back" onClick={onExitPrintMode}><ArrowLeft size={15} />Quay lại</Button>
-        <Button type="button" className="contract-print-all" disabled={!printReady} onClick={() => window.print()}><Printer size={15} />{printReady ? `In tất cả ${pages.length} trang` : 'Đang chuẩn bị…'}</Button>
-      </> : <>
-        <Button type="button" aria-label="Thu nhỏ PDF" disabled={zoom <= 1} onClick={() => changeZoom(zoom - 0.25)}><Minus size={16} /></Button>
-        <Button type="button" aria-label="Vừa chiều rộng" onClick={() => changeZoom(1)}>{Math.round(zoom * 100)}%</Button>
-        <Button type="button" aria-label="Phóng to PDF" disabled={zoom >= 3} onClick={() => changeZoom(zoom + 0.25)}><Plus size={16} /></Button>
-      </>}
+      <span>{pages.length ? `${pages.length} trang` : 'Đang mở PDF…'}</span>
+      <Button type="button" aria-label="Thu nhỏ PDF" disabled={zoom <= 1} onClick={() => changeZoom(zoom - 0.25)}><Minus size={16} /></Button>
+      <Button type="button" aria-label="Vừa chiều rộng" onClick={() => changeZoom(1)}>{Math.round(zoom * 100)}%</Button>
+      <Button type="button" aria-label="Phóng to PDF" disabled={zoom >= 3} onClick={() => changeZoom(zoom + 0.25)}><Plus size={16} /></Button>
     </div>
     <div ref={scroll} className="contract-pdf-scroll" aria-label="Nội dung PDF, cuộn để xem tất cả trang; dùng hai ngón tay để phóng to">
       {error ? <p role="alert" className="contract-pdf-message">{error}</p> : pages.length ? <div className="contract-pdf-pages" style={{ width: fitWidth * zoom }}>
         {pages.map(page => <PdfPage key={page.number} page={page} onRendered={markRendered} />)}
       </div> : <p role="status" className="contract-pdf-message">Đang hiển thị các trang hợp đồng…</p>}
     </div>
+    <iframe ref={printFrame} className="contract-print-frame" title="Tài liệu in đầy đủ" />
   </div>;
-}
+});
+
+export default ContractPdfViewer;

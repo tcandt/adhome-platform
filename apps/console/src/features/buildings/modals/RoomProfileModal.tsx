@@ -32,6 +32,7 @@ import { usePortfolio } from "../../../app/providers/PortfolioContext";
 import { useAuth } from "../../../app/providers/AuthContext";
 import { ContractDocumentDialog, ContractDocumentLink } from "../../../shared/ui/ContractDocumentDialog";
 import { ActionMenu } from "../../../shared/ui/ActionMenu";
+import { IdentityQrScanner } from "../../../shared/ui/IdentityQrScanner";
 import {
   ConsoleRoomDto,
   RoomOccupantDto,
@@ -96,6 +97,11 @@ export const RoomProfileModal: React.FC<Props> = ({
   const [occFullName, setOccFullName] = useState<string>("");
   const [occPhone, setOccPhone] = useState<string>("");
   const [occIdNumber, setOccIdNumber] = useState<string>("");
+  const [occBirthDate, setOccBirthDate] = useState<string>("");
+  const [occGender, setOccGender] = useState<string>("");
+  const [occAddress, setOccAddress] = useState<string>("");
+  const [occRelationship, setOccRelationship] = useState<string>("");
+  const [occMoveInDate, setOccMoveInDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
   const [occRelation, setOccRelation] = useState<
     "OTHER" | "FAMILY"
   >("OTHER");
@@ -319,6 +325,7 @@ export const RoomProfileModal: React.FC<Props> = ({
         contractId: pendingContract?.id || null,
       }))
     : occupantsList.filter(occupant => occupant.isActive).map(occupant => ({
+        ...occupant,
         id: occupant.id,
         fullName: occupant.fullName,
         phone: occupant.phone || '',
@@ -378,7 +385,9 @@ export const RoomProfileModal: React.FC<Props> = ({
   // Add new occupant
   const handleAddOccupantSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!occFullName.trim()) return;
+    if (!occFullName.trim() || !/^\d{12}$/.test(occIdNumber) || !occBirthDate || !occGender || !occAddress.trim() || (occRelation === 'FAMILY' && !occRelationship.trim())) {
+      setActionFeedback('Nhập đầy đủ họ tên, CCCD 12 số, ngày sinh, giới tính, địa chỉ và mối quan hệ.'); return;
+    }
     if (room.rentalModel === 'SHARED_ROOM') { onAddRental?.(room.id); return; }
 
     try {
@@ -391,8 +400,12 @@ export const RoomProfileModal: React.FC<Props> = ({
             fullName: occFullName.trim(),
             phone: occPhone.trim() || undefined,
             idNumber: occIdNumber.trim() || undefined,
+            dateOfBirth: occBirthDate,
+            gender: occGender,
+            moveInDate: occMoveInDate,
             relationToPrimary: occRelation,
             residenceRegStatus: occRegStatus,
+            notes: JSON.stringify({ secondaryContract: { role: occRelation === 'OTHER' ? 'CO_REPRESENTATIVE' : 'HOUSEHOLD_MEMBER', address: occAddress.trim(), relationship: occRelationship.trim(), documentCode: `${pendingContract?.contractCode || room.code}-P${residentCount + 1}` } }),
           }),
         },
       );
@@ -402,6 +415,7 @@ export const RoomProfileModal: React.FC<Props> = ({
         setOccFullName("");
         setOccPhone("");
         setOccIdNumber("");
+        setOccBirthDate(""); setOccGender(""); setOccAddress(""); setOccRelationship(""); setOccMoveInDate(new Date().toISOString().slice(0, 10));
         setOccRelation("OTHER");
         await loadOccupants();
         await refreshPortfolio();
@@ -771,7 +785,7 @@ export const RoomProfileModal: React.FC<Props> = ({
                       onSubmit={handleAddOccupantSubmit}
                       className="p-3.5 rounded-xl border border-blue-200 dark:border-blue-900 bg-blue-50/50 dark:bg-blue-950/20 space-y-3"
                     >
-                      <div><div className="font-bold text-xs text-blue-900 dark:text-blue-200">Thêm khách vào hợp đồng phòng {room.code}</div><p className="mt-1 text-[11px] leading-4 text-slate-500 dark:text-slate-400">Đại diện phụ và thành viên cùng hộ dùng chung hợp đồng chính, không phát sinh tiền thuê hoặc cọc riêng.</p></div>
+                      <div className="flex items-start justify-between gap-2"><div><div className="font-bold text-xs text-blue-900 dark:text-blue-200">Hồ sơ khách phụ · {room.code}</div><p className="mt-1 text-[11px] leading-4 text-slate-500 dark:text-slate-400">Dùng chung hợp đồng, CT01 và tài chính của khách chính.</p></div><IdentityQrScanner onApply={details => { setOccFullName(details.fullName); setOccIdNumber(details.idNumber); setOccBirthDate(details.birthDate); setOccGender(details.gender); setOccAddress(details.address); }} /></div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                         <input
                           type="text"
@@ -785,14 +799,16 @@ export const RoomProfileModal: React.FC<Props> = ({
                           type="text"
                           placeholder="Số điện thoại"
                           value={occPhone}
-                          onChange={(e) => setOccPhone(e.target.value)}
+                          onChange={(e) => setOccPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                          inputMode="numeric"
                           className="p-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
                         />
                         <input
                           type="text"
                           placeholder="Số CCCD"
                           value={occIdNumber}
-                          onChange={(e) => setOccIdNumber(e.target.value)}
+                          onChange={(e) => setOccIdNumber(e.target.value.replace(/\D/g, '').slice(0, 12))}
+                          inputMode="numeric" maxLength={12} required
                           className="p-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
                         />
                         <select
@@ -803,6 +819,11 @@ export const RoomProfileModal: React.FC<Props> = ({
                           <option value="OTHER">Đại diện hợp đồng phụ</option>
                           <option value="FAMILY">Thành viên cùng hộ</option>
                         </select>
+                        <input type="date" aria-label="Ngày sinh" value={occBirthDate} onChange={e => setOccBirthDate(e.target.value)} required className="p-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800" />
+                        <select aria-label="Giới tính" value={occGender} onChange={e => setOccGender(e.target.value)} required className="p-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"><option value="">Giới tính *</option><option>Nam</option><option>Nữ</option><option>Khác</option></select>
+                        <input type="date" aria-label="Ngày vào ở" value={occMoveInDate} onChange={e => setOccMoveInDate(e.target.value)} required className="p-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800" />
+                        <input type="text" placeholder="Mối quan hệ với khách chính" value={occRelationship} onChange={e => setOccRelationship(e.target.value)} className="p-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800" />
+                        <textarea placeholder="Địa chỉ thường trú *" value={occAddress} onChange={e => setOccAddress(e.target.value)} required className="min-h-16 p-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 sm:col-span-2" />
                       </div>
                       <div className="flex flex-wrap items-center justify-end gap-2">
                         <button
@@ -839,7 +860,7 @@ export const RoomProfileModal: React.FC<Props> = ({
                       <table className="w-full table-fixed border-collapse text-left text-xs">
                         <colgroup><col className="w-9" /><col /><col className="w-[31%]" /><col className="w-14" /></colgroup>
                         <thead className="bg-slate-50 text-[9.5px] font-semibold uppercase text-slate-500 dark:bg-slate-800/80 dark:text-slate-400"><tr><th className="whitespace-nowrap px-2 py-2 text-center">#</th><th className="whitespace-nowrap px-2 py-2">Name</th><th className="whitespace-nowrap px-2 py-2">Phone</th><th className="whitespace-nowrap px-1 py-2 text-center">Action</th></tr></thead>
-                        <tbody className="divide-y divide-slate-100 bg-white dark:divide-slate-800 dark:bg-[#111827]">{residentRows.map((resident, index) => <tr key={resident.id}><td className="px-2 py-2.5 text-center tabular-nums text-slate-500">{index + 1}</td><td className="break-words px-2 py-2.5 font-semibold text-slate-900 dark:text-white">{resident.fullName}</td><td className="break-all px-2 py-2.5 tabular-nums text-slate-600 dark:text-slate-300">{resident.phone || '—'}</td><td className="px-1 py-1 text-center">{canManageContracts && <ActionMenu ariaLabel={`Hành động cho ${resident.fullName}`} contextTitle={resident.fullName} contextSubtitle={resident.phone || 'Chưa có SĐT'} items={[{ label: 'Xem PDF hợp đồng', icon: <FileText size={16} />, disabled: !resident.contractId, onClick: () => resident.contractId && setDocumentContractId(resident.contractId) }, { label: 'Chỉnh sửa thông tin', icon: <Pencil size={16} />, onClick: () => onAddRental?.(room.id), disabled: !onAddRental }]} />}</td></tr>)}</tbody>
+                        <tbody className="divide-y divide-slate-100 bg-white dark:divide-slate-800 dark:bg-[#111827]">{residentRows.map((resident: any, index) => <tr key={resident.id}><td className="px-2 py-2.5 text-center tabular-nums text-slate-500">{index + 1}</td><td className="break-words px-2 py-2.5 text-slate-900 dark:text-white"><span className="block font-semibold">{resident.fullName}</span>{resident.relationToPrimary && resident.relationToPrimary !== 'PRIMARY' && <span className="mt-0.5 block text-[9.5px] font-normal text-slate-500">{resident.relationToPrimary === 'FAMILY' ? 'Cùng hộ' : 'Đại diện phụ'}</span>}</td><td className="break-all px-2 py-2.5 tabular-nums text-slate-600 dark:text-slate-300">{resident.phone || '—'}</td><td className="px-1 py-1 text-center">{canManageContracts && <ActionMenu ariaLabel={`Hành động cho ${resident.fullName}`} contextTitle={resident.fullName} contextSubtitle={resident.phone || 'Chưa có SĐT'} items={[{ label: 'Xem PDF hợp đồng', icon: <FileText size={16} />, disabled: !resident.contractId, onClick: () => resident.contractId && setDocumentContractId(resident.contractId) }, { label: 'Chỉnh sửa thông tin', icon: <Pencil size={16} />, onClick: () => onAddRental?.(room.id), disabled: !onAddRental }]} />}</td></tr>)}</tbody>
                       </table>
                     </div>
                   )}

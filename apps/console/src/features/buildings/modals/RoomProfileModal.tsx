@@ -385,8 +385,10 @@ export const RoomProfileModal: React.FC<Props> = ({
   // Add new occupant
   const handleAddOccupantSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!occFullName.trim() || !/^\d{12}$/.test(occIdNumber) || !occBirthDate || !occGender || !occAddress.trim() || (occRelation === 'FAMILY' && !occRelationship.trim())) {
-      setActionFeedback('Nhập đầy đủ họ tên, CCCD 12 số, ngày sinh, giới tính, địa chỉ và mối quan hệ.'); return;
+    const cleanPhone = occPhone.replace(/\D/g, '');
+    const cleanId = occIdNumber.replace(/\D/g, '');
+    if (!occFullName.trim() || !/^0\d{8,10}$/.test(cleanPhone) || (cleanId && !/^(?:\d{9}|\d{12})$/.test(cleanId)) || (occRelation === 'FAMILY' && !occRelationship.trim())) {
+      setActionFeedback('Nhập họ tên, số điện thoại hợp lệ; CCCD nếu có phải gồm 9 hoặc 12 số. Thành viên cùng hộ cần có mối quan hệ.'); return;
     }
     if (room.rentalModel === 'SHARED_ROOM') { onAddRental?.(room.id); return; }
 
@@ -398,8 +400,8 @@ export const RoomProfileModal: React.FC<Props> = ({
           headers: { "Content-Type": "application/json", "X-Requested-With": "AdHome-Console" },
           body: JSON.stringify({
             fullName: occFullName.trim(),
-            phone: occPhone.trim() || undefined,
-            idNumber: occIdNumber.trim() || undefined,
+            phone: cleanPhone,
+            idNumber: cleanId || undefined,
             dateOfBirth: occBirthDate,
             gender: occGender,
             moveInDate: occMoveInDate,
@@ -787,43 +789,43 @@ export const RoomProfileModal: React.FC<Props> = ({
                     >
                       <div className="flex items-start justify-between gap-2"><div><div className="font-bold text-xs text-blue-900 dark:text-blue-200">Hồ sơ khách phụ · {room.code}</div><p className="mt-1 text-[11px] leading-4 text-slate-500 dark:text-slate-400">Dùng chung hợp đồng, CT01 và tài chính của khách chính.</p></div><IdentityQrScanner onApply={details => { setOccFullName(details.fullName); setOccIdNumber(details.idNumber); setOccBirthDate(details.birthDate); setOccGender(details.gender); setOccAddress(details.address); }} /></div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                        <input
+                        <label className="flex flex-col gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300 sm:col-span-2"><span>Họ và tên *</span><input
                           type="text"
                           placeholder="Họ và tên *"
                           value={occFullName}
                           onChange={(e) => setOccFullName(e.target.value)}
                           required
-                          className="p-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
-                        />
-                        <input
+                          className="p-2 text-xs font-normal rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                        /></label>
+                        <label className="flex flex-col gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300"><span>Số điện thoại *</span><input
                           type="text"
                           placeholder="Số điện thoại"
                           value={occPhone}
                           onChange={(e) => setOccPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
                           inputMode="numeric"
-                          className="p-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
-                        />
-                        <input
+                          className="p-2 text-xs font-normal rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                        /></label>
+                        <label className="flex flex-col gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300"><span>CCCD / CMND</span><input
                           type="text"
                           placeholder="Số CCCD"
                           value={occIdNumber}
                           onChange={(e) => setOccIdNumber(e.target.value.replace(/\D/g, '').slice(0, 12))}
                           inputMode="numeric" maxLength={12} required
-                          className="p-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
-                        />
-                        <select
+                          className="p-2 text-xs font-normal rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                        /></label>
+                        <label className="flex flex-col gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300"><span>Vai trò</span><select
                           value={occRelation}
                           onChange={(e) => setOccRelation(e.target.value as "OTHER" | "FAMILY")}
-                          className="p-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                          className="p-2 text-xs font-normal rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
                         >
                           <option value="OTHER">Đại diện hợp đồng phụ</option>
                           <option value="FAMILY">Thành viên cùng hộ</option>
-                        </select>
-                        <input type="date" aria-label="Ngày sinh" value={occBirthDate} onChange={e => setOccBirthDate(e.target.value)} required className="p-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800" />
-                        <select aria-label="Giới tính" value={occGender} onChange={e => setOccGender(e.target.value)} required className="p-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"><option value="">Giới tính *</option><option>Nam</option><option>Nữ</option><option>Khác</option></select>
-                        <input type="date" aria-label="Ngày vào ở" value={occMoveInDate} onChange={e => setOccMoveInDate(e.target.value)} required className="p-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800" />
-                        <input type="text" placeholder="Mối quan hệ với khách chính" value={occRelationship} onChange={e => setOccRelationship(e.target.value)} className="p-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800" />
-                        <textarea placeholder="Địa chỉ thường trú *" value={occAddress} onChange={e => setOccAddress(e.target.value)} required className="min-h-16 p-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 sm:col-span-2" />
+                        </select></label>
+                        <label className="flex flex-col gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300"><span>Ngày sinh</span><input type="date" aria-label="Ngày sinh" value={occBirthDate} onChange={e => setOccBirthDate(e.target.value)} className="p-2 text-xs font-normal rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800" /></label>
+                        <label className="flex flex-col gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300"><span>Giới tính</span><select aria-label="Giới tính" value={occGender} onChange={e => setOccGender(e.target.value)} className="p-2 text-xs font-normal rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"><option value="">Chọn giới tính</option><option>Nam</option><option>Nữ</option><option>Khác</option></select></label>
+                        <label className="flex flex-col gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300"><span>Ngày vào ở</span><input type="date" aria-label="Ngày vào ở" value={occMoveInDate} onChange={e => setOccMoveInDate(e.target.value)} className="p-2 text-xs font-normal rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800" /></label>
+                        <label className="flex flex-col gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300"><span>Mối quan hệ {occRelation === 'FAMILY' ? '*' : ''}</span><input type="text" placeholder="Vợ/chồng, con, cha/mẹ..." value={occRelationship} onChange={e => setOccRelationship(e.target.value)} className="p-2 text-xs font-normal rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800" /></label>
+                        <label className="flex flex-col gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300 sm:col-span-2"><span>Địa chỉ thường trú</span><textarea placeholder="Số nhà, đường, phường/xã, tỉnh/thành" value={occAddress} onChange={e => setOccAddress(e.target.value)} className="min-h-16 p-2 text-xs font-normal rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800" /></label>
                       </div>
                       <div className="flex flex-wrap items-center justify-end gap-2">
                         <button

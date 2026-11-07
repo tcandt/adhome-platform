@@ -6,9 +6,18 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
-    if (!url.pathname.startsWith('/api/v1/console/')) return failure('Not found', 404);
+    const paymentWebhook = /^\/api\/v1\/webhooks\/payments\/(sepay|payos|momo|zalopay|tingee)\/[a-fA-F0-9-]{32,36}$/.test(url.pathname);
+    if (!url.pathname.startsWith('/api/v1/console/') && !paymentWebhook) return failure('Not found', 404);
+    if (paymentWebhook && request.method !== 'POST') return failure('POST required', 405);
     let origin;
-    try { origin = new URL(env.CONSOLE_API_ORIGIN); } catch {
+    try {
+      // Cloudflare's workers.dev resolver can temporarily retain negative DNS
+      // cache for the tunnel hostname. Route fallback-host API calls through
+      // the production Worker route, which then reaches the configured API.
+      origin = url.hostname.endsWith('.workers.dev')
+        ? new URL('https://console.adhome.vn')
+        : new URL(env.CONSOLE_API_ORIGIN);
+    } catch {
       return failure('API quản trị chưa được kết nối.');
     }
     if (origin.protocol !== 'https:' || origin.origin === url.origin || origin.pathname !== '/' || origin.search || origin.hash || origin.username || origin.password) {

@@ -6,6 +6,7 @@ import { handlePaymentIntegrations } from './paymentIntegrationApi';
 import { handleZaloBotSettings } from './zaloBotSettings';
 import { splitSharedCharge, sharedWaterCharge } from './sharedRoomBilling';
 import { handleConsoleRoomImages, publicRoomImages, roomImages } from './roomImagesApi';
+import { handlePaymentProof, paymentProofMap } from './paymentProofApi';
 import { normalizeBuildingLandlord, readBuildingLandlords, writeBuildingLandlord } from './buildingLandlord';
 import { readHunonicHistory } from "./hunonicHistory";
 import crypto from 'node:crypto';
@@ -891,6 +892,7 @@ export async function handleConsoleV2Api(
 
   const method = req.method || 'GET';
   if (await handleConsoleRoomImages(req, res, pathname, prisma, actor)) return;
+  if (await handlePaymentProof(req, res, pathname, prisma, actor)) return;
   if (await handleZaloBotSettings(req, res, pathname, prisma, actor, { sendJson, readJsonBody })) return;
   if (await handlePaymentIntegrations(req, res, pathname, prisma, actor, { sendJson, readJsonBody })) return;
   if (await handleContractDocuments(req, res, pathname, prisma, actor, { sendJson, readJsonBody })) return;
@@ -7121,7 +7123,7 @@ export async function handleConsoleV2Api(
               if (deposits.reduce((sum, deposit) => sum + availableDeposit(deposit), 0) < Number(contract.depositVnd)) {
                 throw Object.assign(new Error('Hóa đơn đã đủ nhưng cọc hợp đồng chưa đủ để bàn giao. Kiểm tra lại phân bổ tiền.'), { statusCode: 422, errorCode: 'UNPAID_DEPOSIT_REQUIRED' });
               }
-              const electricRequired = Boolean(contract.room.electricMeter || (contract.room.electricRateVnd && contract.room.electricRateVnd > 0));
+              const electricRequired = contract.room.electricBillingMode !== 'HUNONIC_AUTO' && Boolean(contract.room.electricMeter || (contract.room.electricRateVnd && contract.room.electricRateVnd > 0));
               const waterRequired = contract.waterBillingMethod === 'PER_M3' || contract.room.waterBillingMethod === 'PER_M3';
               if ((contract.room.rentalModel !== 'SHARED_ROOM' && electricRequired && initialElectric === null) || (contract.room.rentalModel !== 'SHARED_ROOM' && waterRequired && initialWater === null) ||
                   (initialElectric !== null && (!Number.isFinite(initialElectric) || initialElectric < 0)) ||
@@ -7418,10 +7420,11 @@ export async function handleConsoleV2Api(
 
     const initialContract = inv.contractId && (inv.policySnapshot as any)?.type === 'FIRST_COMBINED_INVOICE'
       ? await prisma.contract.findFirst({ where: { id: inv.contractId, orgId: actor.orgId }, select: { status: true, waterBillingMethod: true } }) : null;
+    const proofs = await paymentProofMap(prisma, actor.orgId, inv.payments.map(payment => payment.id));
     return sendJson(res, 200, {
       ok: true,
       automaticHandover: initialContract?.status === 'DRAFT' ? {
-        electricRequired: Boolean(inv.room.electricMeter || (inv.room.electricRateVnd && inv.room.electricRateVnd > 0)),
+        electricRequired: inv.room.electricBillingMode !== 'HUNONIC_AUTO' && Boolean(inv.room.electricMeter || (inv.room.electricRateVnd && inv.room.electricRateVnd > 0)),
         waterRequired: initialContract.waterBillingMethod === 'PER_M3' || inv.room.waterBillingMethod === 'PER_M3',
       } : null,
       invoice: {
@@ -7435,6 +7438,7 @@ export async function handleConsoleV2Api(
         payments: inv.payments.map((p) => ({
           ...p,
           amountVnd: toSafeVndNumber(p.amountVnd),
+          proofUrl: proofs.has(p.id) ? `/api/v1/console/v2/payment-transactions/${p.id}/proof` : null,
         })),
       },
     });

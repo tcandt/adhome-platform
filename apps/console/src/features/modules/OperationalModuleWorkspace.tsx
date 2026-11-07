@@ -18,6 +18,8 @@ import {
   Edit3,
   FileSignature,
   FileSpreadsheet,
+  ExternalLink,
+  ImagePlus,
   ShieldCheck,
   Users,
   Gauge,
@@ -49,6 +51,7 @@ import { HunonicSettingsModal } from './modals/HunonicSettingsModal';
 import { ActionMenu } from '@/shared/ui/ActionMenu';
 import { ContractDocumentLink } from '@/shared/ui/ContractDocumentDialog';
 import { BuildingScopeSelector } from '@/shared/ui/BuildingScopeSelector';
+import { MoneyInput } from '@/shared/ui/MoneyInput';
 import {
   formatContractDisplayCode,
   formatWaterBillingLabel,
@@ -169,7 +172,7 @@ export const OperationalModuleWorkspace: React.FC<
     paidAmountVnd: number;
     status: string;
   } | null>(null);
-  const [invoicePayAmount, setInvoicePayAmount] = useState('');
+  const [invoicePayAmount, setInvoicePayAmount] = useState(0);
   const [invoicePayMethod, setInvoicePayMethod] = useState<'MANUAL_CASH' | 'MANUAL_TRANSFER' | 'SEPAY' | 'PAYOS'>('MANUAL_CASH');
   const [invoicePayRef, setInvoicePayRef] = useState('');
   const [invoicePayError, setInvoicePayError] = useState<string | null>(null);
@@ -178,6 +181,10 @@ export const OperationalModuleWorkspace: React.FC<
   const [invoiceHandoverLoading, setInvoiceHandoverLoading] = useState(false);
   const [invoiceElectricStart, setInvoiceElectricStart] = useState('');
   const [invoiceWaterStart, setInvoiceWaterStart] = useState('');
+  const [invoiceProof, setInvoiceProof] = useState<File | null>(null);
+  const [invoicePaymentProofs, setInvoicePaymentProofs] = useState<Array<{ id: string; amountVnd: number; verifiedAt: string; proofUrl: string }>>([]);
+  const [invoicePaymentCommittedId, setInvoicePaymentCommittedId] = useState('');
+  const invoiceProofInput = useRef<HTMLInputElement>(null);
   const invoicePaymentAttempt = useRef<{ payload: string; key: string } | null>(null);
 
   // Legacy Import Wizard Modal state (C4-IMPORT-01/02)
@@ -460,7 +467,7 @@ export const OperationalModuleWorkspace: React.FC<
   }) => {
     setSelectedInvoice(inv);
     const due = Math.max(0, inv.totalAmountVnd - inv.paidAmountVnd);
-    setInvoicePayAmount(due.toString());
+    setInvoicePayAmount(due);
     setInvoicePayMethod('MANUAL_CASH');
     setInvoicePayRef('');
     setInvoicePayError(null);
@@ -468,11 +475,17 @@ export const OperationalModuleWorkspace: React.FC<
     invoicePaymentAttempt.current = null;
     setInvoiceElectricStart('');
     setInvoiceWaterStart('');
+    setInvoiceProof(null);
+    setInvoicePaymentProofs([]);
+    setInvoicePaymentCommittedId('');
     setInvoiceHandoverLoading(true);
     setIsInvoicePaymentModalOpen(true);
     void fetch(`/api/v1/console/v2/invoices/${encodeURIComponent(inv.id)}`, { credentials: 'include' })
       .then(async response => { if (!response.ok) throw new Error('Không tải được điều kiện bàn giao.'); return response.json(); })
-      .then(data => setInvoiceHandover(data.automaticHandover || null))
+      .then(data => {
+        setInvoiceHandover(data.automaticHandover || null);
+        setInvoicePaymentProofs((data.invoice?.payments || []).filter((payment: any) => payment.proofUrl));
+      })
       .catch(() => setInvoicePayError('Không tải được điều kiện bàn giao. Đóng và mở lại hóa đơn trước khi thu tiền.'))
       .finally(() => setInvoiceHandoverLoading(false));
   };
@@ -481,7 +494,7 @@ export const OperationalModuleWorkspace: React.FC<
     e.preventDefault();
     if (!selectedInvoice || invoiceHandoverLoading) return;
     const remaining = Math.max(0, selectedInvoice.totalAmountVnd - selectedInvoice.paidAmountVnd);
-    const amount = Math.trunc(Number(invoicePayAmount) || 0);
+    const amount = Math.trunc(invoicePayAmount || 0);
     if (amount > remaining) { setInvoicePayError('Số tiền thu vượt số còn phải thu.'); return; }
     if (invoiceHandover && amount === remaining &&
         ((invoiceHandover.electricRequired && invoiceElectricStart === '') || (invoiceHandover.waterRequired && invoiceWaterStart === ''))) {
@@ -491,6 +504,16 @@ export const OperationalModuleWorkspace: React.FC<
     setInvoicePayError(null);
     let committed = false;
     try {
+      if (invoicePaymentCommittedId) {
+        if (!invoiceProof) { setInvoicePayError('Chọn ảnh chứng từ để lưu.'); return; }
+        const proofRes = await fetch(`/api/v1/console/v2/payment-transactions/${encodeURIComponent(invoicePaymentCommittedId)}/proof`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': invoiceProof.type, 'X-File-Name': encodeURIComponent(invoiceProof.name), 'X-Requested-With': CONSOLE_CSRF_HEADER }, body: invoiceProof });
+        const proofData = await proofRes.json().catch(() => ({}));
+        if (!proofRes.ok || !proofData.ok) { setInvoicePayError(proofData.message || 'Không lưu được ảnh chứng từ.'); return; }
+        setIsInvoicePaymentModalOpen(false);
+        await Promise.all([loadModuleData(), refreshPortfolio()]);
+        notifySave(true, 'Đã lưu chứng từ thanh toán');
+        return;
+      }
       const paymentPayload = JSON.stringify({
         amountVnd: amount, providerId: invoicePayMethod, referenceText: invoicePayRef || undefined,
         handoverMeterKwh: invoiceElectricStart === '' ? undefined : Number(invoiceElectricStart),
@@ -516,6 +539,16 @@ export const OperationalModuleWorkspace: React.FC<
         return;
       }
       committed = true;
+      if (invoiceProof && data.transaction?.id) {
+        const proofRes = await fetch(`/api/v1/console/v2/payment-transactions/${encodeURIComponent(data.transaction.id)}/proof`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': invoiceProof.type, 'X-File-Name': encodeURIComponent(invoiceProof.name), 'X-Requested-With': CONSOLE_CSRF_HEADER }, body: invoiceProof });
+        const proofData = await proofRes.json().catch(() => ({}));
+        if (!proofRes.ok || !proofData.ok) {
+          setInvoicePaymentCommittedId(data.transaction.id);
+          await Promise.all([loadModuleData(), refreshPortfolio()]);
+          setInvoicePayError(`Đã ghi nhận thu tiền nhưng chưa lưu được chứng từ. ${proofData.message || 'Chọn ảnh và thử lưu lại.'}`);
+          return;
+        }
+      }
       setIsInvoicePaymentModalOpen(false);
       await Promise.all([loadModuleData(), refreshPortfolio()]);
       notifySave(true, data.handedOver ? 'Đã thu tiền và bàn giao phòng' : 'Đã thu tiền hóa đơn', data.handedOver ? 'Phòng và người ở đã được kích hoạt.' : undefined);
@@ -4039,11 +4072,13 @@ export const OperationalModuleWorkspace: React.FC<
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold mb-1">
+              <div className="invoice-payment-primary-fields grid grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] gap-2.5">
+              <div className="min-w-0">
+                <label htmlFor="invoice-payment-method" className="block text-xs font-semibold mb-1">
                   Phương thức thanh toán
                 </label>
                 <select
+                  id="invoice-payment-method"
                   value={invoicePayMethod}
                   onChange={(e) => setInvoicePayMethod(e.target.value as any)}
                   className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-semibold"
@@ -4055,23 +4090,24 @@ export const OperationalModuleWorkspace: React.FC<
                 </select>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold mb-1">
-                  Số tiền thu (VND)
+              <div className="min-w-0">
+                <label htmlFor="invoice-payment-amount" className="block text-xs font-semibold mb-1">
+                  Số tiền thu
                 </label>
-                <input
-                  type="number"
+                <MoneyInput
+                  id="invoice-payment-amount"
                   min={1}
-                  step={10000}
                   value={invoicePayAmount}
-                  onChange={(e) => setInvoicePayAmount(e.target.value)}
-                  className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold tabular-nums text-brand-primary"
+                  max={Math.max(0, selectedInvoice.totalAmountVnd - selectedInvoice.paidAmountVnd)}
+                  onChange={setInvoicePayAmount}
+                  className="min-h-11 bg-slate-50 text-xs font-bold text-brand-primary dark:bg-slate-800"
                   required
                 />
               </div>
+              </div>
 
               {invoiceHandoverLoading && <p role="status" className="text-xs text-slate-500">Đang kiểm tra điều kiện bàn giao…</p>}
-              {invoiceHandover && Number(invoicePayAmount) >= selectedInvoice.totalAmountVnd - selectedInvoice.paidAmountVnd && (
+              {invoiceHandover && (invoiceHandover.electricRequired || invoiceHandover.waterRequired) && invoicePayAmount >= selectedInvoice.totalAmountVnd - selectedInvoice.paidAmountVnd && (
                 <fieldset className="space-y-3 rounded-xl border border-blue-200 bg-blue-50 p-3 dark:border-blue-900 dark:bg-blue-950/30">
                   <legend className="px-1 text-xs font-bold">Chỉ số đầu kỳ để bàn giao tự động</legend>
                   {invoiceHandover.electricRequired && <label className="block text-xs font-semibold">Chỉ số điện (kWh)<input type="number" min="0" step="any" required value={invoiceElectricStart} onChange={e => { setInvoiceElectricStart(e.target.value); setInvoicePayError(null); }} className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" /></label>}
@@ -4079,6 +4115,12 @@ export const OperationalModuleWorkspace: React.FC<
                   <p className="text-xs text-slate-600 dark:text-slate-300">Thu đủ hóa đơn sẽ kích hoạt hợp đồng, người ở và trạng thái phòng trong cùng giao dịch.</p>
                 </fieldset>
               )}
+
+              <div className="rounded-xl border border-dashed border-slate-300 p-3 dark:border-slate-700">
+                <input ref={invoiceProofInput} type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" aria-label="Ảnh chứng từ thanh toán" onChange={e => { const file = e.target.files?.[0] || null; e.target.value = ''; if (file && file.size > 8 * 1024 * 1024) { setInvoicePayError('Ảnh chứng từ phải nhỏ hơn 8 MB.'); return; } setInvoiceProof(file); setInvoicePayError(null); }} />
+                <div className="flex items-center justify-between gap-2"><div className="min-w-0"><p className="text-xs font-semibold">Ảnh chứng từ <span className="font-normal text-slate-500">(nếu có)</span></p><p className="truncate text-[11px] text-slate-500">{invoiceProof?.name || 'JPEG, PNG hoặc WebP · tối đa 8 MB'}</p></div><AnimatedButton type="button" onClick={() => invoiceProofInput.current?.click()} className="flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-xs font-semibold text-blue-700 dark:border-slate-700 dark:text-blue-300"><ImagePlus size={14} />{invoiceProof ? 'Đổi ảnh' : 'Tải ảnh'}</AnimatedButton></div>
+                {invoicePaymentProofs.length > 0 && <div className="mt-2 flex flex-wrap gap-2">{invoicePaymentProofs.map((proof, index) => <a key={proof.id} href={proof.proofUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-8 items-center gap-1 rounded-lg bg-slate-100 px-2 text-[11px] font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200"><ExternalLink size={12} />Chứng từ {index + 1}</a>)}</div>}
+              </div>
 
               <div>
                 <label className="block text-xs font-semibold mb-1">
@@ -4109,7 +4151,7 @@ export const OperationalModuleWorkspace: React.FC<
                   className="min-h-11 flex-[1.45] rounded-xl bg-brand-primary px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-brand-hover disabled:opacity-50 flex items-center justify-center gap-1.5"
                 >
                   {isSavingInvoicePay && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  Xác nhận thu tiền
+                  {invoicePaymentCommittedId ? 'Lưu chứng từ' : 'Xác nhận thu tiền'}
                 </AnimatedButton>
               </div>
             </form>

@@ -355,6 +355,8 @@ html[data-motion="reduced"] ::after {
   overscroll-behavior-inline: contain;
   scrollbar-width: thin;
 }
+.invoice-payment-primary-fields .money-input-control { text-align: left; padding-right: 28px; }
+.invoice-payment-primary-fields .money-input-control::placeholder { color: #94a3b8; }
 
 @media (max-width: 767px) {
   .operational-workspace {
@@ -462,6 +464,11 @@ html[data-motion="reduced"] ::after {
   .invoice-payment-dialog fieldset {
     padding: 14px;
   }
+  .invoice-payment-primary-fields { gap: 8px; }
+  .invoice-payment-primary-fields label { font-size: 11px; }
+  .invoice-payment-primary-fields select,
+  .invoice-payment-primary-fields .money-input-control { min-width: 0; padding-inline: 10px; }
+  .invoice-payment-primary-fields .money-input-control { padding-right: 25px; }
 }
 
 @media (max-width: 374px) {

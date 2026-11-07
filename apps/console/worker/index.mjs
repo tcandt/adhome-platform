@@ -10,14 +10,7 @@ export default {
     if (!url.pathname.startsWith('/api/v1/console/') && !paymentWebhook) return failure('Not found', 404);
     if (paymentWebhook && request.method !== 'POST') return failure('POST required', 405);
     let origin;
-    try {
-      // Cloudflare's workers.dev resolver can temporarily retain negative DNS
-      // cache for the tunnel hostname. Route fallback-host API calls through
-      // the production Worker route, which then reaches the configured API.
-      origin = url.hostname.endsWith('.workers.dev')
-        ? new URL('https://console.adhome.vn')
-        : new URL(env.CONSOLE_API_ORIGIN);
-    } catch {
+    try { origin = new URL(env.CONSOLE_API_ORIGIN); } catch {
       return failure('API quản trị chưa được kết nối.');
     }
     if (origin.protocol !== 'https:' || origin.origin === url.origin || origin.pathname !== '/' || origin.search || origin.hash || origin.username || origin.password) {
@@ -30,6 +23,7 @@ export default {
         method: request.method, headers,
         body: ['GET', 'HEAD'].includes(request.method) ? undefined : request.body,
         redirect: 'manual', signal: AbortSignal.timeout(30000),
+        cf: { resolveOverride: '8411bdbd-614d-45b4-9545-1cbd4be9b331.cfargotunnel.com' },
       });
       const response = new Response(upstream.body, upstream);
       response.headers.set('Cache-Control', 'no-store');

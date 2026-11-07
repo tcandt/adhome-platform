@@ -135,7 +135,7 @@ export async function handleRentalWorkflow(req: any, res: any, pathname: string,
         if (!first) fail('Không tìm thấy hóa đơn kỳ đầu để cập nhật.', 409);
         await tx.invoice.update({ where: { id: first.id }, data: { periodKey: body.startDate.slice(0, 7), dueDate: body.startDate,
           roomRentVnd: BigInt(calc.rentFirstPeriodVnd), adjustmentVnd: BigInt(deposit), totalAmountVnd: BigInt(settlement.totalInitialInvoiceDue),
-          policySnapshot: { type: 'FIRST_COMBINED_INVOICE', ...calc, financialSummary: settlement,
+          policySnapshot: { type: 'FIRST_COMBINED_INVOICE', financialSummary: settlement, formula: calc.formula,
             breakdown: [{ label: 'Tiền thuê kỳ đầu', amountVnd: calc.rentFirstPeriodVnd }, { label: 'Cọc hợp đồng', amountVnd: deposit }] } } });
         const contractDeposit = ct.deposits.find((d: any) => d.depositType === 'CONTRACT');
         if (contractDeposit) await tx.deposit.update({ where: { id: contractDeposit.id }, data: { amountVnd: BigInt(deposit) } });
@@ -258,7 +258,7 @@ export async function handleRentalWorkflow(req: any, res: any, pathname: string,
             await tx.invoice.create({ data: { orgId: actor.orgId, buildingId: room.buildingId, roomId: room.id, tenantId: tenant.id, contractId: entity.id,
               invoiceCode: `INV-${code}`, periodKey: body.startDate.slice(0, 7), dueDate: body.startDate,
               roomRentVnd: BigInt(calc.rentFirstPeriodVnd), adjustmentVnd: BigInt(amount), totalAmountVnd: BigInt(q.totalInitialInvoiceDue), status: 'ISSUED',
-              policySnapshot: { type: 'FIRST_COMBINED_INVOICE', ...calc, financialSummary: q,
+              policySnapshot: { type: 'FIRST_COMBINED_INVOICE', financialSummary: q, formula: calc.formula,
                 breakdown: [{ label: 'Tiền thuê kỳ đầu', amountVnd: calc.rentFirstPeriodVnd }, { label: 'Cọc hợp đồng', amountVnd: amount }] } } });
           } else {
             const debt = vnd(body.openingDebtVnd || 0);

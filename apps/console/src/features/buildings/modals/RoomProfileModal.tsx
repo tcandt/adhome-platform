@@ -673,7 +673,7 @@ export const RoomProfileModal: React.FC<Props> = ({
                 <div className="space-y-4">
                   <div className="flex items-start justify-between gap-3">
                     <div><h4 className="text-sm font-semibold text-slate-900 dark:text-white">Khách lưu trú <span className="ml-1 font-normal text-slate-400">{residentCount}/{room.maxOccupants}</span></h4><p className="mt-1 text-xs leading-relaxed text-slate-500">Khách thuê và người cùng ở trong phòng.</p></div>
-                    {canAddResident && !isAddingOccupant && <Button type="button" onClick={addResident} aria-label="Thêm khách thuê" title="Thêm khách thuê" data-testid="btn-add-room-tenant" hoverScale={1} tapScale={0.96} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300"><Plus size={19} /></Button>}
+                    {canAddResident && !isAddingOccupant && <Button type="button" onClick={addResident} aria-label="Thêm khách thuê" title="Thêm khách thuê" data-testid="btn-add-room-tenant" hoverScale={1.04} tapScale={0.92} className="flex h-8 w-8 shrink-0 items-center justify-center border-0 bg-transparent p-0 text-blue-700 shadow-none hover:bg-transparent dark:bg-transparent dark:text-blue-300 dark:hover:bg-transparent"><Plus size={18} /></Button>}
                   </div>
                   {/* Add Occupant Form Drawer/Card */}
                   {isAddingOccupant && (

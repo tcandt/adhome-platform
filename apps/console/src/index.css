@@ -162,6 +162,33 @@ input::placeholder, textarea::placeholder, select option { font-size: inherit; }
     padding-block: 6px;
   }
 
+  /* Compact text action buttons in modal/form footers; icon-only close controls stay unchanged. */
+  :is([role="dialog"], [data-testid^="modal-"]) button:is(
+    [class~="min-h-10"],
+    [class~="min-h-11"]
+  ):not([aria-label^="Đóng"]) {
+    min-height: 36px !important;
+    padding: 6px 10px !important;
+    border-radius: 8px !important;
+    column-gap: 4px;
+    line-height: 1.25;
+  }
+  :is([role="dialog"], [data-testid^="modal-"]) button:is(
+    [class~="min-h-10"],
+    [class~="min-h-11"]
+  ):not([aria-label^="Đóng"]) > svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  [data-testid$="-footer"],
+  [data-testid$="fixed-footer"],
+  .building-form-footer {
+    gap: 6px;
+    padding-top: 6px;
+    padding-bottom: max(6px, env(safe-area-inset-bottom));
+  }
+
   .room-config-fields {
     padding: 12px;
   }

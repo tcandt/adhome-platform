@@ -77,6 +77,16 @@ select, textarea {
   letter-spacing: 0;
 }
 input::placeholder, textarea::placeholder, select option { font-size: inherit; }
+.money-input-control {
+  padding-right: 2rem !important;
+}
+.money-input-control[data-money-suffix-wide="true"] {
+  padding-right: 4.25rem !important;
+}
+.money-input-suffix {
+  max-width: 4rem;
+  white-space: nowrap;
+}
 :is([role="dialog"], [data-testid^="modal-"], .rental-workspace) :is(label, button) {
   font-size: var(--form-label-font-size) !important;
   letter-spacing: 0;

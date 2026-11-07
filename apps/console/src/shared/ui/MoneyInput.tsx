@@ -131,6 +131,8 @@ export const MoneyInput: React.FC<MoneyInputProps> = ({
       )}
       <div className="relative rounded-lg shadow-sm">
         <input
+          data-money-input-control
+          data-money-suffix-wide={currencySuffix.length > 1 ? 'true' : undefined}
           ref={inputRef}
           type="text"
           inputMode="numeric"
@@ -138,14 +140,14 @@ export const MoneyInput: React.FC<MoneyInputProps> = ({
           value={displayValue}
           onChange={handleChange}
           placeholder={placeholder}
-          className={`w-full rounded-lg border text-right pr-9 pl-3 py-2 text-sm tabular-nums transition-colors outline-none font-medium ${
+          className={`money-input-control w-full rounded-lg border text-right pr-9 pl-3 py-2 text-sm tabular-nums transition-colors outline-none font-medium ${
             error
               ? 'border-rose-500 focus:ring-1 focus:ring-rose-500 text-rose-900 bg-rose-50/20'
               : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
           } ${disabled ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed' : ''} ${className}`}
           {...rest}
         />
-        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+        <div className="money-input-suffix pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5">
           <span className="text-xs font-semibold text-slate-400 dark:text-slate-500 select-none">
             {currencySuffix}
           </span>

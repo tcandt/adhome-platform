@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { Dialog } from '@animate-ui/react/primitives/base-ui/dialog';
 import { Button } from '@animate-ui/react/primitives/buttons/button';
 import { ShimmeringText } from '@animate-ui/react/primitives/texts/shimmering';
-import { Check, CheckCircle2, ChevronRight, Copy, Download, FileCheck2, Home, LoaderCircle, Plus, ShieldCheck, Users, Wallet } from 'lucide-react';
+import { CalendarDays, Check, CheckCircle2, ChevronRight, Copy, Download, FileCheck2, Home, LoaderCircle, Plus, Receipt, ShieldCheck, Users, Wallet, X } from 'lucide-react';
 import { usePortfolio } from '../../app/providers/PortfolioContext';
 import { useNavigation } from '../../app/providers/NavigationContext';
 import { MoneyInput, formatCurrency as cash } from '../../shared/ui/MoneyInput';
@@ -30,6 +31,18 @@ function Amount({ label, value, onChange, placeholder }: { label: string; value:
 function Line({ label, value, strong }: { label: string; value: number; strong?: boolean }) {
   return <div className={`flex flex-wrap justify-between gap-2 border-b border-slate-100 py-2 dark:border-slate-700 ${strong ? 'font-bold text-blue-700 dark:text-blue-300' : ''}`}><span>{label}</span><span className="tabular-nums">{cash(value)}</span></div>;
 }
+const formatRentalDate = (value: unknown) => {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : '—';
+};
+const invoiceStatusLabel = (status: unknown) => ({ DRAFT: 'Nháp', ISSUED: 'Chờ thu', PARTIAL: 'Thu một phần', PAID: 'Đã thanh toán', OVERDUE: 'Quá hạn', VOID: 'Đã hủy' } as Record<string, string>)[String(status)] || String(status || 'Chờ thu');
+const billingPolicyLabel = (policy: unknown, formula: string) => {
+  const resolved = String(policy || '');
+  if (resolved === 'ANNIVERSARY_CYCLE' || formula.startsWith('Chu kỳ tròn tháng')) return 'Trọn chu kỳ';
+  if (resolved === 'FULL_FIRST_MONTH' || formula.startsWith('Trọn tháng dương lịch')) return 'Trọn tháng';
+  if (resolved === 'CUSTOM_FIRST_CYCLE' || formula.startsWith('Tùy chỉnh')) return 'Kỳ đầu tùy chỉnh';
+  return 'Theo ngày thực tế';
+};
 function PersonFields({ value, onChange, title, landlord = false, requiredErrors = {} }: { value: Person; onChange: (v: Person) => void; title: string; landlord?: boolean; requiredErrors?: Partial<Record<'fullName' | 'phone' | 'idNumber', string>> }) {
   const input = (key: keyof Person, label: string, type = 'text', placeholder?: string) => { const error = requiredErrors[key as 'fullName' | 'phone' | 'idNumber']; const numeric = key === 'idNumber' || key === 'phone'; return <Field label={label} wide={key === 'fullName' || key === 'address'}><input className={fieldClass} type={type} inputMode={numeric ? 'numeric' : undefined} pattern={numeric ? '[0-9]*' : undefined} maxLength={key === 'phone' ? 10 : key === 'idNumber' ? 12 : undefined} value={value[key] || ''} placeholder={error || placeholder} autoComplete={key === 'fullName' ? 'name' : key === 'phone' ? 'tel' : 'off'} aria-invalid={!!error || undefined} aria-label={error ? `${label}: ${error}` : undefined} onChange={e => onChange({ ...value, [key]: numeric ? e.target.value.replace(/\D/g, '').slice(0, key === 'phone' ? 10 : 12) : e.target.value })} /></Field>; };
   return <fieldset className="rental-person"><legend><Users size={16} /><span className="rental-person-title">{title}</span><IdentityQrScanner onApply={details => onChange({ ...value, ...details })} /></legend><div className="rental-fields">
@@ -48,7 +61,9 @@ function RentalStage({ children }: { children: React.ReactNode }) {
   });
   const nodes = flatten(children);
   const isActions = (node: React.ReactNode) => React.isValidElement<{ className?: string }>(node) && node.props.className === 'rental-actions';
-  return <div className="rental-stage"><div className="rental-stage-body">{nodes.filter(n => !isActions(n))}</div>{nodes.filter(isActions)}</div>;
+  const content = nodes.filter(n => !isActions(n));
+  const actions = nodes.filter(isActions);
+  return <div className="rental-stage"><div className="rental-stage-body">{content}<div className="rental-actions-mobile">{actions}</div></div><div className="rental-actions-desktop">{actions}</div></div>;
 }
 
 export function RentalOnboardingPage({ roomId, initialIntent, onClose, embedded = false, closeRequestRef }: { roomId: string; initialIntent?: Intent; onClose: () => void; embedded?: boolean; closeRequestRef?: React.MutableRefObject<(() => void) | null> }) {
@@ -64,9 +79,10 @@ export function RentalOnboardingPage({ roomId, initialIntent, onClose, embedded 
   const [intent, setIntent] = useState<Intent | undefined>(initialIntent);
   const [busy, setBusy] = useState(false);
   const [editingDraft, setEditingDraft] = useState(false);
-  const [botStatus, setBotStatus] = useState<{ botConfigured: boolean; linked: boolean; registrationDeliveryStatus: string | null; invoiceDeliveryStatus: string | null } | null>(null);
+  const [botStatus, setBotStatus] = useState<{ botConfigured: boolean; linked: boolean; registrationDeliveryStatus: string | null; invoiceDeliveryStatus: string | null; invoiceOutstandingVnd?: number | null; invoiceStatus?: string | null } | null>(null);
   const [botStatusError, setBotStatusError] = useState('');
   const [copiedCommand, setCopiedCommand] = useState(false);
+  const [invoiceDetailOpen, setInvoiceDetailOpen] = useState(false);
   const [error, setError] = useState('');
   const [tenantErrors, setTenantErrors] = useState<Partial<Record<'fullName' | 'phone' | 'idNumber', string>>>({});
   const [message, setMessage] = useState('');
@@ -146,6 +162,19 @@ export function RentalOnboardingPage({ roomId, initialIntent, onClose, embedded 
   const C = Number(contract?.depositVnd || 0);
   const cPaid = (contract?.deposits || []).filter((d: any) => d.depositType === 'CONTRACT').reduce((s: number, d: any) => s + Math.max(0, Number(d.paidAmountVnd) - Number(d.refundedVnd) - Number(d.deductedAmountVnd) - Number(d.forfeitedAmountVnd) - Number(d.transferredAmountVnd)), 0);
   const due = Math.max(0, Number(invoice?.totalAmountVnd || 0) - Number(invoice?.paidAmountVnd || 0));
+  const invoiceSnapshot = (invoice?.policySnapshot || {}) as Record<string, any>;
+  const invoiceFormula = String(invoiceSnapshot.formula || '');
+  const formulaDates = invoiceFormula.match(/\d{4}-\d{2}-\d{2}/g) || [];
+  const formulaDays = invoiceFormula.match(/(\d+)\/(\d+)\s*ngày/);
+  const firstPeriodStart = invoiceSnapshot.periodStartDate || formulaDates[0] || contract?.startDate;
+  const firstPeriodEnd = invoiceSnapshot.periodEndDate || formulaDates[1] || (firstPeriodStart ? `${String(firstPeriodStart).slice(0, 8)}${String(new Date(Number(String(firstPeriodStart).slice(0, 4)), Number(String(firstPeriodStart).slice(5, 7)), 0).getDate()).padStart(2, '0')}` : '');
+  const billedDays = Number(invoiceSnapshot.billedDays || formulaDays?.[1] || 0);
+  const daysInMonth = Number(invoiceSnapshot.daysInMonth || formulaDays?.[2] || 0);
+  const billingPolicy = billingPolicyLabel(invoiceSnapshot.policy, invoiceFormula);
+  const invoiceBreakdown = Array.isArray(invoiceSnapshot.breakdown) ? invoiceSnapshot.breakdown : [];
+  const firstRentVnd = Number(invoiceSnapshot.rentFirstPeriodVnd ?? invoice?.roomRentVnd ?? 0);
+  const firstDepositVnd = Number(invoiceBreakdown.find((item: any) => /cọc/i.test(String(item.label)))?.amountVnd ?? (invoiceSnapshot.type === 'FIRST_COMBINED_INVOICE' ? invoice?.adjustmentVnd : 0) ?? 0);
+  const otherInvoiceItems = invoiceBreakdown.filter((item: any) => !/thuê|cọc/i.test(String(item.label)) && Number(item.amountVnd) !== 0);
   const pendingRefunds = [...(reservation?.deposits || []), ...(contract?.deposits || [])].filter((d: any, i: number, arr: any[]) => d.status === 'PENDING_REFUND' && arr.findIndex(x => x.id === d.id) === i);
   const pendingRefund = pendingRefunds[0];
   const pendingAmount = pendingRefund ? Number(pendingRefund.paidAmountVnd) - Number(pendingRefund.refundedVnd) : 0;
@@ -217,7 +246,7 @@ export function RentalOnboardingPage({ roomId, initialIntent, onClose, embedded 
     } catch (e: any) { setError(e.message); } finally { setBusy(false); }
   };
   const personEditor = <><PersonFields title="Khách đứng tên hợp đồng" value={profile.tenant} requiredErrors={tenantErrors} onChange={p => { setTenantErrors(previous => ({ ...previous, ...(p.fullName.trim() ? { fullName: undefined } : {}), ...(p.phone.trim() ? { phone: undefined } : {}), ...(p.idNumber.trim() ? { idNumber: undefined } : {}) })); editProfile('tenant', p); }} />{intent !== 'HOLD' && terms.rentalModel !== 'SHARED_ROOM' && <section className="rental-members"><div className="rental-section-heading"><div><h2>Người cùng ở</h2><p>Thông tin dùng để điền tờ khai CT01 cho từng người.</p></div><span>{profile.members.length} người</span></div>{profile.members.map((p: Person, i: number) => <div className="rental-member" key={i}><PersonFields title={`Người cùng ở ${i + 1}`} value={p} onChange={v => editProfile('members', profile.members.map((x: Person, j: number) => i === j ? v : x))} /><button type="button" className="rental-text-button text-rose-600" onClick={() => editProfile('members', profile.members.filter((_: Person, j: number) => j !== i))}>Xóa người này</button></div>)}<Button type="button" className="rental-add-member" disabled={busy || profile.members.length + 1 >= state?.room.maxOccupants} onClick={() => editProfile('members', [...profile.members, { ...blankPerson(), relationship: '' }])}><Plus size={16} />Thêm người cùng ở</Button></section>}</>;
-  return <section ref={workspace} className={`rental-workspace${embedded ? ' rental-embedded' : ''}`} data-testid="rental-onboarding-page" aria-busy={busy}>
+  return <section ref={workspace} className={`rental-workspace${embedded ? ' rental-embedded' : ''}`} data-testid="rental-onboarding-page" data-stage={stage} data-detail-step={stage === 'details' ? detailStep : undefined} aria-busy={busy}>
     <header className="rental-page-heading"><div><h1 ref={heading} tabIndex={-1} className="outline-none">{titles[stage]}</h1><p>{stage === 'intent' ? 'Từ thông tin khách đến hợp đồng và hồ sơ cư trú.' : stage === 'details' && detailStep === 'people' ? 'Thông tin này sẽ được tự điền vào hợp đồng và CT01.' : stage === 'profile' ? 'Một bộ thông tin, đầy đủ giấy tờ cần dùng.' : 'Kiểm tra thông tin trước khi lưu giao dịch.'}</p></div><span className="rental-room-tag"><Home size={14} />{state?.room.code || '…'}</span></header>
     {error && <div ref={feedback} tabIndex={-1} role="alert" className="rental-feedback rental-error">{error}</div>}{message && <p role="status" className="rental-feedback rental-success"><CheckCircle2 size={16} />{message}</p>}
     {busy && <p role="status" className="rental-loading"><span className="sr-only">Đang xử lý yêu cầu…</span><span aria-hidden="true"><ShimmeringText text="Đang xử lý yêu cầu…" /></span></p>}
@@ -264,17 +293,20 @@ export function RentalOnboardingPage({ roomId, initialIntent, onClose, embedded 
           {eligibleReservation && <div className="rental-actions">{button('Sửa khách giữ phòng', () => { setProfileTab('people'); move('profile'); }, true)}{reservation.status === 'PENDING' && button('Xác nhận đã thu đủ phần cọc còn thiếu', () => { if (window.confirm('Chỉ xác nhận sau khi thực nhận đủ tiền cọc còn thiếu. Tiếp tục?')) perform(`/reservations/${reservation.id}/confirm-payment`, { paymentMethod: terms.paymentMethod }); }, true)}{button('Hủy cọc', () => { setCancel({ refundAmountVnd: B, deductionAmountVnd: 0, reason: '', refundPending: true }); setCancelMode('FULL'); move('cancel'); }, true)}{button('Tiếp tục thuê', () => { setIntent('DIRECT'); setDetailStep('terms'); move('details'); })}</div>}
         </section>}
         {contract && <section className="rounded-xl border border-blue-200 p-4"><h2 className="font-bold"><ContractDocumentLink contractId={contract.id} onProfileSaved={documentProfileSaved}>{contract.contractCode}</ContractDocumentLink> · {contract.status === 'DRAFT' ? 'Chờ bàn giao' : ['ACTIVE', 'EXPIRING', 'EXTENDED'].includes(contract.status) ? 'Đang ở' : contract.status}</h2><Line label="Cọc hợp đồng yêu cầu" value={C} /><Line label="Cọc đang có" value={cPaid} /><Line label="Cọc còn thiếu" value={Math.max(0, C - cPaid)} />
-          {invoice && <><Line label="Tổng hóa đơn" value={Number(invoice.totalAmountVnd)} /><Line label="Đã thực thu mới" value={Number(invoice.paidAmountVnd)} /><Line label="Còn phải thu" value={due} strong />{Number(invoice.paidAmountVnd) > Number(invoice.totalAmountVnd) && <Line label="Khách trả dư — cần xử lý riêng" value={Number(invoice.paidAmountVnd) - Number(invoice.totalAmountVnd)} />}</>}
+          {invoice && <><Line label="Tổng hóa đơn" value={Number(invoice.totalAmountVnd)} /><Line label="Đã thực thu mới" value={Number(invoice.paidAmountVnd)} /><Line label="Còn phải thu" value={due} strong /><Button type="button" hoverScale={1} tapScale={0.98} onClick={() => setInvoiceDetailOpen(true)} className="rental-invoice-detail-trigger"><Receipt size={15} />Chi tiết kỳ đầu <ChevronRight size={14} /></Button>{Number(invoice.paidAmountVnd) > Number(invoice.totalAmountVnd) && <Line label="Khách trả dư — cần xử lý riêng" value={Number(invoice.paidAmountVnd) - Number(invoice.totalAmountVnd)} />}</>}
           {contract.status === 'DRAFT' && <div className="rental-registration" data-testid="rental-bot-registration">
-            <h3 className="font-semibold">Đăng ký nhận tin Zalo Bot</h3>
-            <p>Yêu cầu khách nhắn riêng cho Bot đúng cú pháp bên dưới. Bot đối chiếu mã phòng và số điện thoại trên hợp đồng nháp.</p>
-            <div className="rental-command"><code>{registrationCommand}</code><Button type="button" aria-label="Sao chép lệnh đăng ký Zalo" title="Sao chép lệnh" disabled={!registrationCommand} onClick={async () => { try { await navigator.clipboard.writeText(registrationCommand); setCopiedCommand(true); } catch { setBotStatusError('Không sao chép được. Hãy chọn và sao chép lệnh thủ công.'); } }}><Copy size={16} />{copiedCommand ? 'Đã sao chép' : 'Sao chép'}</Button></div>
+            <h3 className="font-semibold">{!botStatus?.linked ? 'Đăng ký nhận tin Zalo Bot' : invoice && Number(botStatus.invoiceOutstandingVnd ?? due) === 0 ? 'Đã thanh toán' : botStatus.invoiceDeliveryStatus === 'SENT' ? 'Đang chờ thanh toán' : 'Đang gửi hóa đơn'}</h3>
+            {!botStatus?.linked && <><p>Yêu cầu khách nhắn riêng cho Bot đúng cú pháp bên dưới. Bot đối chiếu mã phòng và số điện thoại trên hợp đồng nháp.</p>
+            <div className="rental-command"><code>{registrationCommand}</code><Button type="button" aria-label="Sao chép lệnh đăng ký Zalo" title="Sao chép lệnh" disabled={!registrationCommand} onClick={async () => { try { await navigator.clipboard.writeText(registrationCommand); setCopiedCommand(true); } catch { setBotStatusError('Không sao chép được. Hãy chọn và sao chép lệnh thủ công.'); } }}><Copy size={16} />{copiedCommand ? 'Đã sao chép' : 'Sao chép'}</Button></div></>}
             {botStatusError && <p role="alert">{botStatusError}</p>}
             {!botStatusError && botStatus && !botStatus.botConfigured && <p role="status">Zalo Bot chưa được kết nối. Hãy cấu hình trong Cài đặt trước khi yêu cầu khách đăng ký.</p>}
             {!botStatusError && botStatus?.botConfigured && !botStatus.linked && <p role="status" className="rental-bot-wait"><LoaderCircle size={16} className="animate-spin motion-reduce:animate-none" /><ShimmeringText text="Đang chờ khách đăng ký…" /></p>}
-            {botStatus?.linked && <p role="status" className="rental-bot-wait"><CheckCircle2 size={16} />Đã xác minh khách đăng ký{botStatus.registrationDeliveryStatus === 'SENT' ? ' và gửi tin xác nhận.' : '; tin xác nhận đang chờ gửi.'}</p>}
-            {botStatus?.linked && invoice && <p role="status" className="rental-bot-wait">{botStatus.invoiceDeliveryStatus === 'SENT' ? <CheckCircle2 size={16} /> : <LoaderCircle size={16} className="animate-spin motion-reduce:animate-none" />}{botStatus.invoiceDeliveryStatus === 'SENT' ? 'Bot đã gửi hóa đơn cho khách thanh toán.' : botStatus.invoiceDeliveryStatus === 'PENDING' ? 'Hóa đơn đang chờ Bot gửi; chưa xác nhận khách đã nhận.' : 'Chưa có xác nhận gửi hóa đơn. Kiểm tra kết nối Bot và trạng thái hóa đơn.'}</p>}
-            <p>Khách sẽ nhận tin về điện nước, tiền phòng và hạn hợp đồng theo mẫu tại Cài đặt → Zalo Bot.</p>
+            {botStatus?.linked && <p role="status" className="rental-bot-wait is-complete"><CheckCircle2 size={16} />Đăng ký Zalo Bot thành công.</p>}
+            {botStatus?.linked && invoice && botStatus.invoiceDeliveryStatus === 'SENT' && <p role="status" className="rental-bot-wait is-complete"><CheckCircle2 size={16} />Đã gửi hóa đơn cho khách.</p>}
+            {botStatus?.linked && invoice && Number(botStatus.invoiceOutstandingVnd ?? due) === 0 && <p role="status" className="rental-bot-wait"><CheckCircle2 size={16} />Hóa đơn {invoice.invoiceCode} đã được thanh toán đầy đủ.</p>}
+            {botStatus?.linked && invoice && Number(botStatus.invoiceOutstandingVnd ?? due) > 0 && botStatus.invoiceDeliveryStatus !== 'SENT' && <p role="status" className="rental-bot-wait"><LoaderCircle size={16} className="animate-spin motion-reduce:animate-none" /><ShimmeringText text={botStatus.invoiceDeliveryStatus === 'PENDING' ? 'Đăng ký thành công · đang gửi hóa đơn…' : 'Đăng ký thành công · đang chuẩn bị hóa đơn…'} /></p>}
+            {botStatus?.linked && invoice && botStatus.invoiceDeliveryStatus === 'SENT' && Number(botStatus.invoiceOutstandingVnd ?? due) > 0 && <p role="status" className="rental-bot-wait"><LoaderCircle size={16} className="animate-spin motion-reduce:animate-none" /><ShimmeringText text={`Đã gửi ${invoice.invoiceCode} · chờ thanh toán ${cash(Number(botStatus.invoiceOutstandingVnd ?? due))}`} /></p>}
+            {!botStatus?.linked && <p>Khách sẽ nhận tin về điện nước, tiền phòng và hạn hợp đồng theo mẫu tại Cài đặt → Zalo Bot.</p>}
           </div>}
           {contract.status === 'DRAFT' && <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">Thu đủ hóa đơn đầu kỳ trong mục Hóa đơn để hệ thống bàn giao phòng tự động. Chỉ số điện, nước đầu kỳ được nhập tại bước thu hóa đơn.</p>}
           <div className="mt-3 flex flex-wrap gap-2">{contract.status === 'DRAFT' && Number(invoice?.paidAmountVnd || 0) === 0 && cPaid === 0 && botStatus?.linked === false && button('Sửa hợp đồng nháp', () => { setIntent('DIRECT'); setEditingDraft(true); setDetailStep('people'); move('details'); }, true)}{due > 0 && button(`Đến Hóa đơn · ${invoice.invoiceCode}`, () => { sessionStorage.setItem('adhome:open-invoice-payment', invoice.id); if (invoice.periodKey) setSelectedPeriod(invoice.periodKey); onClose(); setActiveModule('invoices'); })}</div>
@@ -309,5 +341,24 @@ export function RentalOnboardingPage({ roomId, initialIntent, onClose, embedded 
         <div className="rental-actions">{button('Về hồ sơ thuê', () => move('record'), true)}{profileTab === 'documents' && docKind === 'LEASE' && contract && <ContractDocumentLink contractId={contract.id} draftProfile={profile} onProfileSaved={documentProfileSaved} className="rental-button rental-button-secondary">Xem PDF</ContractDocumentLink>}{profileTab === 'documents' ? <Button type="button" className="rental-button rental-button-primary" disabled={busy || missing.length > 0} onClick={() => exportFile(exportKind, docKind === 'RESIDENCE_BUNDLE' ? 'pdf' : docFormat, docPerson)}><Download size={16} />{busy ? 'Đang tạo tài liệu…' : 'Tải tài liệu'}</Button> : button('Lưu thông tin', () => perform(`${base}/profile`, { entityId: contract?.id || reservation?.id, profile }, 'profile'))}</div>
       </>}
       </RentalStage></div><aside className="rental-summary"><div className="rental-summary-room"><span className="rental-summary-icon"><Home size={23} strokeWidth={1.5} /></span><h2>Phòng {state.room.code}</h2><p>{state.room.building.name}</p><dl><div><dt>Giá thuê / tháng</dt><dd>{terms.monthlyRentVnd ? cash(terms.monthlyRentVnd) : 'Chưa nhập'}</dd></div><div><dt>Sức chứa</dt><dd>{state.room.maxOccupants} người</dd></div>{intent && <div><dt>Nhu cầu</dt><dd>{({ DIRECT: 'Thuê ở ngay', HOLD: 'Giữ phòng', IMPORT: 'Tiếp quản' })[intent]}</dd></div>}</dl></div><div className="rental-summary-docs"><FileCheck2 size={19} /><h3>Thông tin được dùng lại</h3><p>Khách thuê, người cùng ở và địa chỉ phòng được điền vào mẫu. Chỉ bổ sung các thông tin còn thiếu trước khi tải.</p><span><Check size={13} />Hợp đồng thuê / cọc</span><span><Check size={13} />Tờ khai CT01 từng người</span></div></aside></div>}
+    {invoice && <Dialog.Root open={invoiceDetailOpen} onOpenChange={setInvoiceDetailOpen}>
+      <Dialog.Portal>
+        <Dialog.Backdrop className="rental-invoice-backdrop" />
+        <Dialog.Viewport className="rental-invoice-viewport">
+          <Dialog.Popup from="bottom" className="rental-invoice-dialog" data-testid="first-invoice-detail-dialog">
+            <header className="rental-invoice-dialog-header"><div><Dialog.Title><Receipt size={16} />Chi tiết hóa đơn đầu kỳ</Dialog.Title><Dialog.Description>{invoice.invoiceCode} · {invoiceStatusLabel(invoice.status)}</Dialog.Description></div><Dialog.Close aria-label="Đóng chi tiết hóa đơn"><X size={17} /></Dialog.Close></header>
+            <div className="rental-invoice-period"><CalendarDays size={17} /><div><strong>{formatRentalDate(firstPeriodStart)} → {formatRentalDate(firstPeriodEnd)}</strong><span>{billingPolicy}{billedDays > 0 && daysInMonth > 0 && billingPolicy === 'Theo ngày thực tế' ? ` · ${billedDays}/${daysInMonth} ngày` : ''}</span></div></div>
+            <div className="rental-invoice-rows">
+              <div><span>Giá thuê tháng</span><strong>{cash(Number(invoiceSnapshot.monthlyRentVnd ?? contract?.monthlyRentVnd ?? 0))}</strong></div>
+              {firstRentVnd > 0 && <div><span>Tiền thuê kỳ đầu</span><strong>{cash(firstRentVnd)}</strong></div>}
+              {firstDepositVnd > 0 && <div><span>Tiền cọc hợp đồng</span><strong>{cash(firstDepositVnd)}</strong></div>}
+              {otherInvoiceItems.map((item: any, index: number) => <div key={`${item.label}-${index}`}><span>{item.label}</span><strong>{cash(Number(item.amountVnd))}</strong></div>)}
+            </div>
+            {invoiceFormula && <p className="rental-invoice-formula">{invoiceFormula.replaceAll(/(\d{4})-(\d{2})-(\d{2})/g, '$3/$2/$1')}</p>}
+            <div className="rental-invoice-total"><div><span>Tổng hóa đơn</span><strong>{cash(Number(invoice.totalAmountVnd))}</strong></div>{Number(invoice.paidAmountVnd) > 0 && <div><span>Đã thu</span><strong>{cash(Number(invoice.paidAmountVnd))}</strong></div>}<div className="is-due"><span>Còn phải thu</span><strong>{cash(due)}</strong></div><div><span>Hạn thanh toán</span><strong>{formatRentalDate(invoice.dueDate)}</strong></div></div>
+          </Dialog.Popup>
+        </Dialog.Viewport>
+      </Dialog.Portal>
+    </Dialog.Root>}
   </section>;
 }

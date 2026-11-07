@@ -95,6 +95,12 @@ input::placeholder, textarea::placeholder, select option { font-size: inherit; }
 .room-detail-header > div:first-child { align-items: center; }
 .room-detail-header > div:first-child > div:first-child { padding-top: 0; }
 .room-detail-popup .room-detail-tab { font-size: 12px !important; }
+@media (max-width: 639px) {
+  .room-detail-popup {
+    height: calc(100svh - 1rem) !important;
+    max-height: calc(100svh - 1rem) !important;
+  }
+}
 .room-contract-details > div { display: grid; grid-template-columns: 108px minmax(0, 1fr); align-items: start; gap: 12px; }
 .room-contract-details > div > span { color: #64748b; }
 .room-contract-details b { font-weight: 500; text-align: right; overflow-wrap: anywhere; }
@@ -184,4 +190,138 @@ html[data-motion="reduced"] ::after {
 .room-config-fields textarea:focus-visible {
   border-color: var(--brand-primary);
   box-shadow: 0 0 0 2px rgb(37 99 235 / 0.12);
+}
+
+/* Operational modules: mobile-first density for deposits, contracts, settlements and cashbook. */
+.operational-workspace {
+  min-width: 0;
+}
+.operational-workspace :is(button, a, input, select):focus-visible,
+.invoice-payment-dialog :is(button, input, select):focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 2px;
+}
+.operational-workspace .overflow-x-auto {
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+}
+
+@media (max-width: 767px) {
+  .operational-workspace {
+    --mobile-section-padding: 14px;
+    margin-inline: -2px;
+  }
+
+  /* The mobile shell already announces the active module. Keep this row action-led. */
+  .module-workspace-toolbar-row {
+    display: block;
+    padding: 10px;
+  }
+  .module-workspace-heading {
+    display: none;
+  }
+  .module-toolbar-actions {
+    width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    padding: 1px 1px 5px;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+  .module-toolbar-actions::-webkit-scrollbar {
+    display: none;
+  }
+  .module-toolbar-actions > button {
+    min-height: 44px;
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+    white-space: nowrap;
+  }
+  .module-toolbar-actions > button:last-child {
+    flex-grow: 1;
+    justify-content: center;
+  }
+  .module-toolbar-context {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding: 10px;
+    scrollbar-width: none;
+  }
+  .module-toolbar-context::-webkit-scrollbar {
+    display: none;
+  }
+  .module-toolbar-context > * {
+    flex: 0 0 auto;
+  }
+
+  .operational-workspace [class~="p-5"][class~="rounded-2xl"] {
+    padding: var(--mobile-section-padding);
+    border-radius: 16px;
+  }
+  .operational-workspace h3 {
+    line-height: 1.4;
+  }
+  .operational-workspace .overflow-x-auto {
+    margin-inline: calc(var(--mobile-section-padding) * -1);
+    padding-inline: var(--mobile-section-padding);
+    scroll-padding-inline: var(--mobile-section-padding);
+    background:
+      linear-gradient(to right, var(--surface) 30%, transparent) left center / 24px 100% no-repeat,
+      linear-gradient(to left, var(--surface) 30%, transparent) right center / 24px 100% no-repeat;
+  }
+  .operational-workspace table {
+    min-width: max-content;
+  }
+  .operational-workspace table :is(th, td) {
+    padding-inline: 10px;
+    vertical-align: top;
+  }
+  .operational-workspace table :is(th, td):first-child {
+    padding-left: 2px;
+  }
+  .operational-workspace table :is(th, td):last-child {
+    padding-right: 2px;
+  }
+
+  /* Summary figures stay scannable instead of becoming three tall cards. */
+  .operational-workspace[data-module="finance"] .grid.grid-cols-1.sm\:grid-cols-3 {
+    grid-template-columns: repeat(3, minmax(148px, 1fr));
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    padding-bottom: 3px;
+  }
+  .operational-workspace[data-module="finance"] .grid.grid-cols-1.sm\:grid-cols-3 > div {
+    scroll-snap-align: start;
+  }
+
+  /* Contract cards: a quieter hierarchy and controls sized for touch. */
+  .operational-workspace[data-module="contracts"] [data-testid^="contract-mobile-card-"] {
+    padding: 14px;
+    border-radius: 16px;
+    box-shadow: 0 1px 2px rgb(15 23 42 / 0.04), 0 10px 24px rgb(15 23 42 / 0.035);
+  }
+  .operational-workspace[data-module="contracts"] [data-testid^="contract-mobile-card-"] button {
+    min-height: 40px;
+  }
+
+  .invoice-payment-dialog input,
+  .invoice-payment-dialog select {
+    min-height: 48px;
+    border-radius: 12px;
+  }
+  .invoice-payment-dialog fieldset {
+    padding: 14px;
+  }
+}
+
+@media (max-width: 374px) {
+  .module-toolbar-actions > button {
+    padding-inline: 10px;
+  }
+  .invoice-payment-header {
+    padding-inline: 14px;
+  }
+  .invoice-payment-form {
+    padding-inline: 14px;
+  }
 }

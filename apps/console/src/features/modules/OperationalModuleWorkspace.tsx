@@ -1,4 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Dialog } from '@animate-ui/react/primitives/base-ui/dialog';
+import { Button as AnimatedButton } from '@animate-ui/react/primitives/buttons/button';
+import { notifySave } from '@/shared/ui/SaveToast';
 import {
   AlertCircle,
   ArrowRightLeft,
@@ -44,6 +47,7 @@ import { ContractCreationWizardModal } from './modals/ContractCreationWizardModa
 import { LegacyImportWizardModal } from './modals/LegacyImportWizardModal';
 import { HunonicSettingsModal } from './modals/HunonicSettingsModal';
 import { ActionMenu } from '@/shared/ui/ActionMenu';
+import { ContractDocumentLink } from '@/shared/ui/ContractDocumentDialog';
 import { BuildingScopeSelector } from '@/shared/ui/BuildingScopeSelector';
 import {
   formatContractDisplayCode,
@@ -170,6 +174,11 @@ export const OperationalModuleWorkspace: React.FC<
   const [invoicePayRef, setInvoicePayRef] = useState('');
   const [invoicePayError, setInvoicePayError] = useState<string | null>(null);
   const [isSavingInvoicePay, setIsSavingInvoicePay] = useState(false);
+  const [invoiceHandover, setInvoiceHandover] = useState<{ electricRequired: boolean; waterRequired: boolean } | null>(null);
+  const [invoiceHandoverLoading, setInvoiceHandoverLoading] = useState(false);
+  const [invoiceElectricStart, setInvoiceElectricStart] = useState('');
+  const [invoiceWaterStart, setInvoiceWaterStart] = useState('');
+  const invoicePaymentAttempt = useRef<{ payload: string; key: string } | null>(null);
 
   // Legacy Import Wizard Modal state (C4-IMPORT-01/02)
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -455,15 +464,39 @@ export const OperationalModuleWorkspace: React.FC<
     setInvoicePayMethod('MANUAL_CASH');
     setInvoicePayRef('');
     setInvoicePayError(null);
+    setInvoiceHandover(null);
+    invoicePaymentAttempt.current = null;
+    setInvoiceElectricStart('');
+    setInvoiceWaterStart('');
+    setInvoiceHandoverLoading(true);
     setIsInvoicePaymentModalOpen(true);
+    void fetch(`/api/v1/console/v2/invoices/${encodeURIComponent(inv.id)}`, { credentials: 'include' })
+      .then(async response => { if (!response.ok) throw new Error('Không tải được điều kiện bàn giao.'); return response.json(); })
+      .then(data => setInvoiceHandover(data.automaticHandover || null))
+      .catch(() => setInvoicePayError('Không tải được điều kiện bàn giao. Đóng và mở lại hóa đơn trước khi thu tiền.'))
+      .finally(() => setInvoiceHandoverLoading(false));
   };
 
   const handleInvoicePaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedInvoice) return;
+    if (!selectedInvoice || invoiceHandoverLoading) return;
+    const remaining = Math.max(0, selectedInvoice.totalAmountVnd - selectedInvoice.paidAmountVnd);
+    const amount = Math.trunc(Number(invoicePayAmount) || 0);
+    if (amount > remaining) { setInvoicePayError('Số tiền thu vượt số còn phải thu.'); return; }
+    if (invoiceHandover && amount === remaining &&
+        ((invoiceHandover.electricRequired && invoiceElectricStart === '') || (invoiceHandover.waterRequired && invoiceWaterStart === ''))) {
+      setInvoicePayError('Nhập chỉ số điện và nước đầu kỳ để tự động bàn giao sau khi thu đủ.'); return;
+    }
     setIsSavingInvoicePay(true);
     setInvoicePayError(null);
+    let committed = false;
     try {
+      const paymentPayload = JSON.stringify({
+        amountVnd: amount, providerId: invoicePayMethod, referenceText: invoicePayRef || undefined,
+        handoverMeterKwh: invoiceElectricStart === '' ? undefined : Number(invoiceElectricStart),
+        handoverWaterM3: invoiceWaterStart === '' ? undefined : Number(invoiceWaterStart),
+      });
+      if (invoicePaymentAttempt.current?.payload !== paymentPayload) invoicePaymentAttempt.current = { payload: paymentPayload, key: crypto.randomUUID() };
       const res = await fetch(
         `/api/v1/console/v2/invoices/${encodeURIComponent(selectedInvoice.id)}/pay`,
         {
@@ -472,12 +505,9 @@ export const OperationalModuleWorkspace: React.FC<
           headers: {
             'Content-Type': 'application/json',
             'X-Requested-With': CONSOLE_CSRF_HEADER,
+            'Idempotency-Key': invoicePaymentAttempt.current.key,
           },
-          body: JSON.stringify({
-            amountVnd: Math.trunc(Number(invoicePayAmount) || 0),
-            providerId: invoicePayMethod,
-            referenceText: invoicePayRef || undefined,
-          }),
+          body: paymentPayload,
         }
       );
       const data = await res.json().catch(() => ({}));
@@ -485,10 +515,13 @@ export const OperationalModuleWorkspace: React.FC<
         setInvoicePayError(data.message || 'Lỗi khi thu tiền hóa đơn.');
         return;
       }
+      committed = true;
       setIsInvoicePaymentModalOpen(false);
       await Promise.all([loadModuleData(), refreshPortfolio()]);
+      notifySave(true, data.handedOver ? 'Đã thu tiền và bàn giao phòng' : 'Đã thu tiền hóa đơn', data.handedOver ? 'Phòng và người ở đã được kích hoạt.' : undefined);
     } catch {
-      setInvoicePayError('Lỗi kết nối máy chủ.');
+      if (committed) notifySave(false, 'Đã ghi giao dịch, chưa tải lại được dữ liệu', 'Hãy tải lại Hóa đơn; không thu lần nữa.');
+      else setInvoicePayError('Lỗi kết nối máy chủ.');
     } finally {
       setIsSavingInvoicePay(false);
     }
@@ -816,12 +849,15 @@ export const OperationalModuleWorkspace: React.FC<
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) {
         setManualError(data.message || 'Không thể lưu chỉ số tay.');
+        notifySave(false, 'Không thể lưu chỉ số', data.message);
         return;
       }
       setIsManualReadingModalOpen(false);
       await loadModuleData();
+      notifySave(true, 'Đã lưu chỉ số tay');
     } catch {
       setManualError('Lỗi kết nối máy chủ.');
+      notifySave(false, 'Không thể lưu chỉ số', 'Lỗi kết nối máy chủ.');
     } finally {
       setIsSavingManual(false);
     }
@@ -851,13 +887,16 @@ export const OperationalModuleWorkspace: React.FC<
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) {
         setLgError(data.message || 'Không thể ghi sổ quỹ.');
+        notifySave(false, 'Không thể lưu sổ quỹ', data.message);
         return;
       }
       setIsLedgerModalOpen(false);
       setLgDescription('');
       await Promise.all([loadModuleData(), refreshPortfolio()]);
+      notifySave(true, 'Đã lưu bút toán sổ quỹ');
     } catch {
       setLgError('Lỗi kết nối máy chủ.');
+      notifySave(false, 'Không thể lưu sổ quỹ', 'Lỗi kết nối máy chủ.');
     } finally {
       setIsSavingLg(false);
     }
@@ -988,6 +1027,15 @@ export const OperationalModuleWorkspace: React.FC<
     : [];
 
   useEffect(() => {
+    if (moduleId !== 'invoices') return;
+    const pendingId = sessionStorage.getItem('adhome:open-invoice-payment');
+    const target = invoices.find(invoice => invoice.id === pendingId);
+    if (!target) return;
+    sessionStorage.removeItem('adhome:open-invoice-payment');
+    handleOpenInvoicePaymentModal(target);
+  }, [moduleId, invoices]);
+
+  useEffect(() => {
     if (typeof window !== 'undefined') {
       (window as any).__adhome_openInvoicePayModal = (inv?: any) => {
         const target = inv || invoices[0];
@@ -1067,7 +1115,8 @@ export const OperationalModuleWorkspace: React.FC<
 
   return (
     <div
-      className="space-y-4"
+      className="operational-workspace space-y-4"
+      data-module={moduleId}
       data-testid={`console-module-workspace-${moduleId}`}
     >
       {/* MODULE TOOLBAR (UI-HEADER-03 / P1) — deterministic 2-tier layout:
@@ -1075,10 +1124,10 @@ export const OperationalModuleWorkspace: React.FC<
           Tier 2: context bar (building scope + period), only when relevant */}
       <div
         data-testid="module-workspace-toolbar"
-        className="bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-xl"
+        className="module-workspace-toolbar bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-xl"
       >
-        <div className="flex items-center justify-between gap-4 px-4 py-3">
-        <div className="min-w-0">
+        <div className="module-workspace-toolbar-row flex items-center justify-between gap-4 px-4 py-3">
+        <div className="module-workspace-heading min-w-0">
           <h2 className="truncate text-base font-bold text-slate-900 dark:text-white">
             {currentNavConfig.label}
           </h2>
@@ -1089,7 +1138,7 @@ export const OperationalModuleWorkspace: React.FC<
 
         <div
           data-testid="module-toolbar-actions"
-          className="flex shrink-0 items-center gap-2"
+          className="module-toolbar-actions flex shrink-0 items-center gap-2"
         >
           {/* Utility action */}
           <button
@@ -1202,10 +1251,10 @@ export const OperationalModuleWorkspace: React.FC<
           currentNavConfig.hasPeriodToolbar) && (
           <div
             data-testid="module-toolbar-context"
-            className="flex flex-wrap items-center gap-2 border-t border-slate-100 dark:border-slate-800 px-4 py-2.5"
+            className="module-toolbar-context flex flex-wrap items-center gap-2 border-t border-slate-100 dark:border-slate-800 px-4 py-2.5"
           >
             {currentNavConfig.supportsBuildingScope && (
-              <BuildingScopeSelector />
+              <div className="hidden md:block"><BuildingScopeSelector /></div>
             )}
 
             {currentNavConfig.hasPeriodToolbar && (
@@ -1292,8 +1341,8 @@ export const OperationalModuleWorkspace: React.FC<
         <>
           {/* 1. DEPOSITS & RESERVATIONS */}
           {moduleId === 'deposits' && (
-            <div className="space-y-4">
-              <div className="bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5 space-y-3">
+            <div className="module-content-stack space-y-4">
+              <div className="module-surface bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5 space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
                     <KeyRound className="w-4 h-4 text-amber-500" />
@@ -1406,7 +1455,7 @@ export const OperationalModuleWorkspace: React.FC<
               </div>
 
               {/* Deposit Records Table */}
-              <div className="bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5 space-y-3">
+              <div className="module-surface bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5 space-y-3">
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
                   <Wallet className="w-4 h-4 text-emerald-600" />
                   Sổ theo dõi tiền cọc (Deposits Ledger)
@@ -1713,7 +1762,7 @@ export const OperationalModuleWorkspace: React.FC<
                             <td className="px-3 py-3 font-mono text-[11px]">
                               {rm.activeContract ? (
                                 <div>
-                                  <span className="font-bold text-blue-600 dark:text-blue-400">{rm.activeContract.contractCode}</span>
+                                  <ContractDocumentLink contractId={rm.activeContract.id}>{rm.activeContract.contractCode}</ContractDocumentLink>
                                   {rm.activeContract.notes?.includes('paidThrough') && (
                                     <span className="block text-[10px] text-slate-500">
                                       {rm.activeContract.notes.split('paidThrough:')[1]?.trim()}
@@ -1893,7 +1942,7 @@ export const OperationalModuleWorkspace: React.FC<
 
                           <div className="text-[11px] font-mono text-slate-500 flex items-center gap-1.5 flex-wrap">
                             <FileSignature className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                            <span className="font-bold text-slate-800 dark:text-slate-200">{displayCode}</span>
+                            <ContractDocumentLink contractId={c.id}>{displayCode}</ContractDocumentLink>
                             {isImported && (
                               <span className="rounded px-1.5 py-0.2 text-[9.5px] font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200/50">
                                 Sổ cũ
@@ -1992,7 +2041,7 @@ export const OperationalModuleWorkspace: React.FC<
                             {/* Col 1: Hợp đồng & Phòng */}
                             <td className="py-3 px-3.5">
                               <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className="font-mono font-bold text-slate-900 dark:text-slate-100">{displayCode}</span>
+                                <ContractDocumentLink contractId={c.id} className="font-mono">{displayCode}</ContractDocumentLink>
                                 {isImported && (
                                   <span className="inline-flex items-center rounded px-1.5 py-0.2 text-[9.5px] font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200/60 dark:border-blue-900/40">
                                     Từ sổ cũ
@@ -3930,24 +3979,36 @@ export const OperationalModuleWorkspace: React.FC<
       )}
 
       {/* Invoice Payment Modal */}
-      {isInvoicePaymentModalOpen && selectedInvoice && (
-        <div data-testid="invoice-payment-modal" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
-            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+      {selectedInvoice && (
+        <Dialog.Root
+          open={isInvoicePaymentModalOpen}
+          onOpenChange={(open) => {
+            if (!open && !isSavingInvoicePay) setIsInvoicePaymentModalOpen(false);
+          }}
+        >
+          <Dialog.Portal>
+            <Dialog.Backdrop className="fixed inset-0 z-[120] bg-slate-950/60 backdrop-blur-[2px]" />
+            <Dialog.Viewport className="fixed inset-0 z-[121] flex items-end justify-center sm:items-center sm:p-4">
+          <Dialog.Popup from="bottom" data-testid="invoice-payment-modal" aria-busy={isSavingInvoicePay} className="invoice-payment-dialog flex max-h-[calc(100dvh-0.75rem)] w-full max-w-md flex-col overflow-hidden rounded-t-3xl border border-slate-200 bg-white shadow-2xl outline-none dark:border-slate-800 dark:bg-[#111827] sm:max-h-[calc(100dvh-2rem)] sm:rounded-2xl">
+            <div className="invoice-payment-header flex items-start justify-between gap-3 border-b border-slate-100 p-4 dark:border-slate-800">
+              <div className="min-w-0">
+              <Dialog.Title className="text-sm font-bold text-slate-900 dark:text-white flex items-start gap-2">
                 <CreditCard className="w-4 h-4 text-brand-primary" />
-                Thu tiền hóa đơn — {selectedInvoice.invoiceCode}
-              </h3>
-              <button
-                type="button"
+                <span className="min-w-0 break-words">Thu tiền hóa đơn — {selectedInvoice.invoiceCode}</span>
+              </Dialog.Title>
+              <Dialog.Description className="mt-1 text-xs text-slate-500">Ghi nhận đúng số tiền thực nhận và phương thức thanh toán.</Dialog.Description>
+              </div>
+              <Dialog.Close
                 data-testid="btn-close-invoice-payment-modal"
-                onClick={() => setIsInvoicePaymentModalOpen(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
+                disabled={isSavingInvoicePay}
+                aria-label="Đóng cửa sổ thu tiền"
+                className="-mr-1 -mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50 dark:hover:bg-slate-800 dark:hover:text-slate-200"
               >
                 <X className="w-4 h-4" />
-              </button>
+              </Dialog.Close>
             </div>
-            <form onSubmit={handleInvoicePaymentSubmit} className="p-5 space-y-4">
+            <form onSubmit={handleInvoicePaymentSubmit} className="invoice-payment-form min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-5">
+              <div className="space-y-4">
               {invoicePayError && (
                 <div className="p-3 text-xs bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 rounded-xl">
                   {invoicePayError}
@@ -4009,6 +4070,16 @@ export const OperationalModuleWorkspace: React.FC<
                 />
               </div>
 
+              {invoiceHandoverLoading && <p role="status" className="text-xs text-slate-500">Đang kiểm tra điều kiện bàn giao…</p>}
+              {invoiceHandover && Number(invoicePayAmount) >= selectedInvoice.totalAmountVnd - selectedInvoice.paidAmountVnd && (
+                <fieldset className="space-y-3 rounded-xl border border-blue-200 bg-blue-50 p-3 dark:border-blue-900 dark:bg-blue-950/30">
+                  <legend className="px-1 text-xs font-bold">Chỉ số đầu kỳ để bàn giao tự động</legend>
+                  {invoiceHandover.electricRequired && <label className="block text-xs font-semibold">Chỉ số điện (kWh)<input type="number" min="0" step="any" required value={invoiceElectricStart} onChange={e => { setInvoiceElectricStart(e.target.value); setInvoicePayError(null); }} className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" /></label>}
+                  {invoiceHandover.waterRequired && <label className="block text-xs font-semibold">Chỉ số nước (m³)<input type="number" min="0" step="any" required value={invoiceWaterStart} onChange={e => { setInvoiceWaterStart(e.target.value); setInvoicePayError(null); }} className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" /></label>}
+                  <p className="text-xs text-slate-600 dark:text-slate-300">Thu đủ hóa đơn sẽ kích hoạt hợp đồng, người ở và trạng thái phòng trong cùng giao dịch.</p>
+                </fieldset>
+              )}
+
               <div>
                 <label className="block text-xs font-semibold mb-1">
                   Ghi chú / Mã giao dịch tham chiếu
@@ -4022,26 +4093,30 @@ export const OperationalModuleWorkspace: React.FC<
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-2">
-                <button
+              </div>
+              <div className="invoice-payment-actions sticky bottom-0 -mx-4 mt-5 flex gap-2 border-t border-slate-100 bg-white/95 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur dark:border-slate-800 dark:bg-[#111827]/95 sm:-mx-5 sm:px-5 sm:pb-0">
+                <AnimatedButton
                   type="button"
                   onClick={() => setIsInvoicePaymentModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl"
+                  disabled={isSavingInvoicePay}
+                  className="min-h-11 flex-1 rounded-xl bg-slate-100 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-300"
                 >
                   Đóng
-                </button>
-                <button
+                </AnimatedButton>
+                <AnimatedButton
                   type="submit"
-                  disabled={isSavingInvoicePay}
-                  className="px-4 py-2 text-xs font-bold bg-brand-primary hover:bg-brand-hover text-white rounded-xl shadow-sm flex items-center gap-1.5"
+                  disabled={isSavingInvoicePay || invoiceHandoverLoading}
+                  className="min-h-11 flex-[1.45] rounded-xl bg-brand-primary px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-brand-hover disabled:opacity-50 flex items-center justify-center gap-1.5"
                 >
                   {isSavingInvoicePay && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                   Xác nhận thu tiền
-                </button>
+                </AnimatedButton>
               </div>
             </form>
-          </div>
-        </div>
+          </Dialog.Popup>
+            </Dialog.Viewport>
+          </Dialog.Portal>
+        </Dialog.Root>
       )}
 
       {/* Legacy Data Import Wizard Modal (C4-IMPORT-01/02) */}

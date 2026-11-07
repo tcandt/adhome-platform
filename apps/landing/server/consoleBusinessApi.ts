@@ -3175,6 +3175,8 @@ export async function handleConsoleV2Api(
           ? body.moveInDate
           : getTodayIsoVn();
       const notes = String(body.notes || '').trim() || null;
+      let secondaryContract: any = {};
+      try { secondaryContract = JSON.parse(notes || '{}')?.secondaryContract || {}; } catch { secondaryContract = {}; }
 
       if (!fullName) {
         return sendJson(res, 422, {
@@ -3183,6 +3185,11 @@ export async function handleConsoleV2Api(
           message: 'Vui lòng nhập họ và tên người lưu trú.',
         });
       }
+      if (!phone || !/^0\d{8,10}$/.test(phone.replace(/\D/g, ''))) return sendJson(res, 422, { ok: false, errorCode: 'VALIDATION_ERROR', message: 'Số điện thoại không hợp lệ.' });
+      if (!idNumber || !/^\d{12}$/.test(idNumber)) return sendJson(res, 422, { ok: false, errorCode: 'VALIDATION_ERROR', message: 'CCCD phải gồm đúng 12 số để lập CT01.' });
+      if (!dateOfBirth || !/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth) || !gender) return sendJson(res, 422, { ok: false, errorCode: 'VALIDATION_ERROR', message: 'Nhập đầy đủ ngày sinh và giới tính.' });
+      if (!String(secondaryContract.address || '').trim()) return sendJson(res, 422, { ok: false, errorCode: 'VALIDATION_ERROR', message: 'Nhập địa chỉ thường trú theo CCCD.' });
+      if (relationToPrimary === 'FAMILY' && (!String(secondaryContract.householdHeadOccupantId || '').trim() || !String(secondaryContract.relationship || '').trim())) return sendJson(res, 422, { ok: false, errorCode: 'VALIDATION_ERROR', message: 'Chọn người đại diện hộ và nhập mối quan hệ.' });
       if (rm.rentalModel === 'SHARED_ROOM') return sendJson(res, 409, { ok: false, errorCode: 'SHARED_ROOM_CONTRACT_REQUIRED', message: 'Khách ở ghép phải có hợp đồng riêng. Hãy dùng Thêm khách thuê.' });
       if (relationToPrimary === 'ROOMMATE' || relationToPrimary === 'PRIMARY') return sendJson(res, 409, { ok: false, errorCode: 'WHOLE_ROOM_OCCUPANT_ONLY', message: 'Phòng nguyên căn chỉ thêm đại diện hợp đồng phụ hoặc thành viên cùng hộ.' });
 
@@ -3192,6 +3199,12 @@ export async function handleConsoleV2Api(
       });
 
       if (!activeContract) return sendJson(res, 409, { ok: false, message: 'Phòng chưa có hợp đồng đại diện.' });
+      if (relationToPrimary === 'FAMILY') {
+        const householdHead = await prisma.roomOccupant.findFirst({
+          where: { id: String(secondaryContract.householdHeadOccupantId), roomId: rm.id, orgId: actor.orgId, isActive: true },
+        });
+        if (!householdHead) return sendJson(res, 409, { ok: false, message: 'Người đại diện hộ không còn ở trong phòng. Hãy chọn lại.' });
+      }
       const occupiedCount = await prisma.roomOccupant.count({ where: { roomId: rm.id, isActive: true } });
       if (occupiedCount >= rm.maxOccupants) return sendJson(res, 409, { ok: false, message: 'Phòng đã đủ số người tối đa.' });
       const occ = await prisma.roomOccupant.create({

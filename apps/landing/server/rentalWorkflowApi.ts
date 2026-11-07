@@ -52,7 +52,11 @@ export async function handleRentalWorkflow(req: any, res: any, pathname: string,
         managerContact: reusable?.managerContact || [room.building.managerName, room.building.managerPhone].filter(Boolean).join(' - '),
         rentalAddress: [room.building.streetAddress, room.building.ward, room.building.province].filter(Boolean).join(', '),
       };
-      const toPerson = (o: any) => ({ fullName: o.fullName || '', phone: o.phone || '', idNumber: o.idNumber || '', birthDate: o.dateOfBirth || '', gender: o.gender || '', address: '', ...(o.relationToPrimary !== 'PRIMARY' ? { relationship: '' } : {}) });
+      const toPerson = (o: any) => {
+        let secondary: any = {};
+        try { secondary = JSON.parse(o.notes || '{}')?.secondaryContract || {}; } catch { secondary = {}; }
+        return { occupantId: o.id || '', fullName: o.fullName || '', phone: o.phone || '', idNumber: o.idNumber || '', birthDate: o.dateOfBirth || '', gender: o.gender || '', address: secondary.address || '', documentRole: secondary.role || (o.relationToPrimary === 'FAMILY' ? 'HOUSEHOLD_MEMBER' : o.relationToPrimary === 'OTHER' ? 'CO_REPRESENTATIVE' : 'PRIMARY'), ...(o.relationToPrimary !== 'PRIMARY' ? { relationship: secondary.relationship || '', householdHeadOccupantId: secondary.householdHeadOccupantId || '', householdHeadName: secondary.householdHeadName || '' } : {}) };
+      };
       const occupants = (contract?.occupants || []).filter((o: any) => !['MOVED_OUT', 'CANCELLED'].includes(o.occupancyStatus));
       const primary = occupants.find((o: any) => o.relationToPrimary === 'PRIMARY');
       const saved = profile?.metadata as any;

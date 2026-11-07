@@ -24,10 +24,13 @@ import {
   BookOpen,
   ImagePlus,
   ChevronDown,
+  FileText,
+  Pencil,
 } from "lucide-react";
 import { usePortfolio } from "../../../app/providers/PortfolioContext";
 import { useAuth } from "../../../app/providers/AuthContext";
-import { ContractDocumentLink } from "../../../shared/ui/ContractDocumentDialog";
+import { ContractDocumentDialog, ContractDocumentLink } from "../../../shared/ui/ContractDocumentDialog";
+import { ActionMenu } from "../../../shared/ui/ActionMenu";
 import {
   ConsoleRoomDto,
   RoomOccupantDto,
@@ -83,6 +86,7 @@ export const RoomProfileModal: React.FC<Props> = ({
     typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches
   );
   const albumInput = useRef<HTMLInputElement>(null);
+  const [documentContractId, setDocumentContractId] = useState<string | null>(null);
 
   // New occupant form state
   const [isAddingOccupant, setIsAddingOccupant] = useState<boolean>(false);
@@ -217,6 +221,19 @@ export const RoomProfileModal: React.FC<Props> = ({
   const pendingContract = workflow?.contract && ['DRAFT', 'ACTIVE', 'EXPIRING', 'EXTENDED'].includes(workflow.contract.status) ? workflow.contract : room.activeContract;
   const pendingPeople = pendingContract?.status === 'DRAFT' && workflow?.profile ? [workflow.profile.tenant, ...(workflow.profile.members || [])] : pendingReservation && !pendingContract ? [workflow?.profile?.tenant || { fullName: pendingReservation.customerName, phone: pendingReservation.customerPhone }, ...(workflow?.profile?.members || [])] : [];
   const pendingInvoice = pendingContract?.invoices?.find((item: any) => item.status !== 'VOID');
+  const residentRows = pendingPeople.length > 0
+    ? pendingPeople.map((person: any, index: number) => ({
+        id: `pending-${index}-${person.fullName || 'guest'}`,
+        fullName: person.fullName || 'Chưa nhập tên',
+        phone: person.phone || '',
+        contractId: pendingContract?.id || null,
+      }))
+    : occupantsList.filter(occupant => occupant.isActive).map(occupant => ({
+        id: occupant.id,
+        fullName: occupant.fullName,
+        phone: occupant.phone || '',
+        contractId: occupant.contractId || room.activeContract?.id || null,
+      }));
   const canManageContracts = hasCapability("canManageContracts");
   const canPublishRooms =
     user?.backendRole === "ADMIN" ||
@@ -648,13 +665,10 @@ export const RoomProfileModal: React.FC<Props> = ({
               {/* TAB 2: KHÁCH LƯU TRÚ & NGƯỜI Ở CÙNG */}
               {activeTab === "occupants" && (
                 <div className="space-y-4">
-                  {room.rentalModel === 'SHARED_ROOM' && Boolean(room.activeContracts?.length) && <section aria-label="Hợp đồng khách ghép" className="rounded-xl border border-slate-200 p-3 dark:border-slate-700"><h4 className="mb-2 text-xs font-semibold">Hợp đồng khách ghép</h4><ul className="space-y-2">{room.activeContracts?.map(contract => <li key={contract.id} className="flex flex-wrap justify-between gap-2 text-xs"><span>{contract.tenantName}</span><ContractDocumentLink contractId={contract.id}>{contract.contractCode}</ContractDocumentLink></li>)}</ul></section>}
                   <div className="flex items-start justify-between gap-3">
                     <div><h4 className="text-sm font-semibold text-slate-900 dark:text-white">Khách lưu trú <span className="ml-1 font-normal text-slate-400">{pendingPeople.length || occupantsList.filter(occ => occ.isActive).length}/{room.maxOccupants}</span></h4><p className="mt-1 text-xs leading-relaxed text-slate-500">Khách thuê và người cùng ở trong phòng.</p></div>
                     {room.activeContract && canManageContracts && !isAddingOccupant && (room.rentalModel === 'SHARED_ROOM' ? onAddRental && (room.activeContracts?.length || 0) < room.maxOccupants ? <Button type="button" onClick={() => onAddRental(room.id)} className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-blue-700 dark:text-blue-300"><Plus size={15} />Thêm khách ghép · hợp đồng riêng</Button> : null : <Button type="button" onClick={() => setIsAddingOccupant(true)} className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-blue-700 dark:text-blue-300"><Plus size={15} />Thêm người ở cùng</Button>)}
                   </div>
-                  {onAddRental && canManageContracts && (pendingContract || pendingReservation) && <Button type="button" onClick={() => onAddRental(room.id)} className="flex min-h-14 w-full items-center gap-3 rounded-xl border border-slate-200 px-3 py-2 text-left dark:border-slate-700"><FileSignature size={18} className="shrink-0 text-blue-600" /><span className="flex-1"><span className="block text-sm font-semibold">Hồ sơ thuê & cư trú</span><span className="block text-xs font-normal text-slate-500">Xem, sửa khách và tài liệu</span></span><ArrowRight size={16} className="text-slate-400" /></Button>}
-
                   {/* Add Occupant Form Drawer/Card */}
                   {isAddingOccupant && (
                     <form
@@ -722,9 +736,7 @@ export const RoomProfileModal: React.FC<Props> = ({
                     <p className="py-8 text-center text-slate-500">
                       Đang tải khách lưu trú…
                     </p>
-                  ) : pendingPeople.length > 0 ? (
-                    <div className="space-y-2">{pendingPeople.map((person: any, index: number) => <div key={`${index}-${person.fullName}`} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-900 dark:bg-amber-950/20"><div><div className="flex flex-wrap items-center gap-2"><strong className="text-sm">{person.fullName || 'Chưa nhập tên'}</strong><span className="rounded bg-amber-100 px-2 py-0.5 text-[11px] text-amber-800 dark:bg-amber-900 dark:text-amber-200">Chờ nhận phòng</span><span className="text-xs text-slate-500">{index === 0 ? pendingContract ? 'Khách đứng tên' : 'Khách giữ phòng' : 'Người cùng ở'}</span></div><p className="mt-1 text-xs text-slate-500">{person.phone || 'Chưa có SĐT'}{person.idNumber ? ` · CCCD: ${person.idNumber}` : ''}</p></div>{canManageContracts && onAddRental && <Button type="button" onClick={() => onAddRental(room.id)} className="min-h-11 text-xs text-blue-700 dark:text-blue-300">Xem / sửa</Button>}</div>)}</div>
-                  ) : occupantsList.length === 0 ? (
+                  ) : residentRows.length === 0 ? (
                     <div className="flex flex-col items-center px-4 py-7 text-center">
                       <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400 dark:bg-slate-800"><Users size={23} strokeWidth={1.5} /></div>
                       <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{room.activeContract ? 'Chưa có người cùng ở' : room.activeReservation ? 'Phòng đang được giữ chỗ' : 'Sẵn sàng đón khách mới'}</h4>
@@ -732,62 +744,12 @@ export const RoomProfileModal: React.FC<Props> = ({
                       {canManageContracts && onAddRental && !room.activeContract && !room.activeReservation && <Button type="button" onClick={() => onAddRental(room.id)} className="rental-button rental-button-primary mt-3"><Plus size={14} />Thêm khách thuê</Button>}
                     </div>
                   ) : (
-                    <div className="space-y-2">
-                      {occupantsList.map((occ) => (
-                        <div
-                          key={occ.id}
-                          className="p-3 rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-800 flex items-center justify-between"
-                        >
-                          <div className="space-y-0.5">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-bold text-slate-900 dark:text-white">
-                                {occ.fullName}
-                              </span>
-                              <span
-                                className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-                                  occ.relationToPrimary === "PRIMARY"
-                                    ? "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 font-bold"
-                                    : "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300"
-                                }`}
-                              >
-                                {occ.relationToPrimary === "PRIMARY"
-                                  ? "Chủ hợp đồng"
-                                  : occ.relationToPrimary === "FAMILY"
-                                    ? "Người thân"
-                                    : "Người ở cùng"}
-                              </span>
-                              <span
-                                className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-                                  occ.residenceRegStatus === "REGISTERED"
-                                    ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
-                                    : "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
-                                }`}
-                              >
-                                Tạm trú:{" "}
-                                {occ.residenceRegStatus === "REGISTERED"
-                                  ? "Đã ĐK"
-                                  : "Chờ ĐK"}
-                              </span>
-                            </div>
-                            <div className="text-[11px] text-slate-500 font-mono">
-                              {occ.phone ? `SĐT: ${occ.phone}` : "Chưa có SĐT"}{" "}
-                              {occ.idNumber ? `· CCCD: ${occ.idNumber}` : ""} ·
-                              Ngày vào: {occ.moveInDate}
-                            </div>
-                          </div>
-
-                          {canManageContracts &&
-                            occ.relationToPrimary !== "PRIMARY" && (
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveOccupant(occ.id)}
-                                className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                        </div>
-                      ))}
+                    <div className="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700" data-testid="room-occupants-table">
+                      <table className="w-full table-fixed border-collapse text-left text-xs">
+                        <colgroup><col className="w-10" /><col /><col className="w-[31%]" /><col className="w-14" /></colgroup>
+                        <thead className="bg-slate-50 text-[10px] font-semibold uppercase text-slate-500 dark:bg-slate-800/80 dark:text-slate-400"><tr><th className="px-2 py-2 text-center">STT</th><th className="px-2 py-2">Tên khách hàng</th><th className="px-2 py-2">SĐT</th><th className="px-2 py-2 text-center">Hành động</th></tr></thead>
+                        <tbody className="divide-y divide-slate-100 bg-white dark:divide-slate-800 dark:bg-[#111827]">{residentRows.map((resident, index) => <tr key={resident.id}><td className="px-2 py-2.5 text-center tabular-nums text-slate-500">{index + 1}</td><td className="break-words px-2 py-2.5 font-semibold text-slate-900 dark:text-white">{resident.fullName}</td><td className="break-all px-2 py-2.5 tabular-nums text-slate-600 dark:text-slate-300">{resident.phone || '—'}</td><td className="px-1 py-1 text-center">{canManageContracts && <ActionMenu ariaLabel={`Hành động cho ${resident.fullName}`} contextTitle={resident.fullName} contextSubtitle={resident.phone || 'Chưa có SĐT'} items={[{ label: 'Xem PDF hợp đồng', icon: <FileText size={16} />, disabled: !resident.contractId, onClick: () => resident.contractId && setDocumentContractId(resident.contractId) }, { label: 'Chỉnh sửa thông tin', icon: <Pencil size={16} />, onClick: () => onAddRental?.(room.id), disabled: !onAddRental }]} />}</td></tr>)}</tbody>
+                      </table>
                     </div>
                   )}
                 </div>
@@ -1042,6 +1004,8 @@ export const RoomProfileModal: React.FC<Props> = ({
                 )}
               </div>
             )}
+
+            {documentContractId && <ContractDocumentDialog contractId={documentContractId} onClose={() => setDocumentContractId(null)} />}
 
             {/* SUB-MODAL: HANDOVER BASELINE */}
             {isHandoverOpen && room.activeContract && (

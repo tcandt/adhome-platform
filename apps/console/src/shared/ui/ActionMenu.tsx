@@ -195,7 +195,7 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({
             /* Mobile View: Contextual Bottom Action Sheet (UI-07-FIX-02 / UI-07-FIX-03) */
             <div
               data-testid="action-menu-bottom-sheet-container"
-              className="fixed inset-0 z-[100] flex flex-col justify-end"
+              className="fixed inset-0 z-[180] flex flex-col justify-end"
             >
               {/* Backdrop with touch lock */}
               <div
@@ -322,7 +322,7 @@ export const ActionMenu: React.FC<ActionMenuProps> = ({
                 {...getFloatingProps({
                   onClick: (e) => e.stopPropagation(),
                 })}
-                className="z-[100] w-56 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl py-1.5 text-xs animate-in fade-in zoom-in-95 duration-100 focus:outline-none select-none"
+                className="z-[180] w-56 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl py-1.5 text-xs animate-in fade-in zoom-in-95 duration-100 focus:outline-none select-none"
               >
                 {contextTitle && (
                   <div className="px-3 py-1.5 border-b border-slate-100 dark:border-slate-800 mb-1">

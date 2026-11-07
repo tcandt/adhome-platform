@@ -18,6 +18,8 @@
   --sidebar-width-collapsed: 72px;
   --header-height: 64px;
   --form-control-font-size: 13px;
+  --form-control-font-weight: 500;
+  --form-control-line-height: 20px;
   --form-label-font-size: 13px;
   --form-control-height: 38px;
   --ui-text-size: 13px;
@@ -73,6 +75,8 @@ h3,
 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="hidden"]),
 select, textarea {
   font-size: var(--form-control-font-size) !important;
+  font-weight: var(--form-control-font-weight) !important;
+  line-height: var(--form-control-line-height) !important;
   font-family: inherit;
   letter-spacing: 0;
 }
@@ -135,7 +139,7 @@ input::placeholder, textarea::placeholder, select option { font-size: inherit; }
     --ui-section-title-size: 13px;
     --ui-dialog-title-size: 14px;
     --form-label-font-size: 12px;
-    --form-control-font-size: 12px;
+    --form-control-font-size: 13px;
     --form-control-height: 38px;
   }
 
@@ -467,8 +471,24 @@ html[data-motion="reduced"] ::after {
   .invoice-payment-primary-fields { gap: 8px; }
   .invoice-payment-primary-fields label { font-size: 11px; }
   .invoice-payment-primary-fields select,
-  .invoice-payment-primary-fields .money-input-control { min-width: 0; padding-inline: 10px; }
+  .invoice-payment-primary-fields .money-input-control {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    height: 48px;
+    min-height: 48px;
+    padding-block: 0;
+    padding-inline: 10px;
+    font-size: var(--form-control-font-size) !important;
+    font-weight: var(--form-control-font-weight) !important;
+    line-height: var(--form-control-line-height) !important;
+  }
   .invoice-payment-primary-fields .money-input-control { padding-right: 25px; }
+  .invoice-payment-primary-fields .money-input-suffix span {
+    font-size: var(--form-control-font-size) !important;
+    font-weight: var(--form-control-font-weight) !important;
+    line-height: var(--form-control-line-height) !important;
+  }
 }
 
 @media (max-width: 374px) {

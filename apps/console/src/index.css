@@ -123,9 +123,24 @@ input::placeholder, textarea::placeholder, select option { font-size: inherit; }
     --ui-text-size: 12px;
     --ui-text-line-height: 1.4;
     --ui-section-title-size: 13px;
-    --ui-dialog-title-size: 15px;
+    --ui-dialog-title-size: 14px;
     --form-label-font-size: 12px;
-    --form-control-height: 40px;
+    --form-control-font-size: 12px;
+    --form-control-height: 38px;
+  }
+
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="hidden"]),
+  select,
+  textarea,
+  [contenteditable="true"] {
+    font-size: var(--form-control-font-size) !important;
+    line-height: var(--ui-text-line-height);
+  }
+
+  select option,
+  input::placeholder,
+  textarea::placeholder {
+    font-size: var(--form-control-font-size) !important;
   }
 
   :is([role="dialog"], [data-testid^="modal-"], .rental-workspace) :is(label, button) {

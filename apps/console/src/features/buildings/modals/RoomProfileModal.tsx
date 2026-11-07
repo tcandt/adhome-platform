@@ -248,6 +248,29 @@ export const RoomProfileModal: React.FC<Props> = ({
           ? 'Hợp đồng hết hạn hôm nay. Cần gia hạn hoặc thanh lý.'
           : `Hợp đồng còn ${contractDaysRemaining} ngày sẽ hết hạn. Cần kiểm tra phương án gia hạn.`
       : null;
+  const depositContracts = room.rentalModel === 'SHARED_ROOM'
+    ? (workflow?.contracts || [])
+    : pendingContract ? [pendingContract] : [];
+  const contractDepositRows = depositContracts.flatMap((contract: any) => {
+    const deposit = (contract.deposits || [])
+      .filter((item: any) => item.depositType === 'CONTRACT')
+      .sort((left: any, right: any) => String(right.receivedAt || right.createdAt || '').localeCompare(String(left.receivedAt || left.createdAt || '')))[0];
+    if (!deposit) return [];
+    const paidAmountVnd = Number(deposit.paidAmountVnd || (deposit.paymentStatus === 'PAID' ? deposit.amountVnd : 0));
+    if (paidAmountVnd <= 0) return [];
+    return [{ ...deposit, paidAmountVnd, customerName: contract.tenant?.fullName || contract.tenantName || room.currentTenant?.fullName || 'Khách thuê', contractId: contract.id }];
+  });
+  const reservationDepositRows = pendingReservation && depositContracts.length === 0
+    ? (pendingReservation.deposits || []).filter((item: any) => item.depositType === 'BOOKING').map((deposit: any) => ({
+        ...deposit,
+        paidAmountVnd: Number(deposit.paidAmountVnd || (deposit.paymentStatus === 'PAID' ? deposit.amountVnd : 0)),
+        customerName: pendingReservation.customerName,
+        contractId: null,
+      })).filter((deposit: any) => deposit.paidAmountVnd > 0)
+    : [];
+  const depositRows = room.rentalModel === 'SHARED_ROOM'
+    ? contractDepositRows
+    : [...contractDepositRows, ...reservationDepositRows].slice(0, 1);
   const canManageContracts = hasCapability("canManageContracts");
   const printInvoice = (invoice: any) => {
     const safe = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character] || character);
@@ -828,86 +851,31 @@ export const RoomProfileModal: React.FC<Props> = ({
               {/* TAB 3: ĐẶT CỌC & GIỮ CHỖ */}
               {activeTab === "deposits" && (
                 <div className="space-y-4">
-                  {pendingReservation ? (
-                    <div className="p-4 rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50/50 dark:bg-amber-950/20 space-y-3">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <span className="font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
-                          <Wallet className="w-4 h-4 text-amber-600" />
-                          Phiếu giữ chỗ hiện tại (
-                          {pendingReservation.reservationCode})
-                        </span>
-                        <span className="px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200">
-                          {pendingReservation.status === "CONFIRMED"
-                            ? "Đã thu cọc"
-                            : "Chờ thu cọc"}
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div>
-                          Khách giữ chỗ:{" "}
-                          <b>{pendingReservation.customerName}</b>
-                        </div>
-                        <div>
-                          Số điện thoại:{" "}
-                          <b>{pendingReservation.customerPhone}</b>
-                        </div>
-                        <div>
-                          Tiền giữ phòng:{" "}
-                          <b>
-                            {Number(pendingReservation.holdAmountVnd).toLocaleString(
-                              "vi-VN",
-                            )}{" "}
-                            đ
-                          </b>
-                        </div>
-                        <div>
-                          Hạn giữ chỗ:{" "}
-                          <b>
-                            {pendingReservation.holdUntil
-                              ? pendingReservation.holdUntil.slice(0, 10)
-                              : "Chưa đặt"}
-                          </b>
-                        </div>
-                      </div>
-
-                      <div className="pt-2 border-t border-amber-200/80 dark:border-amber-900 flex flex-wrap items-center justify-end gap-2">
-                        {pendingReservation.status === "PENDING" && (
-                          <button
-                            type="button"
-                            onClick={() => onAddRental?.(room.id)}
-                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
-                          >
-                            Xem hồ sơ & xác nhận thu cọc
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => onAddRental ? onAddRental(room.id) : setIsCancelResvOpen(true)}
-                          className="px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-100 hover:bg-rose-200 text-rose-800 dark:bg-rose-950 dark:text-rose-300"
-                        >
-                          Xem / sửa hồ sơ
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            onOpenContractWizard(
-                              room.id,
-                              pendingReservation!.id,
-                            )
-                          }
-                          className="px-4 py-1.5 rounded-lg text-xs font-bold bg-brand-primary hover:bg-brand-hover text-white shadow-sm flex items-center gap-1"
-                        >
-                          Chuyển thành Hợp đồng thuê{" "}
-                          <ArrowRight className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                  {depositRows.length > 0 ? (
+                    <div className="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800">
+                      <table className="w-full table-fixed text-left text-[10.5px]" data-testid="room-deposits-table">
+                        <thead className="bg-slate-50 text-[10px] font-semibold uppercase text-slate-500 dark:bg-slate-800/70 dark:text-slate-400">
+                          <tr><th className="w-[17%] px-1.5 py-2.5">Ngày</th><th className="w-[17%] px-1.5 py-2.5">ID</th><th className="w-[24%] px-1.5 py-2.5">Tên khách</th><th className="w-[25%] px-1.5 py-2.5 text-right">Số tiền cọc</th><th className="w-[17%] px-1.5 py-2.5 text-center">Hành động</th></tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                          {depositRows.map((deposit: any) => {
+                            const rawDate = String(deposit.receivedAt || deposit.createdAt || '');
+                            const displayDate = /^\d{4}-\d{2}-\d{2}/.test(rawDate) ? rawDate.slice(0, 10).split('-').reverse().join('/') : rawDate || '—';
+                            return <tr key={deposit.id} className="bg-white align-middle dark:bg-slate-900/30">
+                              <td className="px-1.5 py-3 tabular-nums text-slate-600 dark:text-slate-300">{displayDate}</td>
+                              <td className="break-all px-1.5 py-3 font-mono font-semibold text-slate-700 dark:text-slate-200" title={deposit.id}>{String(deposit.id).slice(0, 8).toUpperCase()}</td>
+                              <td className="break-words px-1.5 py-3 font-semibold leading-4 text-slate-900 dark:text-white">{deposit.customerName}</td>
+                              <td className="px-1.5 py-3 text-right font-semibold tabular-nums text-emerald-700 dark:text-emerald-300">{Number(deposit.paidAmountVnd).toLocaleString('vi-VN')} đ</td>
+                              <td className="px-1 py-2 text-center"><ActionMenu ariaLabel={`Hành động cọc của ${deposit.customerName}`} contextTitle={deposit.customerName} contextSubtitle={`${Number(deposit.paidAmountVnd).toLocaleString('vi-VN')} đ`} items={[{ label: 'Xem hồ sơ thuê', icon: <FileText size={16} />, onClick: () => onAddRental?.(room.id), disabled: !onAddRental }, ...(deposit.contractId ? [{ label: 'Xem PDF hợp đồng', icon: <FileSignature size={16} />, onClick: () => setDocumentContractId(deposit.contractId) }] : [])]} /></td>
+                            </tr>;
+                          })}
+                        </tbody>
+                      </table>
                     </div>
                   ) : (
                     <div className="p-8 text-center text-xs text-slate-500 border border-dashed border-slate-200 dark:border-slate-800 rounded-xl space-y-2">
                       <p>
-                        Phòng {room.code} hiện không có phiếu giữ chỗ nào đang
-                        hoạt động.
+                        Phòng {room.code} chưa có khoản tiền cọc đã thu.
                       </p>
                       {room.occupancyStatus === "AVAILABLE" && (
                         <button

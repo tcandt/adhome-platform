@@ -87,6 +87,7 @@ export const RoomProfileModal: React.FC<Props> = ({
   );
   const albumInput = useRef<HTMLInputElement>(null);
   const [documentContractId, setDocumentContractId] = useState<string | null>(null);
+  const [invoiceDetailOpen, setInvoiceDetailOpen] = useState(false);
 
   // New occupant form state
   const [isAddingOccupant, setIsAddingOccupant] = useState<boolean>(false);
@@ -221,6 +222,26 @@ export const RoomProfileModal: React.FC<Props> = ({
   const pendingContract = workflow?.contract && ['DRAFT', 'ACTIVE', 'EXPIRING', 'EXTENDED'].includes(workflow.contract.status) ? workflow.contract : room.activeContract;
   const pendingPeople = pendingContract?.status === 'DRAFT' && workflow?.profile ? [workflow.profile.tenant, ...(workflow.profile.members || [])] : pendingReservation && !pendingContract ? [workflow?.profile?.tenant || { fullName: pendingReservation.customerName, phone: pendingReservation.customerPhone }, ...(workflow?.profile?.members || [])] : [];
   const pendingInvoice = pendingContract?.invoices?.find((item: any) => item.status !== 'VOID');
+  const pendingInvoiceDue = pendingInvoice
+    ? Math.max(0, Number(pendingInvoice.totalAmountVnd) - Number(pendingInvoice.paidAmountVnd))
+    : 0;
+  const invoiceSnapshot = (pendingInvoice?.policySnapshot || {}) as Record<string, any>;
+  const invoiceFormula = String(invoiceSnapshot.formula || '');
+  const invoiceFormulaDates = invoiceFormula.match(/\d{4}-\d{2}-\d{2}/g) || [];
+  const invoicePeriodStart = invoiceSnapshot.periodStartDate || invoiceFormulaDates[0] || pendingContract?.startDate;
+  const invoicePeriodEnd = invoiceSnapshot.periodEndDate || invoiceFormulaDates[1] || pendingInvoice?.dueDate;
+  const invoiceBreakdown = Array.isArray(invoiceSnapshot.breakdown) ? invoiceSnapshot.breakdown : [];
+  const contractDaysRemaining = pendingContract?.endDate
+    ? Math.ceil((new Date(`${pendingContract.endDate}T23:59:59+07:00`).getTime() - Date.now()) / 86400000)
+    : null;
+  const contractExpiryNotice = pendingContract && pendingContract.status !== 'DRAFT' && contractDaysRemaining !== null &&
+    (pendingContract.status === 'EXPIRING' || contractDaysRemaining <= 60)
+      ? contractDaysRemaining < 0
+        ? `Hợp đồng đã quá hạn ${Math.abs(contractDaysRemaining)} ngày. Cần gia hạn hoặc thanh lý.`
+        : contractDaysRemaining === 0
+          ? 'Hợp đồng hết hạn hôm nay. Cần gia hạn hoặc thanh lý.'
+          : `Hợp đồng còn ${contractDaysRemaining} ngày sẽ hết hạn. Cần kiểm tra phương án gia hạn.`
+      : null;
   const canManageContracts = hasCapability("canManageContracts");
   const residentRows = pendingPeople.length > 0
     ? pendingPeople.map((person: any, index: number) => ({
@@ -510,7 +531,7 @@ export const RoomProfileModal: React.FC<Props> = ({
                 { id: "occupants", label: "Khách ở", icon: Users },
                 { id: "deposits", label: "Đặt cọc", icon: Wallet },
                 { id: "contracts", label: "Hợp đồng", icon: FileSignature },
-                { id: "finance", label: "Thu chi", icon: Receipt },
+                { id: "finance", label: "Hóa đơn", icon: Receipt },
               ].map((tab) => {
                 const Icon = tab.icon;
                 const selected = activeTab === tab.id;
@@ -902,7 +923,8 @@ export const RoomProfileModal: React.FC<Props> = ({
                         )}
                       </div>
 
-                      {pendingInvoice && <p className="text-xs text-amber-700 dark:text-amber-300">Hóa đơn {pendingInvoice.invoiceCode} · Còn phải thu {Math.max(0, Number(pendingInvoice.totalAmountVnd) - Number(pendingInvoice.paidAmountVnd)).toLocaleString('vi-VN')} đ. Thu tiền tại mục Hóa đơn.</p>}
+                      {contractExpiryNotice && <div role="status" className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs leading-5 text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span>{contractExpiryNotice}</span></div>}
+                      {pendingInvoice && pendingInvoiceDue > 0 && <p className="text-xs text-amber-700 dark:text-amber-300">Hóa đơn {pendingInvoice.invoiceCode} · Còn phải thu {pendingInvoiceDue.toLocaleString('vi-VN')} đ. Thu tiền tại mục Hóa đơn.</p>}
                       <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex items-center justify-end gap-2 flex-wrap">
                         {pendingContract.status === 'DRAFT' && onAddRental && <Button type="button" onClick={() => onAddRental(room.id)} className="min-h-11 text-xs text-blue-700 dark:text-blue-300">Xem hồ sơ nháp</Button>}
                         {pendingContract.status !== 'DRAFT' && onOpenExtendModal && (
@@ -945,14 +967,17 @@ export const RoomProfileModal: React.FC<Props> = ({
                 </div>
               )}
 
-              {/* TAB 5: TÀI CHÍNH & CÔNG TƠ */}
+              {/* TAB 5: HÓA ĐƠN */}
               {activeTab === "finance" && (
                 <div className="space-y-4">
                   <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
                     <div className="font-bold text-slate-900 dark:text-white flex items-center justify-between">
-                      <span>Hóa đơn &amp; Công nợ</span>
+                      <span>Hóa đơn</span>
                       {pendingInvoice ? (
-                        <span className="text-amber-700 dark:text-amber-300 text-xs">{pendingInvoice.invoiceCode} · Chờ thu {Math.max(0, Number(pendingInvoice.totalAmountVnd) - Number(pendingInvoice.paidAmountVnd)).toLocaleString('vi-VN')} đ</span>
+                        <button type="button" onClick={() => setInvoiceDetailOpen(true)} className="text-right text-xs font-semibold text-blue-700 underline decoration-blue-300 underline-offset-2 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-200">
+                          <span className="block">{pendingInvoice.invoiceCode}</span>
+                          <span className={`mt-0.5 block no-underline ${pendingInvoiceDue > 0 ? 'text-amber-700 dark:text-amber-300' : 'text-emerald-700 dark:text-emerald-300'}`}>{pendingInvoiceDue > 0 ? `Còn phải thu ${pendingInvoiceDue.toLocaleString('vi-VN')} đ` : 'Đã thanh toán'}</span>
+                        </button>
                       ) : room.unpaidInvoicesCount > 0 ? (
                         <span className="text-rose-600 font-bold flex items-center gap-1">
                           <AlertTriangle className="w-3.5 h-3.5" /> Còn{" "}
@@ -965,16 +990,6 @@ export const RoomProfileModal: React.FC<Props> = ({
                     </div>
                   </div>
                   {pendingReservation && !pendingInvoice && <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-3 text-xs dark:border-amber-900 dark:bg-amber-950/20">Cọc giữ phòng {pendingReservation.reservationCode}: {Number(pendingReservation.holdAmountVnd).toLocaleString('vi-VN')} đ · {pendingReservation.status === 'CONFIRMED' ? 'Đã thu' : 'Chờ thu'}. Chưa ghi thu chi khi chưa nhận tiền.</div>}
-
-                  <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
-                    <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                      <Zap className="w-4 h-4 text-amber-500" />
-                      Công tơ điện thông minh
-                    </div>
-                    <div className="text-slate-600 dark:text-slate-400">
-                      Trạng thái kết nối Hunonic: <b>{room.meterStatus}</b>
-                    </div>
-                  </div>
                 </div>
               )}
             </div>
@@ -1012,6 +1027,37 @@ export const RoomProfileModal: React.FC<Props> = ({
             )}
 
             {documentContractId && <ContractDocumentDialog contractId={documentContractId} onClose={() => setDocumentContractId(null)} />}
+
+            {pendingInvoice && <Dialog.Root open={invoiceDetailOpen} onOpenChange={setInvoiceDetailOpen}>
+              <Dialog.Portal>
+                <Dialog.Backdrop className="fixed inset-0 z-[140] bg-slate-950/60 backdrop-blur-[2px]" />
+                <Dialog.Viewport className="fixed inset-0 z-[141] flex items-center justify-center p-2.5">
+                  <Dialog.Popup from="bottom" className="max-h-[calc(100dvh-20px)] w-full max-w-[390px] overflow-hidden rounded-xl border border-slate-200 bg-white text-xs text-slate-800 shadow-2xl outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" data-testid="room-invoice-detail-dialog">
+                    <header className="flex items-start justify-between gap-3 border-b border-slate-200 px-3.5 py-3 dark:border-slate-700">
+                      <div className="min-w-0">
+                        <Dialog.Title className="flex items-center gap-2 text-sm font-bold"><Receipt className="h-4 w-4" />Chi tiết hóa đơn</Dialog.Title>
+                        <Dialog.Description className="mt-0.5 truncate text-[11px] text-slate-500 dark:text-slate-400">{pendingInvoice.invoiceCode} · {pendingInvoiceDue > 0 ? 'Chờ thu' : 'Đã thanh toán'}</Dialog.Description>
+                      </div>
+                      <Dialog.Close aria-label="Đóng chi tiết hóa đơn" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"><X className="h-4 w-4" /></Dialog.Close>
+                    </header>
+                    {(invoicePeriodStart || invoicePeriodEnd) && <div className="mx-3 mt-3 flex items-center gap-2.5 rounded-lg bg-blue-50 p-2.5 text-blue-800 dark:bg-blue-950/40 dark:text-blue-200">
+                      <Calendar className="h-4 w-4 shrink-0" />
+                      <div><strong className="block">{invoicePeriodStart ? String(invoicePeriodStart).split('-').reverse().join('/') : '—'} → {invoicePeriodEnd ? String(invoicePeriodEnd).split('-').reverse().join('/') : '—'}</strong><span className="text-[11px] opacity-75">Kỳ thanh toán</span></div>
+                    </div>}
+                    <div className="px-3.5 py-2">
+                      {invoiceBreakdown.length > 0 ? invoiceBreakdown.map((item: any, index: number) => <div key={`${item.label}-${index}`} className="flex min-h-8 items-center justify-between gap-3 border-b border-slate-200 py-1.5 dark:border-slate-700"><span className="text-slate-500 dark:text-slate-400">{item.label}</span><strong className="whitespace-nowrap tabular-nums">{Number(item.amountVnd || 0).toLocaleString('vi-VN')} đ</strong></div>) : <>
+                        <div className="flex min-h-8 items-center justify-between gap-3 border-b border-slate-200 py-1.5 dark:border-slate-700"><span className="text-slate-500 dark:text-slate-400">Tiền thuê</span><strong className="whitespace-nowrap tabular-nums">{Number(pendingInvoice.roomRentVnd || 0).toLocaleString('vi-VN')} đ</strong></div>
+                        {Number(pendingInvoice.adjustmentVnd || 0) !== 0 && <div className="flex min-h-8 items-center justify-between gap-3 border-b border-slate-200 py-1.5 dark:border-slate-700"><span className="text-slate-500 dark:text-slate-400">Điều chỉnh / tiền cọc</span><strong className="whitespace-nowrap tabular-nums">{Number(pendingInvoice.adjustmentVnd).toLocaleString('vi-VN')} đ</strong></div>}
+                      </>}
+                      {invoiceFormula && <p className="my-2 rounded-lg bg-slate-100 px-2.5 py-2 text-center text-[10.5px] leading-4 text-slate-500 dark:bg-slate-800 dark:text-slate-400">{invoiceFormula.replaceAll(/(\d{4})-(\d{2})-(\d{2})/g, '$3/$2/$1')}</p>}
+                      <div className="flex min-h-8 items-center justify-between gap-3 border-b border-slate-200 py-1.5 dark:border-slate-700"><span className="text-slate-500 dark:text-slate-400">Tổng hóa đơn</span><strong className="whitespace-nowrap tabular-nums">{Number(pendingInvoice.totalAmountVnd).toLocaleString('vi-VN')} đ</strong></div>
+                      <div className="flex min-h-8 items-center justify-between gap-3 border-b border-slate-200 py-1.5 dark:border-slate-700"><span className="text-slate-500 dark:text-slate-400">Đã thu</span><strong className="whitespace-nowrap tabular-nums">{Number(pendingInvoice.paidAmountVnd).toLocaleString('vi-VN')} đ</strong></div>
+                      <div className={`flex min-h-8 items-center justify-between gap-3 py-1.5 font-bold ${pendingInvoiceDue > 0 ? 'text-amber-700 dark:text-amber-300' : 'text-emerald-700 dark:text-emerald-300'}`}><span>Còn phải thu</span><strong className="whitespace-nowrap tabular-nums">{pendingInvoiceDue.toLocaleString('vi-VN')} đ</strong></div>
+                    </div>
+                  </Dialog.Popup>
+                </Dialog.Viewport>
+              </Dialog.Portal>
+            </Dialog.Root>}
 
             {/* SUB-MODAL: HANDOVER BASELINE */}
             {isHandoverOpen && room.activeContract && (

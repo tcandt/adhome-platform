@@ -97,8 +97,8 @@ export const RoomProfileModal: React.FC<Props> = ({
   const [occPhone, setOccPhone] = useState<string>("");
   const [occIdNumber, setOccIdNumber] = useState<string>("");
   const [occRelation, setOccRelation] = useState<
-    "CO_REPRESENTATIVE" | "FAMILY"
-  >("CO_REPRESENTATIVE");
+    "OTHER" | "FAMILY"
+  >("OTHER");
   const occRegStatus = "PENDING";
 
   // Handover baseline modal
@@ -402,7 +402,7 @@ export const RoomProfileModal: React.FC<Props> = ({
         setOccFullName("");
         setOccPhone("");
         setOccIdNumber("");
-        setOccRelation("CO_REPRESENTATIVE");
+        setOccRelation("OTHER");
         await loadOccupants();
         await refreshPortfolio();
         setActionFeedback("Đã thêm người lưu trú thành công.");
@@ -797,10 +797,10 @@ export const RoomProfileModal: React.FC<Props> = ({
                         />
                         <select
                           value={occRelation}
-                          onChange={(e) => setOccRelation(e.target.value as "CO_REPRESENTATIVE" | "FAMILY")}
+                          onChange={(e) => setOccRelation(e.target.value as "OTHER" | "FAMILY")}
                           className="p-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
                         >
-                          <option value="CO_REPRESENTATIVE">Đại diện hợp đồng phụ</option>
+                          <option value="OTHER">Đại diện hợp đồng phụ</option>
                           <option value="FAMILY">Thành viên cùng hộ</option>
                         </select>
                       </div>

@@ -3160,7 +3160,7 @@ export async function handleConsoleV2Api(
       const idNumber = String(body.idNumber || '').trim() || null;
       const dateOfBirth = String(body.dateOfBirth || '').trim() || null;
       const gender = String(body.gender || '').trim() || null;
-      const relationToPrimary = ['PRIMARY', 'CO_REPRESENTATIVE', 'FAMILY', 'ROOMMATE', 'OTHER'].includes(
+      const relationToPrimary = ['PRIMARY', 'FAMILY', 'ROOMMATE', 'OTHER'].includes(
         String(body.relationToPrimary || '')
       )
         ? String(body.relationToPrimary)
@@ -3316,7 +3316,7 @@ export async function handleConsoleV2Api(
       if (typeof body.residenceRegStatus === 'string' && ['PENDING', 'REGISTERED', 'EXPIRED'].includes(body.residenceRegStatus)) {
         dataToUpdate.residenceRegStatus = body.residenceRegStatus;
       }
-      if (typeof body.relationToPrimary === 'string' && ['PRIMARY', 'CO_REPRESENTATIVE', 'FAMILY', 'ROOMMATE', 'OTHER'].includes(body.relationToPrimary)) {
+      if (typeof body.relationToPrimary === 'string' && ['PRIMARY', 'FAMILY', 'ROOMMATE', 'OTHER'].includes(body.relationToPrimary)) {
         dataToUpdate.relationToPrimary = body.relationToPrimary;
       }
       if (typeof body.moveOutDate === 'string') {

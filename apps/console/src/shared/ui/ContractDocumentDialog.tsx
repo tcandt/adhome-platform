@@ -25,9 +25,8 @@ export function ContractDocumentDialog({ contractId, draftProfile, onProfileSave
   const [missing, setMissing] = useState<string[]>([]);
   const [pdfUrl, setPdfUrl] = useState('');
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
-  const [frameReady, setFrameReady] = useState(false);
   const [printError, setPrintError] = useState('');
-  const frame = useRef<HTMLIFrameElement>(null);
+  const [printMode, setPrintMode] = useState(false);
   const request = useRef<AbortController | null>(null);
   const initialDraft = useRef(draftProfile);
   const endpoint = `/api/v1/console/v2/contracts/${encodeURIComponent(contractId)}/document`;
@@ -44,7 +43,7 @@ export function ContractDocumentDialog({ contractId, draftProfile, onProfileSave
     }
   };
   const generate = async (selected: Profile, signal: AbortSignal, save = false) => {
-    setError(''); setPrintError(''); setPdfUrl(''); setPdfBlob(null); setFrameReady(false);
+    setError(''); setPrintError(''); setPdfUrl(''); setPdfBlob(null); setPrintMode(false);
     let didSave = false;
     try {
       if (save) {
@@ -87,34 +86,16 @@ export function ContractDocumentDialog({ contractId, draftProfile, onProfileSave
     request.current?.abort(); const controller = new AbortController(); request.current = controller;
     void generate(profile, controller.signal, save);
   };
-  const edit = (key: string, value: any) => { setProfile(p => p ? { ...p, [key]: value } : p); setPdfUrl(''); setFrameReady(false); };
+  const edit = (key: string, value: any) => { setProfile(p => p ? { ...p, [key]: value } : p); setPdfUrl(''); setPrintMode(false); };
   const input = (group: 'tenant' | 'landlord', key: string, label: string, type = 'text', wide = false) => <label className={wide ? 'contract-field-wide' : ''}>{label}<input type={type} value={profile?.[group][key] || ''} onChange={e => edit(group, { ...profile?.[group], [key]: e.target.value })} /></label>;
   const filename = `Hop-dong-${(record?.contract.contractCode || contractId).replace(/[^a-zA-Z0-9_-]/g, '-')}.pdf`;
-  const usesNativePdfPrint = typeof navigator !== 'undefined' && (
-    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-  );
   const openPdf = () => { if (pdfUrl) window.open(pdfUrl, '_blank', 'noopener,noreferrer'); };
-  const print = () => {
-    setPrintError('');
-    try {
-      if (usesNativePdfPrint) {
-        const pdfWindow = window.open(pdfUrl, '_blank');
-        if (!pdfWindow) throw new Error();
-        return;
-      }
-      if (!frame.current?.contentWindow) throw new Error();
-      frame.current.contentWindow.focus();
-      frame.current.contentWindow.print();
-    } catch {
-      setPrintError('Không mở được bản PDF đầy đủ. Hãy cho phép cửa sổ bật lên, sau đó mở PDF và chọn In.');
-    }
-  };
+  const print = () => { setPrintError(''); setEditing(false); setPrintMode(true); };
 
   return <Dialog.Root open onOpenChange={open => { if (!open) onClose(); }}><Dialog.Portal><Dialog.Backdrop className="contract-document-backdrop" /><Dialog.Viewport className="contract-document-viewport"><Dialog.Popup from="bottom" className="contract-document-dialog" data-testid="contract-document-dialog">
     <header className="contract-document-header"><div><Dialog.Title>{record?.contract.contractCode || 'Hợp đồng thuê căn hộ'}</Dialog.Title><Dialog.Description>{record ? `${record.room.buildingName} · Phòng ${record.room.code}` : 'Bản hợp đồng PDF'}</Dialog.Description></div><Dialog.Close className="contract-icon-button" aria-label="Đóng hợp đồng" title="Đóng"><X size={18} /></Dialog.Close></header>
     <div className="contract-document-toolbar"><div className="contract-view-tabs" role="group" aria-label="Nội dung hợp đồng"><Button type="button" aria-pressed={!editing} disabled={!!busy || !pdfUrl} onClick={() => setEditing(false)}>Bản PDF</Button><Button type="button" aria-pressed={editing} disabled={!!busy || !profile} onClick={() => setEditing(true)}>Thông tin</Button></div>
-      <div className="contract-document-tools"><Button type="button" className="contract-icon-button" title="Mở PDF trong tab mới" aria-label="Mở PDF trong tab mới" disabled={!pdfUrl || !!busy} onClick={openPdf}><ExternalLink size={17} /></Button><Button type="button" className="contract-icon-button" title={usesNativePdfPrint ? 'Mở PDF đầy đủ để in tất cả trang' : 'In hợp đồng'} aria-label={usesNativePdfPrint ? 'Mở PDF đầy đủ để in tất cả trang' : 'In hợp đồng'} disabled={!pdfUrl || !!busy || (!usesNativePdfPrint && !frameReady) || editing} onClick={print}><Printer size={17} /></Button><Button type="button" className="contract-icon-button" title="Tải PDF" aria-label="Tải PDF" disabled={!pdfUrl || !!busy} onClick={() => { const link = document.createElement('a'); link.href = pdfUrl; link.download = filename; link.click(); }}><Download size={17} /></Button></div>
+      <div className="contract-document-tools"><Button type="button" className="contract-icon-button" title="Mở PDF trong tab mới" aria-label="Mở PDF trong tab mới" disabled={!pdfUrl || !!busy} onClick={openPdf}><ExternalLink size={17} /></Button><Button type="button" className="contract-icon-button" title="Đóng gói PDF để in tất cả trang" aria-label="Đóng gói PDF để in tất cả trang" disabled={!pdfUrl || !!busy || editing} onClick={print}><Printer size={17} /></Button><Button type="button" className="contract-icon-button" title="Tải PDF" aria-label="Tải PDF" disabled={!pdfUrl || !!busy} onClick={() => { const link = document.createElement('a'); link.href = pdfUrl; link.download = filename; link.click(); }}><Download size={17} /></Button></div>
     </div>
     {error && <div role="alert" className="contract-document-error">{error}<Button type="button" className="contract-inline-button" disabled={!!busy} onClick={() => profile ? preview() : void load()}><RefreshCw size={14} />Thử lại</Button></div>}
     {printError && <p role="alert" className="contract-document-error">{printError}</p>}
@@ -125,9 +106,8 @@ export function ContractDocumentDialog({ contractId, draftProfile, onProfileSave
         <section><h3>Bên cho thuê</h3><div className="contract-document-fields">{input('landlord', 'fullName', 'Họ và tên bên cho thuê')}{input('landlord', 'idNumber', 'Giấy tờ bên cho thuê')}{input('landlord', 'birthDate', 'Ngày sinh bên cho thuê', 'date')}{input('landlord', 'phone', 'Điện thoại bên cho thuê', 'tel')}{input('landlord', 'address', 'Địa chỉ bên cho thuê', 'text', true)}{input('landlord', 'accountName', 'Chủ tài khoản')}{input('landlord', 'accountNumber', 'Số tài khoản')}{input('landlord', 'bank', 'Ngân hàng', 'text', true)}</div></section>
         <section><h3>Thông tin hợp đồng</h3><div className="contract-document-fields"><label>Mẫu hợp đồng<select value={profile.leaseTemplate} onChange={e => edit('leaseTemplate', e.target.value)}><option value="LEASE_1PN">Căn hộ 1 phòng ngủ</option><option value="LEASE_2PN">Căn hộ 2 phòng ngủ</option></select></label><label>Ngày lập / ký<input type="date" value={profile.signedDate || ''} onChange={e => edit('signedDate', e.target.value)} /></label><label className="contract-field-wide">Địa chỉ căn hộ<input value={profile.rentalAddress || ''} onChange={e => edit('rentalAddress', e.target.value)} /></label><label>Thời hạn thuê<input value={profile.durationText || ''} onChange={e => edit('durationText', e.target.value)} /></label><label>Mục đích thuê<input value={profile.purpose || ''} onChange={e => edit('purpose', e.target.value)} /></label><label className="contract-field-wide">Liên hệ quản lý<input value={profile.managerContact || ''} onChange={e => edit('managerContact', e.target.value)} /></label></div>
           <dl className="contract-document-terms"><div><dt>Thời hạn</dt><dd>{record?.contract.startDate} → {record?.contract.endDate}</dd></div><div><dt>Tiền thuê / tháng</dt><dd>{record?.contract.monthlyRentVnd.toLocaleString('vi-VN')} đ</dd></div><div><dt>Tiền cọc hợp đồng</dt><dd>{record?.contract.depositVnd.toLocaleString('vi-VN')} đ</dd></div></dl></section>
-      </form> : pdfBlob ? <React.Suspense fallback={<div role="status" className="contract-document-loading"><ShimmeringText text="Đang mở các trang PDF…" /></div>}><ContractPdfViewer file={pdfBlob} /></React.Suspense> : <div className="contract-document-empty"><FileText size={32} strokeWidth={1.5} /><p>Chưa có bản PDF</p>{profile && <Button type="button" className="contract-inline-button" onClick={() => setEditing(true)}>Kiểm tra thông tin</Button>}</div>}
+      </form> : pdfBlob ? <React.Suspense fallback={<div role="status" className="contract-document-loading"><ShimmeringText text="Đang mở các trang PDF…" /></div>}><ContractPdfViewer file={pdfBlob} printMode={printMode} onExitPrintMode={() => setPrintMode(false)} /></React.Suspense> : <div className="contract-document-empty"><FileText size={32} strokeWidth={1.5} /><p>Chưa có bản PDF</p>{profile && <Button type="button" className="contract-inline-button" onClick={() => setEditing(true)}>Kiểm tra thông tin</Button>}</div>}
     </div>
-    {pdfUrl && <iframe ref={frame} className="contract-print-frame" title="In hợp đồng" src={pdfUrl} onLoad={() => setFrameReady(true)} />}
     {editing && profile && <footer className="contract-document-footer"><Button type="button" className="contract-secondary-button" disabled={!!busy} onClick={() => preview()}>Xem trước</Button><Button type="submit" form="contract-document-form" className="contract-primary-button" disabled={!!busy}>Lưu & xem PDF</Button></footer>}
   </Dialog.Popup></Dialog.Viewport></Dialog.Portal></Dialog.Root>;
 }

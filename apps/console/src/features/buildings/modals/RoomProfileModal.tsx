@@ -857,18 +857,17 @@ export const RoomProfileModal: React.FC<Props> = ({
                     <div className="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800">
                       <table className="w-full table-fixed text-left text-[10.5px]" data-testid="room-deposits-table">
                         <thead className="bg-slate-50 text-[9px] font-semibold uppercase text-slate-500 dark:bg-slate-800/70 dark:text-slate-400">
-                          <tr><th className="w-[18%] whitespace-nowrap px-1.5 py-2.5">Date</th><th className="w-[16%] whitespace-nowrap px-1.5 py-2.5">ID</th><th className="w-[24%] whitespace-nowrap px-1.5 py-2.5">Guest</th><th className="w-[25%] whitespace-nowrap px-1.5 py-2.5 text-right">Deposit</th><th className="w-[17%] whitespace-nowrap px-1 py-2.5 text-center">Action</th></tr>
+                          <tr><th className="w-[21%] whitespace-nowrap px-2 py-2.5">Date</th><th className="w-[18%] whitespace-nowrap px-2 py-2.5">ID</th><th className="w-[29%] whitespace-nowrap px-2 py-2.5">Guest</th><th className="w-[32%] whitespace-nowrap px-2 py-2.5 text-right">Deposit</th></tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                           {depositRows.map((deposit: any) => {
                             const rawDate = String(deposit.receivedAt || deposit.createdAt || '');
                             const displayDate = /^\d{4}-\d{2}-\d{2}/.test(rawDate) ? rawDate.slice(0, 10).split('-').reverse().join('/') : rawDate || '—';
                             return <tr key={deposit.id} className="bg-white align-middle dark:bg-slate-900/30">
-                              <td className="px-1.5 py-3 tabular-nums text-slate-600 dark:text-slate-300">{displayDate}</td>
-                              <td className="px-1.5 py-3"><button type="button" onClick={() => setDepositDetailId(deposit.id)} title={deposit.id} className="font-mono font-semibold text-blue-700 underline decoration-blue-300 underline-offset-2 dark:text-blue-300">{String(deposit.id).slice(0, 6).toUpperCase()}</button></td>
-                              <td className="break-words px-1.5 py-3 font-semibold leading-4 text-slate-900 dark:text-white">{deposit.customerName}</td>
-                              <td className="px-1.5 py-3 text-right font-semibold tabular-nums text-emerald-700 dark:text-emerald-300">{Number(deposit.paidAmountVnd).toLocaleString('vi-VN')} đ</td>
-                              <td className="px-1 py-2 text-center"><ActionMenu ariaLabel={`Hành động cọc của ${deposit.customerName}`} contextTitle={deposit.customerName} contextSubtitle={`${Number(deposit.paidAmountVnd).toLocaleString('vi-VN')} đ`} items={[{ label: 'Xem hồ sơ thuê', icon: <FileText size={16} />, onClick: () => onAddRental?.(room.id), disabled: !onAddRental }, ...(deposit.contractId ? [{ label: 'Xem PDF hợp đồng', icon: <FileSignature size={16} />, onClick: () => setDocumentContractId(deposit.contractId) }] : [])]} /></td>
+                              <td className="px-2 py-3 tabular-nums text-slate-600 dark:text-slate-300">{displayDate}</td>
+                              <td className="px-2 py-3"><button type="button" onClick={() => setDepositDetailId(deposit.id)} title={deposit.id} className="font-mono font-semibold text-blue-700 underline decoration-blue-300 underline-offset-2 dark:text-blue-300">{String(deposit.id).slice(0, 6).toUpperCase()}</button></td>
+                              <td className="break-words px-2 py-3 font-semibold leading-4 text-slate-900 dark:text-white">{deposit.customerName}</td>
+                              <td className="px-2 py-3 text-right font-semibold tabular-nums text-emerald-700 dark:text-emerald-300">{Number(deposit.paidAmountVnd).toLocaleString('vi-VN')} đ</td>
                             </tr>;
                           })}
                         </tbody>

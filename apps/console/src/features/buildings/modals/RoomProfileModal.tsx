@@ -221,6 +221,7 @@ export const RoomProfileModal: React.FC<Props> = ({
   const pendingContract = workflow?.contract && ['DRAFT', 'ACTIVE', 'EXPIRING', 'EXTENDED'].includes(workflow.contract.status) ? workflow.contract : room.activeContract;
   const pendingPeople = pendingContract?.status === 'DRAFT' && workflow?.profile ? [workflow.profile.tenant, ...(workflow.profile.members || [])] : pendingReservation && !pendingContract ? [workflow?.profile?.tenant || { fullName: pendingReservation.customerName, phone: pendingReservation.customerPhone }, ...(workflow?.profile?.members || [])] : [];
   const pendingInvoice = pendingContract?.invoices?.find((item: any) => item.status !== 'VOID');
+  const canManageContracts = hasCapability("canManageContracts");
   const residentRows = pendingPeople.length > 0
     ? pendingPeople.map((person: any, index: number) => ({
         id: `pending-${index}-${person.fullName || 'guest'}`,
@@ -234,7 +235,12 @@ export const RoomProfileModal: React.FC<Props> = ({
         phone: occupant.phone || '',
         contractId: occupant.contractId || room.activeContract?.id || null,
       }));
-  const canManageContracts = hasCapability("canManageContracts");
+  const residentCount = pendingPeople.length || occupantsList.filter(occupant => occupant.isActive).length;
+  const canAddResident = canManageContracts && residentCount < room.maxOccupants && Boolean(onAddRental || room.activeContract);
+  const addResident = () => {
+    if (room.rentalModel === 'SHARED_ROOM' || pendingContract || pendingReservation || !room.activeContract) onAddRental?.(room.id);
+    else setIsAddingOccupant(true);
+  };
   const canPublishRooms =
     user?.backendRole === "ADMIN" ||
     Boolean(user?.permissions.includes("rooms.publish.write"));
@@ -666,8 +672,8 @@ export const RoomProfileModal: React.FC<Props> = ({
               {activeTab === "occupants" && (
                 <div className="space-y-4">
                   <div className="flex items-start justify-between gap-3">
-                    <div><h4 className="text-sm font-semibold text-slate-900 dark:text-white">Khách lưu trú <span className="ml-1 font-normal text-slate-400">{pendingPeople.length || occupantsList.filter(occ => occ.isActive).length}/{room.maxOccupants}</span></h4><p className="mt-1 text-xs leading-relaxed text-slate-500">Khách thuê và người cùng ở trong phòng.</p></div>
-                    {room.activeContract && canManageContracts && !isAddingOccupant && (room.rentalModel === 'SHARED_ROOM' ? onAddRental && (room.activeContracts?.length || 0) < room.maxOccupants ? <Button type="button" onClick={() => onAddRental(room.id)} className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-blue-700 dark:text-blue-300"><Plus size={15} />Thêm khách ghép · hợp đồng riêng</Button> : null : <Button type="button" onClick={() => setIsAddingOccupant(true)} className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-blue-700 dark:text-blue-300"><Plus size={15} />Thêm người ở cùng</Button>)}
+                    <div><h4 className="text-sm font-semibold text-slate-900 dark:text-white">Khách lưu trú <span className="ml-1 font-normal text-slate-400">{residentCount}/{room.maxOccupants}</span></h4><p className="mt-1 text-xs leading-relaxed text-slate-500">Khách thuê và người cùng ở trong phòng.</p></div>
+                    {canAddResident && !isAddingOccupant && <Button type="button" onClick={addResident} aria-label="Thêm khách thuê" title="Thêm khách thuê" data-testid="btn-add-room-tenant" hoverScale={1} tapScale={0.96} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300"><Plus size={19} /></Button>}
                   </div>
                   {/* Add Occupant Form Drawer/Card */}
                   {isAddingOccupant && (

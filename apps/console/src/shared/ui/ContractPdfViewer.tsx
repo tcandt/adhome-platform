@@ -105,6 +105,20 @@ const ContractPdfViewer = forwardRef<ContractPdfViewerHandle, { file: Blob; onPr
   const printReady = pages.length > 0 && renderedPages.size === pages.length;
   useEffect(() => { onPrintReady?.(printReady); }, [onPrintReady, printReady]);
   useEffect(() => () => onPrintReady?.(false), [onPrintReady]);
+  useEffect(() => {
+    const restoreTopDocument = () => {
+      printFrame.current?.contentWindow?.blur();
+      window.focus();
+    };
+    const handlePageShow = () => restoreTopDocument();
+    const handleVisibility = () => { if (!document.hidden) restoreTopDocument(); };
+    window.addEventListener('pageshow', handlePageShow);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      window.removeEventListener('pageshow', handlePageShow);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, []);
 
   useImperativeHandle(ref, () => ({
     printAll: () => {
@@ -125,7 +139,23 @@ const ContractPdfViewer = forwardRef<ContractPdfViewerHandle, { file: Blob; onPr
         page.appendChild(canvas);
         document.body.appendChild(page);
       });
-      target.focus();
+      let restored = false;
+      const restoreTopDocument = () => {
+        if (restored) return;
+        restored = true;
+        target.removeEventListener('afterprint', restoreTopDocument);
+        window.removeEventListener('focus', restoreTopDocument);
+        target.blur();
+        window.focus();
+        const frameDocument = printFrame.current?.contentWindow?.document;
+        if (frameDocument) {
+          frameDocument.open();
+          frameDocument.write('<!doctype html><html><body></body></html>');
+          frameDocument.close();
+        }
+      };
+      target.addEventListener('afterprint', restoreTopDocument, { once: true });
+      window.addEventListener('focus', restoreTopDocument, { once: true });
       target.print();
       return true;
     },
@@ -143,7 +173,7 @@ const ContractPdfViewer = forwardRef<ContractPdfViewerHandle, { file: Blob; onPr
         {pages.map(page => <PdfPage key={page.number} page={page} onRendered={markRendered} />)}
       </div> : <p role="status" className="contract-pdf-message">Đang hiển thị các trang hợp đồng…</p>}
     </div>
-    <iframe ref={printFrame} className="contract-print-frame" title="Tài liệu in đầy đủ" />
+    <iframe ref={printFrame} className="contract-print-frame" title="Tài liệu in đầy đủ" tabIndex={-1} aria-hidden="true" />
   </div>;
 });
 

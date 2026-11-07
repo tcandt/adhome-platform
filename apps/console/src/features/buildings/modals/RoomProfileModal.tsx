@@ -97,8 +97,8 @@ export const RoomProfileModal: React.FC<Props> = ({
   const [occPhone, setOccPhone] = useState<string>("");
   const [occIdNumber, setOccIdNumber] = useState<string>("");
   const [occRelation, setOccRelation] = useState<
-    "FAMILY" | "ROOMMATE" | "OTHER"
-  >("FAMILY");
+    "CO_REPRESENTATIVE" | "FAMILY"
+  >("CO_REPRESENTATIVE");
   const occRegStatus = "PENDING";
 
   // Handover baseline modal
@@ -327,7 +327,7 @@ export const RoomProfileModal: React.FC<Props> = ({
   const residentCount = pendingPeople.length || occupantsList.filter(occupant => occupant.isActive).length;
   const canAddResident = canManageContracts && residentCount < room.maxOccupants && Boolean(onAddRental || room.activeContract);
   const addResident = () => {
-    if (room.rentalModel === 'SHARED_ROOM' || pendingContract || pendingReservation || !room.activeContract) onAddRental?.(room.id);
+    if (room.rentalModel === 'SHARED_ROOM' || !room.activeContract) onAddRental?.(room.id);
     else setIsAddingOccupant(true);
   };
   const canPublishRooms =
@@ -402,6 +402,7 @@ export const RoomProfileModal: React.FC<Props> = ({
         setOccFullName("");
         setOccPhone("");
         setOccIdNumber("");
+        setOccRelation("CO_REPRESENTATIVE");
         await loadOccupants();
         await refreshPortfolio();
         setActionFeedback("Đã thêm người lưu trú thành công.");
@@ -770,9 +771,7 @@ export const RoomProfileModal: React.FC<Props> = ({
                       onSubmit={handleAddOccupantSubmit}
                       className="p-3.5 rounded-xl border border-blue-200 dark:border-blue-900 bg-blue-50/50 dark:bg-blue-950/20 space-y-3"
                     >
-                      <div className="font-bold text-xs text-blue-900 dark:text-blue-200">
-                        Thêm người cùng lưu trú vào phòng {room.code}
-                      </div>
+                      <div><div className="font-bold text-xs text-blue-900 dark:text-blue-200">Thêm khách vào hợp đồng phòng {room.code}</div><p className="mt-1 text-[11px] leading-4 text-slate-500 dark:text-slate-400">Đại diện phụ và thành viên cùng hộ dùng chung hợp đồng chính, không phát sinh tiền thuê hoặc cọc riêng.</p></div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                         <input
                           type="text"
@@ -798,14 +797,11 @@ export const RoomProfileModal: React.FC<Props> = ({
                         />
                         <select
                           value={occRelation}
-                          onChange={(e) =>
-                            setOccRelation(e.target.value as any)
-                          }
+                          onChange={(e) => setOccRelation(e.target.value as "CO_REPRESENTATIVE" | "FAMILY")}
                           className="p-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
                         >
-                          <option value="ROOMMATE" disabled>Bạn cùng phòng cần hợp đồng riêng</option>
-                          <option value="FAMILY">Người thân / Gia đình</option>
-                          <option value="OTHER">Khác</option>
+                          <option value="CO_REPRESENTATIVE">Đại diện hợp đồng phụ</option>
+                          <option value="FAMILY">Thành viên cùng hộ</option>
                         </select>
                       </div>
                       <div className="flex flex-wrap items-center justify-end gap-2">
@@ -820,7 +816,7 @@ export const RoomProfileModal: React.FC<Props> = ({
                           type="submit"
                           className="px-4 py-1.5 text-xs font-bold bg-brand-primary text-white rounded-lg"
                         >
-                          Lưu người lưu trú
+                          Thêm vào hợp đồng
                         </button>
                       </div>
                     </form>

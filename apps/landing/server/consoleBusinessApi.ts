@@ -3160,7 +3160,7 @@ export async function handleConsoleV2Api(
       const idNumber = String(body.idNumber || '').trim() || null;
       const dateOfBirth = String(body.dateOfBirth || '').trim() || null;
       const gender = String(body.gender || '').trim() || null;
-      const relationToPrimary = ['PRIMARY', 'FAMILY', 'ROOMMATE', 'OTHER'].includes(
+      const relationToPrimary = ['PRIMARY', 'CO_REPRESENTATIVE', 'FAMILY', 'ROOMMATE', 'OTHER'].includes(
         String(body.relationToPrimary || '')
       )
         ? String(body.relationToPrimary)
@@ -3184,7 +3184,7 @@ export async function handleConsoleV2Api(
         });
       }
       if (rm.rentalModel === 'SHARED_ROOM') return sendJson(res, 409, { ok: false, errorCode: 'SHARED_ROOM_CONTRACT_REQUIRED', message: 'Khách ở ghép phải có hợp đồng riêng. Hãy dùng Thêm khách thuê.' });
-      if (relationToPrimary === 'ROOMMATE' || relationToPrimary === 'PRIMARY') return sendJson(res, 409, { ok: false, errorCode: 'WHOLE_ROOM_OCCUPANT_ONLY', message: 'Phòng nguyên căn chỉ thêm người cùng ở trong hợp đồng đại diện.' });
+      if (relationToPrimary === 'ROOMMATE' || relationToPrimary === 'PRIMARY') return sendJson(res, 409, { ok: false, errorCode: 'WHOLE_ROOM_OCCUPANT_ONLY', message: 'Phòng nguyên căn chỉ thêm đại diện hợp đồng phụ hoặc thành viên cùng hộ.' });
 
       // Check active contract on room to link if any
       const activeContract = await prisma.contract.findFirst({
@@ -3316,7 +3316,7 @@ export async function handleConsoleV2Api(
       if (typeof body.residenceRegStatus === 'string' && ['PENDING', 'REGISTERED', 'EXPIRED'].includes(body.residenceRegStatus)) {
         dataToUpdate.residenceRegStatus = body.residenceRegStatus;
       }
-      if (typeof body.relationToPrimary === 'string' && ['PRIMARY', 'FAMILY', 'ROOMMATE', 'OTHER'].includes(body.relationToPrimary)) {
+      if (typeof body.relationToPrimary === 'string' && ['PRIMARY', 'CO_REPRESENTATIVE', 'FAMILY', 'ROOMMATE', 'OTHER'].includes(body.relationToPrimary)) {
         dataToUpdate.relationToPrimary = body.relationToPrimary;
       }
       if (typeof body.moveOutDate === 'string') {

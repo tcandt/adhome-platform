@@ -23,7 +23,7 @@ export default {
         method: request.method, headers,
         body: ['GET', 'HEAD'].includes(request.method) ? undefined : request.body,
         redirect: 'manual', signal: AbortSignal.timeout(30000),
-        cf: { resolveOverride: '8411bdbd-614d-45b4-9545-1cbd4be9b331.cfargotunnel.com' },
+        cf: { resolveOverride: 'console-api-origin.adhome.vn' },
       });
       const response = new Response(upstream.body, upstream);
       response.headers.set('Cache-Control', 'no-store');

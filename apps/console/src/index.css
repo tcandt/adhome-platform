@@ -116,6 +116,56 @@ input::placeholder, textarea::placeholder, select option { font-size: inherit; }
     line-height: 1.35;
   }
 }
+
+/* Compact type and rhythm for every Console view on narrow mobile screens. */
+@media (max-width: 767px) {
+  :root {
+    --ui-text-size: 12px;
+    --ui-text-line-height: 1.4;
+    --ui-section-title-size: 13px;
+    --ui-dialog-title-size: 15px;
+    --form-label-font-size: 12px;
+    --form-control-height: 40px;
+  }
+
+  :is([role="dialog"], [data-testid^="modal-"], .rental-workspace) :is(label, button) {
+    line-height: 1.35;
+  }
+
+  /* Keep touch targets, but remove oversized visual padding around their text. */
+  :is([role="dialog"], [data-testid^="modal-"]) button {
+    padding-block: 6px;
+  }
+
+  .room-config-fields {
+    padding: 12px;
+  }
+  .room-config-fields > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 10px;
+  }
+  .room-config-fields label {
+    margin-bottom: 4px;
+  }
+  .room-config-fields input:not([type="checkbox"]),
+  .room-config-fields select,
+  .room-config-fields textarea {
+    min-height: var(--form-control-height) !important;
+    padding-block: 5px;
+    padding-inline: 10px;
+  }
+  .room-config-fields :is(input, select, textarea):is(
+    [class~="h-11"],
+    [class~="min-h-11"],
+    [class~="max-h-11"],
+    [class~="!h-11"],
+    [class~="!min-h-11"],
+    [class~="!max-h-11"]
+  ) {
+    height: var(--form-control-height) !important;
+    min-height: var(--form-control-height) !important;
+    max-height: var(--form-control-height) !important;
+  }
+}
 .building-form-dialog label { min-height: 0; line-height: 20px; font-weight: 500; }
 .building-form-dialog form > div > fieldset > .grid { align-items: end; }
 .building-form-dialog h3 { font-size: 14px; line-height: 20px; }

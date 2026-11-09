@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Dialog } from '@animate-ui/react/primitives/base-ui/dialog';
+import { Collapsible } from '@animate-ui/react/primitives/base-ui/collapsible';
 import { Button } from '@animate-ui/react/primitives/buttons/button';
 import { ShimmeringText } from '@animate-ui/react/primitives/texts/shimmering';
 import { CalendarDays, Check, CheckCircle2, ChevronRight, Copy, Download, FileCheck2, Home, LoaderCircle, Plus, Receipt, ShieldCheck, Users, Wallet, X } from 'lucide-react';
@@ -12,6 +13,7 @@ import { ContractIdentityDocuments } from '../../shared/ui/PrivateDocumentFields
 import { ContractRepresentativeSwitch } from '../../shared/ui/ContractRepresentativeSwitch';
 
 import './RentalOnboarding.css';
+import './RentalCustomerMenu.css';
 
 type Intent = 'HOLD' | 'DIRECT' | 'IMPORT';
 type Person = { fullName: string; phone: string; birthDate: string; gender: string; idNumber: string; address: string; emergencyContact?: string; relationship?: string; documentRole?: string; occupantId?: string; householdHeadOccupantId?: string };
@@ -293,15 +295,16 @@ export function RentalOnboardingPage({ roomId, initialIntent, onClose, embedded 
           ['DIRECT', 'Thuê ở ngay', 'Lập hợp đồng mới, thu tiền và bàn giao.', Home],
           ['HOLD', 'Đặt cọc giữ phòng', 'Giữ phòng trước ngày khách nhận nhà.', Wallet],
           ['IMPORT', 'Đồng bộ dữ liệu', 'Tiếp quản khách đang ở và số dư đã có.', Users],
-        ] as const).map(([id, title, desc, Icon]) => <label key={id} className={`rental-intent ${intent === id ? 'is-selected' : ''}`}><span className="rental-intent-icon"><Icon size={21} strokeWidth={1.7} /></span><span className="min-w-0 flex-1"><b>{title}</b><span className="rental-intent-description">{desc}</span></span><input type="radio" name="rental-intent" aria-label={title} checked={intent === id} onChange={() => setIntent(id)} /></label>)}</fieldset>
-        {intent && intent !== 'IMPORT' && <section className="grid gap-3" aria-label="Nguồn khách thuê">
-          <fieldset className="flex flex-wrap gap-4"><legend className="mb-2 text-sm font-semibold">Khách thuê</legend>{([['EXISTING', 'Khách có sẵn'], ['NEW', 'Khách mới']] as const).map(([mode, label]) => <label key={mode} className="inline-flex min-h-11 items-center gap-2 text-sm"><input type="radio" name="customer-mode" checked={customerMode === mode} onChange={() => { setCustomerMode(mode); setExistingTenantId(''); editProfile('tenant', blankPerson()); setTenantErrors({}); }} />{label}</label>)}</fieldset>
+        ] as const).map(([id, title, desc, Icon]) => <Collapsible.Root key={id} open={intent === id} className="min-w-0" data-testid={`rental-intent-${id}`}><label className={`rental-intent ${intent === id ? 'is-selected' : ''}`}><span className="rental-intent-icon"><Icon size={21} strokeWidth={1.7} /></span><span className="min-w-0 flex-1"><b>{title}</b><span className="rental-intent-description">{desc}</span></span><input type="radio" name="rental-intent" aria-label={title} checked={intent === id} onChange={() => setIntent(id)} /></label>
+        {id !== 'IMPORT' && intent === id && <Collapsible.Panel className="overflow-hidden"><section className="rental-customer-submenu" aria-label="Nguồn khách thuê">
+          <fieldset className="rental-customer-modes"><legend className="sr-only">Khách thuê</legend>{([['EXISTING', 'Khách có sẵn'], ['NEW', 'Khách mới']] as const).map(([mode, label]) => <label key={mode} className={`rental-customer-mode ${customerMode === mode ? 'is-selected' : ''}`}><input type="radio" name="customer-mode" checked={customerMode === mode} onChange={() => { setCustomerMode(mode); setExistingTenantId(''); editProfile('tenant', blankPerson()); setTenantErrors({}); }} /><span>{label}</span></label>)}</fieldset>
           {customerMode === 'EXISTING' && <>
             <Field label="Tìm khách có sẵn"><input className={fieldClass} type="search" value={customerQuery} onChange={e => setCustomerQuery(e.target.value)} placeholder="Họ tên, số điện thoại hoặc CCCD" /></Field>
-            {customersLoading ? <p role="status">Đang tải khách có sẵn…</p> : customersError ? <p role="alert" className="text-sm text-rose-600">{customersError}</p> : <Field label="Chọn khách có sẵn"><select className={fieldClass} value={existingTenantId} onChange={e => { const customer = customers.find(c => c.id === e.target.value); setExistingTenantId(customer?.id || ''); editProfile('tenant', { ...blankPerson(), ...customer?.person }); setTenantErrors({}); }}><option value="">Chọn khách</option>{customers.filter(c => [c.person.fullName, c.person.phone, c.person.idNumber].some(value => value?.toLocaleLowerCase('vi').includes(customerQuery.trim().toLocaleLowerCase('vi')))).map(c => <option key={c.id} value={c.id}>{c.person.fullName} · {c.person.phone}</option>)}</select></Field>}
+            {customersLoading ? <p role="status">Đang tải khách có sẵn…</p> : customersError ? <p role="alert" className="text-sm text-rose-600">{customersError}</p> : <Field label="Chọn khách có sẵn"><select aria-label="Chọn khách có sẵn" className={`${fieldClass} rental-customer-select`} value={existingTenantId} onChange={e => { const customer = customers.find(c => c.id === e.target.value); setExistingTenantId(customer?.id || ''); editProfile('tenant', { ...blankPerson(), ...customer?.person }); setTenantErrors({}); }}><option value="">Chọn khách</option>{customers.filter(c => [c.person.fullName, c.person.phone, c.person.idNumber].some(value => value?.toLocaleLowerCase('vi').includes(customerQuery.trim().toLocaleLowerCase('vi')))).map(c => <option key={c.id} value={c.id}>{c.person.fullName} · {c.person.phone}</option>)}</select></Field>}
             {!customersLoading && !customersError && !customers.length && <p role="status" className="text-sm text-slate-500">Không có khách đủ điều kiện.</p>}
           </>}
-        </section>}
+        </section></Collapsible.Panel>}
+        </Collapsible.Root>)}</fieldset>
         <div className="rental-actions">{button('Quay lại', close, true)}{button('Tiếp tục', () => { setDetailStep('people'); move('details'); }, false, !intent || intent !== 'IMPORT' && customerMode === 'EXISTING' && (!existingTenantId || customersLoading || !!customersError))}</div>
       </>}
       {stage === 'details' && <>

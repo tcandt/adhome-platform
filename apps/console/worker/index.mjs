@@ -20,7 +20,14 @@ export default {
       }
       return asset;
     }
-    if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
+    if (!url.pathname.startsWith('/api/')) {
+      const asset = await env.ASSETS.fetch(request);
+      if (!(asset.headers.get('content-type') || '').includes('text/html')) return asset;
+      const response = new Response(asset.body, asset);
+      response.headers.set('Cache-Control', 'no-store, max-age=0');
+      response.headers.set('CDN-Cache-Control', 'no-store');
+      return response;
+    }
     const paymentWebhook = /^\/api\/v1\/webhooks\/payments\/(sepay|payos|momo|zalopay|tingee)\/[a-fA-F0-9-]{32,36}$/.test(url.pathname);
     if (!url.pathname.startsWith('/api/v1/console/') && !paymentWebhook) return failure('Not found', 404);
     if (paymentWebhook && request.method !== 'POST') return failure('POST required', 405);

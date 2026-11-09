@@ -5,12 +5,14 @@ interface ContractRepresentativeSwitchProps {
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
   disabled?: boolean;
+  compact?: boolean;
 }
 
 export function ContractRepresentativeSwitch({
   checked,
   onCheckedChange,
   disabled = false,
+  compact = false,
 }: ContractRepresentativeSwitchProps) {
   const id = useId();
   const title = checked ? "Người đại diện hợp đồng" : "Người cùng hộ";
@@ -19,19 +21,19 @@ export function ContractRepresentativeSwitch({
     : "Được ghi nhận là thành viên cùng hộ với người đại diện."
 
   return (
-    <div className="flex items-center justify-between gap-2.5 rounded-lg border border-slate-200 bg-white/80 p-2.5 shadow-sm dark:border-slate-700 dark:bg-slate-900/60">
+    <div className={compact ? 'flex min-w-0 items-center gap-2' : 'flex items-center justify-between gap-2.5 rounded-lg border border-slate-200 bg-white/80 p-2.5 shadow-sm dark:border-slate-700 dark:bg-slate-900/60'}>
       <label htmlFor={id} className="min-w-0 cursor-pointer">
         <span className="flex flex-wrap items-center gap-1">
           <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">
-            {title}
+            {compact && checked ? 'Đại diện HĐ' : title}
           </span>
-          <span className={`rounded-full px-1.5 py-0.5 text-[8px] font-semibold leading-none ${checked ? "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300" : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"}`}>
+          {!compact && <span className={`rounded-full px-1.5 py-0.5 text-[8px] font-semibold leading-none ${checked ? "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300" : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"}`}>
             {checked ? "Đại diện" : "Cùng hộ"}
-          </span>
+          </span>}
         </span>
-        <span className="mt-0.5 block text-[10px] leading-4 text-slate-500 dark:text-slate-400">
+        {!compact && <span className="mt-0.5 block text-[10px] leading-4 text-slate-500 dark:text-slate-400">
           {description}
-        </span>
+        </span>}
       </label>
       <Switch.Root
         id={id}

@@ -32,6 +32,8 @@ try {
     assert.equal(await missing.text(), method === 'HEAD' ? '' : 'Asset not found');
   }
   const app = await worker.fetch(new Request('https://console.adhome.vn/buildings'), assetEnv);
+  assert.match(app.headers.get('cache-control'), /no-store/);
+  assert.equal(app.headers.get('cdn-cache-control'), 'no-store');
   assert.match(await app.text(), /SPA/);
   console.log('PASS console worker preserves real assets/cache and SPA routes, rejects HTML fallbacks for missing assets');
 } finally { globalThis.fetch = originalFetch; }

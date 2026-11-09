@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { chromium } from 'playwright';
+import { chromium, webkit } from 'playwright';
 
 const base = process.env.ADHOME_UI_URL || 'http://127.0.0.1:5190';
-const browser = await chromium.launch({ headless: true, channel: 'chrome' });
+const browser = await (process.env.ADHOME_WEBKIT_LAYOUT === '1' ? webkit.launch({headless:true}) : chromium.launch({ headless: true, channel: 'chrome' }));
 const results = [];
 await mkdir('.artifacts/rental-members/ui', { recursive: true });
 try {
@@ -30,7 +30,10 @@ try {
     await page.getByRole('button',{name:'Tiếp tục',exact:true}).click();
     const section = page.locator('.rental-members');
     const mode = section.getByRole('switch').first();
+    assert.equal(await section.locator('.rental-section-heading').getByRole('switch').count(),1,'member mode is beside the count in the section heading');
     assert.equal(await mode.isChecked(),false);
+    await mode.scrollIntoViewIfNeeded();
+    await page.screenshot({path:`.artifacts/rental-members/ui/member-switch-${width}.png`,fullPage:true});
     await page.getByRole('button',{name:'Thêm người cùng hộ',exact:true}).click();
     await mode.focus(); await page.keyboard.press('Space');
     assert.equal(await mode.isChecked(),true);

@@ -932,20 +932,20 @@ export const RoomProfileModal: React.FC<Props> = ({
               {activeTab === "deposits" && (
                 <div className="space-y-4">
                   {depositRows.length > 0 ? (
-                    <div className="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800">
-                      <table className="w-full table-fixed text-left text-[10.5px]" data-testid="room-deposits-table">
+                    <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
+                      <table className="w-full min-w-[320px] table-fixed text-left text-[10.5px]" data-testid="room-deposits-table">
                         <thead className="bg-slate-50 text-[9px] font-semibold uppercase text-slate-500 dark:bg-slate-800/70 dark:text-slate-400">
-                          <tr><th className="w-[21%] whitespace-nowrap px-2 py-2.5">Date</th><th className="w-[18%] whitespace-nowrap px-2 py-2.5">ID</th><th className="w-[29%] whitespace-nowrap px-2 py-2.5">Guest</th><th className="w-[32%] whitespace-nowrap px-2 py-2.5 text-right">Deposit</th></tr>
+                          <tr><th className="w-[72px] whitespace-nowrap px-1.5 py-2.5">Date</th><th className="w-[50px] whitespace-nowrap px-1 py-2.5">ID</th><th className="whitespace-nowrap px-1 py-2.5">Guest</th><th className="w-[82px] whitespace-nowrap px-1.5 py-2.5 text-right">Deposit</th></tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                           {depositRows.map((deposit: any) => {
                             const rawDate = String(deposit.receivedAt || deposit.createdAt || '');
                             const displayDate = /^\d{4}-\d{2}-\d{2}/.test(rawDate) ? rawDate.slice(0, 10).split('-').reverse().join('/') : rawDate || '—';
                             return <tr key={deposit.id} className="bg-white align-middle dark:bg-slate-900/30">
-                              <td className="px-2 py-3 tabular-nums text-slate-600 dark:text-slate-300">{displayDate}</td>
-                              <td className="px-2 py-3"><button type="button" onClick={() => setDepositDetailId(deposit.id)} title={deposit.id} className="font-mono font-semibold text-blue-700 underline decoration-blue-300 underline-offset-2 dark:text-blue-300">{String(deposit.id).slice(0, 6).toUpperCase()}</button></td>
-                              <td className="break-words px-2 py-3 font-semibold leading-4 text-slate-900 dark:text-white">{deposit.customerName}</td>
-                              <td className="px-2 py-3 text-right font-semibold tabular-nums text-emerald-700 dark:text-emerald-300">{Number(deposit.paidAmountVnd).toLocaleString('vi-VN')} đ</td>
+                              <td className="whitespace-nowrap px-1.5 py-3 tabular-nums text-slate-600 dark:text-slate-300">{displayDate}</td>
+                              <td className="px-1 py-3"><button type="button" onClick={() => setDepositDetailId(deposit.id)} title={deposit.id} className="font-mono font-semibold text-blue-700 underline decoration-blue-300 underline-offset-2 dark:text-blue-300">{String(deposit.id).slice(0, 6).toUpperCase()}</button></td>
+                              <td className="px-1 py-3 font-semibold leading-4 text-slate-900 dark:text-white"><span className="block truncate" title={deposit.customerName}>{deposit.customerName}</span></td>
+                              <td className="whitespace-nowrap px-1.5 py-3 text-right font-semibold tabular-nums text-emerald-700 dark:text-emerald-300">{Number(deposit.paidAmountVnd).toLocaleString('vi-VN')} đ</td>
                             </tr>;
                           })}
                         </tbody>
@@ -1061,14 +1061,14 @@ export const RoomProfileModal: React.FC<Props> = ({
               {/* TAB 5: HÓA ĐƠN */}
               {activeTab === "finance" && (
                 <div className="space-y-4">
-                  {roomInvoices.length > 0 ? <div className="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800">
-                    <table className="w-full table-fixed text-left text-[10.5px]" data-testid="room-invoices-table">
+                  {roomInvoices.length > 0 ? <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
+                    <table className="w-full min-w-[320px] table-fixed text-left text-[10.5px]" data-testid="room-invoices-table">
                       <thead className="bg-slate-50 text-[9px] font-semibold uppercase text-slate-500 dark:bg-slate-800/70 dark:text-slate-400">
                         <tr>
-                          <th className="w-[20%] whitespace-nowrap px-2 py-2.5">Date</th>
-                          <th className="w-[35%] whitespace-nowrap px-2 py-2.5">Invoice</th>
-                          <th className="w-[23%] whitespace-nowrap px-2 py-2.5">Status</th>
-                          <th className="w-[22%] whitespace-nowrap px-1.5 py-2.5 text-right">Action</th>
+                          <th className="w-[76px] whitespace-nowrap px-2 py-2.5">Date</th>
+                          <th className="whitespace-nowrap px-2 py-2.5">Invoice</th>
+                          <th className="w-[96px] whitespace-nowrap px-2 py-2.5">Status</th>
+                          <th className="w-12 whitespace-nowrap px-1 py-2.5 text-center">Action</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
@@ -1078,10 +1078,13 @@ export const RoomProfileModal: React.FC<Props> = ({
                           const displayDate = /^\d{4}-\d{2}-\d{2}/.test(rawDate) ? rawDate.slice(0, 10).split('-').reverse().join('/') : rawDate || '—';
                           const status = remaining <= 0 ? 'Đã thanh toán' : Number(invoice.paidAmountVnd) > 0 ? 'Thu một phần' : invoice.status === 'OVERDUE' ? 'Quá hạn' : 'Chờ thu';
                           return <tr key={invoice.id} className="align-middle bg-white dark:bg-slate-900/30">
-                            <td className="px-2 py-3 tabular-nums text-slate-600 dark:text-slate-300">{displayDate}</td>
-                            <td className="px-2 py-3"><button type="button" onClick={() => setInvoiceDetailId(invoice.id)} className="break-all text-left font-semibold leading-4 text-blue-700 underline decoration-blue-300 underline-offset-2 dark:text-blue-300">{invoice.invoiceCode}</button></td>
-                            <td className="px-2 py-3"><span className={`inline-block rounded-full px-1.5 py-0.5 font-semibold leading-4 ${remaining <= 0 ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' : invoice.status === 'OVERDUE' ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300' : 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'}`}>{status}</span></td>
-                            <td className="px-2 py-3 text-right"><Button type="button" hoverScale={1.03} tapScale={0.95} onClick={() => printInvoice(invoice)} aria-label={`In PDF hóa đơn ${invoice.invoiceCode}`} title="In PDF" className="ml-auto flex min-h-8 items-center justify-center gap-1 rounded-md px-1.5 text-[10px] font-semibold text-blue-700 dark:text-blue-300"><Printer className="h-3.5 w-3.5" /><span>In PDF</span></Button></td>
+                            <td className="whitespace-nowrap px-2 py-3 tabular-nums text-slate-600 dark:text-slate-300">{displayDate}</td>
+                            <td className="px-2 py-3"><button type="button" onClick={() => setInvoiceDetailId(invoice.id)} title={invoice.invoiceCode} aria-label={`Xem hóa đơn ${invoice.invoiceCode}`} className="block max-w-full truncate text-left font-semibold leading-4 text-blue-700 underline decoration-blue-300 underline-offset-2 dark:text-blue-300">{invoice.invoiceCode}</button></td>
+                            <td className="px-2 py-3"><span className={`inline-block whitespace-nowrap rounded-full px-1.5 py-0.5 font-semibold leading-4 ${remaining <= 0 ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' : invoice.status === 'OVERDUE' ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300' : 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'}`}>{status}</span></td>
+                            <td className="px-0.5 py-1 text-center"><ActionMenu ariaLabel={`Thao tác hóa đơn ${invoice.invoiceCode}`} contextTitle={invoice.invoiceCode} items={[
+                              { label: 'Xem', icon: <FileText size={16} />, onClick: () => setInvoiceDetailId(invoice.id) },
+                              { label: 'In PDF', icon: <Printer size={16} />, onClick: () => printInvoice(invoice) },
+                            ]} /></td>
                           </tr>;
                         })}
                       </tbody>

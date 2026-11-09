@@ -19,7 +19,7 @@ import { RoomProfileModal } from "./modals/RoomProfileModal";
 import { ContractCreationWizardModal } from "../modules/modals/ContractCreationWizardModal";
 import { LegacyImportWizardModal } from "../modules/modals/LegacyImportWizardModal";
 
-export const UnifiedBuildingCanvas: React.FC = () => {
+export const BuildingWorkspace: React.FC = () => {
   const { buildingsSubTab, setBuildingsSubTab } = useNavigation();
   const { rooms, deleteFloor } = usePortfolio();
 

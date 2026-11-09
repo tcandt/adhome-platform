@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Lock } from 'lucide-react';
 import { useAuth } from '@/app/providers/AuthContext';
 import { useNavigation } from '@/app/providers/NavigationContext';
-import { UnifiedBuildingCanvas } from '@/features/buildings/UnifiedBuildingCanvas';
+import { BuildingWorkspace } from '@/features/buildings/BuildingWorkspace';
 import { OperationalModuleWorkspace } from '@/features/modules/OperationalModuleWorkspace';
 import { OverviewDashboard } from '@/features/overview/OverviewDashboard';
 import { SettingsWorkspaceView } from '@/features/settings/SettingsWorkspaceView';
@@ -48,7 +48,7 @@ export const MobileShell: React.FC = () => {
         ) : activeModule === 'overview' ? (
           <OverviewDashboard mobile />
         ) : activeModule === 'buildings' ? (
-          <UnifiedBuildingCanvas />
+          <BuildingWorkspace />
         ) : activeModule === 'settings' ? (
           <SettingsWorkspaceView />
         ) : (

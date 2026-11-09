@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "node ../../scripts/assert-console-building-layout.mjs && tsc -b && vite build --emptyOutDir && node ../../scripts/assert-console-building-layout.mjs --dist",
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "lint": "oxlint src"

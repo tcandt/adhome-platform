@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+import { resolve } from 'node:path';
+const require = createRequire(resolve('apps/landing/package.json'));
+const { build } = createRequire(require.resolve('vite'))('esbuild');
+const out = resolve('apps/landing/node_modules/.cache/rental-tests/identityQr.cjs');
+await build({ entryPoints: ['apps/console/src/shared/ui/identityQr.ts'], outfile: out, bundle: true, platform: 'node', format: 'cjs', logLevel: 'silent' });
+const { parseIdentityQr } = require(out);
+const valid = '000000000001||NGUYỄN VĂN KIỂM THỬ|20051995|Nam|Địa chỉ kiểm thử|01112021';
+assert.deepEqual(parseIdentityQr(valid), { fullName: 'NGUYỄN VĂN KIỂM THỬ', idNumber: '000000000001', birthDate: '1995-05-20', gender: 'Nam', address: 'Địa chỉ kiểm thử' });
+for (const invalid of ['https://example.test', valid.replace('20051995', '31021995'), valid.replace('000000000001', '123'), valid.replace('Nam', 'UNKNOWN'), valid.replace('Địa chỉ kiểm thử', '')]) assert.throws(() => parseIdentityQr(invalid));
+console.log('PASS identity QR parser: Vietnamese text, preserved leading zeros, valid calendar date, rejects unrelated or incomplete QR');

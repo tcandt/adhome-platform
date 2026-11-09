@@ -48,7 +48,19 @@ export interface ConsoleFloorDto {
   roomCount: number;
 }
 
+export interface BuildingLandlord {
+  fullName: string;
+  birthDate: string;
+  address: string;
+  idNumber: string;
+  phone: string;
+  accountNumber: string;
+  bank: string;
+  accountName: string;
+}
+
 export interface ConsoleBuildingDto {
+  landlord?: BuildingLandlord;
   id: string;
   code: string;
   name: string;
@@ -95,6 +107,7 @@ export interface ConsoleRoomDto {
   occupancyStatus: OccupancyStatus;
   furnishedLevel: 'FULL' | 'BASIC' | 'UNFURNISHED' | string;
   amenities: string[];
+  images?: Array<{ id: string; mimeType: string; alt: string; size: number }>;
   availableFrom: string;
   waterBillingMethod: WaterBillingMethod | string | null;
   waterRateVnd: number | null;
@@ -107,6 +120,11 @@ export interface ConsoleRoomDto {
     id: string;
     hunonicDeviceId: string | null;
     meterSerial: string | null;
+    deviceName?: string | null;
+    providerDeviceId?: string | null;
+    monthReportedKwh?: number | null;
+    reportedMonth?: string | null;
+    providerReportedAt?: string | null;
     meterMode?: string;
     meterType?: string;
     tariffMode?: string;
@@ -135,12 +153,15 @@ export interface ConsoleRoomDto {
     monthlyRentVnd: number;
     status: string;
   } | null;
+  activeContracts?: Array<{ id: string; contractCode: string; tenantId: string; tenantName: string; status: string }>;
   unpaidInvoicesCount: number;
   unpaidAmountVnd: number;
   rentalModel?: 'ENTIRE_ROOM' | 'SHARED_ROOM' | string;
   totalBeds?: number;
   occupants?: Array<{
     id: string;
+    tenantId?: string | null;
+    contractId?: string | null;
     fullName: string;
     phone?: string | null;
     idNumber?: string | null;
@@ -164,6 +185,8 @@ export interface ConsoleRoomDto {
 }
 
 export interface ConsoleTenantDto {
+  occupantId?: string;
+  relationToPrimary?: string;
   id: string;
   fullName: string;
   phone: string;
@@ -180,6 +203,21 @@ export interface ConsoleTenantDto {
   activeContractCode: string | null;
   activeContractEndDate: string | null;
   monthlyRentVnd: number | null;
+  occupancyHistory?: Array<{
+    id: string;
+    roomId: string;
+    roomCode: string;
+    buildingId: string;
+    buildingCode: string;
+    contractId: string | null;
+    contractCode: string | null;
+    relationToPrimary: string;
+    moveInDate: string;
+    moveOutDate: string | null;
+    occupancyStatus: string;
+    isActive: boolean;
+    moveOutReason: string | null;
+  }>;
   createdAt: string;
   updatedAt: string;
 }
@@ -247,11 +285,13 @@ export interface ConsoleModuleCountsDto {
 }
 
 export interface CreateBuildingInput {
+  landlord?: BuildingLandlord;
+  status?: 'ACTIVE' | 'ARCHIVED';
   code: string;
-  name: string;
-  streetAddress: string;
-  ward: string;
-  province: string;
+  name?: string;
+  streetAddress?: string;
+  ward?: string;
+  province?: string;
   buildingType?: string;
   description?: string;
   managerName?: string;
@@ -260,6 +300,8 @@ export interface CreateBuildingInput {
 }
 
 export interface UpdateBuildingInput {
+  landlord?: Partial<BuildingLandlord>;
+  floorsCount?: number;
   code?: string;
   name?: string;
   streetAddress?: string;
@@ -299,6 +341,7 @@ export interface CreateRoomInput {
 }
 
 export interface UpdateRoomInput {
+  rentalModel?: 'ENTIRE_ROOM' | 'SHARED_ROOM';
   code?: string;
   title?: string;
   roomType?: string;

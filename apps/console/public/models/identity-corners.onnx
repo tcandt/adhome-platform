@@ -1,0 +1,1596 @@
+
+pytorch
+2.13.0+cpu:ö·
+é
+image
+features.0.weight
+features.0.weight_biasgetitemnode_Conv_253"Conv*
+kernel_shape@@†*
+group†*
+auto_pad"NOTSET†*
+	dilations@@†*
+strides@@†*
+pads@@@@†J›
+	namespaceœ: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.1: torch.nn.modules.batchnorm.BatchNorm2d/_native_batch_norm_legit_no_training: aten._native_batch_norm_legit_no_training.defaultJV
+!pkg.onnxscript.rewriter.rule_name1FuseBatchNormIntoConv, RemoveOptionalBiasFromConvJ¡
+pkg.torch.onnx.class_hierarchyû['__main__.CornerNet', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.batchnorm.BatchNorm2d', 'aten._native_batch_norm_legit_no_training.default']J∞
+pkg.torch.onnx.fx_nodeï%_native_batch_norm_legit_no_training : [num_users=1] = call_function[target=torch.ops.aten._native_batch_norm_legit_no_training.default](args = (%conv2d, %p_features_1_weight, %p_features_1_bias, %b_features_1_running_mean, %b_features_1_running_var, 0.1, 1e-05), kwargs = {})Jd
+pkg.torch.onnx.name_scopesF['', 'features', 'features.1', '_native_batch_norm_legit_no_training']J±
+pkg.torch.onnx.stack_traceíFile "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\batchnorm.py", line 210, in forward
+    return F.batch_norm(
+˙
+getitemval_14node_Sigmoid_14"SigmoidJó
+	namespaceâ: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.2: torch.nn.modules.activation.SiLU/silu: aten.silu.defaultJö
+pkg.torch.onnx.class_hierarchyx['__main__.CornerNet', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.SiLU', 'aten.silu.default']JÑ
+pkg.torch.onnx.fx_nodej%silu : [num_users=1] = call_function[target=torch.ops.aten.silu.default](args = (%getitem,), kwargs = {})JD
+pkg.torch.onnx.name_scopes&['', 'features', 'features.2', 'silu']J»
+pkg.torch.onnx.stack_trace©File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\activation.py", line 475, in forward
+    return F.silu(input, inplace=self.inplace)
+ˆ
+getitem
+val_14silu	node_silu"MulJó
+	namespaceâ: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.2: torch.nn.modules.activation.SiLU/silu: aten.silu.defaultJö
+pkg.torch.onnx.class_hierarchyx['__main__.CornerNet', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.SiLU', 'aten.silu.default']JÑ
+pkg.torch.onnx.fx_nodej%silu : [num_users=1] = call_function[target=torch.ops.aten.silu.default](args = (%getitem,), kwargs = {})JD
+pkg.torch.onnx.name_scopes&['', 'features', 'features.2', 'silu']J»
+pkg.torch.onnx.stack_trace©File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\activation.py", line 475, in forward
+    return F.silu(input, inplace=self.inplace)
+§
+silu
+features.3.layers.0.weight
+features.3.layers.0.weight_bias	getitem_3node_Conv_255"Conv*
+kernel_shape@@†*
+group†*
+auto_pad"NOTSET†*
+	dilations@@†*
+strides@@†*
+pads@@@@†J≈
+	namespace∑: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.3: __main__.DepthwiseBlock/features.3.layers: torch.nn.modules.container.Sequential/features.3.layers.1: torch.nn.modules.batchnorm.BatchNorm2d/_native_batch_norm_legit_no_training_1: aten._native_batch_norm_legit_no_training.defaultJV
+!pkg.onnxscript.rewriter.rule_name1FuseBatchNormIntoConv, RemoveOptionalBiasFromConvJÖ
+pkg.torch.onnx.class_hierarchy‚['__main__.CornerNet', 'torch.nn.modules.container.Sequential', '__main__.DepthwiseBlock', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.batchnorm.BatchNorm2d', 'aten._native_batch_norm_legit_no_training.default']Jÿ
+pkg.torch.onnx.fx_nodeΩ%_native_batch_norm_legit_no_training_1 : [num_users=1] = call_function[target=torch.ops.aten._native_batch_norm_legit_no_training.default](args = (%conv2d_1, %p_features_3_layers_1_weight, %p_features_3_layers_1_bias, %b_features_3_layers_1_running_mean, %b_features_3_layers_1_running_var, 0.1, 1e-05), kwargs = {})Jí
+pkg.torch.onnx.name_scopest['', 'features', 'features.3', 'features.3.layers', 'features.3.layers.1', '_native_batch_norm_legit_no_training_1']J±
+pkg.torch.onnx.stack_traceíFile "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 188, in forward
+    return self.layers(value)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\batchnorm.py", line 210, in forward
+    return F.batch_norm(
+€
+	getitem_3val_26node_Sigmoid_26"SigmoidJˇ
+	namespaceÒ: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.3: __main__.DepthwiseBlock/features.3.layers: torch.nn.modules.container.Sequential/features.3.layers.2: torch.nn.modules.activation.SiLU/silu_1: aten.silu.defaultJﬂ
+pkg.torch.onnx.class_hierarchyº['__main__.CornerNet', 'torch.nn.modules.container.Sequential', '__main__.DepthwiseBlock', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.SiLU', 'aten.silu.default']Jà
+pkg.torch.onnx.fx_noden%silu_1 : [num_users=1] = call_function[target=torch.ops.aten.silu.default](args = (%getitem_3,), kwargs = {})Jr
+pkg.torch.onnx.name_scopesT['', 'features', 'features.3', 'features.3.layers', 'features.3.layers.2', 'silu_1']J»
+pkg.torch.onnx.stack_trace©File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 188, in forward
+    return self.layers(value)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\activation.py", line 475, in forward
+    return F.silu(input, inplace=self.inplace)
+€
+	getitem_3
+val_26silu_1node_silu_1"MulJˇ
+	namespaceÒ: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.3: __main__.DepthwiseBlock/features.3.layers: torch.nn.modules.container.Sequential/features.3.layers.2: torch.nn.modules.activation.SiLU/silu_1: aten.silu.defaultJﬂ
+pkg.torch.onnx.class_hierarchyº['__main__.CornerNet', 'torch.nn.modules.container.Sequential', '__main__.DepthwiseBlock', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.SiLU', 'aten.silu.default']Jà
+pkg.torch.onnx.fx_noden%silu_1 : [num_users=1] = call_function[target=torch.ops.aten.silu.default](args = (%getitem_3,), kwargs = {})Jr
+pkg.torch.onnx.name_scopesT['', 'features', 'features.3', 'features.3.layers', 'features.3.layers.2', 'silu_1']J»
+pkg.torch.onnx.stack_trace©File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 188, in forward
+    return self.layers(value)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\activation.py", line 475, in forward
+    return F.silu(input, inplace=self.inplace)
+¶
+silu_1
+features.3.layers.3.weight
+features.3.layers.3.weight_bias	getitem_6node_Conv_257"Conv*
+kernel_shape@@†*
+group†*
+auto_pad"NOTSET†*
+	dilations@@†*
+strides@@†*
+pads@ @ @ @ †J≈
+	namespace∑: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.3: __main__.DepthwiseBlock/features.3.layers: torch.nn.modules.container.Sequential/features.3.layers.4: torch.nn.modules.batchnorm.BatchNorm2d/_native_batch_norm_legit_no_training_2: aten._native_batch_norm_legit_no_training.defaultJV
+!pkg.onnxscript.rewriter.rule_name1FuseBatchNormIntoConv, RemoveOptionalBiasFromConvJÖ
+pkg.torch.onnx.class_hierarchy‚['__main__.CornerNet', 'torch.nn.modules.container.Sequential', '__main__.DepthwiseBlock', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.batchnorm.BatchNorm2d', 'aten._native_batch_norm_legit_no_training.default']Jÿ
+pkg.torch.onnx.fx_nodeΩ%_native_batch_norm_legit_no_training_2 : [num_users=1] = call_function[target=torch.ops.aten._native_batch_norm_legit_no_training.default](args = (%conv2d_2, %p_features_3_layers_4_weight, %p_features_3_layers_4_bias, %b_features_3_layers_4_running_mean, %b_features_3_layers_4_running_var, 0.1, 1e-05), kwargs = {})Jí
+pkg.torch.onnx.name_scopest['', 'features', 'features.3', 'features.3.layers', 'features.3.layers.4', '_native_batch_norm_legit_no_training_2']J±
+pkg.torch.onnx.stack_traceíFile "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 188, in forward
+    return self.layers(value)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\batchnorm.py", line 210, in forward
+    return F.batch_norm(
+€
+	getitem_6val_38node_Sigmoid_38"SigmoidJˇ
+	namespaceÒ: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.3: __main__.DepthwiseBlock/features.3.layers: torch.nn.modules.container.Sequential/features.3.layers.5: torch.nn.modules.activation.SiLU/silu_2: aten.silu.defaultJﬂ
+pkg.torch.onnx.class_hierarchyº['__main__.CornerNet', 'torch.nn.modules.container.Sequential', '__main__.DepthwiseBlock', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.SiLU', 'aten.silu.default']Jà
+pkg.torch.onnx.fx_noden%silu_2 : [num_users=1] = call_function[target=torch.ops.aten.silu.default](args = (%getitem_6,), kwargs = {})Jr
+pkg.torch.onnx.name_scopesT['', 'features', 'features.3', 'features.3.layers', 'features.3.layers.5', 'silu_2']J»
+pkg.torch.onnx.stack_trace©File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 188, in forward
+    return self.layers(value)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\activation.py", line 475, in forward
+    return F.silu(input, inplace=self.inplace)
+€
+	getitem_6
+val_38silu_2node_silu_2"MulJˇ
+	namespaceÒ: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.3: __main__.DepthwiseBlock/features.3.layers: torch.nn.modules.container.Sequential/features.3.layers.5: torch.nn.modules.activation.SiLU/silu_2: aten.silu.defaultJﬂ
+pkg.torch.onnx.class_hierarchyº['__main__.CornerNet', 'torch.nn.modules.container.Sequential', '__main__.DepthwiseBlock', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.SiLU', 'aten.silu.default']Jà
+pkg.torch.onnx.fx_noden%silu_2 : [num_users=1] = call_function[target=torch.ops.aten.silu.default](args = (%getitem_6,), kwargs = {})Jr
+pkg.torch.onnx.name_scopesT['', 'features', 'features.3', 'features.3.layers', 'features.3.layers.5', 'silu_2']J»
+pkg.torch.onnx.stack_trace©File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 188, in forward
+    return self.layers(value)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\activation.py", line 475, in forward
+    return F.silu(input, inplace=self.inplace)
+¶
+silu_2
+features.4.layers.0.weight
+features.4.layers.0.weight_bias	getitem_9node_Conv_259"Conv*
+kernel_shape@@†*
+group†*
+auto_pad"NOTSET†*
+	dilations@@†*
+strides@@†*
+pads@@@@†J≈
+	namespace∑: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.4: __main__.DepthwiseBlock/features.4.layers: torch.nn.modules.container.Sequential/features.4.layers.1: torch.nn.modules.batchnorm.BatchNorm2d/_native_batch_norm_legit_no_training_3: aten._native_batch_norm_legit_no_training.defaultJV
+!pkg.onnxscript.rewriter.rule_name1FuseBatchNormIntoConv, RemoveOptionalBiasFromConvJÖ
+pkg.torch.onnx.class_hierarchy‚['__main__.CornerNet', 'torch.nn.modules.container.Sequential', '__main__.DepthwiseBlock', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.batchnorm.BatchNorm2d', 'aten._native_batch_norm_legit_no_training.default']Jÿ
+pkg.torch.onnx.fx_nodeΩ%_native_batch_norm_legit_no_training_3 : [num_users=1] = call_function[target=torch.ops.aten._native_batch_norm_legit_no_training.default](args = (%conv2d_3, %p_features_4_layers_1_weight, %p_features_4_layers_1_bias, %b_features_4_layers_1_running_mean, %b_features_4_layers_1_running_var, 0.1, 1e-05), kwargs = {})Jí
+pkg.torch.onnx.name_scopest['', 'features', 'features.4', 'features.4.layers', 'features.4.layers.1', '_native_batch_norm_legit_no_training_3']J±
+pkg.torch.onnx.stack_traceíFile "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 188, in forward
+    return self.layers(value)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\batchnorm.py", line 210, in forward
+    return F.batch_norm(
+€
+	getitem_9val_50node_Sigmoid_50"SigmoidJˇ
+	namespaceÒ: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.4: __main__.DepthwiseBlock/features.4.layers: torch.nn.modules.container.Sequential/features.4.layers.2: torch.nn.modules.activation.SiLU/silu_3: aten.silu.defaultJﬂ
+pkg.torch.onnx.class_hierarchyº['__main__.CornerNet', 'torch.nn.modules.container.Sequential', '__main__.DepthwiseBlock', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.SiLU', 'aten.silu.default']Jà
+pkg.torch.onnx.fx_noden%silu_3 : [num_users=1] = call_function[target=torch.ops.aten.silu.default](args = (%getitem_9,), kwargs = {})Jr
+pkg.torch.onnx.name_scopesT['', 'features', 'features.4', 'features.4.layers', 'features.4.layers.2', 'silu_3']J»
+pkg.torch.onnx.stack_trace©File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 188, in forward
+    return self.layers(value)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\activation.py", line 475, in forward
+    return F.silu(input, inplace=self.inplace)
+€
+	getitem_9
+val_50silu_3node_silu_3"MulJˇ
+	namespaceÒ: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.4: __main__.DepthwiseBlock/features.4.layers: torch.nn.modules.container.Sequential/features.4.layers.2: torch.nn.modules.activation.SiLU/silu_3: aten.silu.defaultJﬂ
+pkg.torch.onnx.class_hierarchyº['__main__.CornerNet', 'torch.nn.modules.container.Sequential', '__main__.DepthwiseBlock', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.SiLU', 'aten.silu.default']Jà
+pkg.torch.onnx.fx_noden%silu_3 : [num_users=1] = call_function[target=torch.ops.aten.silu.default](args = (%getitem_9,), kwargs = {})Jr
+pkg.torch.onnx.name_scopesT['', 'features', 'features.4', 'features.4.layers', 'features.4.layers.2', 'silu_3']J»
+pkg.torch.onnx.stack_trace©File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 188, in forward
+    return self.layers(value)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\activation.py", line 475, in forward
+    return F.silu(input, inplace=self.inplace)
+ß
+silu_3
+features.4.layers.3.weight
+features.4.layers.3.weight_bias
+getitem_12node_Conv_261"Conv*
+kernel_shape@@†*
+group†*
+auto_pad"NOTSET†*
+	dilations@@†*
+strides@@†*
+pads@ @ @ @ †J≈
+	namespace∑: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.4: __main__.DepthwiseBlock/features.4.layers: torch.nn.modules.container.Sequential/features.4.layers.4: torch.nn.modules.batchnorm.BatchNorm2d/_native_batch_norm_legit_no_training_4: aten._native_batch_norm_legit_no_training.defaultJV
+!pkg.onnxscript.rewriter.rule_name1FuseBatchNormIntoConv, RemoveOptionalBiasFromConvJÖ
+pkg.torch.onnx.class_hierarchy‚['__main__.CornerNet', 'torch.nn.modules.container.Sequential', '__main__.DepthwiseBlock', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.batchnorm.BatchNorm2d', 'aten._native_batch_norm_legit_no_training.default']Jÿ
+pkg.torch.onnx.fx_nodeΩ%_native_batch_norm_legit_no_training_4 : [num_users=1] = call_function[target=torch.ops.aten._native_batch_norm_legit_no_training.default](args = (%conv2d_4, %p_features_4_layers_4_weight, %p_features_4_layers_4_bias, %b_features_4_layers_4_running_mean, %b_features_4_layers_4_running_var, 0.1, 1e-05), kwargs = {})Jí
+pkg.torch.onnx.name_scopest['', 'features', 'features.4', 'features.4.layers', 'features.4.layers.4', '_native_batch_norm_legit_no_training_4']J±
+pkg.torch.onnx.stack_traceíFile "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 188, in forward
+    return self.layers(value)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\batchnorm.py", line 210, in forward
+    return F.batch_norm(
+›
+
+getitem_12val_62node_Sigmoid_62"SigmoidJˇ
+	namespaceÒ: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.4: __main__.DepthwiseBlock/features.4.layers: torch.nn.modules.container.Sequential/features.4.layers.5: torch.nn.modules.activation.SiLU/silu_4: aten.silu.defaultJﬂ
+pkg.torch.onnx.class_hierarchyº['__main__.CornerNet', 'torch.nn.modules.container.Sequential', '__main__.DepthwiseBlock', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.SiLU', 'aten.silu.default']Jâ
+pkg.torch.onnx.fx_nodeo%silu_4 : [num_users=1] = call_function[target=torch.ops.aten.silu.default](args = (%getitem_12,), kwargs = {})Jr
+pkg.torch.onnx.name_scopesT['', 'features', 'features.4', 'features.4.layers', 'features.4.layers.5', 'silu_4']J»
+pkg.torch.onnx.stack_trace©File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 188, in forward
+    return self.layers(value)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\activation.py", line 475, in forward
+    return F.silu(input, inplace=self.inplace)
+›
+
+getitem_12
+val_62silu_4node_silu_4"MulJˇ
+	namespaceÒ: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.4: __main__.DepthwiseBlock/features.4.layers: torch.nn.modules.container.Sequential/features.4.layers.5: torch.nn.modules.activation.SiLU/silu_4: aten.silu.defaultJﬂ
+pkg.torch.onnx.class_hierarchyº['__main__.CornerNet', 'torch.nn.modules.container.Sequential', '__main__.DepthwiseBlock', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.SiLU', 'aten.silu.default']Jâ
+pkg.torch.onnx.fx_nodeo%silu_4 : [num_users=1] = call_function[target=torch.ops.aten.silu.default](args = (%getitem_12,), kwargs = {})Jr
+pkg.torch.onnx.name_scopesT['', 'features', 'features.4', 'features.4.layers', 'features.4.layers.5', 'silu_4']J»
+pkg.torch.onnx.stack_trace©File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 188, in forward
+    return self.layers(value)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\activation.py", line 475, in forward
+    return F.silu(input, inplace=self.inplace)
+ß
+silu_4
+features.5.layers.0.weight
+features.5.layers.0.weight_bias
+getitem_15node_Conv_263"Conv*
+kernel_shape@@†*
+group †*
+auto_pad"NOTSET†*
+	dilations@@†*
+strides@@†*
+pads@@@@†J≈
+	namespace∑: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.5: __main__.DepthwiseBlock/features.5.layers: torch.nn.modules.container.Sequential/features.5.layers.1: torch.nn.modules.batchnorm.BatchNorm2d/_native_batch_norm_legit_no_training_5: aten._native_batch_norm_legit_no_training.defaultJV
+!pkg.onnxscript.rewriter.rule_name1FuseBatchNormIntoConv, RemoveOptionalBiasFromConvJÖ
+pkg.torch.onnx.class_hierarchy‚['__main__.CornerNet', 'torch.nn.modules.container.Sequential', '__main__.DepthwiseBlock', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.batchnorm.BatchNorm2d', 'aten._native_batch_norm_legit_no_training.default']Jÿ
+pkg.torch.onnx.fx_nodeΩ%_native_batch_norm_legit_no_training_5 : [num_users=1] = call_function[target=torch.ops.aten._native_batch_norm_legit_no_training.default](args = (%conv2d_5, %p_features_5_layers_1_weight, %p_features_5_layers_1_bias, %b_features_5_layers_1_running_mean, %b_features_5_layers_1_running_var, 0.1, 1e-05), kwargs = {})Jí
+pkg.torch.onnx.name_scopest['', 'features', 'features.5', 'features.5.layers', 'features.5.layers.1', '_native_batch_norm_legit_no_training_5']J±
+pkg.torch.onnx.stack_traceíFile "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 188, in forward
+    return self.layers(value)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\batchnorm.py", line 210, in forward
+    return F.batch_norm(
+›
+
+getitem_15val_74node_Sigmoid_74"SigmoidJˇ
+	namespaceÒ: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.5: __main__.DepthwiseBlock/features.5.layers: torch.nn.modules.container.Sequential/features.5.layers.2: torch.nn.modules.activation.SiLU/silu_5: aten.silu.defaultJﬂ
+pkg.torch.onnx.class_hierarchyº['__main__.CornerNet', 'torch.nn.modules.container.Sequential', '__main__.DepthwiseBlock', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.SiLU', 'aten.silu.default']Jâ
+pkg.torch.onnx.fx_nodeo%silu_5 : [num_users=1] = call_function[target=torch.ops.aten.silu.default](args = (%getitem_15,), kwargs = {})Jr
+pkg.torch.onnx.name_scopesT['', 'features', 'features.5', 'features.5.layers', 'features.5.layers.2', 'silu_5']J»
+pkg.torch.onnx.stack_trace©File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 188, in forward
+    return self.layers(value)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\activation.py", line 475, in forward
+    return F.silu(input, inplace=self.inplace)
+›
+
+getitem_15
+val_74silu_5node_silu_5"MulJˇ
+	namespaceÒ: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.5: __main__.DepthwiseBlock/features.5.layers: torch.nn.modules.container.Sequential/features.5.layers.2: torch.nn.modules.activation.SiLU/silu_5: aten.silu.defaultJﬂ
+pkg.torch.onnx.class_hierarchyº['__main__.CornerNet', 'torch.nn.modules.container.Sequential', '__main__.DepthwiseBlock', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.SiLU', 'aten.silu.default']Jâ
+pkg.torch.onnx.fx_nodeo%silu_5 : [num_users=1] = call_function[target=torch.ops.aten.silu.default](args = (%getitem_15,), kwargs = {})Jr
+pkg.torch.onnx.name_scopesT['', 'features', 'features.5', 'features.5.layers', 'features.5.layers.2', 'silu_5']J»
+pkg.torch.onnx.stack_trace©File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 188, in forward
+    return self.layers(value)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\activation.py", line 475, in forward
+    return F.silu(input, inplace=self.inplace)
+ß
+silu_5
+features.5.layers.3.weight
+features.5.layers.3.weight_bias
+getitem_18node_Conv_265"Conv*
+kernel_shape@@†*
+group†*
+auto_pad"NOTSET†*
+	dilations@@†*
+strides@@†*
+pads@ @ @ @ †J≈
+	namespace∑: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.5: __main__.DepthwiseBlock/features.5.layers: torch.nn.modules.container.Sequential/features.5.layers.4: torch.nn.modules.batchnorm.BatchNorm2d/_native_batch_norm_legit_no_training_6: aten._native_batch_norm_legit_no_training.defaultJV
+!pkg.onnxscript.rewriter.rule_name1FuseBatchNormIntoConv, RemoveOptionalBiasFromConvJÖ
+pkg.torch.onnx.class_hierarchy‚['__main__.CornerNet', 'torch.nn.modules.container.Sequential', '__main__.DepthwiseBlock', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.batchnorm.BatchNorm2d', 'aten._native_batch_norm_legit_no_training.default']Jÿ
+pkg.torch.onnx.fx_nodeΩ%_native_batch_norm_legit_no_training_6 : [num_users=1] = call_function[target=torch.ops.aten._native_batch_norm_legit_no_training.default](args = (%conv2d_6, %p_features_5_layers_4_weight, %p_features_5_layers_4_bias, %b_features_5_layers_4_running_mean, %b_features_5_layers_4_running_var, 0.1, 1e-05), kwargs = {})Jí
+pkg.torch.onnx.name_scopest['', 'features', 'features.5', 'features.5.layers', 'features.5.layers.4', '_native_batch_norm_legit_no_training_6']J±
+pkg.torch.onnx.stack_traceíFile "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 188, in forward
+    return self.layers(value)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\batchnorm.py", line 210, in forward
+    return F.batch_norm(
+›
+
+getitem_18val_86node_Sigmoid_86"SigmoidJˇ
+	namespaceÒ: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.5: __main__.DepthwiseBlock/features.5.layers: torch.nn.modules.container.Sequential/features.5.layers.5: torch.nn.modules.activation.SiLU/silu_6: aten.silu.defaultJﬂ
+pkg.torch.onnx.class_hierarchyº['__main__.CornerNet', 'torch.nn.modules.container.Sequential', '__main__.DepthwiseBlock', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.SiLU', 'aten.silu.default']Jâ
+pkg.torch.onnx.fx_nodeo%silu_6 : [num_users=1] = call_function[target=torch.ops.aten.silu.default](args = (%getitem_18,), kwargs = {})Jr
+pkg.torch.onnx.name_scopesT['', 'features', 'features.5', 'features.5.layers', 'features.5.layers.5', 'silu_6']J»
+pkg.torch.onnx.stack_trace©File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 188, in forward
+    return self.layers(value)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\activation.py", line 475, in forward
+    return F.silu(input, inplace=self.inplace)
+›
+
+getitem_18
+val_86silu_6node_silu_6"MulJˇ
+	namespaceÒ: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.5: __main__.DepthwiseBlock/features.5.layers: torch.nn.modules.container.Sequential/features.5.layers.5: torch.nn.modules.activation.SiLU/silu_6: aten.silu.defaultJﬂ
+pkg.torch.onnx.class_hierarchyº['__main__.CornerNet', 'torch.nn.modules.container.Sequential', '__main__.DepthwiseBlock', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.SiLU', 'aten.silu.default']Jâ
+pkg.torch.onnx.fx_nodeo%silu_6 : [num_users=1] = call_function[target=torch.ops.aten.silu.default](args = (%getitem_18,), kwargs = {})Jr
+pkg.torch.onnx.name_scopesT['', 'features', 'features.5', 'features.5.layers', 'features.5.layers.5', 'silu_6']J»
+pkg.torch.onnx.stack_trace©File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 188, in forward
+    return self.layers(value)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\activation.py", line 475, in forward
+    return F.silu(input, inplace=self.inplace)
+ß
+silu_6
+features.6.layers.0.weight
+features.6.layers.0.weight_bias
+getitem_21node_Conv_267"Conv*
+kernel_shape@@†*
+group0†*
+auto_pad"NOTSET†*
+	dilations@@†*
+strides@@†*
+pads@@@@†J≈
+	namespace∑: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.6: __main__.DepthwiseBlock/features.6.layers: torch.nn.modules.container.Sequential/features.6.layers.1: torch.nn.modules.batchnorm.BatchNorm2d/_native_batch_norm_legit_no_training_7: aten._native_batch_norm_legit_no_training.defaultJV
+!pkg.onnxscript.rewriter.rule_name1FuseBatchNormIntoConv, RemoveOptionalBiasFromConvJÖ
+pkg.torch.onnx.class_hierarchy‚['__main__.CornerNet', 'torch.nn.modules.container.Sequential', '__main__.DepthwiseBlock', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.batchnorm.BatchNorm2d', 'aten._native_batch_norm_legit_no_training.default']Jÿ
+pkg.torch.onnx.fx_nodeΩ%_native_batch_norm_legit_no_training_7 : [num_users=1] = call_function[target=torch.ops.aten._native_batch_norm_legit_no_training.default](args = (%conv2d_7, %p_features_6_layers_1_weight, %p_features_6_layers_1_bias, %b_features_6_layers_1_running_mean, %b_features_6_layers_1_running_var, 0.1, 1e-05), kwargs = {})Jí
+pkg.torch.onnx.name_scopest['', 'features', 'features.6', 'features.6.layers', 'features.6.layers.1', '_native_batch_norm_legit_no_training_7']J±
+pkg.torch.onnx.stack_traceíFile "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 188, in forward
+    return self.layers(value)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\batchnorm.py", line 210, in forward
+    return F.batch_norm(
+›
+
+getitem_21val_98node_Sigmoid_98"SigmoidJˇ
+	namespaceÒ: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.6: __main__.DepthwiseBlock/features.6.layers: torch.nn.modules.container.Sequential/features.6.layers.2: torch.nn.modules.activation.SiLU/silu_7: aten.silu.defaultJﬂ
+pkg.torch.onnx.class_hierarchyº['__main__.CornerNet', 'torch.nn.modules.container.Sequential', '__main__.DepthwiseBlock', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.SiLU', 'aten.silu.default']Jâ
+pkg.torch.onnx.fx_nodeo%silu_7 : [num_users=1] = call_function[target=torch.ops.aten.silu.default](args = (%getitem_21,), kwargs = {})Jr
+pkg.torch.onnx.name_scopesT['', 'features', 'features.6', 'features.6.layers', 'features.6.layers.2', 'silu_7']J»
+pkg.torch.onnx.stack_trace©File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 188, in forward
+    return self.layers(value)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\activation.py", line 475, in forward
+    return F.silu(input, inplace=self.inplace)
+›
+
+getitem_21
+val_98silu_7node_silu_7"MulJˇ
+	namespaceÒ: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.6: __main__.DepthwiseBlock/features.6.layers: torch.nn.modules.container.Sequential/features.6.layers.2: torch.nn.modules.activation.SiLU/silu_7: aten.silu.defaultJﬂ
+pkg.torch.onnx.class_hierarchyº['__main__.CornerNet', 'torch.nn.modules.container.Sequential', '__main__.DepthwiseBlock', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.SiLU', 'aten.silu.default']Jâ
+pkg.torch.onnx.fx_nodeo%silu_7 : [num_users=1] = call_function[target=torch.ops.aten.silu.default](args = (%getitem_21,), kwargs = {})Jr
+pkg.torch.onnx.name_scopesT['', 'features', 'features.6', 'features.6.layers', 'features.6.layers.2', 'silu_7']J»
+pkg.torch.onnx.stack_trace©File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 188, in forward
+    return self.layers(value)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\activation.py", line 475, in forward
+    return F.silu(input, inplace=self.inplace)
+ß
+silu_7
+features.6.layers.3.weight
+features.6.layers.3.weight_bias
+getitem_24node_Conv_269"Conv*
+kernel_shape@@†*
+group†*
+auto_pad"NOTSET†*
+	dilations@@†*
+strides@@†*
+pads@ @ @ @ †J≈
+	namespace∑: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.6: __main__.DepthwiseBlock/features.6.layers: torch.nn.modules.container.Sequential/features.6.layers.4: torch.nn.modules.batchnorm.BatchNorm2d/_native_batch_norm_legit_no_training_8: aten._native_batch_norm_legit_no_training.defaultJV
+!pkg.onnxscript.rewriter.rule_name1FuseBatchNormIntoConv, RemoveOptionalBiasFromConvJÖ
+pkg.torch.onnx.class_hierarchy‚['__main__.CornerNet', 'torch.nn.modules.container.Sequential', '__main__.DepthwiseBlock', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.batchnorm.BatchNorm2d', 'aten._native_batch_norm_legit_no_training.default']Jÿ
+pkg.torch.onnx.fx_nodeΩ%_native_batch_norm_legit_no_training_8 : [num_users=1] = call_function[target=torch.ops.aten._native_batch_norm_legit_no_training.default](args = (%conv2d_8, %p_features_6_layers_4_weight, %p_features_6_layers_4_bias, %b_features_6_layers_4_running_mean, %b_features_6_layers_4_running_var, 0.1, 1e-05), kwargs = {})Jí
+pkg.torch.onnx.name_scopest['', 'features', 'features.6', 'features.6.layers', 'features.6.layers.4', '_native_batch_norm_legit_no_training_8']J±
+pkg.torch.onnx.stack_traceíFile "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 188, in forward
+    return self.layers(value)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\batchnorm.py", line 210, in forward
+    return F.batch_norm(
+ﬂ
+
+getitem_24val_110node_Sigmoid_110"SigmoidJˇ
+	namespaceÒ: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.6: __main__.DepthwiseBlock/features.6.layers: torch.nn.modules.container.Sequential/features.6.layers.5: torch.nn.modules.activation.SiLU/silu_8: aten.silu.defaultJﬂ
+pkg.torch.onnx.class_hierarchyº['__main__.CornerNet', 'torch.nn.modules.container.Sequential', '__main__.DepthwiseBlock', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.SiLU', 'aten.silu.default']Jâ
+pkg.torch.onnx.fx_nodeo%silu_8 : [num_users=1] = call_function[target=torch.ops.aten.silu.default](args = (%getitem_24,), kwargs = {})Jr
+pkg.torch.onnx.name_scopesT['', 'features', 'features.6', 'features.6.layers', 'features.6.layers.5', 'silu_8']J»
+pkg.torch.onnx.stack_trace©File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 188, in forward
+    return self.layers(value)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\activation.py", line 475, in forward
+    return F.silu(input, inplace=self.inplace)
+ﬁ
+
+getitem_24
+val_110silu_8node_silu_8"MulJˇ
+	namespaceÒ: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.6: __main__.DepthwiseBlock/features.6.layers: torch.nn.modules.container.Sequential/features.6.layers.5: torch.nn.modules.activation.SiLU/silu_8: aten.silu.defaultJﬂ
+pkg.torch.onnx.class_hierarchyº['__main__.CornerNet', 'torch.nn.modules.container.Sequential', '__main__.DepthwiseBlock', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.SiLU', 'aten.silu.default']Jâ
+pkg.torch.onnx.fx_nodeo%silu_8 : [num_users=1] = call_function[target=torch.ops.aten.silu.default](args = (%getitem_24,), kwargs = {})Jr
+pkg.torch.onnx.name_scopesT['', 'features', 'features.6', 'features.6.layers', 'features.6.layers.5', 'silu_8']J»
+pkg.torch.onnx.stack_trace©File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 188, in forward
+    return self.layers(value)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\activation.py", line 475, in forward
+    return F.silu(input, inplace=self.inplace)
+ß
+silu_8
+features.7.layers.0.weight
+features.7.layers.0.weight_bias
+getitem_27node_Conv_271"Conv*
+kernel_shape@@†*
+group@†*
+auto_pad"NOTSET†*
+	dilations@@†*
+strides@@†*
+pads@@@@†J≈
+	namespace∑: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.7: __main__.DepthwiseBlock/features.7.layers: torch.nn.modules.container.Sequential/features.7.layers.1: torch.nn.modules.batchnorm.BatchNorm2d/_native_batch_norm_legit_no_training_9: aten._native_batch_norm_legit_no_training.defaultJV
+!pkg.onnxscript.rewriter.rule_name1FuseBatchNormIntoConv, RemoveOptionalBiasFromConvJÖ
+pkg.torch.onnx.class_hierarchy‚['__main__.CornerNet', 'torch.nn.modules.container.Sequential', '__main__.DepthwiseBlock', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.batchnorm.BatchNorm2d', 'aten._native_batch_norm_legit_no_training.default']Jÿ
+pkg.torch.onnx.fx_nodeΩ%_native_batch_norm_legit_no_training_9 : [num_users=1] = call_function[target=torch.ops.aten._native_batch_norm_legit_no_training.default](args = (%conv2d_9, %p_features_7_layers_1_weight, %p_features_7_layers_1_bias, %b_features_7_layers_1_running_mean, %b_features_7_layers_1_running_var, 0.1, 1e-05), kwargs = {})Jí
+pkg.torch.onnx.name_scopest['', 'features', 'features.7', 'features.7.layers', 'features.7.layers.1', '_native_batch_norm_legit_no_training_9']J±
+pkg.torch.onnx.stack_traceíFile "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 188, in forward
+    return self.layers(value)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\batchnorm.py", line 210, in forward
+    return F.batch_norm(
+ﬂ
+
+getitem_27val_122node_Sigmoid_122"SigmoidJˇ
+	namespaceÒ: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.7: __main__.DepthwiseBlock/features.7.layers: torch.nn.modules.container.Sequential/features.7.layers.2: torch.nn.modules.activation.SiLU/silu_9: aten.silu.defaultJﬂ
+pkg.torch.onnx.class_hierarchyº['__main__.CornerNet', 'torch.nn.modules.container.Sequential', '__main__.DepthwiseBlock', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.SiLU', 'aten.silu.default']Jâ
+pkg.torch.onnx.fx_nodeo%silu_9 : [num_users=1] = call_function[target=torch.ops.aten.silu.default](args = (%getitem_27,), kwargs = {})Jr
+pkg.torch.onnx.name_scopesT['', 'features', 'features.7', 'features.7.layers', 'features.7.layers.2', 'silu_9']J»
+pkg.torch.onnx.stack_trace©File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 188, in forward
+    return self.layers(value)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\activation.py", line 475, in forward
+    return F.silu(input, inplace=self.inplace)
+ﬁ
+
+getitem_27
+val_122silu_9node_silu_9"MulJˇ
+	namespaceÒ: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.7: __main__.DepthwiseBlock/features.7.layers: torch.nn.modules.container.Sequential/features.7.layers.2: torch.nn.modules.activation.SiLU/silu_9: aten.silu.defaultJﬂ
+pkg.torch.onnx.class_hierarchyº['__main__.CornerNet', 'torch.nn.modules.container.Sequential', '__main__.DepthwiseBlock', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.SiLU', 'aten.silu.default']Jâ
+pkg.torch.onnx.fx_nodeo%silu_9 : [num_users=1] = call_function[target=torch.ops.aten.silu.default](args = (%getitem_27,), kwargs = {})Jr
+pkg.torch.onnx.name_scopesT['', 'features', 'features.7', 'features.7.layers', 'features.7.layers.2', 'silu_9']J»
+pkg.torch.onnx.stack_trace©File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 188, in forward
+    return self.layers(value)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\activation.py", line 475, in forward
+    return F.silu(input, inplace=self.inplace)
+´
+silu_9
+features.7.layers.3.weight
+features.7.layers.3.weight_bias
+getitem_30node_Conv_273"Conv*
+kernel_shape@@†*
+group†*
+auto_pad"NOTSET†*
+	dilations@@†*
+strides@@†*
+pads@ @ @ @ †J∆
+	namespace∏: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.7: __main__.DepthwiseBlock/features.7.layers: torch.nn.modules.container.Sequential/features.7.layers.4: torch.nn.modules.batchnorm.BatchNorm2d/_native_batch_norm_legit_no_training_10: aten._native_batch_norm_legit_no_training.defaultJV
+!pkg.onnxscript.rewriter.rule_name1FuseBatchNormIntoConv, RemoveOptionalBiasFromConvJÖ
+pkg.torch.onnx.class_hierarchy‚['__main__.CornerNet', 'torch.nn.modules.container.Sequential', '__main__.DepthwiseBlock', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.batchnorm.BatchNorm2d', 'aten._native_batch_norm_legit_no_training.default']J⁄
+pkg.torch.onnx.fx_nodeø%_native_batch_norm_legit_no_training_10 : [num_users=1] = call_function[target=torch.ops.aten._native_batch_norm_legit_no_training.default](args = (%conv2d_10, %p_features_7_layers_4_weight, %p_features_7_layers_4_bias, %b_features_7_layers_4_running_mean, %b_features_7_layers_4_running_var, 0.1, 1e-05), kwargs = {})Jì
+pkg.torch.onnx.name_scopesu['', 'features', 'features.7', 'features.7.layers', 'features.7.layers.4', '_native_batch_norm_legit_no_training_10']J±
+pkg.torch.onnx.stack_traceíFile "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 188, in forward
+    return self.layers(value)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\batchnorm.py", line 210, in forward
+    return F.batch_norm(
+‚
+
+getitem_30val_134node_Sigmoid_134"SigmoidJÄ
+	namespaceÚ: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.7: __main__.DepthwiseBlock/features.7.layers: torch.nn.modules.container.Sequential/features.7.layers.5: torch.nn.modules.activation.SiLU/silu_10: aten.silu.defaultJﬂ
+pkg.torch.onnx.class_hierarchyº['__main__.CornerNet', 'torch.nn.modules.container.Sequential', '__main__.DepthwiseBlock', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.SiLU', 'aten.silu.default']Jä
+pkg.torch.onnx.fx_nodep%silu_10 : [num_users=1] = call_function[target=torch.ops.aten.silu.default](args = (%getitem_30,), kwargs = {})Js
+pkg.torch.onnx.name_scopesU['', 'features', 'features.7', 'features.7.layers', 'features.7.layers.5', 'silu_10']J»
+pkg.torch.onnx.stack_trace©File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 188, in forward
+    return self.layers(value)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\activation.py", line 475, in forward
+    return F.silu(input, inplace=self.inplace)
+„
+
+getitem_30
+val_134silu_10node_silu_10"MulJÄ
+	namespaceÚ: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.7: __main__.DepthwiseBlock/features.7.layers: torch.nn.modules.container.Sequential/features.7.layers.5: torch.nn.modules.activation.SiLU/silu_10: aten.silu.defaultJﬂ
+pkg.torch.onnx.class_hierarchyº['__main__.CornerNet', 'torch.nn.modules.container.Sequential', '__main__.DepthwiseBlock', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.SiLU', 'aten.silu.default']Jä
+pkg.torch.onnx.fx_nodep%silu_10 : [num_users=1] = call_function[target=torch.ops.aten.silu.default](args = (%getitem_30,), kwargs = {})Js
+pkg.torch.onnx.name_scopesU['', 'features', 'features.7', 'features.7.layers', 'features.7.layers.5', 'silu_10']J»
+pkg.torch.onnx.stack_trace©File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 188, in forward
+    return self.layers(value)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\activation.py", line 475, in forward
+    return F.silu(input, inplace=self.inplace)
+‹
+silu_10val_182node_Transpose_182"	Transpose*
+perm@@@ @†J¢
+	namespaceî: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.8: torch.nn.modules.pooling.AdaptiveAvgPool2d/index: aten.index.TensorJ•
+pkg.torch.onnx.class_hierarchyÇ['__main__.CornerNet', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.pooling.AdaptiveAvgPool2d', 'aten.index.Tensor']J≠
+pkg.torch.onnx.fx_nodeí%index : [num_users=1] = call_function[target=torch.ops.aten.index.Tensor](args = (%silu_10, [None, None, %unsqueeze_3, %minimum_1]), kwargs = {})JE
+pkg.torch.onnx.name_scopes'['', 'features', 'features.8', 'index']J—
+pkg.torch.onnx.stack_trace≤File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\pooling.py", line 1512, in forward
+    return F.adaptive_avg_pool2d(input, self.output_size)
+„
+val_182
+val_189val_190node_GatherND_190"GatherND*
+
+batch_dims †J¢
+	namespaceî: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.8: torch.nn.modules.pooling.AdaptiveAvgPool2d/index: aten.index.TensorJ•
+pkg.torch.onnx.class_hierarchyÇ['__main__.CornerNet', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.pooling.AdaptiveAvgPool2d', 'aten.index.Tensor']J≠
+pkg.torch.onnx.fx_nodeí%index : [num_users=1] = call_function[target=torch.ops.aten.index.Tensor](args = (%silu_10, [None, None, %unsqueeze_3, %minimum_1]), kwargs = {})JE
+pkg.torch.onnx.name_scopes'['', 'features', 'features.8', 'index']J—
+pkg.torch.onnx.stack_trace≤File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\pooling.py", line 1512, in forward
+    return F.adaptive_avg_pool2d(input, self.output_size)
+÷
+val_190index
+node_index"	Transpose*
+perm@@@ @@@†J¢
+	namespaceî: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.8: torch.nn.modules.pooling.AdaptiveAvgPool2d/index: aten.index.TensorJ•
+pkg.torch.onnx.class_hierarchyÇ['__main__.CornerNet', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.pooling.AdaptiveAvgPool2d', 'aten.index.Tensor']J≠
+pkg.torch.onnx.fx_nodeí%index : [num_users=1] = call_function[target=torch.ops.aten.index.Tensor](args = (%silu_10, [None, None, %unsqueeze_3, %minimum_1]), kwargs = {})JE
+pkg.torch.onnx.name_scopes'['', 'features', 'features.8', 'index']J—
+pkg.torch.onnx.stack_trace≤File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\pooling.py", line 1512, in forward
+    return F.adaptive_avg_pool2d(input, self.output_size)
+Ë
+unsqueeze_6
+val_191
+indexmasked_fillnode_masked_fill"WhereJÆ
+	namespace†: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.8: torch.nn.modules.pooling.AdaptiveAvgPool2d/masked_fill: aten.masked_fill.ScalarJ´
+pkg.torch.onnx.class_hierarchyà['__main__.CornerNet', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.pooling.AdaptiveAvgPool2d', 'aten.masked_fill.Scalar']J¢
+pkg.torch.onnx.fx_nodeá%masked_fill : [num_users=1] = call_function[target=torch.ops.aten.masked_fill.Scalar](args = (%index, %unsqueeze_6, 0.0), kwargs = {})JK
+pkg.torch.onnx.name_scopes-['', 'features', 'features.8', 'masked_fill']J—
+pkg.torch.onnx.stack_trace≤File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\pooling.py", line 1512, in forward
+    return F.adaptive_avg_pool2d(input, self.output_size)
+
+ge_1
+val_191
+masked_fillmasked_fill_1node_masked_fill_1"WhereJ∞
+	namespace¢: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.8: torch.nn.modules.pooling.AdaptiveAvgPool2d/masked_fill_1: aten.masked_fill.ScalarJ´
+pkg.torch.onnx.class_hierarchyà['__main__.CornerNet', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.pooling.AdaptiveAvgPool2d', 'aten.masked_fill.Scalar']J£
+pkg.torch.onnx.fx_nodeà%masked_fill_1 : [num_users=4] = call_function[target=torch.ops.aten.masked_fill.Scalar](args = (%masked_fill, %ge_1, 0.0), kwargs = {})JM
+pkg.torch.onnx.name_scopes/['', 'features', 'features.8', 'masked_fill_1']J—
+pkg.torch.onnx.stack_trace≤File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\pooling.py", line 1512, in forward
+    return F.adaptive_avg_pool2d(input, self.output_size)
+∫
+masked_fill_1
+val_137selectnode_select"Gather*
+axis†J°
+	namespaceì: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.8: torch.nn.modules.pooling.AdaptiveAvgPool2d/select: aten.select.intJ£
+pkg.torch.onnx.class_hierarchyÄ['__main__.CornerNet', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.pooling.AdaptiveAvgPool2d', 'aten.select.int']Jè
+pkg.torch.onnx.fx_nodeu%select : [num_users=1] = call_function[target=torch.ops.aten.select.int](args = (%masked_fill_1, 3, 0), kwargs = {})JF
+pkg.torch.onnx.name_scopes(['', 'features', 'features.8', 'select']J—
+pkg.torch.onnx.stack_trace≤File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\pooling.py", line 1512, in forward
+    return F.adaptive_avg_pool2d(input, self.output_size)
+∂
+select
+val_137select_1node_select_1"Gather*
+axis†J£
+	namespaceï: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.8: torch.nn.modules.pooling.AdaptiveAvgPool2d/select_1: aten.select.intJ£
+pkg.torch.onnx.class_hierarchyÄ['__main__.CornerNet', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.pooling.AdaptiveAvgPool2d', 'aten.select.int']Jä
+pkg.torch.onnx.fx_nodep%select_1 : [num_users=1] = call_function[target=torch.ops.aten.select.int](args = (%select, 4, 0), kwargs = {})JH
+pkg.torch.onnx.name_scopes*['', 'features', 'features.8', 'select_1']J—
+pkg.torch.onnx.stack_trace≤File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\pooling.py", line 1512, in forward
+    return F.adaptive_avg_pool2d(input, self.output_size)
+∏
+select
+val_139select_3node_select_3"Gather*
+axis†J£
+	namespaceï: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.8: torch.nn.modules.pooling.AdaptiveAvgPool2d/select_3: aten.select.intJ£
+pkg.torch.onnx.class_hierarchyÄ['__main__.CornerNet', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.pooling.AdaptiveAvgPool2d', 'aten.select.int']Jå
+pkg.torch.onnx.fx_noder%select_3 : [num_users=1] = call_function[target=torch.ops.aten.select.int](args = (%select_2, 4, 1), kwargs = {})JH
+pkg.torch.onnx.name_scopes*['', 'features', 'features.8', 'select_3']J—
+pkg.torch.onnx.stack_trace≤File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\pooling.py", line 1512, in forward
+    return F.adaptive_avg_pool2d(input, self.output_size)
+°
+select_1
+select_3add_6
+node_add_6"AddJ†
+	namespaceí: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.8: torch.nn.modules.pooling.AdaptiveAvgPool2d/add_6: aten.add.TensorJ£
+pkg.torch.onnx.class_hierarchyÄ['__main__.CornerNet', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.pooling.AdaptiveAvgPool2d', 'aten.add.Tensor']Jé
+pkg.torch.onnx.fx_nodet%add_6 : [num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%select_1, %select_3), kwargs = {})JE
+pkg.torch.onnx.name_scopes'['', 'features', 'features.8', 'add_6']J—
+pkg.torch.onnx.stack_trace≤File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\pooling.py", line 1512, in forward
+    return F.adaptive_avg_pool2d(input, self.output_size)
+ƒ
+masked_fill_1
+val_139select_4node_select_4"Gather*
+axis†J£
+	namespaceï: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.8: torch.nn.modules.pooling.AdaptiveAvgPool2d/select_4: aten.select.intJ£
+pkg.torch.onnx.class_hierarchyÄ['__main__.CornerNet', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.pooling.AdaptiveAvgPool2d', 'aten.select.int']Jë
+pkg.torch.onnx.fx_nodew%select_4 : [num_users=1] = call_function[target=torch.ops.aten.select.int](args = (%masked_fill_1, 3, 1), kwargs = {})JH
+pkg.torch.onnx.name_scopes*['', 'features', 'features.8', 'select_4']J—
+pkg.torch.onnx.stack_trace≤File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\pooling.py", line 1512, in forward
+    return F.adaptive_avg_pool2d(input, self.output_size)
+∫
+select_4
+val_137select_5node_select_5"Gather*
+axis†J£
+	namespaceï: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.8: torch.nn.modules.pooling.AdaptiveAvgPool2d/select_5: aten.select.intJ£
+pkg.torch.onnx.class_hierarchyÄ['__main__.CornerNet', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.pooling.AdaptiveAvgPool2d', 'aten.select.int']Jå
+pkg.torch.onnx.fx_noder%select_5 : [num_users=1] = call_function[target=torch.ops.aten.select.int](args = (%select_4, 4, 0), kwargs = {})JH
+pkg.torch.onnx.name_scopes*['', 'features', 'features.8', 'select_5']J—
+pkg.torch.onnx.stack_trace≤File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\pooling.py", line 1512, in forward
+    return F.adaptive_avg_pool2d(input, self.output_size)
+õ
+add_6
+select_5add_7
+node_add_7"AddJ†
+	namespaceí: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.8: torch.nn.modules.pooling.AdaptiveAvgPool2d/add_7: aten.add.TensorJ£
+pkg.torch.onnx.class_hierarchyÄ['__main__.CornerNet', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.pooling.AdaptiveAvgPool2d', 'aten.add.Tensor']Jã
+pkg.torch.onnx.fx_nodeq%add_7 : [num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%add_6, %select_5), kwargs = {})JE
+pkg.torch.onnx.name_scopes'['', 'features', 'features.8', 'add_7']J—
+pkg.torch.onnx.stack_trace≤File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\pooling.py", line 1512, in forward
+    return F.adaptive_avg_pool2d(input, self.output_size)
+∫
+select_4
+val_139select_7node_select_7"Gather*
+axis†J£
+	namespaceï: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.8: torch.nn.modules.pooling.AdaptiveAvgPool2d/select_7: aten.select.intJ£
+pkg.torch.onnx.class_hierarchyÄ['__main__.CornerNet', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.pooling.AdaptiveAvgPool2d', 'aten.select.int']Jå
+pkg.torch.onnx.fx_noder%select_7 : [num_users=1] = call_function[target=torch.ops.aten.select.int](args = (%select_6, 4, 1), kwargs = {})JH
+pkg.torch.onnx.name_scopes*['', 'features', 'features.8', 'select_7']J—
+pkg.torch.onnx.stack_trace≤File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\pooling.py", line 1512, in forward
+    return F.adaptive_avg_pool2d(input, self.output_size)
+õ
+add_7
+select_7add_8
+node_add_8"AddJ†
+	namespaceí: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.8: torch.nn.modules.pooling.AdaptiveAvgPool2d/add_8: aten.add.TensorJ£
+pkg.torch.onnx.class_hierarchyÄ['__main__.CornerNet', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.pooling.AdaptiveAvgPool2d', 'aten.add.Tensor']Jã
+pkg.torch.onnx.fx_nodeq%add_8 : [num_users=1] = call_function[target=torch.ops.aten.add.Tensor](args = (%add_7, %select_7), kwargs = {})JE
+pkg.torch.onnx.name_scopes'['', 'features', 'features.8', 'add_8']J—
+pkg.torch.onnx.stack_trace≤File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\pooling.py", line 1512, in forward
+    return F.adaptive_avg_pool2d(input, self.output_size)
+ƒ
+add_8
+convert_element_type_defaultdiv_4
+node_div_4"DivJ†
+	namespaceí: __main__.CornerNet/features: torch.nn.modules.container.Sequential/features.8: torch.nn.modules.pooling.AdaptiveAvgPool2d/div_4: aten.div.TensorJ£
+pkg.torch.onnx.class_hierarchyÄ['__main__.CornerNet', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.pooling.AdaptiveAvgPool2d', 'aten.div.Tensor']J†
+pkg.torch.onnx.fx_nodeÖ%div_4 : [num_users=1] = call_function[target=torch.ops.aten.div.Tensor](args = (%add_8, %convert_element_type_default), kwargs = {})JE
+pkg.torch.onnx.name_scopes'['', 'features', 'features.8', 'div_4']J—
+pkg.torch.onnx.stack_trace≤File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\pooling.py", line 1512, in forward
+    return F.adaptive_avg_pool2d(input, self.output_size)
+á
+div_4
+val_196view	node_view"Reshape*
+	allowzero†Jè
+	namespaceÅ: __main__.CornerNet/head: torch.nn.modules.container.Sequential/head.0: torch.nn.modules.flatten.Flatten/view: aten.view.defaultJö
+pkg.torch.onnx.class_hierarchyx['__main__.CornerNet', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.flatten.Flatten', 'aten.view.default']Jå
+pkg.torch.onnx.fx_noder%view : [num_users=1] = call_function[target=torch.ops.aten.view.default](args = (%div_4, [1, 4704]), kwargs = {})J<
+pkg.torch.onnx.name_scopes['', 'head', 'head.0', 'view']JÃ
+pkg.torch.onnx.stack_trace≠File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\flatten.py", line 55, in forward
+    return input.flatten(self.start_dim, self.end_dim)
+‚
+view
+head.1.weight
+head.1.biaslinearnode_linear"Gemm*
+transA †*
+transB†*
+alpha  Ä?†*
+beta  Ä?†Jë
+	namespaceÉ: __main__.CornerNet/head: torch.nn.modules.container.Sequential/head.1: torch.nn.modules.linear.Linear/linear: aten.linear.defaultJö
+pkg.torch.onnx.class_hierarchyx['__main__.CornerNet', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.linear.Linear', 'aten.linear.default']Jß
+pkg.torch.onnx.fx_nodeå%linear : [num_users=1] = call_function[target=torch.ops.aten.linear.default](args = (%view, %p_head_1_weight, %p_head_1_bias), kwargs = {})J>
+pkg.torch.onnx.name_scopes ['', 'head', 'head.1', 'linear']J»
+pkg.torch.onnx.stack_trace©File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\linear.py", line 134, in forward
+    return F.linear(input, self.weight, self.bias)
+Û
+linearval_197node_Sigmoid_197"SigmoidJí
+	namespaceÑ: __main__.CornerNet/head: torch.nn.modules.container.Sequential/head.2: torch.nn.modules.activation.SiLU/silu_11: aten.silu.defaultJö
+pkg.torch.onnx.class_hierarchyx['__main__.CornerNet', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.SiLU', 'aten.silu.default']JÜ
+pkg.torch.onnx.fx_nodel%silu_11 : [num_users=1] = call_function[target=torch.ops.aten.silu.default](args = (%linear,), kwargs = {})J?
+pkg.torch.onnx.name_scopes!['', 'head', 'head.2', 'silu_11']J»
+pkg.torch.onnx.stack_trace©File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\activation.py", line 475, in forward
+    return F.silu(input, inplace=self.inplace)
+Ù
+linear
+val_197silu_11node_silu_11"MulJí
+	namespaceÑ: __main__.CornerNet/head: torch.nn.modules.container.Sequential/head.2: torch.nn.modules.activation.SiLU/silu_11: aten.silu.defaultJö
+pkg.torch.onnx.class_hierarchyx['__main__.CornerNet', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.SiLU', 'aten.silu.default']JÜ
+pkg.torch.onnx.fx_nodel%silu_11 : [num_users=1] = call_function[target=torch.ops.aten.silu.default](args = (%linear,), kwargs = {})J?
+pkg.torch.onnx.name_scopes!['', 'head', 'head.2', 'silu_11']J»
+pkg.torch.onnx.stack_trace©File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\activation.py", line 475, in forward
+    return F.silu(input, inplace=self.inplace)
+
+silu_11
+head.4.weight
+head.4.biaslinear_1node_linear_1"Gemm*
+transA †*
+transB†*
+alpha  Ä?†*
+beta  Ä?†Jì
+	namespaceÖ: __main__.CornerNet/head: torch.nn.modules.container.Sequential/head.4: torch.nn.modules.linear.Linear/linear_1: aten.linear.defaultJö
+pkg.torch.onnx.class_hierarchyx['__main__.CornerNet', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.linear.Linear', 'aten.linear.default']J™
+pkg.torch.onnx.fx_nodeè%linear_1 : [num_users=1] = call_function[target=torch.ops.aten.linear.default](args = (%clone, %p_head_4_weight, %p_head_4_bias), kwargs = {})J@
+pkg.torch.onnx.name_scopes"['', 'head', 'head.4', 'linear_1']J»
+pkg.torch.onnx.stack_trace©File "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\linear.py", line 134, in forward
+    return F.linear(input, self.weight, self.bias)
+Û
+linear_1cornersnode_sigmoid"SigmoidJò
+	namespaceä: __main__.CornerNet/head: torch.nn.modules.container.Sequential/head.5: torch.nn.modules.activation.Sigmoid/sigmoid: aten.sigmoid.defaultJ†
+pkg.torch.onnx.class_hierarchy~['__main__.CornerNet', 'torch.nn.modules.container.Sequential', 'torch.nn.modules.activation.Sigmoid', 'aten.sigmoid.default']Jã
+pkg.torch.onnx.fx_nodeq%sigmoid : [num_users=1] = call_function[target=torch.ops.aten.sigmoid.default](args = (%linear_1,), kwargs = {})J?
+pkg.torch.onnx.name_scopes!['', 'head', 'head.5', 'sigmoid']Jπ
+pkg.torch.onnx.stack_traceöFile "E:\DATA\AdHome-Platform\scripts\train-identity-corners.py", line 203, in forward
+    return self.head(self.features(value))
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\TINH-NGUYEN\miniconda3\Lib\site-packages\torch\nn\modules\activation.py", line 361, in forward
+    return torch.sigmoid(input)
+main_graph*dBfeatures.0.weightj&
+locationidentity-corners.onnx.dataj
+offset0j
+length1728p*oBfeatures.3.layers.0.weightj&
+locationidentity-corners.onnx.dataj
+offset1728j
+length576p*pBfeatures.3.layers.3.weightj&
+locationidentity-corners.onnx.dataj
+offset2304j
+length1536p*oBfeatures.4.layers.0.weightj&
+locationidentity-corners.onnx.dataj
+offset3840j
+length864p*p Bfeatures.4.layers.3.weightj&
+locationidentity-corners.onnx.dataj
+offset4704j
+length3072p*p Bfeatures.5.layers.0.weightj&
+locationidentity-corners.onnx.dataj
+offset7776j
+length1152p*p0 Bfeatures.5.layers.3.weightj&
+locationidentity-corners.onnx.dataj
+offset8928j
+length6144p*q0Bfeatures.6.layers.0.weightj&
+locationidentity-corners.onnx.dataj
+offset15072j
+length1728p*r@0Bfeatures.6.layers.3.weightj&
+locationidentity-corners.onnx.dataj
+offset16800j
+length12288p*q@Bfeatures.7.layers.0.weightj&
+locationidentity-corners.onnx.dataj
+offset29088j
+length2304p*r`@Bfeatures.7.layers.3.weightj&
+locationidentity-corners.onnx.dataj
+offset31392j
+length24576p*eÄ‡$Bhead.1.weightj&
+locationidentity-corners.onnx.dataj
+offset55968j
+length4816896p*_ÄBhead.1.biasj&
+locationidentity-corners.onnx.dataj
+offset4872864j
+length1024p*cÄBhead.4.weightj&
+locationidentity-corners.onnx.dataj
+offset4873888j
+length8192p*3Bhead.4.biasJ z÷Bæ∑‰%æ4
+–=ÚŸèΩ⁄0	>òÉŸ=u™,æd”>*bBval_189j&
+locationidentity-corners.onnx.dataj
+offset4882080j
+length3136p*'	Bunsqueeze_6J          *Bval_191J    *	Bge_1J          *ÎBconvert_element_type_defaultJƒ  Ä?   @  Ä?   @  Ä?   @  Ä?   @  Ä@   @  Ä@   @  Ä@   @  Ä?   @  Ä?   @  Ä?   @  Ä?   @  Ä@   @  Ä@   @  Ä@   @  Ä?   @  Ä?   @  Ä?   @  Ä?   @  Ä@   @  Ä@   @  Ä@   @  Ä?   @  Ä?   @  Ä?   @  Ä?*Bval_196J       `      *^Bfeatures.0.weight_biasJ@$≈sæ·L{Ω™®C>úN>u&>˜¶>÷ ìΩ√ÊΩ¸√JΩœ]>`»ÉªÆ| =8Fû>v√à>Ú>ÔΩ`Í>*gBfeatures.3.layers.0.weight_biasJ@§ˆÆ>B4€Ω4ëb>—ˇ¡>F±¨æ~âò>ô`µæeπÈæ∞Õ>ï>µWqæÆO<><éó<C*Ë>‰Ò	?xÃI?*áBfeatures.3.layers.3.weight_biasJ`r>îóû?ñÓ>R}A?˙v•æÜ≈>øëP >}RTæíº[≥æ™¡VæºzN?Œﬁ3æ⁄Ÿ§=R«®>¨Ÿzæ‡u&?Ï2$æ9qÃ=HJæ÷Ó'=
+Dæ ø^?´ù	?*áBfeatures.4.layers.0.weight_biasJ`µ&Æ=Ëäº¶5,æΩ◊s>∂Å>-ﬂÊ>D0B>¶è>?˝ú>÷‡ΩF≥M>¥`/Ωå≤æìS√>•eæ*êôæ–ô=ê9¨º™≤Ω¸M‹<ºr^>5ûΩX\Oæ,ÆQæ*® Bfeatures.4.layers.3.weight_biasJÄqœ≥æ W<≥®¯æÅπΩN`√æ@ç\:1‡=¡©?¯≈2º4jñ>2pö>Ñh}ºK…∆æ√bæw?ø|ı`>Æ–æ¯®û>î-næÖü?˛ª“jæÉ‚ø±ƒ—æóæ‚<‡>j¡>œægçoæd∑º#KæZ#˚=*® Bfeatures.5.layers.0.weight_biasJÄªGp> y>0ÕΩ„,1>Ω næÅ~ö=èÎ>L*ô?†y;Ω ˆ∫<ºW?˛≠Mæä">€]]æÔHæa∂Æ>ÎÄøΩzå$?∏vzæ¶µkøº«<æ5%>T™8æπkz=q"›Ωé∏ºû≥ƒ> Àá?˛≠
+>ˇñæ∂;6>wjÅ>*Ë0Bfeatures.5.layers.3.weight_biasJ¿Jø!? §9æ¯Ÿ>=!ÿ>∞‹ƒ>a‹∞>ÌΩ”…›=À>tzÇ=Ó]"æm>Çæh§:=oùπ>µWëΩãPéæWj>‘1@>÷{0Ω◊±°=¢tªΩç2™=pˇø¬H˘=≈p¶ΩÑæäÑ>ÕI?>‹[Â=%`ÉæÑ◊!æyb”=KÇ>DùW>Ï—¶>h¯t<ıΩ=ä√Û=Ä?;7≈âΩ^ÒB>‰…‘>®I/Ω }Ω û>$…>8¨Øº◊‘Z>*Ë0Bfeatures.6.layers.0.weight_biasJ¿ÿÆ’æM!æR_R?^$ˆΩ˙\õæìNê>ÓÛæ®›º¥tì>‰TWæfNæec˛>]	iæ9«aæQ`?BF?H®ß>Áaæ⁄∆_æ§Jæ?ıÅæ&È<båD=’Dáæú"k>æAæ»bç<kæËo˝ºHdæ"‘Pæú°tæ∆;◊æÚÉ;≈3M?˙õ?oIæ6y4?ëAækz>ÑX9>„?‰>€y0æPãDΩ@Ô∞ªo
+ˇ=n®Ω∏¸>*®@Bfeatures.6.layers.3.weight_biasJÄ0ZKº“6\>j€ó=uu?¬∞-=Te¡=}nﬁ=P˛ÄªRÈº+*æVéöΩˇ»Ç>K£Ωæπ]æ/∆=9‡wæ•ãΩÁ∫≠æ˝¬<\π;)A5æÆ ›æt>É*>?¶‡ù=V8¬>ı∂ øØ”<‹à<|@‡æ]VêΩ0Ø7<ê+ﬁæ§	!<≤7æ
+¨æ“Ë¸>à° >W"Öæ-ckΩÏ¨≤>¨Ûä>¥+)>§ë‹æ >%øúæ^∏˛=g÷‘æ/tæ¥◊æäö=à%2>Ê¡æ`ù&Ωˇñ>§r;N}&>µ•>ï¡·<ˆMk=S~	>æ:Yæ∏*õ>_Ò~æ*®@Bfeatures.7.layers.0.weight_biasJÄ˘‡dæf ==›Ω~“æ≤wí>+zÏ=mN≠>Ä√1=/É9º¡¨Ü>“÷Qæ ,IæFÈï>Í æu6æ\/2>∂D_>:ì§>ém)ΩyÓï=Z}HæJˇP>†çñæù÷Í>°]>:ı∑>j⁄óΩ∞âÄ>c~>6Ã∞æΩÌü>¨P&>ã˚√æ{ˆ‘=∂ãò>P>w2?w».Ω|ıPºM∆;Ne?©¸&øaÏ#=aèΩ‡]Ì;–*>BΩΩúóáΩH≈äæ€\Å>˛~>¢a®=≥nÌ>ÛßO?ı#>ˆÈ>4˜∞ΩGÚß>∫W≠>Æ“M>EÁ=^,>Ç¿©Ω*q`Bfeatures.7.layers.3.weight_biasj&
+locationidentity-corners.onnx.dataj
+offset4885216j
+length384p*Bval_137J        *Bval_139J       ZÀ
+image
+
+
+
+‡
+‡"=
+/pkg.torch.export.graph_signature.InputSpec.kind
+USER_INPUT"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"*
+!pkg.torch.onnx.original_node_namevaluebà
+corners
+
+
+"?
+0pkg.torch.export.graph_signature.OutputSpec.kindUSER_OUTPUT",
+!pkg.torch.onnx.original_node_namesigmoidj+
+features.0.weight
+
+
+
+
+j4
+features.3.layers.0.weight
+
+
+
+
+j4
+features.3.layers.3.weight
+
+
+
+
+j4
+features.4.layers.0.weight
+
+
+
+
+j4
+features.4.layers.3.weight
+
+ 
+
+
+j4
+features.5.layers.0.weight
+
+ 
+
+
+j4
+features.5.layers.3.weight
+
+0
+ 
+
+j4
+features.6.layers.0.weight
+
+0
+
+
+j4
+features.6.layers.3.weight
+
+@
+0
+
+j4
+features.7.layers.0.weight
+
+@
+
+
+j4
+features.7.layers.3.weight
+
+`
+@
+
+j‘
+head.1.weight
+
+
+Ä
+‡$"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"4
+!pkg.torch.onnx.original_node_namep_head_1_weightjÀ
+head.1.bias
+	
+Ä"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"2
+!pkg.torch.onnx.original_node_namep_head_1_biasj”
+head.4.weight
+	
+
+Ä"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"4
+!pkg.torch.onnx.original_node_namep_head_4_weightj 
+head.4.bias
+
+
+"<
+/pkg.torch.export.graph_signature.InputSpec.kind	PARAMETER"=
+5pkg.torch.export.graph_signature.InputSpec.persistentNone"2
+!pkg.torch.onnx.original_node_namep_head_4_biasj“
+val_189
+
+
+
+
+
+"™
+$pkg.onnxscript.optimizer.folded_fromÅ['add', 'add_3', 'arange', 'arange_1', 'arange_2', 'arange_3', 'div', 'div_2', 'minimum', 'minimum_1', 'mul', 'mul_2', 'scalar_tensor', 'scalar_tensor_1', 'unsqueeze', 'unsqueeze_1', 'unsqueeze_2', 'unsqueeze_3', 'val_135', 'val_136', 'val_137', 'val_138', 'val_139', 'val_140', 'val_141', 'val_142', 'val_143', 'val_144', 'val_145', 'val_146', 'val_147', 'val_148', 'val_149', 'val_150', 'val_151', 'val_152', 'val_153', 'val_154', 'val_162', 'val_163', 'val_164', 'val_165', 'val_166', 'val_167', 'val_168', 'val_169', 'val_170', 'val_171', 'val_172', 'val_173', 'val_174', 'val_183', 'val_184', 'val_185', 'val_186', 'val_187', 'val_188']jÎ
+unsqueeze_6
+	
+
+
+
+"√
+$pkg.onnxscript.optimizer.folded_fromö['add_1', 'add_2', 'arange', 'arange_1', 'div', 'div_1', 'ge', 'mul', 'mul_1', 'sub', 'sub_1', 'unsqueeze_4', 'unsqueeze_5', 'val_135', 'val_136', 'val_137', 'val_138', 'val_139', 'val_140', 'val_141', 'val_142', 'val_143', 'val_144', 'val_145', 'val_146', 'val_147', 'val_148', 'val_149', 'val_150', 'val_151', 'val_152', 'val_153', 'val_155', 'val_156', 'val_157', 'val_158', 'val_159', 'val_160', 'val_161']jD
+val_191
+ "1
+$pkg.onnxscript.optimizer.folded_from	['val_3']jœ
+ge_1
+	
+
+"∂
+$pkg.onnxscript.optimizer.folded_fromç['add_4', 'add_5', 'arange_2', 'arange_3', 'div_2', 'div_3', 'mul_2', 'mul_3', 'sub_2', 'sub_3', 'unsqueeze_8', 'val_135', 'val_137', 'val_139', 'val_141', 'val_149', 'val_153', 'val_162', 'val_163', 'val_164', 'val_165', 'val_166', 'val_167', 'val_168', 'val_169', 'val_170', 'val_171', 'val_172', 'val_173', 'val_174', 'val_175', 'val_176', 'val_177', 'val_178', 'val_179', 'val_180', 'val_181']jø
+convert_element_type_default
+
+
+"é
+$pkg.onnxscript.optimizer.folded_fromÂ['add_1', 'add_2', 'add_4', 'add_5', 'arange', 'arange_2', 'div', 'div_1', 'div_2', 'div_3', 'mul', 'mul_1', 'mul_2', 'mul_3', 'mul_4', 'sub', 'sub_1', 'sub_2', 'sub_3', 'unsqueeze_7', 'val_135', 'val_136', 'val_137', 'val_138', 'val_139', 'val_140', 'val_141', 'val_142', 'val_143', 'val_144', 'val_145', 'val_146', 'val_147', 'val_148', 'val_153', 'val_155', 'val_156', 'val_157', 'val_158', 'val_159', 'val_160', 'val_161', 'val_162', 'val_163', 'val_164', 'val_165', 'val_166', 'val_167', 'val_168', 'val_169', 'val_170', 'val_171', 'val_175', 'val_176', 'val_177', 'val_178', 'val_179', 'val_180', 'val_181']jU
+val_196
+
+
+">
+$pkg.onnxscript.optimizer.folded_from['val_194', 'val_195']j$
+features.0.weight_bias
+
+
+j-
+features.3.layers.0.weight_bias
+
+
+j-
+features.3.layers.3.weight_bias
+
+
+j-
+features.4.layers.0.weight_bias
+
+
+j-
+features.4.layers.3.weight_bias
+
+
+ j-
+features.5.layers.0.weight_bias
+
+
+ j-
+features.5.layers.3.weight_bias
+
+
+0j-
+features.6.layers.0.weight_bias
+
+
+0j-
+features.6.layers.3.weight_bias
+
+
+@j-
+features.7.layers.0.weight_bias
+
+
+@j-
+features.7.layers.3.weight_bias
+
+
+`j
+val_137
+ j
+val_139
+ j!
+getitem
+
+
+
+p
+pj 
+val_14
+
+
+
+p
+pj
+silu
+
+
+
+p
+pj#
+	getitem_3
+
+
+
+8
+8j 
+val_26
+
+
+
+8
+8j 
+silu_1
+
+
+
+8
+8j#
+	getitem_6
+
+
+
+8
+8j 
+val_38
+
+
+
+8
+8j 
+silu_2
+
+
+
+8
+8j#
+	getitem_9
+
+
+
+
+j 
+val_50
+
+
+
+
+j 
+silu_3
+
+
+
+
+j$
+
+getitem_12
+
+
+ 
+
+j 
+val_62
+
+
+ 
+
+j 
+silu_4
+
+
+ 
+
+j$
+
+getitem_15
+
+
+ 
+
+j 
+val_74
+
+
+ 
+
+j 
+silu_5
+
+
+ 
+
+j$
+
+getitem_18
+
+
+0
+
+j 
+val_86
+
+
+0
+
+j 
+silu_6
+
+
+0
+
+j$
+
+getitem_21
+
+
+0
+
+j 
+val_98
+
+
+0
+
+j 
+silu_7
+
+
+0
+
+j$
+
+getitem_24
+
+
+@
+
+j!
+val_110
+
+
+@
+
+j 
+silu_8
+
+
+@
+
+j$
+
+getitem_27
+
+
+@
+
+j!
+val_122
+
+
+@
+
+j 
+silu_9
+
+
+@
+
+j$
+
+getitem_30
+
+
+`
+
+j!
+val_134
+
+
+`
+
+j!
+silu_10
+
+
+`
+
+j!
+val_182
+
+
+
+
+`j)
+val_190
+
+
+
+
+
+
+`j'
+index
+
+
+`
+
+
+
+j-
+masked_fill
+
+
+`
+
+
+
+j/
+masked_fill_1
+
+
+`
+
+
+
+j$
+select
+
+
+`
+
+
+j"
+select_1
+
+
+`
+
+j"
+select_3
+
+
+`
+
+j
+add_6
+
+
+`
+
+j&
+select_4
+
+
+`
+
+
+j"
+select_5
+
+
+`
+
+j
+add_7
+
+
+`
+
+j"
+select_7
+
+
+`
+
+j
+add_8
+
+
+`
+
+j
+div_4
+
+
+`
+
+j
+view
+	
+
+‡$j
+linear
+	
+
+Äj
+val_197
+	
+
+Äj
+silu_11
+	
+
+Äj
+linear_1
+
+
+ÇÓ/
+0pkg.torch.export.ExportedProgram.graph_signatureπ/
+# inputs
+p_features_0_weight: PARAMETER target='features.0.weight'
+p_features_1_weight: PARAMETER target='features.1.weight'
+p_features_1_bias: PARAMETER target='features.1.bias'
+p_features_3_layers_0_weight: PARAMETER target='features.3.layers.0.weight'
+p_features_3_layers_1_weight: PARAMETER target='features.3.layers.1.weight'
+p_features_3_layers_1_bias: PARAMETER target='features.3.layers.1.bias'
+p_features_3_layers_3_weight: PARAMETER target='features.3.layers.3.weight'
+p_features_3_layers_4_weight: PARAMETER target='features.3.layers.4.weight'
+p_features_3_layers_4_bias: PARAMETER target='features.3.layers.4.bias'
+p_features_4_layers_0_weight: PARAMETER target='features.4.layers.0.weight'
+p_features_4_layers_1_weight: PARAMETER target='features.4.layers.1.weight'
+p_features_4_layers_1_bias: PARAMETER target='features.4.layers.1.bias'
+p_features_4_layers_3_weight: PARAMETER target='features.4.layers.3.weight'
+p_features_4_layers_4_weight: PARAMETER target='features.4.layers.4.weight'
+p_features_4_layers_4_bias: PARAMETER target='features.4.layers.4.bias'
+p_features_5_layers_0_weight: PARAMETER target='features.5.layers.0.weight'
+p_features_5_layers_1_weight: PARAMETER target='features.5.layers.1.weight'
+p_features_5_layers_1_bias: PARAMETER target='features.5.layers.1.bias'
+p_features_5_layers_3_weight: PARAMETER target='features.5.layers.3.weight'
+p_features_5_layers_4_weight: PARAMETER target='features.5.layers.4.weight'
+p_features_5_layers_4_bias: PARAMETER target='features.5.layers.4.bias'
+p_features_6_layers_0_weight: PARAMETER target='features.6.layers.0.weight'
+p_features_6_layers_1_weight: PARAMETER target='features.6.layers.1.weight'
+p_features_6_layers_1_bias: PARAMETER target='features.6.layers.1.bias'
+p_features_6_layers_3_weight: PARAMETER target='features.6.layers.3.weight'
+p_features_6_layers_4_weight: PARAMETER target='features.6.layers.4.weight'
+p_features_6_layers_4_bias: PARAMETER target='features.6.layers.4.bias'
+p_features_7_layers_0_weight: PARAMETER target='features.7.layers.0.weight'
+p_features_7_layers_1_weight: PARAMETER target='features.7.layers.1.weight'
+p_features_7_layers_1_bias: PARAMETER target='features.7.layers.1.bias'
+p_features_7_layers_3_weight: PARAMETER target='features.7.layers.3.weight'
+p_features_7_layers_4_weight: PARAMETER target='features.7.layers.4.weight'
+p_features_7_layers_4_bias: PARAMETER target='features.7.layers.4.bias'
+p_head_1_weight: PARAMETER target='head.1.weight'
+p_head_1_bias: PARAMETER target='head.1.bias'
+p_head_4_weight: PARAMETER target='head.4.weight'
+p_head_4_bias: PARAMETER target='head.4.bias'
+b_features_1_running_mean: BUFFER target='features.1.running_mean' persistent=True
+b_features_1_running_var: BUFFER target='features.1.running_var' persistent=True
+b_features_1_num_batches_tracked: BUFFER target='features.1.num_batches_tracked' persistent=True
+b_features_3_layers_1_running_mean: BUFFER target='features.3.layers.1.running_mean' persistent=True
+b_features_3_layers_1_running_var: BUFFER target='features.3.layers.1.running_var' persistent=True
+b_features_3_layers_1_num_batches_tracked: BUFFER target='features.3.layers.1.num_batches_tracked' persistent=True
+b_features_3_layers_4_running_mean: BUFFER target='features.3.layers.4.running_mean' persistent=True
+b_features_3_layers_4_running_var: BUFFER target='features.3.layers.4.running_var' persistent=True
+b_features_3_layers_4_num_batches_tracked: BUFFER target='features.3.layers.4.num_batches_tracked' persistent=True
+b_features_4_layers_1_running_mean: BUFFER target='features.4.layers.1.running_mean' persistent=True
+b_features_4_layers_1_running_var: BUFFER target='features.4.layers.1.running_var' persistent=True
+b_features_4_layers_1_num_batches_tracked: BUFFER target='features.4.layers.1.num_batches_tracked' persistent=True
+b_features_4_layers_4_running_mean: BUFFER target='features.4.layers.4.running_mean' persistent=True
+b_features_4_layers_4_running_var: BUFFER target='features.4.layers.4.running_var' persistent=True
+b_features_4_layers_4_num_batches_tracked: BUFFER target='features.4.layers.4.num_batches_tracked' persistent=True
+b_features_5_layers_1_running_mean: BUFFER target='features.5.layers.1.running_mean' persistent=True
+b_features_5_layers_1_running_var: BUFFER target='features.5.layers.1.running_var' persistent=True
+b_features_5_layers_1_num_batches_tracked: BUFFER target='features.5.layers.1.num_batches_tracked' persistent=True
+b_features_5_layers_4_running_mean: BUFFER target='features.5.layers.4.running_mean' persistent=True
+b_features_5_layers_4_running_var: BUFFER target='features.5.layers.4.running_var' persistent=True
+b_features_5_layers_4_num_batches_tracked: BUFFER target='features.5.layers.4.num_batches_tracked' persistent=True
+b_features_6_layers_1_running_mean: BUFFER target='features.6.layers.1.running_mean' persistent=True
+b_features_6_layers_1_running_var: BUFFER target='features.6.layers.1.running_var' persistent=True
+b_features_6_layers_1_num_batches_tracked: BUFFER target='features.6.layers.1.num_batches_tracked' persistent=True
+b_features_6_layers_4_running_mean: BUFFER target='features.6.layers.4.running_mean' persistent=True
+b_features_6_layers_4_running_var: BUFFER target='features.6.layers.4.running_var' persistent=True
+b_features_6_layers_4_num_batches_tracked: BUFFER target='features.6.layers.4.num_batches_tracked' persistent=True
+b_features_7_layers_1_running_mean: BUFFER target='features.7.layers.1.running_mean' persistent=True
+b_features_7_layers_1_running_var: BUFFER target='features.7.layers.1.running_var' persistent=True
+b_features_7_layers_1_num_batches_tracked: BUFFER target='features.7.layers.1.num_batches_tracked' persistent=True
+b_features_7_layers_4_running_mean: BUFFER target='features.7.layers.4.running_mean' persistent=True
+b_features_7_layers_4_running_var: BUFFER target='features.7.layers.4.running_var' persistent=True
+b_features_7_layers_4_num_batches_tracked: BUFFER target='features.7.layers.4.num_batches_tracked' persistent=True
+value: USER_INPUT
+
+# outputs
+sigmoid: USER_OUTPUT
+Ç8
+2pkg.torch.export.ExportedProgram.range_constraints{}B
+ 

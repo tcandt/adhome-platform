@@ -556,3 +556,27 @@ html[data-motion="reduced"] ::after {
     padding-inline: 14px;
   }
 }
+
+.building-floor-node::before {
+  content: "";
+  position: absolute;
+  left: -12px;
+  top: -8px;
+  bottom: -8px;
+  border-left: 1px solid #cbd5e1;
+  pointer-events: none;
+}
+.building-floor-node:first-child::before { top: 32px; }
+.building-floor-node:last-child::before { bottom: calc(100% - 32px); }
+.building-floor-node::after {
+  content: "";
+  position: absolute;
+  left: -12px;
+  top: 32px;
+  width: calc(12px + var(--floor-indent, 0px));
+  border-top: 1px solid #cbd5e1;
+  pointer-events: none;
+}
+.dark .building-floor-node::before,
+.dark .building-floor-node::after { border-color: #475569; }
+

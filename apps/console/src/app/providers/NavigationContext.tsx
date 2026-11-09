@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/app/providers/AuthContext';
 import {
   type BuildingsSubTabId,
@@ -38,8 +38,10 @@ interface NavigationContextType {
   setSettingsTab: (tab: SettingsTabId) => void;
   selectedPeriod: string;
   setSelectedPeriod: (periodKey: string) => void;
-  /** Empty array `[]` means ALL authorized buildings in scope; non-empty means 1..N selected building IDs */
+  /** Empty IDs mean ALL unless isBuildingScopeEmpty is true. */
   selectedBuildingIds: string[];
+  isBuildingScopeEmpty: boolean;
+  clearBuildingScope: () => void;
   setSelectedBuildingIds: (ids: string[]) => void;
   toggleBuildingInScope: (buildingId: string, allAuthorizedIds: string[]) => void;
   isSearchOpen: boolean;
@@ -88,15 +90,18 @@ export function NavigationProvider({
     []
   );
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isBuildingScopeEmpty, setIsBuildingScopeEmpty] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
   // Reset scope & guard module permissions whenever session or actor changes
   useEffect(() => {
+    // Preserve the URL module until the initial session check has finished.
     if (isLoading) return;
     if (!isAuthenticated) {
       setActiveModuleState('overview');
       setBuildingsSubTabState('rooms');
       setSelectedBuildingIdsState([]);
+      setIsBuildingScopeEmpty(false);
       return;
     }
     const targetConfig = NAV_ITEMS_CONFIG.find(
@@ -125,29 +130,34 @@ export function NavigationProvider({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
-  const setSelectedBuildingIds = (ids: string[]) => {
+  const setSelectedBuildingIds = useCallback((ids: string[]) => {
     const unique = Array.from(new Set(ids.filter(Boolean)));
+    setIsBuildingScopeEmpty(false);
     setSelectedBuildingIdsState(unique);
     setActiveBuildingId(unique.length === 1 ? unique[0] : 'ALL');
-  };
+  }, [setActiveBuildingId]);
+
+  const clearBuildingScope = useCallback(() => {
+    setSelectedBuildingIdsState([]);
+    setIsBuildingScopeEmpty(true);
+    setActiveBuildingId('ALL');
+  }, [setActiveBuildingId]);
 
   const toggleBuildingInScope = (
     buildingId: string,
     allAuthorizedIds: string[]
   ) => {
-    setSelectedBuildingIdsState((prev) => {
-      // If currently "ALL" ([]), clicking one selects just that building or toggles
-      const base = prev.length === 0 ? [...allAuthorizedIds] : [...prev];
-      const next = base.includes(buildingId)
-        ? base.filter((id) => id !== buildingId)
-        : [...base, buildingId];
+    const base = isBuildingScopeEmpty
+      ? []
+      : selectedBuildingIds.length === 0
+        ? allAuthorizedIds
+        : selectedBuildingIds;
+    const next = base.includes(buildingId)
+      ? base.filter((id) => id !== buildingId)
+      : [...base, buildingId];
 
-      // If none left or all selected, normalize back to [] ("All authorized")
-      const normalized =
-        next.length === 0 || next.length >= allAuthorizedIds.length ? [] : next;
-      setActiveBuildingId(normalized.length === 1 ? normalized[0] : 'ALL');
-      return normalized;
-    });
+    if (next.length === 0) clearBuildingScope();
+    else setSelectedBuildingIds(next.length >= allAuthorizedIds.length ? [] : next);
   };
 
   useEffect(() => {
@@ -243,6 +253,8 @@ export function NavigationProvider({
         selectedPeriod,
         setSelectedPeriod,
         selectedBuildingIds,
+        isBuildingScopeEmpty,
+        clearBuildingScope,
         setSelectedBuildingIds,
         toggleBuildingInScope,
         isSearchOpen,

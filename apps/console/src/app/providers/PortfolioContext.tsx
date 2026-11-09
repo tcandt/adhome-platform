@@ -4,10 +4,12 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import { CONSOLE_CSRF_HEADER, useAuth } from '@/app/providers/AuthContext';
 import { useNavigation } from '@/app/providers/NavigationContext';
+import { notifySave } from '@/shared/ui/SaveToast';
 import type {
   ApiActionResult,
   ConsoleBuildingDto,
@@ -127,12 +129,13 @@ const PortfolioContext = createContext<PortfolioContextType | undefined>(
 
 export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const { user, isAuthenticated, refreshSession } = useAuth();
-  const { selectedBuildingIds, setSelectedBuildingIds, selectedPeriod } =
+  const { selectedBuildingIds, isBuildingScopeEmpty, setSelectedBuildingIds, selectedPeriod } =
     useNavigation();
 
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const [syncError, setSyncError] = useState<string | null>(null);
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const bootstrapSequence = useRef(0);
   const [organization, setOrganization] =
     useState<ConsoleOrganizationDto | null>(null);
   const [allBuildings, setAllBuildings] = useState<ConsoleBuildingDto[]>([]);
@@ -159,6 +162,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
   const fetchBootstrap = useCallback(
     async (isBackground: boolean = false) => {
+      const sequence = ++bootstrapSequence.current;
       if (!isAuthenticated || !user) {
         setOrganization(null);
         setAllBuildings([]);
@@ -169,6 +173,17 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         setNotifications([]);
         setUnreadNotificationsCount(0);
         setModuleCounts(EMPTY_MODULE_COUNTS);
+        setSyncStatus('idle');
+        setSyncError(null);
+        return;
+      }
+
+      if (isBuildingScopeEmpty) {
+        setRooms([]);
+        setTenants([]);
+        setKpis(EMPTY_KPIS);
+        setModuleCounts(EMPTY_MODULE_COUNTS);
+        setRecentLeads([]);
         setSyncStatus('idle');
         setSyncError(null);
         return;
@@ -195,12 +210,14 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
           }
         );
 
+        if (sequence !== bootstrapSequence.current) return;
         if (res.status === 401) {
           await refreshSession();
           return;
         }
 
         const data = await res.json().catch(() => ({}));
+        if (sequence !== bootstrapSequence.current) return;
         if (!res.ok || !data.ok) {
           throw new Error(
             data.message || 'Không thể tải dữ liệu vận hành từ PostgreSQL.'
@@ -241,6 +258,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
           }
         }
       } catch (err) {
+        if (sequence !== bootstrapSequence.current) return;
         setSyncStatus('error');
         setSyncError(
           err instanceof Error
@@ -254,6 +272,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       user,
       selectedPeriod,
       selectedBuildingIds,
+      isBuildingScopeEmpty,
       refreshSession,
       setSelectedBuildingIds,
     ]
@@ -271,7 +290,8 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     async (
       url: string,
       method: 'POST' | 'PATCH' | 'DELETE',
-      body?: unknown
+      body?: unknown,
+      successLabel?: string
     ): Promise<ApiActionResult> => {
       try {
         const res = await fetch(url, {
@@ -296,6 +316,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.ok) {
+          if (successLabel) notifySave(false, 'Không thể lưu thay đổi', data.message || 'Máy chủ từ chối thao tác.');
           return {
             ok: false,
             errorCode: data.errorCode || 'API_ERROR',
@@ -304,8 +325,10 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         }
 
         await fetchBootstrap(true);
+        if (successLabel) notifySave(true, successLabel);
         return { ok: true, data };
       } catch (err) {
+        if (successLabel) notifySave(false, 'Không thể lưu thay đổi', 'Không thể kết nối máy chủ.');
         return {
           ok: false,
           errorCode: 'NETWORK_ERROR',
@@ -331,7 +354,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
   const createBuilding = useCallback(
     (dto: CreateBuildingInput) =>
-      mutateJson('/api/v1/console/v2/buildings', 'POST', dto),
+      mutateJson('/api/v1/console/v2/buildings', 'POST', dto, 'Đã tạo tòa nhà'),
     [mutateJson]
   );
 
@@ -340,7 +363,8 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       mutateJson(
         `/api/v1/console/v2/buildings/${encodeURIComponent(buildingId)}`,
         'PATCH',
-        dto
+        dto,
+        'Đã lưu thông tin tòa nhà'
       ),
     [mutateJson]
   );
@@ -401,7 +425,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
   const createFloor = useCallback(
     (dto: CreateFloorInput) =>
-      mutateJson('/api/v1/console/v2/floors', 'POST', dto),
+      mutateJson('/api/v1/console/v2/floors', 'POST', dto, 'Đã tạo tầng'),
     [mutateJson]
   );
 
@@ -416,13 +440,13 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
   const createRoom = useCallback(
     (dto: CreateRoomInput) =>
-      mutateJson('/api/v1/console/v2/rooms', 'POST', dto),
+      mutateJson('/api/v1/console/v2/rooms', 'POST', dto, 'Đã tạo phòng'),
     [mutateJson]
   );
 
   const batchCreateRooms = useCallback(
     (roomInputs: CreateRoomInput[]) =>
-      mutateJson('/api/v1/console/v2/rooms', 'POST', { rooms: roomInputs }),
+      mutateJson('/api/v1/console/v2/rooms', 'POST', { rooms: roomInputs }, 'Đã tạo danh sách phòng'),
     [mutateJson]
   );
 
@@ -431,7 +455,8 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       mutateJson(
         `/api/v1/console/v2/rooms/${encodeURIComponent(roomId)}`,
         'PATCH',
-        dto
+        dto,
+        'Đã lưu thông tin phòng'
       ),
     [mutateJson]
   );
@@ -480,7 +505,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
 
   const createTenant = useCallback(
     (dto: CreateTenantInput) =>
-      mutateJson('/api/v1/console/v2/tenants', 'POST', dto),
+      mutateJson('/api/v1/console/v2/tenants', 'POST', dto, 'Đã tạo khách thuê'),
     [mutateJson]
   );
 
@@ -489,7 +514,8 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       mutateJson(
         `/api/v1/console/v2/tenants/${encodeURIComponent(tenantId)}`,
         'PATCH',
-        dto
+        dto,
+        'Đã lưu thông tin khách thuê'
       ),
     [mutateJson]
   );
@@ -509,10 +535,11 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   );
 
   const scopedBuildings = useMemo(() => {
+    if (isBuildingScopeEmpty) return [];
     if (selectedBuildingIds.length === 0) return activeBuildings;
     const set = new Set(selectedBuildingIds);
     return activeBuildings.filter((b) => set.has(b.id));
-  }, [activeBuildings, selectedBuildingIds]);
+  }, [activeBuildings, selectedBuildingIds, isBuildingScopeEmpty]);
 
   return (
     <PortfolioContext.Provider

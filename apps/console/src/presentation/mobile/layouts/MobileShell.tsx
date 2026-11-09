@@ -7,13 +7,15 @@ import { OperationalModuleWorkspace } from '@/features/modules/OperationalModule
 import { OverviewDashboard } from '@/features/overview/OverviewDashboard';
 import { SettingsWorkspaceView } from '@/features/settings/SettingsWorkspaceView';
 import { GlobalSearchModal } from '@/shared/ui/GlobalSearchModal';
+import { EmptyBuildingScope } from '@/shared/ui/EmptyBuildingScope';
 import { MobileBottomNav } from '../navigation/MobileBottomNav';
 import { MobileDrawer } from '../navigation/MobileDrawer';
 import { MobileHeader } from '../navigation/MobileHeader';
 
 export const MobileShell: React.FC = () => {
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const { activeModule, currentNavConfig } = useNavigation();
+  const [moreOnly, setMoreOnly] = useState(false);
+  const { activeModule, currentNavConfig, isBuildingScopeEmpty } = useNavigation();
   const { hasCapability } = useAuth();
 
   const isModuleAllowed = currentNavConfig.requiredCapability
@@ -23,13 +25,14 @@ export const MobileShell: React.FC = () => {
   return (
     <div
       data-testid="console-mobile-shell"
-      className="min-h-screen bg-[#F7F9FC] dark:bg-[#0B0F19] text-slate-900 dark:text-slate-100 antialiased overflow-x-hidden"
+      className="min-h-dvh bg-[#F7F9FC] dark:bg-[#0B0F19] text-slate-900 dark:text-slate-100 antialiased"
+      style={{ paddingTop: 'calc(4rem + env(safe-area-inset-top, 0px))' }}
     >
-      <MobileHeader onOpenDrawer={() => setDrawerOpen(true)} />
+      <MobileHeader onOpenDrawer={() => { setMoreOnly(false); setDrawerOpen(true); }} />
 
-      <MobileDrawer isOpen={drawerOpen} onClose={() => setDrawerOpen(false)} />
+      <MobileDrawer isOpen={drawerOpen} onClose={() => setDrawerOpen(false)} moreOnly={moreOnly} />
 
-      <main className="pt-4 px-4" style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom, 0px))' }}>
+      <main className={`${activeModule === 'buildings' ? 'pt-2' : 'pt-4'} min-w-0 overflow-x-clip px-4`} style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom, 0px))' }}>
         {!isModuleAllowed ? (
           <div
             data-testid="console-module-forbidden"
@@ -40,6 +43,8 @@ export const MobileShell: React.FC = () => {
               Không có quyền truy cập phân hệ {currentNavConfig.label}
             </h2>
           </div>
+        ) : isBuildingScopeEmpty && currentNavConfig.supportsBuildingScope && activeModule !== 'buildings' ? (
+          <EmptyBuildingScope />
         ) : activeModule === 'overview' ? (
           <OverviewDashboard mobile />
         ) : activeModule === 'buildings' ? (
@@ -51,7 +56,7 @@ export const MobileShell: React.FC = () => {
         )}
       </main>
 
-      <MobileBottomNav />
+      <MobileBottomNav onOpenMore={() => { setMoreOnly(true); setDrawerOpen(true); }} moreOpen={drawerOpen && moreOnly} />
 
       <GlobalSearchModal />
     </div>

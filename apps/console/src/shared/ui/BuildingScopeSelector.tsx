@@ -1,47 +1,83 @@
-import React, { useMemo, useRef, useState, useEffect } from 'react';
-import { Building2, Check, ChevronDown, Search } from 'lucide-react';
-import { useAuth } from '@/app/providers/AuthContext';
-import { useNavigation } from '@/app/providers/NavigationContext';
-import { usePortfolio } from '@/app/providers/PortfolioContext';
+import React, { useMemo, useRef, useState, useEffect } from "react";
+import { Building2, ChevronDown, Edit, Info, Plus, Search, X } from "lucide-react";
+import { createPortal } from "react-dom";
+import { CreateBuildingModal } from "@/features/buildings/modals/CreateBuildingModal";
+import { EditBuildingModal } from "@/features/buildings/modals/EditBuildingModal";
+import { BuildingInfoDialog } from "@/features/buildings/modals/BuildingInfoDialog";
+import type { ConsoleBuildingDto } from "@/shared/types/portfolio";
+import { useAuth } from "@/app/providers/AuthContext";
+import { useNavigation } from "@/app/providers/NavigationContext";
+import { usePortfolio } from "@/app/providers/PortfolioContext";
 
-export const BuildingScopeSelector: React.FC<{ className?: string }> = ({
-  className = '',
-}) => {
-  const { user } = useAuth();
+export const BuildingScopeSelector: React.FC<{
+  className?: string;
+  compact?: boolean;
+}> = ({ className = "", compact = false }) => {
+  const { user, hasCapability } = useAuth();
   const {
     selectedBuildingIds,
+    isBuildingScopeEmpty,
+    clearBuildingScope,
     setSelectedBuildingIds,
     toggleBuildingInScope,
   } = useNavigation();
   const { activeBuildings } = usePortfolio();
 
   const [isScopeOpen, setIsScopeOpen] = useState(false);
-  const [scopeSearchQuery, setScopeSearchQuery] = useState('');
+  const [scopeSearchQuery, setScopeSearchQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchRef = useRef<HTMLInputElement | null>(null);
+  const [createBuildingOpen, setCreateBuildingOpen] = useState(false);
+  const [infoBuildingId, setInfoBuildingId] = useState<string | null>(null);
+  const [editingBuildingId, setEditingBuildingId] = useState<string | null>(null);
   const scopeRef = useRef<HTMLDivElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (isScopeOpen)
+      popoverRef.current
+        ?.querySelector<HTMLInputElement>('input[type="checkbox"]')
+        ?.focus();
+    else {
+      setSearchOpen(false);
+      setScopeSearchQuery("");
+    }
+  }, [isScopeOpen]);
+
+  useEffect(() => {
+    if (searchOpen) searchRef.current?.focus();
+  }, [searchOpen]);
 
   useEffect(() => {
     const onPointerDown = (e: MouseEvent) => {
       const target = e.target as Node;
-      if (scopeRef.current && !scopeRef.current.contains(target)) {
+      if (
+        scopeRef.current &&
+        !scopeRef.current.contains(target) &&
+        !popoverRef.current?.contains(target)
+      ) {
         setIsScopeOpen(false);
       }
     };
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === "Escape") {
         setIsScopeOpen(false);
+        if (popoverRef.current?.contains(document.activeElement))
+          triggerRef.current?.focus();
       }
     };
-    document.addEventListener('mousedown', onPointerDown);
-    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
     return () => {
-      document.removeEventListener('mousedown', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
     };
   }, []);
 
   const authorizedActiveIds = useMemo(
     () => activeBuildings.map((b) => b.id),
-    [activeBuildings]
+    [activeBuildings],
   );
 
   const filteredBuildings = useMemo(() => {
@@ -49,148 +85,228 @@ export const BuildingScopeSelector: React.FC<{ className?: string }> = ({
     const q = scopeSearchQuery.toLowerCase();
     return activeBuildings.filter(
       (b) =>
-        b.code.toLowerCase().includes(q) ||
-        b.name.toLowerCase().includes(q)
+        b.code.toLowerCase().includes(q) || b.name.toLowerCase().includes(q),
     );
   }, [activeBuildings, scopeSearchQuery]);
 
   const scopeSummaryLabel = useMemo(() => {
+    if (isBuildingScopeEmpty) return "Chưa chọn tòa nhà";
     if (activeBuildings.length === 0) {
-      return 'Chưa có tòa nhà (0)';
+      return "Chưa có tòa nhà (0)";
     }
     if (
       selectedBuildingIds.length === 0 ||
       selectedBuildingIds.length >= activeBuildings.length
     ) {
-      return user?.assignedBuildingIds === 'ALL'
+      return user?.assignedBuildingIds === "ALL"
         ? `Tất cả tòa nhà (${activeBuildings.length})`
         : `Phạm vi phụ trách (${activeBuildings.length} tòa)`;
     }
     if (selectedBuildingIds.length === 1) {
       const bld = activeBuildings.find((b) => b.id === selectedBuildingIds[0]);
-      return bld ? `${bld.code} · ${bld.name}` : '1 tòa nhà';
+      return bld ? `${bld.code} · ${bld.name}` : "1 tòa nhà";
     }
     return `Đã chọn ${selectedBuildingIds.length}/${activeBuildings.length} tòa nhà`;
-  }, [activeBuildings, selectedBuildingIds, user]);
+  }, [activeBuildings, selectedBuildingIds, user, isBuildingScopeEmpty]);
 
-  return (
-    <div ref={scopeRef} className={`relative inline-block ${className}`}>
-      <button
-        type="button"
-        data-testid="console-building-scope-selector"
-        onClick={() => setIsScopeOpen((prev) => !prev)}
-        aria-expanded={isScopeOpen}
-        aria-haspopup="listbox"
-        className="inline-flex h-9 max-w-[240px] xl:max-w-[320px] items-center gap-2 rounded-xl border border-slate-200/90 dark:border-slate-700/80 bg-white dark:bg-slate-800/80 px-3 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all shadow-2xs"
-      >
-        <Building2 className="h-3.5 w-3.5 shrink-0 text-brand-primary dark:text-blue-400" />
-        <span className="truncate">{scopeSummaryLabel}</span>
-        <ChevronDown
-          className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform duration-200 ${
-            isScopeOpen ? 'rotate-180' : ''
-          }`}
-        />
-      </button>
+  const allSelected =
+    !isBuildingScopeEmpty &&
+    activeBuildings.length > 0 &&
+    (selectedBuildingIds.length === 0 ||
+      authorizedActiveIds.every((id) => selectedBuildingIds.includes(id)));
+  const partiallySelected =
+    !isBuildingScopeEmpty && !allSelected && selectedBuildingIds.length > 0;
+  const selectedCount = isBuildingScopeEmpty
+    ? 0
+    : selectedBuildingIds.length || activeBuildings.length;
 
-      {isScopeOpen && (
-        <div
-          role="listbox"
-          data-testid="console-building-scope-popover"
-          className="absolute left-0 top-full z-50 mt-1.5 w-72 sm:w-80 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 shadow-xl animate-in fade-in-50 zoom-in-95 duration-150"
+  const popover = (
+    <div
+      ref={popoverRef}
+      role="dialog"
+      aria-label="Danh sách tòa nhà"
+      data-testid="console-building-scope-popover"
+      className={`${compact ? "fixed inset-x-3 top-[calc(4rem+env(safe-area-inset-top,0px))] z-50 max-h-[75dvh] overflow-y-auto" : "absolute right-0 top-full z-50 mt-2 w-80 max-w-[calc(100vw-2rem)]"} rounded-2xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900`}
+    >
+      <div className="flex items-center gap-0.5 border-b border-slate-100 pb-2 dark:border-slate-800">
+        <label className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center">
+          <input
+            type="checkbox"
+            aria-label="Chọn hoặc bỏ chọn tất cả tòa nhà"
+            data-testid="building-scope-select-all"
+            checked={allSelected}
+            disabled={activeBuildings.length === 0}
+            ref={(node) => {
+              if (node) node.indeterminate = partiallySelected;
+            }}
+            onChange={() => {
+              if (allSelected) clearBuildingScope();
+              else setSelectedBuildingIds([]);
+            }}
+            className="h-4 w-4 cursor-pointer rounded border-slate-300 accent-blue-600"
+          />
+        </label>
+        <span className="min-w-0 flex-1 text-sm font-semibold text-slate-900 dark:text-white">
+          Tòa nhà
+        </span>
+        <button
+          type="button"
+          data-testid="building-scope-search-trigger"
+          aria-label={searchOpen ? "Đóng tìm tòa nhà" : "Tìm tòa nhà"}
+          aria-expanded={searchOpen}
+          onClick={() => {
+            setSearchOpen((previous) => !previous);
+            setScopeSearchQuery("");
+          }}
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800"
         >
-          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 px-2 pb-2">
-            <span className="text-xs font-bold text-slate-900 dark:text-white">
-              Phạm vi tòa nhà ({activeBuildings.length})
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedBuildingIds([]);
-                setIsScopeOpen(false);
-              }}
-              className="text-[11px] font-semibold text-brand-primary dark:text-blue-400 hover:underline"
-            >
-              Chọn tất cả ({activeBuildings.length})
-            </button>
-          </div>
-
-          {activeBuildings.length > 4 && (
-            <div className="mt-2 px-1">
-              <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Tìm mã hoặc tên tòa nhà..."
-                  value={scopeSearchQuery}
-                  onChange={(e) => setScopeSearchQuery(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 pl-8 pr-3 py-1.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
-              </div>
-            </div>
-          )}
-
-          {activeBuildings.length === 0 ? (
-            <p className="px-3 py-4 text-center text-xs text-slate-500">
-              Chưa có tòa nhà hoạt động trong phạm vi của bạn.
-            </p>
-          ) : filteredBuildings.length === 0 ? (
-            <p className="px-3 py-4 text-center text-xs text-slate-500">
-              Không tìm thấy tòa nhà khớp với &ldquo;{scopeSearchQuery}&rdquo;.
-            </p>
+          {searchOpen ? (
+            <X className="h-[18px] w-[18px]" />
           ) : (
-            <div className="mt-1.5 max-h-64 space-y-0.5 overflow-y-auto">
-              {filteredBuildings.map((bld) => {
-                const isChecked =
-                  selectedBuildingIds.length === 0 ||
-                  selectedBuildingIds.includes(bld.id);
-                return (
-                  <div
-                    key={bld.id}
-                    className="flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/70 transition-colors"
-                  >
-                    <button
-                      type="button"
-                      onClick={() =>
-                        toggleBuildingInScope(bld.id, authorizedActiveIds)
-                      }
-                      className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
-                    >
-                      <span
-                        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
-                          isChecked
-                            ? 'border-blue-600 bg-blue-600 text-white'
-                            : 'border-slate-300 dark:border-slate-600'
-                        }`}
-                      >
-                        {isChecked && <Check className="h-3 w-3" />}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-xs font-semibold text-slate-800 dark:text-slate-100">
-                          {bld.code} · {bld.name}
-                        </div>
-                        <div className="truncate text-[11px] text-slate-400">
-                          {bld.stats.occupiedRooms}/{bld.stats.totalRooms} phòng có khách
-                        </div>
-                      </div>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedBuildingIds([bld.id]);
-                        setIsScopeOpen(false);
-                      }}
-                      className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 hover:bg-slate-200/70 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-colors"
-                    >
-                      Chỉ tòa này
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
+            <Search className="h-[18px] w-[18px]" />
           )}
+        </button>
+        {hasCapability("canManageBuildings") && (
+          <button
+            type="button"
+            data-testid="btn-open-create-building"
+            aria-label="Thêm tòa nhà"
+            title="Thêm tòa nhà"
+            onClick={() => {
+              setIsScopeOpen(false);
+              setCreateBuildingOpen(true);
+            }}
+            className="flex h-11 w-11 shrink-0 items-center justify-center border-0 bg-transparent text-blue-700 hover:text-blue-900 dark:text-blue-300 dark:hover:text-blue-100"
+          >
+            <Plus className="h-[18px] w-[18px]" />
+          </button>
+        )}
+      </div>
+      {searchOpen && (
+        <div className="px-2 pt-2">
+          <input
+            ref={searchRef}
+            type="search"
+            aria-label="Tìm mã hoặc tên tòa nhà"
+            placeholder="Tìm mã hoặc tên tòa nhà…"
+            value={scopeSearchQuery}
+            onChange={(event) => setScopeSearchQuery(event.target.value)}
+            className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-base outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 sm:text-sm"
+          />
+        </div>
+      )}
+      {activeBuildings.length === 0 ? (
+        <p className="px-3 py-6 text-center text-xs text-slate-500">
+          Chưa có tòa nhà hoạt động trong phạm vi của bạn.
+        </p>
+      ) : filteredBuildings.length === 0 ? (
+        <p className="px-3 py-6 text-center text-xs text-slate-500">
+          Không tìm thấy tòa nhà phù hợp.
+        </p>
+      ) : (
+        <div className="mt-1 max-h-72 overflow-y-auto">
+          {filteredBuildings.map((building) => {
+            const checked =
+              !isBuildingScopeEmpty &&
+              (selectedBuildingIds.length === 0 ||
+                selectedBuildingIds.includes(building.id));
+            return (
+              <div
+                key={building.id}
+                className="flex min-h-16 items-center gap-1 rounded-xl px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800"
+              >
+                <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 py-1">
+                <input
+                  type="checkbox"
+                  aria-label={building.name}
+                  data-testid={`building-scope-checkbox-${building.code}`}
+                  checked={checked}
+                  onChange={() =>
+                    toggleBuildingInScope(building.id, authorizedActiveIds)
+                  }
+                  className="h-4 w-4 shrink-0 cursor-pointer rounded border-slate-300 accent-blue-600"
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-xs font-semibold text-slate-800 dark:text-slate-100">
+                    {building.name}
+                  </span>
+                  <span className="mt-1 block text-[11px] text-slate-400">
+                    {building.code} · {building.stats.availableRooms} phòng
+                    trống
+                  </span>
+                </span>
+                </label>
+                <button type="button" aria-label={`Xem thông tin tòa nhà ${building.name}`} title="Thông tin tòa nhà" onClick={() => { setIsScopeOpen(false); setInfoBuildingId(building.id); }} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 dark:text-slate-300 dark:hover:bg-slate-700"><Info size={18} /></button>
+                {hasCapability("canManageBuildings") && <button type="button" aria-label={`Chỉnh sửa tòa nhà ${building.name}`} title="Chỉnh sửa tòa nhà" onClick={() => { setIsScopeOpen(false); setEditingBuildingId(building.id); }} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 dark:text-slate-300 dark:hover:bg-slate-700"><Edit size={18} /></button>}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
   );
-};
+  return (
+    <>
+      <div
+        ref={scopeRef}
+        className={`relative inline-block shrink-0 ${className}`}
+      >
+        <button
+          type="button"
+          ref={triggerRef}
+          data-testid="console-building-scope-selector"
+          onClick={() => setIsScopeOpen((prev) => !prev)}
+          aria-expanded={isScopeOpen}
+          aria-haspopup="dialog"
+          aria-label={
+            compact ? `Chọn tòa nhà: ${scopeSummaryLabel}` : undefined
+          }
+          title={scopeSummaryLabel}
+          className={
+            compact
+              ? "relative flex h-11 w-11 items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+              : "inline-flex h-11 max-w-[240px] xl:max-w-[320px] items-center gap-2 rounded-xl border border-slate-200/90 dark:border-slate-700/80 bg-white dark:bg-slate-800/80 px-3 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+          }
+        >
+          <Building2
+            className={
+              compact
+                ? "h-5 w-5"
+                : "h-4 w-4 shrink-0 text-brand-primary dark:text-blue-400"
+            }
+          />
+          {compact ? (
+            <span
+              data-testid="console-building-scope-count"
+              className="absolute bottom-1 right-1 flex min-h-3 min-w-3 items-center justify-center rounded-full bg-white px-0.5 text-[8px] font-semibold leading-none tabular-nums dark:bg-[#111827]"
+            >
+              {selectedCount}
+            </span>
+          ) : (
+            <>
+              <span className="truncate">{scopeSummaryLabel}</span>
+              <ChevronDown
+                className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform duration-200 ${
+                  isScopeOpen ? "rotate-180" : ""
+                }`}
+              />
+            </>
+          )}
+        </button>
 
+        {isScopeOpen &&
+          (compact ? createPortal(popover, document.body) : popover)}
+      </div>
+      {createBuildingOpen &&
+        createPortal(
+          <CreateBuildingModal
+            isOpen
+            onClose={() => setCreateBuildingOpen(false)}
+          />,
+          document.body,
+        )}
+      <BuildingInfoDialog building={activeBuildings.find((building) => building.id === infoBuildingId)} onClose={() => setInfoBuildingId(null)} />
+      <EditBuildingModal isOpen={Boolean(editingBuildingId)} building={(activeBuildings.find((building) => building.id === editingBuildingId) || null) as ConsoleBuildingDto | null} onClose={() => setEditingBuildingId(null)} />
+    </>
+  );
+};

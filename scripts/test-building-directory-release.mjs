@@ -1,0 +1,34 @@
+import assert from 'node:assert/strict';
+import {mkdir} from 'node:fs/promises';
+import {chromium,webkit} from 'playwright';
+const base=process.env.ADHOME_UI_URL||'http://127.0.0.1:5192';
+const browser=await(process.env.ADHOME_WEBKIT_LAYOUT==='1'?webkit.launch({headless:true}):chromium.launch({channel:'chrome',headless:true}));
+await mkdir('.artifacts/building-directory-release',{recursive:true});
+try{for(const width of [1440,390,320]){
+ const context=await browser.newContext({viewport:{width,height:900},reducedMotion:'reduce'}),page=await context.newPage(),errors=[];
+ page.on('pageerror',e=>errors.push(e.message));
+ const floors=[{id:'f1',floorNumber:1,name:'Tầng 1'},{id:'f2',floorNumber:2,name:'Tầng 2'}];
+ const building={id:'b1',code:'QA',name:'TOA NHA QA',status:'ACTIVE',streetAddress:'QA ADDRESS',ward:'QA WARD',province:'QA PROVINCE',electricRateVnd:3800,waterRateVnd:15000,waterBillingMethod:'PER_M3',floors,stats:{totalRooms:2,availableRooms:2,occupiedRooms:0,reservedRooms:0,maintenanceRooms:0}};
+ const rooms=floors.map((f,i)=>({id:'room-'+i,buildingId:'b1',buildingCode:'QA',buildingName:building.name,building,floorId:f.id,floorName:f.name,code:'QA-10'+i,title:'QA ROOM',area:25,roomType:'Studio',rentalModel:'ENTIRE_ROOM',maxOccupants:4,listPriceVnd:4500000,occupancyStatus:'AVAILABLE',effectiveElectricRateVnd:3800,effectiveWaterRateVnd:15000,unpaidAmountVnd:0}));
+ await page.route('**/api/**',async route=>{let p=new URL(route.request().url()).pathname;
+ if(p.endsWith('/auth/me'))return route.fulfill({json:{ok:true,actor:{id:'qa',email:'qa@example.test',orgId:'qa',role:'ADMIN',buildingScopes:['*']}}});
+ if(p.endsWith('/bootstrap'))return route.fulfill({json:{ok:true,buildings:[building],rooms,tenants:[]}});
+ if(p.includes('/rental-workflow/'))return route.fulfill({json:{ok:true,room:rooms[0],contract:null,reservation:null,profile:null,bookingBalance:0}});
+ return route.fulfill({json:{ok:true,items:[],occupants:[]}});
+ });
+ await page.goto(base+'/?module=buildings');
+ await page.getByTestId('building-directory').waitFor();
+ assert.equal(await page.getByRole('tab',{name:/Sơ đồ/}).count(),0);
+ await page.getByTestId('building-expand-QA').click();
+ await page.getByTestId('floor-expand-f1').click();
+ await page.getByTestId('room-card-QA-QA-100').waitFor();
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+ await page.screenshot({path:`.artifacts/building-directory-release/directory-${width}.png`,fullPage:true});
+ await page.getByTestId('room-card-QA-QA-100').click();
+ await page.getByRole('button',{name:'Thêm khách thuê',exact:true}).click();
+ await page.getByRole('radio',{name:'Thuê ở ngay',exact:true}).check();
+ await page.getByRole('button',{name:'Tiếp tục',exact:true}).click();
+ assert.equal(await page.locator('.rental-section-heading').getByRole('switch').count(),1);
+ assert.deepEqual(errors,[]);await context.close();
+}}finally{await browser.close();}
+console.log('PASS current building directory, floor/room navigation and tenant switch at 1440/390/320px');

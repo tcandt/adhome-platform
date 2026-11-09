@@ -13,11 +13,13 @@ import { MobileSidebarSheet } from '@/shared/ui/animate-sidebar';
 interface MobileDrawerProps {
   isOpen: boolean;
   onClose: () => void;
+  moreOnly?: boolean;
 }
 
 export const MobileDrawer: React.FC<MobileDrawerProps> = ({
   isOpen,
   onClose,
+  moreOnly = false,
 }) => {
   const { hasCapability } = useAuth();
   const { activeModule, setActiveModule } = useNavigation();
@@ -34,16 +36,16 @@ export const MobileDrawer: React.FC<MobileDrawerProps> = ({
       onOpenChange={(nextOpen) => {
         if (!nextOpen) onClose();
       }}
-      title="Menu điều hướng AdHome Console"
+      title={moreOnly ? 'Các mục bổ sung' : 'Menu điều hướng AdHome Console'}
     >
       {/* Header with Clean Horizontal BrandLogo (Zero PRO badge clutter) */}
       <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-100 dark:border-slate-800 px-4">
-        <BrandLogo variant="horizontal" size="md" />
+        {moreOnly ? <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">More</h2> : <BrandLogo variant="horizontal" size="md" />}
         <button
           type="button"
           data-testid="console-mobile-drawer-close"
           onClick={onClose}
-          aria-label="Đóng menu"
+          aria-label={moreOnly ? 'Đóng các mục bổ sung' : 'Đóng menu'}
           className="inline-flex h-11 w-11 min-h-[44px] min-w-[44px] items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
         >
           <X className="h-5 w-5" />
@@ -55,7 +57,8 @@ export const MobileDrawer: React.FC<MobileDrawerProps> = ({
         {NAV_GROUPS_CONFIG.map((group) => {
           const visibleItems = group.items.filter(
             (item) =>
-              !item.requiredCapability || hasCapability(item.requiredCapability)
+              (!moreOnly || !['overview', 'buildings', 'invoices', 'payments'].includes(item.id)) &&
+              (!item.requiredCapability || hasCapability(item.requiredCapability))
           );
           if (visibleItems.length === 0) return null;
 

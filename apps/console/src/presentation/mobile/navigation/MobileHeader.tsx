@@ -7,7 +7,7 @@ import { useTheme } from '@/app/providers/ThemeContext';
 import { BuildingScopeSelector } from '@/shared/ui/BuildingScopeSelector';
 
 export const MobileHeader: React.FC<{ onOpenDrawer: () => void }> = ({ onOpenDrawer }) => {
-  const { currentNavConfig, activeModule, activeSubBreadcrumb, setIsSearchOpen, isNotificationsOpen, setIsNotificationsOpen } = useNavigation();
+  const { currentNavConfig, activeSubBreadcrumb, setIsSearchOpen, isNotificationsOpen, setIsNotificationsOpen } = useNavigation();
   const { notifications, unreadNotificationsCount, markNotificationsRead } = usePortfolio();
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
@@ -36,14 +36,16 @@ export const MobileHeader: React.FC<{ onOpenDrawer: () => void }> = ({ onOpenDra
     return () => { document.body.style.overflow = previous; document.removeEventListener('keydown', keydown); returnFocus.current?.focus(); };
   }, [open, setIsNotificationsOpen]);
   const iconButton = 'flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-600 active:bg-slate-100 dark:text-slate-300 dark:active:bg-slate-800';
+  const mobileTabLabel = activeSubBreadcrumb || currentNavConfig.shortMobileLabel;
   return <>
-    <header data-testid="console-mobile-header" className="sticky top-0 z-30 flex min-h-16 items-center gap-2 border-b border-slate-200/80 bg-white/95 px-3 backdrop-blur-md dark:border-slate-800 dark:bg-[#111827]/95" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+    <header data-testid="console-mobile-header" className="fixed inset-x-0 top-0 z-30 flex h-[calc(4rem+env(safe-area-inset-top,0px))] items-center gap-1 border-b border-slate-200/80 bg-white/95 px-2 backdrop-blur-md dark:border-slate-800 dark:bg-[#111827]/95" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
       <button type="button" data-testid="console-mobile-menu-trigger" aria-label="Mở menu điều hướng" aria-haspopup="dialog" onClick={onOpenDrawer} className={iconButton}><Menu className="h-5 w-5" /></button>
-      <button type="button" data-testid="console-mobile-search-trigger" onClick={() => setIsSearchOpen(true)} aria-label="Tìm kiếm" className="flex h-11 min-w-0 flex-1 items-center gap-2 rounded-xl bg-slate-100 px-3 text-left text-xs text-slate-500 dark:bg-slate-800 dark:text-slate-400"><Search className="h-4 w-4 shrink-0" /><span className="truncate">Tìm kiếm…</span></button>
+      <h1 data-testid="console-mobile-header-title" className="min-w-0 flex-1 truncate text-sm font-bold text-slate-900 dark:text-slate-100">{mobileTabLabel}</h1>
+      {currentNavConfig.supportsBuildingScope && <BuildingScopeSelector compact />}
+      <button type="button" data-testid="console-mobile-search-trigger" onClick={() => setIsSearchOpen(true)} aria-label="Tìm kiếm" className={iconButton}><Search className="h-5 w-5" /></button>
       <button type="button" data-testid="console-mobile-notifications-trigger" onClick={() => { setProfileOpen(false); setIsNotificationsOpen(true); }} aria-label={`Thông báo${unreadNotificationsCount ? `, ${unreadNotificationsCount} chưa đọc` : ''}`} aria-haspopup="dialog" aria-expanded={isNotificationsOpen} className={`${iconButton} relative`}><Bell className="h-5 w-5" />{unreadNotificationsCount > 0 && <span className="absolute right-1 top-1 rounded-full bg-red-600 px-1 text-[9px] font-bold text-white">{unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}</span>}</button>
       <button type="button" data-testid="console-mobile-avatar" onClick={() => { setIsNotificationsOpen(false); setProfileOpen(true); }} aria-label="Mở hồ sơ tài khoản" aria-haspopup="dialog" aria-expanded={profileOpen} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-4 border-white bg-blue-100 text-sm font-bold text-blue-800 dark:border-slate-900 dark:bg-blue-950 dark:text-blue-200">{user?.name?.trim().split(/\s+/).slice(-2).map(n => n[0]).join('').toUpperCase() || 'AD'}</button>
     </header>
-    {activeModule !== 'overview' && <div className="space-y-3 px-4 pt-4"><h1 className="text-lg font-bold">{activeSubBreadcrumb || currentNavConfig.label}</h1>{currentNavConfig.supportsBuildingScope && <BuildingScopeSelector className="mobile-overview-scope w-full" />}</div>}
     {open && <div className="fixed inset-0 z-50 flex items-end bg-slate-950/50 p-2 backdrop-blur-sm" onClick={e => { if (e.target === e.currentTarget) close(); }}>
       <div ref={panel} role="dialog" aria-modal="true" aria-labelledby="mobile-header-panel-title" className="max-h-[80dvh] w-full overflow-y-auto overscroll-contain rounded-2xl border border-slate-200 bg-white p-4 shadow-xl dark:border-slate-800 dark:bg-slate-900" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 0px))' }}>
         <div className="mb-3 flex items-center justify-between"><h2 id="mobile-header-panel-title" className="text-base font-bold">{profileOpen ? 'Hồ sơ tài khoản' : 'Thông báo'}</h2><button type="button" onClick={close} aria-label="Đóng bảng" className={iconButton}><X className="h-5 w-5" /></button></div>

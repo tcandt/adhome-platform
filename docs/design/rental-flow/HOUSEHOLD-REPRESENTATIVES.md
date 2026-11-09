@@ -1,6 +1,6 @@
 # Household members and contract representatives
 
-Release prepared on 2026-11-09. API installation and readiness have been verified; Console version `ac959763-0d4f-4965-865e-370f3e1ef4b4` is staged for production.
+Deployed to production on 2026-11-09. Feature commit `8e31b7b` was pushed to `origin/main`; Console version `ac959763-0d4f-4965-865e-370f3e1ef4b4` serves 100% of traffic.
 
 ## Behavior
 
@@ -50,3 +50,5 @@ The release is built from an isolated source tree based on Git HEAD plus the ren
 The API installer is `scripts/deploy-rental-members-20261109.sh`; its VPS stage is `/home/tcandt/adhome-rental-members-20261109`. The previous server is preserved under that directory's `backup/`. Previous Console production version: `9cd5fb1d-7faa-423f-8999-6205c85d0aa1`. Existing CCCD models, metadata and branding assets are preserved byte-for-byte from production.
 
 Both focused UI suites pass against the isolated production build and Cloudflare staging at all three viewport widths. These checks mock API responses and do not create production tenants or contracts.
+
+Post-deployment verification: both focused UI suites also pass against `https://console.adhome.vn` at 1440/390/320 px. The asset suite passes for fresh HTML, QR JavaScript, WASM MIME and missing-asset 404 responses. Installed API checksum matches the tested release; service reports `active/running`, `NRestarts=0`, public endpoint HTTP 200 and unauthenticated Console endpoint HTTP 401. Production tenant and contract records were not modified by verification.

@@ -35,5 +35,8 @@ try {
   assert.match(app.headers.get('cache-control'), /no-store/);
   assert.equal(app.headers.get('cdn-cache-control'), 'no-store');
   assert.match(await app.text(), /SPA/);
+  const versionedApp = await worker.fetch(new Request('https://console.adhome.vn/'), { ...assetEnv, WORKER_VERSION: { id: 'release-test' } });
+  assert.equal(versionedApp.headers.get('x-console-version'), 'release-test');
+  assert.equal(app.headers.get('x-console-version'), null);
   console.log('PASS console worker preserves real assets/cache and SPA routes, rejects HTML fallbacks for missing assets');
 } finally { globalThis.fetch = originalFetch; }

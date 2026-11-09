@@ -26,6 +26,7 @@ export default {
       const response = new Response(asset.body, asset);
       response.headers.set('Cache-Control', 'no-store, max-age=0');
       response.headers.set('CDN-Cache-Control', 'no-store');
+      if (env.WORKER_VERSION?.id) response.headers.set('X-Console-Version', env.WORKER_VERSION.id);
       return response;
     }
     const paymentWebhook = /^\/api\/v1\/webhooks\/payments\/(sepay|payos|momo|zalopay|tingee)\/[a-fA-F0-9-]{32,36}$/.test(url.pathname);

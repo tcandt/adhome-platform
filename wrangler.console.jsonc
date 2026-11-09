@@ -4,6 +4,7 @@
   "main": "apps/console/worker/index.mjs",
   "compatibility_date": "2026-11-02",
   "workers_dev": true,
+  "version_metadata": { "binding": "WORKER_VERSION" },
   "vars": { "CONSOLE_API_ORIGIN": "https://console-api.adhome.vn" },
   "routes": [{ "pattern": "console.adhome.vn/*", "zone_name": "adhome.vn" }],
   "assets": {

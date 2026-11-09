@@ -6,7 +6,9 @@ import { PrismaClient, Prisma } from '@prisma/client';
 import type { Plugin } from 'vite';
 import { ROOMS_PUBLIC_SEED } from '../src/data/roomsSeed';
 import type { RoomListing } from '../src/types/room';
+import { handlePublicRoomImage } from './roomImagesApi';
 import { loadAdhomeEnv } from './envLoader.js';
+import { handlePaymentWebhook } from './paymentWebhooks';
 import {
   ALL_CONSOLE_PERMISSIONS,
   DEFAULT_MANAGER_PERMISSIONS,
@@ -87,6 +89,7 @@ export function getPrismaClient(): PrismaClient {
  * `internalNotes`, or internal `orgId` when serving public endpoints.
  */
 const PUBLIC_ROOM_SELECT = {
+  rentalModel: true,
   id: true,
   slug: true,
   roomCode: true,
@@ -120,6 +123,7 @@ const PUBLIC_ROOM_SELECT = {
   isPublic: true,
   sourceVerified: true,
   updatedAt: true,
+  consoleRoom: { select: { id: true, maxOccupants: true, occupancyStatus: true, isPublishedToLanding: true } },
 } satisfies Prisma.PublicRoomListingSelect;
 
 type PublicRoomRow = Prisma.PublicRoomListingGetPayload<{
@@ -128,6 +132,7 @@ type PublicRoomRow = Prisma.PublicRoomListingGetPayload<{
 
 function mapDbRowToPublicRoom(row: PublicRoomRow): RoomListing {
   return {
+    rentalModel: row.rentalModel as RoomListing['rentalModel'],
     id: row.id,
     slug: row.slug,
     roomCode: row.roomCode,
@@ -289,6 +294,11 @@ export async function ensurePostgreSqlSeeded(): Promise<void> {
       await ensureConsoleV2Bootstrap(prisma);
       return;
     }
+    const deliberateReset = await prisma.consoleAuditLog.findFirst({
+      where: { orgId: DEFAULT_ORG_ID, action: { in: ['DELETE_BUSINESS_DATA', 'RESTORE_BUSINESS_DATA'] } },
+      select: { id: true },
+    });
+    if (deliberateReset) return;
 
     // 3. Dynamically seed 0..N Buildings and 0..N Floors derived from seed data
     const seenBuildings = new Map<
@@ -456,7 +466,19 @@ export async function fetchAllPublicRoomsFromDb(
     }),
   ]);
 
-  const rooms = rows.map(mapDbRowToPublicRoom);
+  const roomIds = rows.filter(row => row.rentalModel === 'SHARED_ROOM').map(row => row.consoleRoom?.id).filter((id): id is string => Boolean(id));
+  const occupied = roomIds.length ? await prisma.roomOccupant.groupBy({ by: ['roomId'], where: { roomId: { in: roomIds }, isActive: true }, _count: { id: true } }) : [];
+  const occupiedByRoom = new Map(occupied.map(item => [item.roomId, item._count.id]));
+  const rooms = rows.map(row => {
+    const mapped = mapDbRowToPublicRoom(row);
+    const room = row.consoleRoom;
+    if (room && row.rentalModel === 'SHARED_ROOM' && room.isPublishedToLanding && !['MAINTENANCE', 'ARCHIVED'].includes(room.occupancyStatus)) {
+      const remaining = Math.max(0, room.maxOccupants - (occupiedByRoom.get(room.id) || 0));
+      mapped.status = remaining > 0 ? 'AVAILABLE' : 'OCCUPIED';
+      mapped.maxOccupants = `Còn ${remaining}/${room.maxOccupants} chỗ`;
+    }
+    return mapped;
+  });
   const latestUpdate =
     rows.reduce((max, r) => {
       const t = r.updatedAt.getTime();
@@ -959,7 +981,7 @@ function percentile(sorted: number[], p: number): number {
   return sorted[idx];
 }
 
-function createApiAndDynamicSeoMiddleware(options: { isDev?: boolean } = {}) {
+export function createApiAndDynamicSeoMiddleware(options: { isDev?: boolean } = {}) {
   const isDev = Boolean(options.isDev);
   assertSecurityConfiguration();
   return async (
@@ -970,6 +992,14 @@ function createApiAndDynamicSeoMiddleware(options: { isDev?: boolean } = {}) {
     const rawUrl = req.url || '';
     const parsedUrl = new URL(rawUrl, 'http://127.0.0.1');
     const pathname = parsedUrl.pathname;
+
+    // Provider callbacks are public POST endpoints; no Console session/CSRF cookie.
+    if (pathname.startsWith('/api/v1/webhooks/payments/')) {
+      const rate = checkRateLimit(`payment-webhook:${getClientIp(req)}`, 300, 60000);
+      if (!rate.allowed) { res.setHeader('Retry-After', String(rate.retryAfterSec)); return sendJson(res, 429, { success: false, message: 'Rate limited' }); }
+      if (await handlePaymentWebhook(req, res, pathname, getPrismaClient())) return;
+      return sendJson(res, 404, { success: false, message: 'Webhook endpoint not found' });
+    }
 
     // Static asset fallback: serve pre-built /assets/ bundles if requested
     if (pathname.startsWith('/assets/')) {
@@ -1395,6 +1425,8 @@ function createApiAndDynamicSeoMiddleware(options: { isDev?: boolean } = {}) {
       });
     }
 
+    if (await handlePublicRoomImage(req, res, pathname, prisma)) return;
+
     // =========================================================================
     // A. PUBLIC READ-ONLY ROOM ENDPOINTS (/api/v1/public/rooms*)
     //    Any write method (POST, PATCH, PUT, DELETE) is strictly rejected!
@@ -1472,6 +1504,12 @@ function createApiAndDynamicSeoMiddleware(options: { isDev?: boolean } = {}) {
       }
 
       const room = mapDbRowToPublicRoom(row);
+      if (row.rentalModel === 'SHARED_ROOM' && row.consoleRoom?.isPublishedToLanding && !['MAINTENANCE', 'ARCHIVED'].includes(row.consoleRoom.occupancyStatus)) {
+        const count = await prisma.roomOccupant.count({ where: { roomId: row.consoleRoom.id, isActive: true } });
+        const remaining = Math.max(0, row.consoleRoom.maxOccupants - count);
+        room.status = remaining > 0 ? 'AVAILABLE' : 'OCCUPIED';
+        room.maxOccupants = `Còn ${remaining}/${row.consoleRoom.maxOccupants} chỗ`;
+      }
       return sendJson(res, 200, {
         ok: true,
         sourceVerified: true,
@@ -2898,6 +2936,23 @@ export function adhomePublicApiPlugin(): Plugin {
     },
     configureServer(server) {
       assertSecurityConfiguration();
+      // Middleware is imported by vite.config, outside the client HMR graph.
+      // Restart its config bundle when server code changes, including new files.
+      const apiDirectory = path.resolve(server.config.root, 'server') + path.sep;
+      let reloadTimer: ReturnType<typeof setTimeout> | undefined;
+      const reloadApi = (changed: string) => {
+        if (!path.resolve(changed).startsWith(apiDirectory) || !/\.[cm]?[jt]s$/.test(changed)) return;
+        clearTimeout(reloadTimer);
+        reloadTimer = setTimeout(() => { void server.restart(true); }, 200);
+      };
+      server.watcher.add(apiDirectory);
+      server.watcher.on('change', reloadApi);
+      server.watcher.on('add', reloadApi);
+      server.httpServer?.once('close', () => {
+        clearTimeout(reloadTimer);
+        server.watcher.off('change', reloadApi);
+        server.watcher.off('add', reloadApi);
+      });
       server.middlewares.use(createApiAndDynamicSeoMiddleware({ isDev: true }));
     },
     configurePreviewServer(server) {

@@ -19,20 +19,24 @@ import { useAuth } from '@/app/providers/AuthContext';
 import { useNavigation } from '@/app/providers/NavigationContext';
 import { usePortfolio } from '@/app/providers/PortfolioContext';
 import type { ConsoleTenantDto } from '@/shared/types/portfolio';
+import { tenantDirectory } from '@/shared/data/tenantDirectory';
+import { Button } from '@animate-ui/react/primitives/buttons/button';
 
-export const TenantsDirectoryView: React.FC = () => {
+export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void }> = ({ onOpenRoom }) => {
   const { hasCapability } = useAuth();
   const canManageTenants = hasCapability('canManageTenants');
   const { focusedTenantId, setFocusedTenantId, setActiveModule } =
     useNavigation();
   const {
-    tenants,
+    tenants: tenantProfiles,
     rooms,
     activeBuildings,
     createTenant,
     updateTenant,
     deleteTenant,
   } = usePortfolio();
+  const tenants = useMemo(() => tenantDirectory(tenantProfiles, rooms), [tenantProfiles, rooms]);
+  const isOccupantOnly = (tenant: ConsoleTenantDto) => tenant.id.startsWith('occupant:');
 
   const [searchQuery, setSearchQuery] = useState('');
   const [regFilter, setRegFilter] = useState<string>('ALL');
@@ -321,6 +325,7 @@ export const TenantsDirectoryView: React.FC = () => {
                       <div className="text-sm font-bold text-slate-900 dark:text-white">
                         {t.fullName}
                       </div>
+                      {t.relationToPrimary && <span className="text-xs text-slate-500">{t.relationToPrimary === 'PRIMARY' ? 'HĐ Chính' : t.relationToPrimary === 'OTHER' ? 'Đại diện HĐ' : 'Người cùng hộ'}</span>}
                       <div className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500 font-mono">
                         <Phone className="w-3 h-3" /> {t.phone}
                       </div>
@@ -349,7 +354,7 @@ export const TenantsDirectoryView: React.FC = () => {
                     </div>
                   </div>
 
-                  {canManageTenants && (
+                  {canManageTenants && (isOccupantOnly(t) ? <div className="flex justify-end border-t pt-2"><Button type="button" className="inline-flex min-h-10 items-center gap-1 text-xs font-semibold text-blue-600" onClick={() => t.currentRoomId && onOpenRoom?.(t.currentRoomId)}><Home size={14} />Hồ sơ lưu trú</Button></div> : (
                     <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-100 dark:border-slate-800">
                       <button
                         type="button"
@@ -369,7 +374,7 @@ export const TenantsDirectoryView: React.FC = () => {
                         <Trash2 className="w-3 h-3" /> Xóa
                       </button>
                     </div>
-                  )}
+                  ))}
                 </div>
               );
             })}
@@ -412,6 +417,7 @@ export const TenantsDirectoryView: React.FC = () => {
                           <div className="font-bold text-slate-900 dark:text-white">
                             {t.fullName}
                           </div>
+                          {t.relationToPrimary && <span className="text-xs text-slate-500">{t.relationToPrimary === 'PRIMARY' ? 'HĐ Chính' : t.relationToPrimary === 'OTHER' ? 'Đại diện HĐ' : 'Người cùng hộ'}</span>}
                           <div className="mt-0.5 text-[11px] text-slate-500 font-mono">
                             {t.phone}
                             {t.email ? ` · ${t.email}` : ''}
@@ -465,7 +471,7 @@ export const TenantsDirectoryView: React.FC = () => {
                           {renderRegBadge(t.residenceRegStatus)}
                         </td>
                         <td className="px-4 py-3.5 text-right">
-                          {canManageTenants && (
+                          {canManageTenants && (isOccupantOnly(t) ? <Button type="button" className="inline-flex min-h-10 items-center gap-1 text-xs font-semibold text-blue-600" onClick={() => t.currentRoomId && onOpenRoom?.(t.currentRoomId)}><Home size={14} />Hồ sơ lưu trú</Button> : (
                             <div className="inline-flex items-center gap-1.5">
                               <button
                                 type="button"
@@ -487,7 +493,7 @@ export const TenantsDirectoryView: React.FC = () => {
                                 <Trash2 className="w-3 h-3" /> Xóa
                               </button>
                             </div>
-                          )}
+                          ))}
                         </td>
                       </tr>
                     );

@@ -9,14 +9,19 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint src server scripts",
-    "build:worker": "tsc -b && vite build --config vite.cloudflare.config.ts"
+    "build:worker": "tsc -b && vite build --config vite.cloudflare.config.ts",
+    "build:api": "node scripts/buildStandaloneApi.mjs"
   },
   "dependencies": {
     "@animate-ui/react": "^2.3.0",
     "@prisma/client": "^5.22.0",
+    "@xmldom/xmldom": "0.9.12",
     "clsx": "^2.1.1",
+    "docxtemplater": "^3.71.1",
     "lucide-react": "^1.63.0",
     "motion": "^14.7.1",
+    "pdf-lib": "^1.17.1",
+    "pizzip": "^3.3.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwind-merge": "^3.0.2"

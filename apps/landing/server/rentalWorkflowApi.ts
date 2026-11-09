@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { mergeRentalOccupants, occupantPerson, personOccupancy } from './rentalPeople';
 import { readBuildingLandlords, resolveBuildingLandlord } from './buildingLandlord';
 import { actorHasPermission, isBuildingAllowedForActor } from './authRbac';
 import { availableDeposit, rentalSettlement, vnd } from './rentalFinance';
@@ -52,22 +53,14 @@ export async function handleRentalWorkflow(req: any, res: any, pathname: string,
         managerContact: reusable?.managerContact || [room.building.managerName, room.building.managerPhone].filter(Boolean).join(' - '),
         rentalAddress: [room.building.streetAddress, room.building.ward, room.building.province].filter(Boolean).join(', '),
       };
-      const toPerson = (o: any) => {
-        let secondary: any = {};
-        try { secondary = JSON.parse(o.notes || '{}')?.secondaryContract || {}; } catch { secondary = {}; }
-        return { occupantId: o.id || '', fullName: o.fullName || '', phone: o.phone || '', idNumber: o.idNumber || '', birthDate: o.dateOfBirth || '', gender: o.gender || '', address: secondary.address || '', documentRole: secondary.role || (o.relationToPrimary === 'FAMILY' ? 'HOUSEHOLD_MEMBER' : o.relationToPrimary === 'OTHER' ? 'CO_REPRESENTATIVE' : 'PRIMARY'), ...(o.relationToPrimary !== 'PRIMARY' ? { relationship: secondary.relationship || '', householdHeadOccupantId: secondary.householdHeadOccupantId || '', householdHeadName: secondary.householdHeadName || '' } : {}) };
-      };
+      const toPerson = occupantPerson;
       const occupants = (contract?.occupants || []).filter((o: any) => !['MOVED_OUT', 'CANCELLED'].includes(o.occupancyStatus));
       const primary = occupants.find((o: any) => o.relationToPrimary === 'PRIMARY');
       const saved = profile?.metadata as any;
       let resolvedProfile = saved || null;
       if (contract && !saved) resolvedProfile = { ...documentDefaults, tenant: primary ? toPerson(primary) : { fullName: contract.tenant?.fullName || '', phone: contract.tenant?.phone || '', idNumber: contract.tenant?.idNumber || '', birthDate: '', gender: '', address: '' }, members: occupants.filter((o: any) => o !== primary).map(toPerson), signedDate: today(), purpose: 'Để ở', durationText: `${Math.max(1, Math.round((Date.parse(contract.endDate) - Date.parse(contract.startDate)) / 86400000) + 1)} ngày`, leaseTemplate: 'LEASE_1PN' };
       if (saved && contract) {
-        const members = [...(saved.members || [])];
-        for (const o of occupants.filter((o: any) => o.relationToPrimary !== 'PRIMARY')) {
-          if (!members.some((p: any) => o.idNumber && p.idNumber === o.idNumber || p.fullName?.trim() === o.fullName?.trim())) members.push(toPerson(o));
-        }
-        resolvedProfile = { ...saved, members };
+        resolvedProfile = mergeRentalOccupants(saved, contract.occupants || []);
       }
       if (resolvedProfile && actorHasPermission(actor, 'contracts.manage')) resolvedProfile = { ...resolvedProfile, landlord: resolveBuildingLandlord(room.building, reusable?.landlord, resolvedProfile.landlord) };
       return { room, reservation, contract, contracts: contracts.filter((c: any) => active.includes(c.status)), reservations, profile: resolvedProfile, documentDefaults,
@@ -130,7 +123,7 @@ export async function handleRentalWorkflow(req: any, res: any, pathname: string,
           await tx.roomOccupant.create({ data: { orgId: actor.orgId, roomId: room.id, contractId: ct.id,
             tenantId: index === 0 ? ct.tenantId : null, fullName: person.fullName, phone: person.phone || null,
             idNumber: person.idNumber || null, dateOfBirth: person.birthDate || null, gender: person.gender || null,
-            relationToPrimary: index === 0 ? 'PRIMARY' : 'ROOMMATE', moveInDate: body.startDate,
+            ...(index === 0 ? { relationToPrimary: 'PRIMARY' } : personOccupancy(person, p.tenant)), moveInDate: body.startDate,
             occupancyStatus: 'SCHEDULED', isActive: false } });
         }
         const calc = calculateFirstPeriodRent(body.firstPeriodBillingPolicy || 'CALENDAR_PRORATE', body.startDate, monthly);
@@ -183,7 +176,7 @@ export async function handleRentalWorkflow(req: any, res: any, pathname: string,
       if (kind === 'HOLD' && !state.reservation) fail('Chưa có phiếu cọc.');
       if (['LEASE_1PN', 'LEASE_2PN', 'RESIDENCE_BUNDLE'].includes(kind) && !state.contract) fail('Chưa có hợp đồng.');
       const isPdf = body.format === 'pdf' || kind === 'RESIDENCE_BUNDLE';
-      const buffer = kind === 'RESIDENCE_BUNDLE' ? await compiledResidencePdf(profile, state)
+      const buffer = kind === 'RESIDENCE_BUNDLE' ? await compiledResidencePdf(profile, state, prisma)
         : isPdf ? await convertRentalPdf(await renderRentalDocx(kind, profile, state, Number(body.personIndex || 0)))
         : await renderRentalDocx(kind, profile, state, Number(body.personIndex || 0));
       res.statusCode = 200;
@@ -252,7 +245,8 @@ export async function handleRentalWorkflow(req: any, res: any, pathname: string,
             if (!person.fullName?.trim()) fail('Nhập họ tên của tất cả người cùng ở.');
             await tx.roomOccupant.create({ data: { orgId: actor.orgId, roomId: room.id, contractId: entity.id,
               tenantId: index === 0 ? tenant.id : null, fullName: person.fullName, phone: person.phone || null, idNumber: person.idNumber || null,
-              dateOfBirth: person.birthDate || null, gender: person.gender || null, relationToPrimary: index === 0 ? 'PRIMARY' : 'ROOMMATE',
+              dateOfBirth: person.birthDate || null, gender: person.gender || null,
+              ...(index === 0 ? { relationToPrimary: 'PRIMARY' } : personOccupancy(person, p.tenant)),
               moveInDate: body.startDate, occupancyStatus: body.intent === 'IMPORT' ? 'ACTIVE' : 'SCHEDULED', isActive: body.intent === 'IMPORT' } });
           }
           if (body.intent === 'IMPORT') await tx.tenant.update({ where: { id: tenant.id }, data: { currentRoomId: room.id } });

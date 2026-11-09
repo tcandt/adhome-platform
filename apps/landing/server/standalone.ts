@@ -14,6 +14,12 @@ assertSecurityConfiguration();
 await ensurePostgreSqlSeeded();
 const middleware = createApiAndDynamicSeoMiddleware({ isDev: false });
 const internalKey = process.env.ADHOME_ZALO_BOT_ADMIN_API_KEY || '';
+const fallbackPaymentAccount = {
+  bank: process.env.ADHOME_PAYMENT_FALLBACK_BANK?.trim() || 'BIDV',
+  accountNumber: process.env.ADHOME_PAYMENT_FALLBACK_ACCOUNT?.trim() || '96247LK31',
+  accountName: process.env.ADHOME_PAYMENT_FALLBACK_HOLDER?.trim() || 'HO KINH DOANH NGUYEN DUC TINH',
+  providerId: process.env.ADHOME_PAYMENT_FALLBACK_PROVIDER?.trim().toUpperCase() || 'SEPAY',
+};
 const authorized = (value: string) => {
   const supplied = Buffer.from(value.replace(/^Bearer /, ''));
   const expected = Buffer.from(internalKey);
@@ -37,7 +43,9 @@ async function internalBotApi(req: http.IncomingMessage, res: http.ServerRespons
       const invoice = contract.status === 'DRAFT'
         ? contract.invoices.find(i => (i.policySnapshot as any)?.type === 'FIRST_COMBINED_INVOICE')
         : contract.invoices[0];
-      json(res, 200, { tenantId: contract.tenantId, invoiceId: invoice?.id || null });
+      json(res, 200, { tenantId: contract.tenantId, invoiceId: invoice?.id || null,
+        invoiceOutstandingVnd: invoice ? Number(invoice.totalAmountVnd - invoice.paidAmountVnd) : null,
+        invoiceStatus: invoice?.status || null });
     }
     return true;
   }
@@ -53,7 +61,7 @@ async function internalBotApi(req: http.IncomingMessage, res: http.ServerRespons
     if (!/^[A-Za-z0-9-]{1,80}$/.test(orgId) || !roomCode || roomCode.length > 64 || !/^0\d{9}$/.test(phone)) { json(res, 400, { error: 'invalid_query' }); return true; }
     const contracts = await prisma.contract.findMany({ where: { orgId, room: { code: { equals: roomCode, mode: 'insensitive' } },
       tenant: { normalizedPhone: phone, isActive: true }, ...(contractCode ? { contractCode: { equals: contractCode, mode: 'insensitive' } } : {}), status: { in: ['DRAFT', 'ACTIVE', 'EXPIRING', 'EXTENDED'] } },
-      include: { room: true, invoices: { where: { status: { in: ['ISSUED', 'PARTIAL', 'OVERDUE'] } }, orderBy: { createdAt: 'desc' }, take: 1 } }, take: 3 });
+      include: { tenant: true, room: { include: { building: true } }, invoices: { where: { status: { in: ['ISSUED', 'PARTIAL', 'OVERDUE'] } }, orderBy: { createdAt: 'desc' }, take: 1 } }, take: 3 });
     const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date());
     const matches = contracts.filter(c => c.status === 'DRAFT' || c.startDate <= today && c.endDate >= today);
     if (matches.length !== 1) { json(res, 200, { status: matches.length ? 'AMBIGUOUS' : 'NO_MATCH' }); return true; }
@@ -64,9 +72,45 @@ async function internalBotApi(req: http.IncomingMessage, res: http.ServerRespons
       if (representatives !== 1) { json(res, 200, { status: 'NO_MATCH' }); return true; }
     }
     const invoice = contract.invoices.find(i => i.totalAmountVnd > i.paidAmountVnd);
+    const paymentConnections = await prisma.paymentProviderConnection.findMany({
+      where: { orgId, environment: 'LIVE', status: 'VERIFIED', isEnabled: true,
+        OR: [{ buildingId: contract.room.buildingId }, { buildingId: null }], accounts: { some: {} } },
+      include: { accounts: { orderBy: [{ bankCode: 'asc' }, { accountNumber: 'asc' }], take: 1 } },
+      orderBy: { updatedAt: 'desc' },
+    });
+    const paymentConnection = paymentConnections.find(connection => connection.buildingId === contract.room.buildingId)
+      || paymentConnections.find(connection => connection.buildingId === null);
+    const paymentAccount = paymentConnection?.accounts[0];
+    const landlord = (contract.room.building?.landlord || {}) as Record<string, unknown>;
+    const accountNumber = paymentAccount?.accountNumber || String(landlord.accountNumber || '').trim() || fallbackPaymentAccount.accountNumber;
+    const bank = paymentAccount?.bankCode || String(landlord.bank || '').trim() || fallbackPaymentAccount.bank;
+    const accountName = paymentAccount?.accountName || String(landlord.accountName || landlord.fullName || '').trim() || fallbackPaymentAccount.accountName;
+    const invoiceAmount = invoice ? Number(invoice.totalAmountVnd - invoice.paidAmountVnd) : 0;
+    const periodLabel = invoice ? `${invoice.periodKey.slice(5, 7)}/${invoice.periodKey.slice(0, 4)}` : '';
+    const paymentName = contract.tenant.fullName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd')
+      .replace(/[^A-Za-z0-9 ]/g, '').replace(/\s+/g, ' ').trim().toUpperCase();
+    const transferPeriod = invoice ? `${invoice.periodKey.slice(5, 7)}-${invoice.periodKey.slice(0, 4)}` : '';
+    const transferContent = invoice ? `${contract.room.code}${paymentName.replace(/\s+/g, '')}${transferPeriod}` : '';
+    const snapshot = (invoice?.policySnapshot || {}) as Record<string, any>;
+    const depositDue = snapshot.type === 'FIRST_COMBINED_INVOICE' ? Number(snapshot.financialSummary?.additionalDepositDue || 0) : 0;
+    const invoiceItems = invoice ? [
+      depositDue > 0 ? { label: 'Tiền cọc HĐ', amountVnd: depositDue } : null,
+      Number(invoice.roomRentVnd) > 0 ? { label: `Tiền phòng tháng ${periodLabel}`, amountVnd: Number(invoice.roomRentVnd) } : null,
+      Number(invoice.electricVnd) > 0 ? { label: 'Tiền điện', amountVnd: Number(invoice.electricVnd) } : null,
+      Number(invoice.waterVnd) > 0 ? { label: 'Tiền nước', amountVnd: Number(invoice.waterVnd) } : null,
+      Number(invoice.serviceFeeVnd) > 0 ? { label: 'Phí dịch vụ', amountVnd: Number(invoice.serviceFeeVnd) } : null,
+      snapshot.type !== 'FIRST_COMBINED_INVOICE' && Number(invoice.adjustmentVnd) !== 0 ? { label: 'Điều chỉnh', amountVnd: Number(invoice.adjustmentVnd) } : null,
+    ].filter(Boolean) : [];
+    const paymentProviderId = paymentConnection?.providerId || fallbackPaymentAccount.providerId;
+    const qrTemplate = paymentProviderId === 'SEPAY' ? 'compact' : 'compact2';
+    const qrHolder = encodeURIComponent(accountName).replace(/%20/g, '+');
+    const qrUrl = invoice && accountNumber && bank
+      ? `https://vietqr.app/img?bank=${encodeURIComponent(bank)}&acc=${encodeURIComponent(accountNumber)}&template=${qrTemplate}&amount=${invoiceAmount}&des=${encodeURIComponent(transferContent)}&showinfo=true&holder=${qrHolder}`
+      : null;
     json(res, 200, { status: 'MATCHED', tenantId: contract.tenantId, roomCode: contract.room.code,
       invoice: invoice ? { id: invoice.id, invoiceCode: invoice.invoiceCode, dueDate: invoice.dueDate,
-        amountVnd: Number(invoice.totalAmountVnd - invoice.paidAmountVnd) } : null });
+        tenantName: contract.tenant.fullName, periodLabel, items: invoiceItems, amountVnd: invoiceAmount,
+        accountNumber, bank, accountName, paymentProviderId, transferContent, qrUrl } : null });
     return true;
   }
   if (url.pathname === '/internal/zalo-bot/notification-candidates' && req.method === 'GET') {

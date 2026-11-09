@@ -3,7 +3,6 @@ import { ShimmeringText } from '@animate-ui/react/primitives/texts/shimmering';
 import React, { useState, useEffect, useRef } from "react";
 import { Dialog } from "@animate-ui/react/primitives/base-ui/dialog";
 import { Collapsible } from "@animate-ui/react/primitives/base-ui/collapsible";
-import { Switch } from "@animate-ui/react/primitives/base-ui/switch";
 import {
   X,
   Home,
@@ -34,6 +33,9 @@ import { useAuth } from "../../../app/providers/AuthContext";
 import { ContractDocumentDialog, ContractDocumentLink } from "../../../shared/ui/ContractDocumentDialog";
 import { ActionMenu } from "../../../shared/ui/ActionMenu";
 import { IdentityQrScanner } from "../../../shared/ui/IdentityQrScanner";
+import { ContractRepresentativeSwitch } from "../../../shared/ui/ContractRepresentativeSwitch";
+import { MoneyInput } from "../../../shared/ui/MoneyInput";
+import { RelationshipCombobox } from "../../../shared/ui/RelationshipCombobox";
 import {
   ConsoleRoomDto,
   RoomOccupantDto,
@@ -52,6 +54,18 @@ interface Props {
   onOpenTerminateModal?: (contract: any) => void;
   onEditRoom?: (room: ConsoleRoomDto) => void;
   onOpenLegacyImport?: (roomId: string) => void;
+}
+
+function getTodayIsoVn(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date());
+}
+
+function computeContractEndDate(startDate: string, durationMonths: 6 | 12): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) return '';
+  const [year, month, day] = startDate.split('-').map(Number);
+  const endDate = new Date(Date.UTC(year, month - 1 + durationMonths, day));
+  endDate.setUTCDate(endDate.getUTCDate() - 1);
+  return endDate.toISOString().slice(0, 10);
 }
 
 export const RoomProfileModal: React.FC<Props> = ({
@@ -90,6 +104,7 @@ export const RoomProfileModal: React.FC<Props> = ({
   );
   const albumInput = useRef<HTMLInputElement>(null);
   const [documentContractId, setDocumentContractId] = useState<string | null>(null);
+  const [documentPerson, setDocumentPerson] = useState<{ personIndex?: number; occupantId?: string }>({});
   const [invoiceDetailId, setInvoiceDetailId] = useState<string | null>(null);
   const [depositDetailId, setDepositDetailId] = useState<string | null>(null);
 
@@ -103,7 +118,10 @@ export const RoomProfileModal: React.FC<Props> = ({
   const [occAddress, setOccAddress] = useState<string>("");
   const [occRelationship, setOccRelationship] = useState<string>("");
   const [occHouseholdHeadId, setOccHouseholdHeadId] = useState<string>("");
-  const [occMoveInDate, setOccMoveInDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [occStartDate, setOccStartDate] = useState<string>(() => getTodayIsoVn());
+  const [occDurationMonths, setOccDurationMonths] = useState<6 | 12>(12);
+  const [occMonthlyRentVnd, setOccMonthlyRentVnd] = useState<number>(0);
+  const [occDepositVnd, setOccDepositVnd] = useState<number>(0);
   const [occRelation, setOccRelation] = useState<
     "OTHER" | "FAMILY"
   >("OTHER");
@@ -325,6 +343,8 @@ export const RoomProfileModal: React.FC<Props> = ({
         fullName: person.fullName || 'Chưa nhập tên',
         phone: person.phone || '',
         contractId: pendingContract?.id || null,
+        personIndex: index,
+        relationToPrimary: index === 0 ? 'PRIMARY' : person.documentRole === 'CO_REPRESENTATIVE' ? 'OTHER' : 'FAMILY',
       }))
     : occupantsList.filter(occupant => occupant.isActive).map(occupant => ({
         ...occupant,
@@ -333,12 +353,18 @@ export const RoomProfileModal: React.FC<Props> = ({
         phone: occupant.phone || '',
         contractId: occupant.contractId || room.activeContract?.id || null,
       }));
-  const residentCount = pendingPeople.length || occupantsList.filter(occupant => occupant.isActive).length;
+  const residentCount = residentRows.length;
   const householdHeadOptions = occupantsList.filter(occupant => occupant.isActive && occupant.relationToPrimary !== 'FAMILY');
   const canAddResident = canManageContracts && residentCount < room.maxOccupants && Boolean(onAddRental || room.activeContract);
   const addResident = () => {
     if (room.rentalModel === 'SHARED_ROOM' || !room.activeContract) onAddRental?.(room.id);
-    else setIsAddingOccupant(true);
+    else {
+      setOccStartDate(getTodayIsoVn());
+      setOccDurationMonths(12);
+      setOccMonthlyRentVnd(Number(pendingContract?.monthlyRentVnd || room.listPriceVnd || 0));
+      setOccDepositVnd(Number(pendingContract?.depositVnd || 0));
+      setIsAddingOccupant(true);
+    }
   };
   const canPublishRooms =
     user?.backendRole === "ADMIN" ||
@@ -393,6 +419,10 @@ export const RoomProfileModal: React.FC<Props> = ({
     if (!occFullName.trim() || !/^0\d{8,10}$/.test(cleanPhone) || !/^\d{12}$/.test(cleanId) || !occBirthDate || !occGender || !occAddress.trim() || (occRelation === 'FAMILY' && !occRelationship.trim())) {
       setActionFeedback('Nhập đủ họ tên, số điện thoại, CCCD 12 số, ngày sinh, giới tính và địa chỉ thường trú. Thành viên cùng hộ cần có mối quan hệ.'); return;
     }
+    const occEndDate = computeContractEndDate(occStartDate, occDurationMonths);
+    if (occRelation === 'OTHER' && (!occEndDate || occMonthlyRentVnd < 500000 || occDepositVnd < 0)) {
+      setActionFeedback('Chọn thời hạn hợp đồng phụ hợp lệ và nhập tiền thuê hàng tháng tối thiểu 500.000 đ.'); return;
+    }
     if (room.rentalModel === 'SHARED_ROOM') { onAddRental?.(room.id); return; }
     const householdHead = occRelation === 'FAMILY'
       ? householdHeadOptions.find(person => person.id === occHouseholdHeadId) || householdHeadOptions[0]
@@ -413,10 +443,10 @@ export const RoomProfileModal: React.FC<Props> = ({
             idNumber: cleanId || undefined,
             dateOfBirth: occBirthDate,
             gender: occGender,
-            moveInDate: occMoveInDate,
+            moveInDate: occStartDate,
             relationToPrimary: occRelation,
             residenceRegStatus: occRegStatus,
-            notes: JSON.stringify({ secondaryContract: { role: occRelation === 'OTHER' ? 'CO_REPRESENTATIVE' : 'HOUSEHOLD_MEMBER', address: occAddress.trim(), relationship: occRelationship.trim(), householdHeadOccupantId: householdHead?.id || '', householdHeadName: householdHead?.fullName || '', documentCode: `${pendingContract?.contractCode || room.code}-P${residentCount + 1}` } }),
+            notes: JSON.stringify({ secondaryContract: { role: occRelation === 'OTHER' ? 'CO_REPRESENTATIVE' : 'HOUSEHOLD_MEMBER', address: occAddress.trim(), relationship: occRelationship.trim(), householdHeadOccupantId: householdHead?.id || '', householdHeadName: householdHead?.fullName || '', documentCode: `${pendingContract?.contractCode || room.code}-P${residentCount + 1}`, ...(occRelation === 'OTHER' ? { startDate: occStartDate, endDate: occEndDate, durationMonths: occDurationMonths, monthlyRentVnd: occMonthlyRentVnd, depositVnd: occDepositVnd, legalContractId: pendingContract?.id || '', legalContractCode: pendingContract?.contractCode || '' } : {}) } }),
           }),
         },
       );
@@ -426,7 +456,8 @@ export const RoomProfileModal: React.FC<Props> = ({
         setOccFullName("");
         setOccPhone("");
         setOccIdNumber("");
-        setOccBirthDate(""); setOccGender(""); setOccAddress(""); setOccRelationship(""); setOccHouseholdHeadId(""); setOccMoveInDate(new Date().toISOString().slice(0, 10));
+        setOccBirthDate(""); setOccGender(""); setOccAddress(""); setOccRelationship(""); setOccHouseholdHeadId("");
+        setOccStartDate(getTodayIsoVn()); setOccDurationMonths(12); setOccMonthlyRentVnd(0); setOccDepositVnd(0);
         setOccRelation("OTHER");
         await loadOccupants();
         await refreshPortfolio();
@@ -451,7 +482,10 @@ export const RoomProfileModal: React.FC<Props> = ({
       if (res.ok) {
         await loadOccupants();
         await refreshPortfolio();
-        setActionFeedback("Đã xóa người lưu trú.");
+        setActionFeedback("Đã chuyển người lưu trú khỏi phòng và giữ lại lịch sử hồ sơ.");
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setActionFeedback(data.message || "Không thể chuyển người lưu trú khỏi phòng.");
       }
     } catch {
       setActionFeedback("Lỗi kết nối khi xóa người lưu trú.");
@@ -794,15 +828,25 @@ export const RoomProfileModal: React.FC<Props> = ({
                   {isAddingOccupant && (
                     <form
                       onSubmit={handleAddOccupantSubmit}
-                      className="p-3.5 rounded-xl border border-blue-200 dark:border-blue-900 bg-blue-50/50 dark:bg-blue-950/20 space-y-3"
+                      className="occupant-profile-form space-y-3 rounded-xl border border-blue-200 bg-blue-50/50 p-3.5 dark:border-blue-900 dark:bg-blue-950/20"
                     >
                       <div className="flex items-start justify-between gap-2"><div><div className="font-bold text-xs text-blue-900 dark:text-blue-200">Hồ sơ khách phụ · {room.code}</div><p className="mt-1 text-[11px] leading-4 text-slate-500 dark:text-slate-400">Hợp đồng phụ dùng chung tài chính và trách nhiệm với hợp đồng chính.</p></div><IdentityQrScanner onApply={details => { setOccFullName(details.fullName); setOccIdNumber(details.idNumber); setOccBirthDate(details.birthDate); setOccGender(details.gender); setOccAddress(details.address); }} /></div>
-                      <div className="flex items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-white/80 p-2.5 dark:border-emerald-900 dark:bg-slate-900/60">
-                        <label htmlFor="co-representative-switch" className="min-w-0 cursor-pointer"><span className="block text-xs font-semibold text-slate-800 dark:text-slate-100">Người đồng đại diện hợp đồng</span><span className="mt-0.5 block text-[10px] leading-4 text-slate-500">Bật: hợp đồng phụ độc lập về hồ sơ, dùng chung tài chính hợp đồng chính.</span></label>
-                        <Switch.Root id="co-representative-switch" checked={occRelation === 'OTHER'} onCheckedChange={checked => { setOccRelation(checked ? 'OTHER' : 'FAMILY'); if (!checked && !occHouseholdHeadId) setOccHouseholdHeadId(householdHeadOptions[0]?.id || ''); }} className="relative h-6 w-11 shrink-0 rounded-full bg-slate-300 transition-colors data-[checked]:bg-blue-600 dark:bg-slate-700">
-                          <Switch.Thumb className="block h-5 w-5 translate-x-0.5 rounded-full bg-white shadow-sm data-[checked]:translate-x-[22px]" />
-                        </Switch.Root>
-                      </div>
+                      <ContractRepresentativeSwitch checked={occRelation === 'OTHER'} onCheckedChange={checked => { setOccRelation(checked ? 'OTHER' : 'FAMILY'); if (!checked && !occHouseholdHeadId) setOccHouseholdHeadId(householdHeadOptions[0]?.id || ''); }} />
+                      {occRelation === 'OTHER' && (
+                        <fieldset className="space-y-2.5 rounded-lg border border-blue-200 bg-white/70 p-2.5 dark:border-blue-900 dark:bg-slate-900/40">
+                          <legend className="px-1 text-[11px] font-semibold text-blue-900 dark:text-blue-200">Thông tin bổ sung hợp đồng phụ</legend>
+                          <label className="grid grid-cols-[1fr_7rem] items-center gap-2 font-semibold text-slate-600 dark:text-slate-300"><span>Thời hạn thuê *</span><select aria-label="Thời hạn thuê" value={occDurationMonths} onChange={e => setOccDurationMonths(Number(e.target.value) as 6 | 12)} className="supplementary-contract-control border-slate-200 bg-white font-normal dark:border-slate-700 dark:bg-slate-800"><option value={6}>6 tháng</option><option value={12}>1 năm</option></select></label>
+                          <div className="grid grid-cols-2 gap-2.5">
+                            <label className="flex min-w-0 flex-col gap-1 font-semibold text-slate-600 dark:text-slate-300"><span>Ngày vào ở *</span><input required type="date" aria-label="Ngày vào ở" value={occStartDate} onChange={e => setOccStartDate(e.target.value)} className="supplementary-contract-control border-slate-200 bg-white font-normal dark:border-slate-700 dark:bg-slate-800" /></label>
+                            <label className="flex min-w-0 flex-col gap-1 font-semibold text-slate-600 dark:text-slate-300"><span>Ngày kết thúc</span><input type="date" aria-label="Ngày kết thúc" value={computeContractEndDate(occStartDate, occDurationMonths)} readOnly className="supplementary-contract-control border-slate-200 bg-slate-100 font-normal text-slate-500 dark:border-slate-700 dark:bg-slate-800/60" /></label>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2.5">
+                            <label className="flex min-w-0 flex-col gap-1 font-semibold text-slate-600 dark:text-slate-300"><span>Tiền thuê / tháng *</span><MoneyInput aria-label="Tiền thuê hàng tháng" value={occMonthlyRentVnd} min={0} onChange={setOccMonthlyRentVnd} className="supplementary-contract-money-control" /></label>
+                            <label className="flex min-w-0 flex-col gap-1 font-semibold text-slate-600 dark:text-slate-300"><span>Tiền cọc *</span><MoneyInput aria-label="Tiền cọc" value={occDepositVnd} min={0} onChange={setOccDepositVnd} className="supplementary-contract-money-control" /></label>
+                          </div>
+                          <p className="text-[10px] leading-4 text-slate-500 dark:text-slate-400">Thông tin này chỉ bổ sung hồ sơ cho người đại diện phụ, không tạo nghĩa vụ thu tiền riêng. Quyền, nghĩa vụ và xử lý pháp lý vẫn theo hợp đồng chính.</p>
+                        </fieldset>
+                      )}
                       <div className="grid grid-cols-2 gap-2.5">
                         <label className="col-span-2 flex flex-col gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300"><span>Họ và tên *</span><input
                           type="text"
@@ -830,8 +874,7 @@ export const RoomProfileModal: React.FC<Props> = ({
                         /></label>
                         <label className="flex flex-col gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300"><span>Ngày sinh *</span><input required type="date" aria-label="Ngày sinh" value={occBirthDate} onChange={e => setOccBirthDate(e.target.value)} className="p-2 text-xs font-normal rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800" /></label>
                         <label className="flex flex-col gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300"><span>Giới tính *</span><select required aria-label="Giới tính" value={occGender} onChange={e => setOccGender(e.target.value)} className="p-2 text-xs font-normal rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"><option value="">Chọn giới tính</option><option>Nam</option><option>Nữ</option><option>Khác</option></select></label>
-                        <label className="flex flex-col gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300"><span>Ngày vào ở</span><input type="date" aria-label="Ngày vào ở" value={occMoveInDate} onChange={e => setOccMoveInDate(e.target.value)} className="p-2 text-xs font-normal rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800" /></label>
-                        {occRelation === 'FAMILY' && <><label className="flex flex-col gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300"><span>Người đại diện hộ *</span><select required value={occHouseholdHeadId} onChange={e => setOccHouseholdHeadId(e.target.value)} className="p-2 text-xs font-normal rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"><option value="">Chọn người đại diện</option>{householdHeadOptions.map(person => <option key={person.id} value={person.id}>{person.fullName}</option>)}</select></label><label className="flex flex-col gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300"><span>Mối quan hệ *</span><input required type="text" placeholder="Vợ/chồng, con, cha/mẹ..." value={occRelationship} onChange={e => setOccRelationship(e.target.value)} className="p-2 text-xs font-normal rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800" /></label></>}
+                        {occRelation === 'FAMILY' && <><label className="flex flex-col gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300"><span>Người đại diện hộ *</span><select required value={occHouseholdHeadId} onChange={e => setOccHouseholdHeadId(e.target.value)} className="p-2 text-xs font-normal rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"><option value="">Chọn người đại diện</option>{householdHeadOptions.map(person => <option key={person.id} value={person.id}>{person.fullName}</option>)}</select></label><label className="flex flex-col gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300"><span>Mối quan hệ *</span><RelationshipCombobox required value={occRelationship} onChange={setOccRelationship} /></label></>}
                         <label className="col-span-2 flex flex-col gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300"><span>Địa chỉ thường trú *</span><textarea required placeholder="Số nhà, đường, phường/xã, tỉnh/thành" value={occAddress} onChange={e => setOccAddress(e.target.value)} className="min-h-16 p-2 text-xs font-normal rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800" /></label>
                       </div>
                       <div className="flex flex-wrap items-center justify-end gap-2">
@@ -869,7 +912,16 @@ export const RoomProfileModal: React.FC<Props> = ({
                       <table className="w-full table-fixed border-collapse text-left text-xs">
                         <colgroup><col className="w-9" /><col /><col className="w-[31%]" /><col className="w-14" /></colgroup>
                         <thead className="bg-slate-50 text-[9.5px] font-semibold uppercase text-slate-500 dark:bg-slate-800/80 dark:text-slate-400"><tr><th className="whitespace-nowrap px-2 py-2 text-center">#</th><th className="whitespace-nowrap px-2 py-2">Name</th><th className="whitespace-nowrap px-2 py-2">Phone</th><th className="whitespace-nowrap px-1 py-2 text-center">Action</th></tr></thead>
-                        <tbody className="divide-y divide-slate-100 bg-white dark:divide-slate-800 dark:bg-[#111827]">{residentRows.map((resident: any, index) => <tr key={resident.id}><td className="px-2 py-2.5 text-center tabular-nums text-slate-500">{index + 1}</td><td className="break-words px-2 py-2.5 text-slate-900 dark:text-white"><span className="block font-semibold">{resident.fullName}</span>{resident.relationToPrimary && resident.relationToPrimary !== 'PRIMARY' && <span className="mt-0.5 block text-[9.5px] font-normal text-slate-500">{resident.relationToPrimary === 'FAMILY' ? 'Cùng hộ' : 'Đại diện phụ'}</span>}</td><td className="break-all px-2 py-2.5 tabular-nums text-slate-600 dark:text-slate-300">{resident.phone || '—'}</td><td className="px-1 py-1 text-center">{canManageContracts && <ActionMenu ariaLabel={`Hành động cho ${resident.fullName}`} contextTitle={resident.fullName} contextSubtitle={resident.phone || 'Chưa có SĐT'} items={[{ label: 'Xem PDF hợp đồng', icon: <FileText size={16} />, disabled: !resident.contractId, onClick: () => resident.contractId && setDocumentContractId(resident.contractId) }, { label: 'Chỉnh sửa thông tin', icon: <Pencil size={16} />, onClick: () => onAddRental?.(room.id), disabled: !onAddRental }]} />}</td></tr>)}</tbody>
+                        <tbody className="divide-y divide-slate-100 bg-white dark:divide-slate-800 dark:bg-[#111827]">{residentRows.map((resident: any, index) => <tr key={resident.id}>
+                          <td className="px-2 py-2.5 text-center tabular-nums text-slate-500">{index + 1}</td>
+                          <td className="break-words px-2 py-2.5 text-slate-900 dark:text-white"><span className="block font-semibold">{resident.fullName}</span><span className="mt-0.5 block text-[9.5px] font-normal text-slate-500">{resident.relationToPrimary === 'PRIMARY' ? 'HĐ Chính' : resident.relationToPrimary === 'OTHER' ? 'Đại diện HĐ' : 'Người cùng hộ'}</span></td>
+                          <td className="break-all px-2 py-2.5 tabular-nums text-slate-600 dark:text-slate-300">{resident.phone || '—'}</td>
+                          <td className="px-1 py-1 text-center">{canManageContracts && <ActionMenu ariaLabel={`Hành động cho ${resident.fullName}`} contextTitle={resident.fullName} contextSubtitle={resident.phone || 'Chưa có SĐT'} items={[
+                            { label: 'Xem PDF hợp đồng', icon: <FileText size={16} />, disabled: !resident.contractId || !['PRIMARY', 'OTHER'].includes(resident.relationToPrimary), onClick: () => { if (resident.contractId) { setDocumentPerson(resident.personIndex !== undefined ? { personIndex: resident.personIndex } : { occupantId: resident.id }); setDocumentContractId(resident.contractId); } } },
+                            { label: 'Chỉnh sửa thông tin', icon: <Pencil size={16} />, onClick: () => onAddRental?.(room.id), disabled: !onAddRental },
+                            { label: 'Xóa khỏi danh sách lưu trú', icon: <Trash2 size={16} />, variant: 'danger', hidden: resident.personIndex !== undefined || !['FAMILY', 'OTHER'].includes(resident.relationToPrimary) || room.rentalModel === 'SHARED_ROOM', onClick: () => void handleRemoveOccupant(resident.id) }
+                          ]} />}</td>
+                        </tr>)}</tbody>
                       </table>
                     </div>
                   )}
@@ -926,13 +978,14 @@ export const RoomProfileModal: React.FC<Props> = ({
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <span className="min-w-0 font-semibold text-slate-900 dark:text-white flex items-center gap-1.5">
                           <FileSignature className="w-4 h-4 text-brand-primary" />
-                          <ContractDocumentLink contractId={pendingContract.id}>{pendingContract.contractCode}</ContractDocumentLink>
+                          <ContractDocumentLink contractId={pendingContract.id}>{`${pendingContract.contractCode} · HĐ Chính`}</ContractDocumentLink>
                         </span>
                         <span className="px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
                           {({ ACTIVE: 'Đang thuê', DRAFT: 'Chờ thanh toán', EXPIRING: 'Sắp hết hạn', EXTENDED: 'Đã gia hạn', TERMINATED: 'Đã kết thúc' } as Record<string, string>)[pendingContract.status] || pendingContract.status}
                         </span>
                       </div>
 
+                      {residentRows.filter((person: any) => person.relationToPrimary === 'OTHER').map((person: any) => <div key={person.id} className="text-xs"><ContractDocumentLink contractId={pendingContract.id} personIndex={person.personIndex} occupantId={person.personIndex === undefined ? person.id : undefined}>{`Đại diện HĐ · ${person.fullName}`}</ContractDocumentLink></div>)}
                       <div className="room-contract-details grid grid-cols-1 gap-3 text-xs">
                         <div>
                           <span>Thời hạn</span>{" "}
@@ -1065,13 +1118,13 @@ export const RoomProfileModal: React.FC<Props> = ({
                     className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-brand-primary text-xs font-semibold text-white hover:bg-brand-hover"
                   >
                     <Users className="h-4 w-4" />
-                    Khách lưu trú ({occupantsList.length})
+                    Khách lưu trú ({residentCount})
                   </button>
                 )}
               </div>
             )}
 
-            {documentContractId && <ContractDocumentDialog contractId={documentContractId} onClose={() => setDocumentContractId(null)} />}
+            {documentContractId && <ContractDocumentDialog contractId={documentContractId} {...documentPerson} onClose={() => setDocumentContractId(null)} />}
 
             {detailDeposit && <Dialog.Root open={Boolean(depositDetailId)} onOpenChange={open => { if (!open) setDepositDetailId(null); }}>
               <Dialog.Portal>

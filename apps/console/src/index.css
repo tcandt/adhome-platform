@@ -61,6 +61,60 @@ h3,
   line-height: 1.4;
 }
 
+.supplementary-contract-control,
+.supplementary-contract-money-control {
+  box-sizing: border-box;
+  width: 100%;
+  height: var(--form-control-height) !important;
+  min-height: var(--form-control-height) !important;
+  max-height: var(--form-control-height) !important;
+  border-width: 1px;
+  border-radius: 8px;
+  padding: 7px 8px !important;
+  line-height: 20px !important;
+}
+.supplementary-contract-money-control { padding-right: 2rem !important; }
+.supplementary-contract-control[type="date"] {
+  display: block;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.supplementary-contract-control[type="date"]::-webkit-date-and-time-value {
+  min-height: 0;
+  height: 20px;
+  line-height: 20px;
+  text-align: left;
+}
+.supplementary-contract-control[type="date"]::-webkit-datetime-edit {
+  min-width: 0;
+  padding: 0;
+}
+.occupant-profile-form input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+.occupant-profile-form select {
+  box-sizing: border-box;
+  width: 100%;
+  height: var(--form-control-height) !important;
+  min-height: var(--form-control-height) !important;
+  max-height: var(--form-control-height) !important;
+  padding-top: 7px !important;
+  padding-bottom: 7px !important;
+  line-height: 20px !important;
+}
+.occupant-profile-form input[type="date"] {
+  display: block;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.occupant-profile-form input[type="date"]::-webkit-date-and-time-value {
+  min-height: 0;
+  height: 20px;
+  line-height: 20px;
+  text-align: left;
+}
+.occupant-profile-form input[type="date"]::-webkit-datetime-edit {
+  min-width: 0;
+  padding: 0;
+}
 :is([role="dialog"], [data-testid^="modal-"]) h2,
 :is([role="dialog"], [data-testid^="modal-"]) [data-ui-heading="dialog"] {
   font-size: var(--ui-dialog-title-size) !important;

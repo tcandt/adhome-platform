@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { RentalOnboardingPage } from './RentalOnboardingPage';
 import {
   AlertTriangle,
   Building2,
@@ -102,6 +103,17 @@ export const UnifiedBuildingCanvas: React.FC = () => {
   const [roomSearch, setRoomSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
+  const [rentalTarget, setRentalTarget] = useState<{roomId: string; intent?: 'HOLD' | 'DIRECT' | 'IMPORT'} | null>(() => {
+    const roomId = new URLSearchParams(window.location.search).get('rentalRoom');
+    return roomId ? { roomId } : null;
+  });
+  const [returnToOccupants, setReturnToOccupants] = useState(false);
+  const rentalCloseRef = useRef<(() => void) | null>(null);
+  const openRental = (roomId: string, intent?: 'HOLD' | 'DIRECT' | 'IMPORT') => { setSelectedRoomId(roomId); setRentalTarget({roomId,intent}); };
+  const returnToRoom = () => {
+    const url = new URL(window.location.href); url.searchParams.delete('rentalRoom'); window.history.replaceState(null, '', url);
+    setSelectedRoomId(rentalTarget?.roomId || selectedRoomId); setRentalTarget(null); setReturnToOccupants(true);
+  };
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
 
   // Modal states
@@ -129,19 +141,19 @@ export const UnifiedBuildingCanvas: React.FC = () => {
   const [legacyImportTargetRoomId, setLegacyImportTargetRoomId] = useState<string | null>(null);
 
   const selectedRoom = useMemo(
-    () => rooms.find((r) => r.id === selectedRoomId) || null,
-    [rooms, selectedRoomId]
+    () => rooms.find((r) => r.id === (rentalTarget?.roomId || selectedRoomId)) || null,
+    [rooms, selectedRoomId, rentalTarget]
   );
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && selectedRoomId) {
+      if (e.key === 'Escape' && selectedRoomId && !rentalTarget) {
         setSelectedRoomId(null);
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [selectedRoomId]);
+  }, [selectedRoomId, rentalTarget]);
 
   const filteredRooms = useMemo(() => {
     return rooms.filter((r) => {
@@ -276,7 +288,7 @@ export const UnifiedBuildingCanvas: React.FC = () => {
 
       {/* TAB 2: TENANTS DIRECTORY */}
       {buildingsSubTab === 'tenants' ? (
-        <TenantsDirectoryView />
+        <TenantsDirectoryView onOpenRoom={id => { setSelectedRoomId(id); setReturnToOccupants(true); }} />
       ) : (
         /* TAB 1: BUILDINGS, FLOORS & ROOMS */
         <div className="space-y-4">
@@ -783,14 +795,17 @@ export const UnifiedBuildingCanvas: React.FC = () => {
       <RoomProfileModal
         isOpen={Boolean(selectedRoom)}
         room={selectedRoom}
-        onClose={() => setSelectedRoomId(null)}
+        initialTab={returnToOccupants ? 'occupants' : 'overview'}
+        rentalContent={rentalTarget ? <RentalOnboardingPage key={rentalTarget.roomId} roomId={rentalTarget.roomId} initialIntent={rentalTarget.intent} embedded closeRequestRef={rentalCloseRef} onClose={returnToRoom} /> : undefined}
+        onAddRental={roomId => openRental(roomId)}
+        onClose={() => rentalTarget ? rentalCloseRef.current?.() : setSelectedRoomId(null)}
         onOpenContractWizard={(roomId, reservationId) => {
           setSelectedRoomId(null);
-          setWizardTarget({ roomId, reservationId });
+          openRental(roomId, 'DIRECT');
         }}
         onOpenReservationModal={(roomId) => {
           setSelectedRoomId(null);
-          setWizardTarget({ roomId });
+          openRental(roomId, 'HOLD');
         }}
         onEditRoom={(rm) => {
           setSelectedRoomId(null);
@@ -798,7 +813,7 @@ export const UnifiedBuildingCanvas: React.FC = () => {
         }}
         onOpenLegacyImport={(roomId) => {
           setSelectedRoomId(null);
-          setLegacyImportTargetRoomId(roomId);
+          openRental(roomId, 'IMPORT');
         }}
       />
 

@@ -60,7 +60,7 @@ export function NavigationProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const { user, isAuthenticated, hasCapability, refreshSession, setActiveBuildingId } =
+  const { user, isAuthenticated, isLoading, hasCapability, refreshSession, setActiveBuildingId } =
     useAuth();
 
   const [activeModule, setActiveModuleState] = useState<NavModuleId>(() => {
@@ -92,6 +92,7 @@ export function NavigationProvider({
 
   // Reset scope & guard module permissions whenever session or actor changes
   useEffect(() => {
+    if (isLoading) return;
     if (!isAuthenticated) {
       setActiveModuleState('overview');
       setBuildingsSubTabState('rooms');
@@ -110,7 +111,7 @@ export function NavigationProvider({
         sessionStorage.setItem('adhome_v2_active_module', 'overview');
       }
     }
-  }, [isAuthenticated, user, activeModule, hasCapability]);
+  }, [isLoading, isAuthenticated, user, activeModule, hasCapability]);
 
   // Global keyboard shortcut: Ctrl/Cmd + K opens Global Search
   useEffect(() => {

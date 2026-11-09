@@ -976,6 +976,7 @@ export const OperationalModuleWorkspace: React.FC<
         roomCode: string;
         tenantName: string;
         tenantPhone: string;
+        occupants?: Array<{ id: string; fullName: string; relationToPrimary: string }>;
         startDate: string;
         endDate: string;
         monthlyRentVnd: number;
@@ -1975,7 +1976,7 @@ export const OperationalModuleWorkspace: React.FC<
 
                           <div className="text-[11px] font-mono text-slate-500 flex items-center gap-1.5 flex-wrap">
                             <FileSignature className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                            <ContractDocumentLink contractId={c.id}>{displayCode}</ContractDocumentLink>
+                            <ContractDocumentLink contractId={c.id}>{displayCode}</ContractDocumentLink><span>HĐ Chính</span>
                             {isImported && (
                               <span className="rounded px-1.5 py-0.2 text-[9.5px] font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200/50">
                                 Sổ cũ
@@ -1988,6 +1989,7 @@ export const OperationalModuleWorkspace: React.FC<
                             )}
                           </div>
 
+                          {(c.occupants || []).filter(person => person.relationToPrimary === 'OTHER').map(person => <div key={person.id} className="text-xs"><ContractDocumentLink contractId={c.id} occupantId={person.id}>{`Đại diện HĐ · ${person.fullName}`}</ContractDocumentLink></div>)}
                           <div className="space-y-1.5 text-[11px] bg-slate-50/70 dark:bg-slate-800/40 p-2.5 rounded-lg border border-slate-100 dark:border-slate-800">
                             <div className="flex items-center justify-between gap-2">
                               <span className="text-slate-500 shrink-0">Khách thuê:</span>
@@ -2075,6 +2077,7 @@ export const OperationalModuleWorkspace: React.FC<
                             <td className="py-3 px-3.5">
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 <ContractDocumentLink contractId={c.id} className="font-mono">{displayCode}</ContractDocumentLink>
+                                <span className="text-[10px] text-slate-500">HĐ Chính</span>
                                 {isImported && (
                                   <span className="inline-flex items-center rounded px-1.5 py-0.2 text-[9.5px] font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200/60 dark:border-blue-900/40">
                                     Từ sổ cũ
@@ -2089,6 +2092,7 @@ export const OperationalModuleWorkspace: React.FC<
                                   {rawCode}
                                 </div>
                               )}
+                              {(c.occupants || []).filter(person => person.relationToPrimary === 'OTHER').map(person => <div key={person.id} className="mt-1 text-xs"><ContractDocumentLink contractId={c.id} occupantId={person.id}>{`Đại diện HĐ · ${person.fullName}`}</ContractDocumentLink></div>)}
                             </td>
 
                             {/* Col 2: Khách đứng tên */}

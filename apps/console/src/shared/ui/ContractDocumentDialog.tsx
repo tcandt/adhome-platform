@@ -12,17 +12,18 @@ type Profile = { tenant: Record<string, string>; landlord: Record<string, string
 const headers = { 'Content-Type': 'application/json', 'X-Requested-With': 'AdHome-Console' };
 class MissingContractDetails extends Error {}
 
-export function ContractDocumentLink({ contractId, children, draftProfile, onProfileSaved, className = '' }: { contractId: string; children: React.ReactNode; draftProfile?: Profile; onProfileSaved?: (profile: Profile) => void; className?: string }) {
+export function ContractDocumentLink({ contractId, children, draftProfile, personIndex, occupantId, onProfileSaved, className = '' }: { contractId: string; children: React.ReactNode; draftProfile?: Profile; personIndex?: number; occupantId?: string; onProfileSaved?: (profile: Profile) => void; className?: string }) {
   const [open, setOpen] = useState(false);
   return <><button type="button" className={`contract-document-link ${className}`} onClick={() => setOpen(true)} aria-label={`Xem hợp đồng ${typeof children === 'string' ? children : ''}`}>{children}</button>
-    {open && <ContractDocumentDialog contractId={contractId} draftProfile={draftProfile} onProfileSaved={onProfileSaved} onClose={() => setOpen(false)} />}</>;
+    {open && <ContractDocumentDialog contractId={contractId} personIndex={personIndex} occupantId={occupantId} draftProfile={draftProfile} onProfileSaved={onProfileSaved} onClose={() => setOpen(false)} />}</>;
 }
 
-export function ContractDocumentDialog({ contractId, draftProfile, onProfileSaved, onClose }: { contractId: string; draftProfile?: Profile; onProfileSaved?: (profile: Profile) => void; onClose: () => void }) {
+export function ContractDocumentDialog({ contractId, draftProfile, personIndex = 0, occupantId, onProfileSaved, onClose }: { contractId: string; draftProfile?: Profile; personIndex?: number; occupantId?: string; onProfileSaved?: (profile: Profile) => void; onClose: () => void }) {
   const [record, setRecord] = useState<any>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [editing, setEditing] = useState(false);
-  const [bundle, setBundle] = useState(true);
+  const [bundle, setBundle] = useState(!occupantId && personIndex === 0);
+  const [resolvedPersonIndex, setResolvedPersonIndex] = useState(personIndex);
   const [attachmentsBusy, setAttachmentsBusy] = useState(false);
   const [attachmentsPending, setAttachmentsPending] = useState(false);
   const [busy, setBusy] = useState('Đang lấy thông tin hợp đồng…');
@@ -54,7 +55,7 @@ export function ContractDocumentDialog({ contractId, draftProfile, onProfileSave
     try {
       if (save) {
         setBusy('Đang lưu thông tin hợp đồng…');
-        const saved = await fetch(`${endpoint}/profile`, { method: 'POST', headers, body: JSON.stringify({ profile: selected }), signal });
+        const saved = await fetch(`${endpoint}/profile`, { method: 'POST', headers, body: JSON.stringify({ profile: selected, personIndex, occupantId }), signal });
         await checkResponse(saved);
         const savedData = await saved.json();
         if (savedData.ok !== true) throw new Error('Chưa xác nhận được việc lưu thông tin. Vui lòng thử lại.');
@@ -62,7 +63,7 @@ export function ContractDocumentDialog({ contractId, draftProfile, onProfileSave
         didSave = true; onProfileSaved?.(selected);
       }
       setBusy('Đang tạo bản PDF…');
-      const response = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify({ profile: selected, bundle }), signal });
+      const response = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify({ profile: selected, bundle, personIndex, occupantId }), signal });
       await checkResponse(response);
       if (!response.headers.get('content-type')?.includes('application/pdf')) throw new Error('Máy chủ chưa trả về bản PDF hợp lệ. Vui lòng thử lại.');
       const blob = await response.blob();
@@ -76,25 +77,32 @@ export function ContractDocumentDialog({ contractId, draftProfile, onProfileSave
     request.current?.abort(); const controller = new AbortController(); request.current = controller;
     setBusy('Đang lấy thông tin hợp đồng…'); setError('');
     try {
-      const response = await fetch(endpoint, { signal: controller.signal }); await checkResponse(response);
+      const params = new URLSearchParams({ personIndex: String(personIndex), ...(occupantId ? { occupantId } : {}) });
+      const response = await fetch(`${endpoint}?${params}`, { signal: controller.signal }); await checkResponse(response);
       const data = await response.json();
       if (controller.signal.aborted) return;
       setRecord(data);
+      setResolvedPersonIndex(data.personIndex ?? personIndex);
       const selected = initialDraft.current || data.profile; setProfile(selected);
       setMissing(data.missing || []);
       if (!initialDraft.current && data.missing?.length) { setEditing(true); setBusy(''); }
       else await generate(selected, controller.signal);
     } catch (e) { if (!controller.signal.aborted) { setError(e instanceof Error ? e.message : 'Không thể tải hợp đồng.'); setBusy(''); } }
   };
-  useEffect(() => { void load(); return () => request.current?.abort(); }, [contractId]);
+  useEffect(() => { void load(); return () => request.current?.abort(); }, [contractId, personIndex, occupantId]);
   const preview = (save = false) => {
     if (!profile || busy || attachmentsBusy || attachmentsPending) return;
     request.current?.abort(); const controller = new AbortController(); request.current = controller;
     void generate(profile, controller.signal, save);
   };
   const edit = (key: string, value: any) => { setProfile(p => p ? { ...p, [key]: value } : p); setPdfUrl(''); setPrintReady(false); };
-  const input = (group: 'tenant' | 'landlord', key: string, label: string, type = 'text', wide = false) => <label className={wide ? 'contract-field-wide' : ''}>{label}<input type={type} value={profile?.[group][key] || ''} onChange={e => edit(group, { ...profile?.[group], [key]: e.target.value })} /></label>;
-  const filename = `Hop-dong-${(record?.contract.contractCode || contractId).replace(/[^a-zA-Z0-9_-]/g, '-')}.pdf`;
+  const input = (group: 'tenant' | 'landlord', key: string, label: string, type = 'text', wide = false) => {
+    const person = group === 'tenant' && resolvedPersonIndex > 0 ? profile?.members[resolvedPersonIndex - 1] : profile?.[group];
+    return <label className={wide ? 'contract-field-wide' : ''}>{label}<input type={type} value={person?.[key] || ''} onChange={e => group === 'tenant' && resolvedPersonIndex > 0
+      ? edit('members', profile?.members.map((p, i) => i === resolvedPersonIndex - 1 ? { ...p, [key]: e.target.value } : p))
+      : edit(group, { ...person, [key]: e.target.value })} /></label>;
+  };
+  const filename = `Hop-dong-${(record?.contract.contractCode || contractId).replace(/[^a-zA-Z0-9_-]/g, '-')}${resolvedPersonIndex > 0 ? `-dai-dien-${resolvedPersonIndex}` : ''}.pdf`;
   const openPdf = () => { if (pdfUrl) window.open(pdfUrl, '_blank', 'noopener,noreferrer'); };
   const print = () => {
     setPrintError('');

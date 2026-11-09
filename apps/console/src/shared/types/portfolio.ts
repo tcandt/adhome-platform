@@ -169,6 +169,7 @@ export interface ConsoleRoomDto {
     residenceRegStatus: string;
     moveInDate: string;
     moveOutDate?: string | null;
+    occupancyStatus?: string;
     isActive: boolean;
   }>;
   activeReservation?: {

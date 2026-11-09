@@ -77,6 +77,7 @@ export interface ConsoleCapabilities {
   canManageInvoices: boolean;
   canManagePayments: boolean;
   canAccessFinance: boolean;
+  canManageFinance?: boolean;
   canViewReports: boolean;
   canManageSettings: boolean;
   canManageRoles: boolean;
@@ -398,7 +399,7 @@ export async function verifyAndResolveConsoleActor(
   | { ok: false; status: 401 | 403; reason: string; message: string }
 > {
   const verified = verifyConsoleToken(token);
-  if (!verified.ok) {
+  if (verified.ok === false) {
     return {
       ok: false,
       status: 401,

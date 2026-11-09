@@ -1,7 +1,10 @@
 import { availableDeposit, allocateInitialReceipt, vnd } from './rentalFinance';
 import { handleRentalWorkflow, saveRentalProfile } from './rentalWorkflowApi';
+import { personOccupancy } from './rentalPeople';
+import { validateDocumentProfile } from './rentalDocuments';
 import { handleDataManagement } from './dataManagementApi';
 import { handleContractDocuments } from './contractDocumentsApi';
+import { handlePrivateDocuments } from './privateDocuments';
 import { handlePaymentIntegrations } from './paymentIntegrationApi';
 import { handleZaloBotSettings } from './zaloBotSettings';
 import { splitSharedCharge, sharedWaterCharge } from './sharedRoomBilling';
@@ -241,6 +244,14 @@ function getCurrentVnDateIso(): string {
 
 function getTodayIsoVn(): string {
   return getCurrentVnDateIso();
+}
+
+function computeSupplementaryContractEndDate(startDate: string, durationMonths: number): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || ![6, 12].includes(durationMonths)) return '';
+  const [year, month, day] = startDate.split('-').map(Number);
+  const endDate = new Date(Date.UTC(year, month - 1 + durationMonths, day));
+  endDate.setUTCDate(endDate.getUTCDate() - 1);
+  return endDate.toISOString().slice(0, 10);
 }
 
 function formatIsoToDdMmYyyy(isoDate?: string | null): string {
@@ -891,6 +902,7 @@ export async function handleConsoleV2Api(
   await ensureConsoleV2Bootstrap(prisma);
 
   const method = req.method || 'GET';
+  if (await handlePrivateDocuments(req, res, pathname, prisma, actor, { sendJson })) return;
   if (await handleConsoleRoomImages(req, res, pathname, prisma, actor)) return;
   if (await handlePaymentProof(req, res, pathname, prisma, actor)) return;
   if (await handleZaloBotSettings(req, res, pathname, prisma, actor, { sendJson, readJsonBody })) return;
@@ -961,12 +973,21 @@ export async function handleConsoleV2Api(
           floor: true,
           building: true,
           electricMeter: true,
-          occupants: { where: { isActive: true } },
+          occupants: { where: { OR: [{ isActive: true }, { occupancyStatus: 'SCHEDULED', contract: { status: { in: ['DRAFT', 'ACTIVE', 'EXPIRING', 'EXTENDED'] } } }] } },
         },
         orderBy: [{ displayOrder: 'asc' }, { code: 'asc' }],
       }),
       prisma.tenant.findMany({
         where: { orgId: actor.orgId, isActive: true },
+        include: {
+          occupants: {
+            include: {
+              room: { include: { building: true } },
+              contract: true,
+            },
+            orderBy: { createdAt: 'desc' },
+          },
+        },
         orderBy: { createdAt: 'desc' },
       }),
       prisma.contract.findMany({
@@ -1237,6 +1258,8 @@ export async function handleConsoleV2Api(
           : null,
         occupants: ((r as any).occupants || []).map((occ: any) => ({
           id: occ.id,
+          tenantId: occ.tenantId,
+          contractId: occ.contractId,
           fullName: occ.fullName,
           phone: occ.phone,
           idNumber: occ.idNumber,
@@ -1244,6 +1267,7 @@ export async function handleConsoleV2Api(
           residenceRegStatus: occ.residenceRegStatus,
           moveInDate: occ.moveInDate,
           moveOutDate: occ.moveOutDate,
+          occupancyStatus: occ.occupancyStatus,
           isActive: occ.isActive,
         })),
         activeReservation: resv
@@ -1306,6 +1330,25 @@ export async function handleConsoleV2Api(
         activeContractCode: contract?.contractCode || null,
         activeContractEndDate: contract?.endDate || null,
         monthlyRentVnd: contract ? toSafeVndNumber(contract.monthlyRentVnd) : null,
+        occupancyHistory: t.occupants.map((occupancy) => {
+          let secondaryContract: any = {};
+          try { secondaryContract = JSON.parse(occupancy.notes || '{}')?.secondaryContract || {}; } catch { secondaryContract = {}; }
+          return {
+            id: occupancy.id,
+            roomId: occupancy.roomId,
+            roomCode: occupancy.room.code,
+            buildingId: occupancy.room.buildingId,
+            buildingCode: occupancy.room.building.code,
+            contractId: occupancy.contractId,
+            contractCode: occupancy.contract?.contractCode || secondaryContract.legalContractCode || null,
+            relationToPrimary: occupancy.relationToPrimary,
+            moveInDate: occupancy.moveInDate,
+            moveOutDate: occupancy.moveOutDate,
+            occupancyStatus: occupancy.occupancyStatus,
+            isActive: occupancy.isActive,
+            moveOutReason: secondaryContract.moveOutReason || null,
+          };
+        }),
         createdAt: t.createdAt.toISOString(),
         updatedAt: t.updatedAt.toISOString(),
       };
@@ -3190,6 +3233,15 @@ export async function handleConsoleV2Api(
       if (!dateOfBirth || !/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth) || !gender) return sendJson(res, 422, { ok: false, errorCode: 'VALIDATION_ERROR', message: 'Nhập đầy đủ ngày sinh và giới tính.' });
       if (!String(secondaryContract.address || '').trim()) return sendJson(res, 422, { ok: false, errorCode: 'VALIDATION_ERROR', message: 'Nhập địa chỉ thường trú theo CCCD.' });
       if (relationToPrimary === 'FAMILY' && (!String(secondaryContract.householdHeadOccupantId || '').trim() || !String(secondaryContract.relationship || '').trim())) return sendJson(res, 422, { ok: false, errorCode: 'VALIDATION_ERROR', message: 'Chọn người đại diện hộ và nhập mối quan hệ.' });
+      if (relationToPrimary === 'OTHER') {
+        const supplementaryStartDate = String(secondaryContract.startDate || '');
+        const supplementaryDurationMonths = Number(secondaryContract.durationMonths);
+        const expectedEndDate = computeSupplementaryContractEndDate(supplementaryStartDate, supplementaryDurationMonths);
+        const monthlyRentVnd = Number(secondaryContract.monthlyRentVnd);
+        const depositVnd = Number(secondaryContract.depositVnd);
+        if (!expectedEndDate || String(secondaryContract.endDate || '') !== expectedEndDate || moveInDate !== supplementaryStartDate) return sendJson(res, 422, { ok: false, errorCode: 'VALIDATION_ERROR', message: 'Ngày vào ở, thời hạn thuê hoặc ngày kết thúc hợp đồng phụ không hợp lệ.' });
+        if (!Number.isSafeInteger(monthlyRentVnd) || monthlyRentVnd < 500_000 || !Number.isSafeInteger(depositVnd) || depositVnd < 0) return sendJson(res, 422, { ok: false, errorCode: 'VALIDATION_ERROR', message: 'Tiền thuê hoặc tiền cọc bổ sung không hợp lệ.' });
+      }
       if (rm.rentalModel === 'SHARED_ROOM') return sendJson(res, 409, { ok: false, errorCode: 'SHARED_ROOM_CONTRACT_REQUIRED', message: 'Khách ở ghép phải có hợp đồng riêng. Hãy dùng Thêm khách thuê.' });
       if (relationToPrimary === 'ROOMMATE' || relationToPrimary === 'PRIMARY') return sendJson(res, 409, { ok: false, errorCode: 'WHOLE_ROOM_OCCUPANT_ONLY', message: 'Phòng nguyên căn chỉ thêm đại diện hợp đồng phụ hoặc thành viên cùng hộ.' });
 
@@ -3207,38 +3259,78 @@ export async function handleConsoleV2Api(
       }
       const occupiedCount = await prisma.roomOccupant.count({ where: { roomId: rm.id, isActive: true } });
       if (occupiedCount >= rm.maxOccupants) return sendJson(res, 409, { ok: false, message: 'Phòng đã đủ số người tối đa.' });
-      const occ = await prisma.roomOccupant.create({
-        data: {
-          orgId: actor.orgId,
-          roomId: rm.id,
-          contractId: activeContract?.id || null,
-          tenantId: body.tenantId ? String(body.tenantId) : null,
-          fullName,
-          phone,
-          idNumber,
-          dateOfBirth,
-          gender,
-          residenceRegStatus,
-          relationToPrimary,
-          moveInDate,
-          notes,
-          isActive: true,
-        },
-      });
-
-      await prisma.consoleAuditLog.create({
-        data: {
-          orgId: actor.orgId,
-          buildingId: rm.buildingId,
-          actorId: actor.id,
-          actorEmail: actor.email,
-          actorRole: actor.role,
-          entityType: 'OCCUPANT',
-          entityId: occ.id,
-          action: 'ADD_OCCUPANT',
-          summary: `Thêm người lưu trú ${fullName} vào phòng ${rm.code} (${rm.building.code})`,
-          metadata: { clientIp, roomId: rm.id, relationToPrimary },
-        },
+      const occ = await prisma.$transaction(async (tx) => {
+        const normalizedPhone = normalizeVnPhone(phone);
+        const requestedTenantId = body.tenantId ? String(body.tenantId) : '';
+        const existingTenant = requestedTenantId
+          ? await tx.tenant.findFirst({ where: { id: requestedTenantId, orgId: actor.orgId } })
+          : await tx.tenant.findFirst({
+              where: {
+                orgId: actor.orgId,
+                OR: [{ idNumber }, { normalizedPhone }],
+              },
+              orderBy: { updatedAt: 'desc' },
+            });
+        const tenant = existingTenant
+          ? await tx.tenant.update({
+              where: { id: existingTenant.id },
+              data: {
+                fullName,
+                phone: normalizedPhone,
+                normalizedPhone,
+                idNumber,
+                primaryBuildingId: rm.buildingId,
+                currentRoomId: rm.id,
+                residenceRegStatus,
+                isActive: true,
+              },
+            })
+          : await tx.tenant.create({
+              data: {
+                orgId: actor.orgId,
+                primaryBuildingId: rm.buildingId,
+                currentRoomId: rm.id,
+                fullName,
+                phone: normalizedPhone,
+                normalizedPhone,
+                idNumber,
+                residenceRegStatus,
+              },
+            });
+        const createdOccupant = await tx.roomOccupant.create({
+          data: {
+            orgId: actor.orgId,
+            roomId: rm.id,
+            contractId: activeContract.id,
+            tenantId: tenant.id,
+            fullName,
+            phone: normalizedPhone,
+            idNumber,
+            dateOfBirth,
+            gender,
+            residenceRegStatus,
+            relationToPrimary,
+            moveInDate,
+            occupancyStatus: 'ACTIVE',
+            notes,
+            isActive: true,
+          },
+        });
+        await tx.consoleAuditLog.create({
+          data: {
+            orgId: actor.orgId,
+            buildingId: rm.buildingId,
+            actorId: actor.id,
+            actorEmail: actor.email,
+            actorRole: actor.role,
+            entityType: 'OCCUPANT',
+            entityId: createdOccupant.id,
+            action: 'ADD_OCCUPANT',
+            summary: `Thêm người lưu trú ${fullName} vào phòng ${rm.code} (${rm.building.code})`,
+            metadata: { clientIp, roomId: rm.id, tenantId: tenant.id, relationToPrimary },
+          },
+        });
+        return createdOccupant;
       });
 
       return sendJson(res, 201, { ok: true, occupant: occ });
@@ -3286,16 +3378,35 @@ export async function handleConsoleV2Api(
           ? body.moveOutDate
           : getTodayIsoVn();
 
-      const softDeleted = await prisma.roomOccupant.update({
-        where: { id: existing.id },
-        data: {
-          isActive: false,
-          moveOutDate,
-        },
-      });
-
-      await prisma.consoleAuditLog.create({
-        data: {
+      const moveOutReason = typeof body?.reason === 'string' && body.reason.trim() ? body.reason.trim() : 'REMOVED_FROM_ROOM';
+      let existingNotes: any = {};
+      try { existingNotes = JSON.parse(existing.notes || '{}'); } catch { existingNotes = {}; }
+      const softDeleted = await prisma.$transaction(async (tx) => {
+        const updatedOccupant = await tx.roomOccupant.update({
+          where: { id: existing.id },
+          data: {
+            isActive: false,
+            occupancyStatus: 'MOVED_OUT',
+            moveOutDate,
+            notes: JSON.stringify({ ...existingNotes, secondaryContract: { ...(existingNotes.secondaryContract || {}), moveOutReason } }),
+          },
+        });
+        if (existing.tenantId) {
+          const otherActiveOccupancy = await tx.roomOccupant.findFirst({
+            where: { tenantId: existing.tenantId, isActive: true, id: { not: existing.id } },
+            orderBy: { createdAt: 'desc' },
+          });
+          await tx.tenant.update({
+            where: { id: existing.tenantId },
+            data: {
+              currentRoomId: otherActiveOccupancy?.roomId || null,
+              primaryBuildingId: otherActiveOccupancy ? undefined : existing.room.buildingId,
+              isActive: true,
+            },
+          });
+        }
+        await tx.consoleAuditLog.create({
+          data: {
           orgId: actor.orgId,
           buildingId: existing.room?.buildingId || null,
           actorId: actor.id,
@@ -3305,8 +3416,10 @@ export async function handleConsoleV2Api(
           entityId: existing.id,
           action: 'DEACTIVATE_OCCUPANT',
           summary: `Đánh dấu chuyển đi cho cư dân ${existing.fullName} (Phòng ${existing.room?.code || existing.roomId})`,
-          metadata: { clientIp, moveOutDate, hardDelete: false },
-        },
+          metadata: { clientIp, moveOutDate, moveOutReason, tenantId: existing.tenantId, hardDelete: false, retentionYears: 3 },
+          },
+        });
+        return updatedOccupant;
       });
 
       return sendJson(res, 200, {
@@ -6279,7 +6392,12 @@ export async function handleConsoleV2Api(
           Number(body.monthlyRentVnd || resv.room.listPriceVnd || 4500000)
         );
         const requiredDepositVnd = Math.trunc(Number(body.depositVnd ?? monthlyRentVnd));
-        const occupantsCount = 1 + (Array.isArray(body.coOccupants) ? body.coOccupants.length : 0);
+        const conversionMembers = body.documentProfile ? validateDocumentProfile(body.documentProfile).members
+          : Array.isArray(body.coOccupants) ? body.coOccupants : [];
+        if (conversionMembers.length > 20 || conversionMembers.some((p: any) => !String(p?.fullName || '').trim())) {
+          throw Object.assign(new Error('Nhập họ tên của tất cả người cùng ở.'), { statusCode: 422 });
+        }
+        const occupantsCount = 1 + conversionMembers.length;
         const rentalModel = ['ENTIRE_ROOM', 'SHARED_ROOM'].includes(String(body.rentalModel || ''))
           ? String(body.rentalModel)
           : 'ENTIRE_ROOM';
@@ -6297,7 +6415,7 @@ export async function handleConsoleV2Api(
           phone?: string;
           idNumber?: string;
           relationToPrimary?: string;
-        }> = Array.isArray(body.coOccupants) ? body.coOccupants : [];
+        }> = conversionMembers;
 
         if (!startDate || !endDate || endDate <= startDate) {
           const err: any = new Error('Vui lòng cung cấp ngày bắt đầu và kết thúc hợp đồng hợp lệ.');
@@ -6489,9 +6607,9 @@ export async function handleConsoleV2Api(
                 fullName: occ.fullName.trim(),
                 phone: occ.phone?.trim() || null,
                 idNumber: occ.idNumber?.trim() || null,
-                dateOfBirth: (occ as any).birthDate || null,
+                dateOfBirth: (occ as any).birthDate || (occ as any).dateOfBirth || null,
                 gender: (occ as any).gender || null,
-                relationToPrimary: occ.relationToPrimary || 'ROOMMATE',
+                ...personOccupancy(occ, (body.documentProfile as any)?.tenant || { fullName: finalTenantRecord.fullName }),
                 residenceRegStatus: 'PENDING',
                 moveInDate: startDate,
                 isActive: false,

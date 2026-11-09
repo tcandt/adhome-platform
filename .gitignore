@@ -35,6 +35,10 @@ coverage/
 .playwright/
 test-results/
 .artifacts/
+.training/
+# Local identity training fixtures must not be published to Git.
+docs/LK08-24/
+docs/LK08-25/
 
 .chrome-profile-*
 

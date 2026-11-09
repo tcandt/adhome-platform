@@ -1,0 +1,60 @@
+{
+  "version": 2,
+  "inputSize": 320,
+  "heatmapSize": 80,
+  "cornerOrder": "upright TL TR BR BL",
+  "trainingImages": 67,
+  "allData": true,
+  "backbone": "torchvision MobileNetV3-Small ImageNet1K",
+  "seed": 20261109,
+  "bestScore": 0.00963084284012043,
+  "sourceImageCount": 64,
+  "uniqueSourceFiles": 59,
+  "positiveSourceImages": 57,
+  "negativeSourceImages": 7,
+  "additionalBackFaceCrops": 3,
+  "sha256": "a3636422e083b975bb3e9b4a63ce6a79670bed1db223f5d3a0fa16f470e2fdc2",
+  "automaticThresholds": {
+    "presence": 0.9,
+    "minimumCornerMass": 0.4,
+    "clippedEdgeMargin": 0.015
+  },
+  "regression": {
+    "sourceCornersPassed": 57,
+    "sourceOrientationPassed": 57,
+    "negativeFalsePositives": 0,
+    "variantsPassed": 285,
+    "variants": 285
+  },
+  "validationBeforeAllData": {
+    "positiveImages": 5,
+    "negativeImages": 1,
+    "cornersPassed": 5,
+    "orientationPassed": 5,
+    "falsePositives": 0,
+    "usedForCheckpointSelection": true
+  },
+  "caveat": "Final model trained on all supplied images. Regression scores and augmented variants are not independent unseen-data accuracy.",
+  "preprocessing": "EXIF-normalized RGB, INTER_AREA letterbox to 320, padding RGB 127, float32 RGB CHW [0,1]; ImageNet normalization embedded in ONNX.",
+  "outputs": {
+    "heatmaps": [
+      1,
+      4,
+      80,
+      80
+    ],
+    "presence": [
+      1,
+      1
+    ]
+  },
+  "cropPadding": {
+    "stage": "source-sampling-before-perspective-warp",
+    "shortSideFraction": 0.08,
+    "requestedMinimumPixelsPerSide": 24,
+    "sourceBoundLimited": true,
+    "addedWhiteBorder": false
+  },
+  "trainingDevice": "NVIDIA GeForce RTX 3080 Laptop GPU",
+  "pretrainedBackbone": "torchvision MobileNetV3-Small ImageNet1K; weights https://download.pytorch.org/models/mobilenet_v3_small-047dcff4.pth"
+}

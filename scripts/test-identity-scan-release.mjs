@@ -18,8 +18,10 @@ try {
   const remoteAssets = await page.locator('script[src],link[rel="stylesheet"]').evaluateAll(elements => elements.map(el => el.getAttribute('src') || el.getAttribute('href')));
   for (const asset of assets) assert.ok(remoteAssets.includes(asset), `production entrypoint must reference tested asset ${asset}`);
   const runtimeAssets = (await readdir('apps/console/dist/assets')).filter(name => /^(?:ort\.wasm\.bundle.*\.js|ort-wasm-simd-threaded.*\.wasm)$/.test(name));
+  const detectorAssets = (await readdir('apps/console/dist/assets')).filter(name => /^identityCornerModelV2-.+\.js$/.test(name));
   assert.ok(runtimeAssets.length >= 2, 'ONNX JavaScript and WASM must be packaged');
-  for (const asset of [...assets, '/assets/opencv-CFWAkvrC.js', '/assets/zxing_reader-BCjuyud6.wasm', ...runtimeAssets.map(name => `/assets/${name}`), '/models/identity-corners.onnx', '/models/identity-corners.onnx.data']) {
+  assert.ok(detectorAssets.length, 'the V2 detector chunk must be packaged');
+  for (const asset of [...assets, '/assets/opencv-CFWAkvrC.js', '/assets/zxing_reader-BCjuyud6.wasm', ...runtimeAssets.map(name => `/assets/${name}`), ...detectorAssets.map(name => `/assets/${name}`), '/models/identity-corners-v2.onnx']) {
     const remote = await fetch(new URL(asset, base)); assert.equal(remote.status, 200);
     const digest = bytes => createHash('sha256').update(bytes).digest('hex');
     assert.equal(digest(Buffer.from(await remote.arrayBuffer())), digest(await readFile(`apps/console/dist${asset}`)), `SHA256 matches tested build: ${asset}`);
@@ -34,16 +36,14 @@ try {
     const ort = await import(`/assets/${runtimeAssets.find(name => name.endsWith('.js'))}`);
     ort.env.wasm.numThreads = 1;
     ort.env.wasm.wasmPaths = { wasm: `/assets/${runtimeAssets.find(name => name.endsWith('.wasm'))}` };
-    const session = await ort.InferenceSession.create('/models/identity-corners.onnx', {
-      executionProviders: ['wasm'], externalData: [{ path: 'identity-corners.onnx.data', data: '/models/identity-corners.onnx.data' }],
-    });
+    const session = await ort.InferenceSession.create('/models/identity-corners-v2.onnx', { executionProviders: ['wasm'] });
     try {
-      const result = await session.run({ image: new ort.Tensor('float32', new Float32Array(3 * 224 * 224), [1, 3, 224, 224]) });
-      return { dimensions: result.corners.dims, finite: Array.from(result.corners.data).every(Number.isFinite) };
+      const result = await session.run({ image: new ort.Tensor('float32', new Float32Array(3 * 320 * 320), [1, 3, 320, 320]) });
+      return { dimensions: result.heatmaps.dims, presenceDimensions: result.presence.dims, finite: Array.from(result.heatmaps.data).every(Number.isFinite) };
     } finally { await session.release(); }
   }, runtimeAssets);
-  assert.deepEqual(inference.dimensions, [1, 8]); assert.equal(inference.finite, true);
-  console.log('PASS production ONNX inference with shipped model, external weights and WASM');
+  assert.deepEqual(inference.dimensions, [1, 4, 80, 80]); assert.deepEqual(inference.presenceDimensions, [1, 1]); assert.equal(inference.finite, true);
+  console.log('PASS ONNX V2 inference with shipped semantic-corner model and WASM');
   const auth = await fetch(new URL('/api/v1/console/auth/me', base));
   assert.equal(auth.status, 401);
   console.log('PASS public Console entrypoint and unauthenticated API boundary');

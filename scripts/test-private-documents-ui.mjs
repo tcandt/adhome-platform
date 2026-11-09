@@ -9,6 +9,7 @@ const { chromium } = await import('playwright');
 const browser = await chromium.launch({ channel: 'chrome', headless: true });
 const base = process.env.ADHOME_UI_URL || 'http://127.0.0.1:5187';
 const pdf = await PDFDocument.create(); pdf.addPage([400, 500]); pdf.addPage([400, 500]); const pdfBytes = Buffer.from(await pdf.save());
+const scanFixture = process.env.ADHOME_IDENTITY_UI_FIXTURE ? (await readFile(process.env.ADHOME_IDENTITY_UI_FIXTURE)).toString('base64') : null;
 const profile = { tenant: { fullName: 'Khach chinh', phone: '0900000001', idNumber: '000000000001', birthDate: '1995-01-01', gender: 'Nam', address: 'Dia chi QA' }, landlord: { fullName: 'Chu nha QA', idNumber: '000000000002', address: 'Dia chi QA' }, members: [], rentalAddress: 'Dia chi QA', authority: 'Cong an QA', signedDate: '2026-11-01', leaseTemplate: 'LEASE_1PN' };
 await mkdir('.artifacts/private-documents/ui', { recursive: true });
 try {
@@ -50,9 +51,11 @@ try {
             const imageBytes = Buffer.concat(session.parts);
             const image = await sharp(imageBytes).metadata();
             assert.equal(image.format, 'jpeg');
-            const { info } = await sharp(imageBytes).trim({ background: '#fff', threshold: 12 }).toBuffer({ resolveWithObject: true });
-            assert.ok(info.width < image.width - 8 && info.height < image.height - 8, 'saved JPEG contains a real white margin on every side');
-            assert.ok(Math.abs(Math.max(info.width, info.height) / Math.min(info.width, info.height) - 1.586) < 0.02, 'card inside the padding preserves ID-1 aspect ratio');
+            const { data, info } = await sharp(imageBytes).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+            const border = [[info.width/2,1],[info.width-2,info.height/2],[info.width/2,info.height-2],[1,info.height/2]]
+              .map(([x,y]) => (Math.floor(y)*info.width+Math.floor(x))*info.channels);
+            assert.ok(border.some(offset => [...data.subarray(offset,offset+3)].some(value => value < 235)), 'saved JPEG retains real source background around the card instead of an added white border');
+            assert.ok(Math.max(image.width,image.height)/Math.min(image.width,image.height)>1.35,'expanded crop remains landscape or portrait card-shaped');
           }
           docs.set(endpoint, [...docs.get(endpoint).filter(d => !endpoint.includes('identity') || d.kind !== session.kind), document]); return json({ ok: true, document }, 201);
         }
@@ -92,7 +95,7 @@ try {
         await unreadable.getByRole('button', { name: 'Đóng quét CCCD', exact: true }).click();
         assert.equal(await dialog.getByText('Chờ lưu', { exact: true }).count(), 0);
       }
-      const synthetic = await page.evaluate(() => {
+      const synthetic = scanFixture || await page.evaluate(() => {
         const c = document.createElement('canvas'); c.width = 1000; c.height = 700; const x = c.getContext('2d'); x.fillStyle = '#28313b'; x.fillRect(0, 0, 1000, 700);
         x.fillStyle = '#cbe4de'; x.beginPath(); x.moveTo(140, 140); x.lineTo(860, 100); x.lineTo(820, 580); x.lineTo(180, 600); x.closePath(); x.fill();
         x.fillStyle = '#b13b3b'; x.font = 'bold 40px Arial'; x.fillText('IDENTITY QA FIXTURE', 240, 220); x.fillStyle = '#487d80'; x.fillRect(230, 280, 130, 180); x.fillStyle = '#333'; for (let y = 290; y < 510; y += 45) x.fillRect(420, y, 320, 10);
@@ -179,7 +182,7 @@ try {
       await page.screenshot({ path: `.artifacts/private-documents/ui/building-${width}.png` });
       assert.equal(await edit.evaluate(el => el.scrollWidth > el.clientWidth), false);
       assert.deepEqual(errors, []); assert.ok(docWrites >= 3);
-      console.log(`PASS ${width}px reduced motion: explicit crop confirmation, cancel without queuing, corner-change invalidation, real white padding, ID-1 ratio, upload retry/readback and dossier flow`);
+      console.log(`PASS ${width}px reduced motion: explicit crop confirmation, cancel without queuing, corner-change invalidation, real source padding, upload retry/readback and dossier flow`);
     } catch (e) { await page.screenshot({ path: `.artifacts/private-documents/ui/failure-${width}.png` }); console.error('PAGE', (await page.locator('body').innerText()).slice(-3500), errors); throw e; }
     finally { await context.close(); }
   }

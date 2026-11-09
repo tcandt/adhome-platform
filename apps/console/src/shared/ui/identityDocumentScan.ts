@@ -126,7 +126,11 @@ function refineCardEdges(cv: any, contour: any, points: ScanCorners): ScanCorner
   return refined;
 }
 
-export async function detectIdentityDocument(source: HTMLCanvasElement, options: { debug?: boolean } = {}): Promise<IdentityDocumentDetection> {
+export async function detectIdentityDocument(source: HTMLCanvasElement, options: { debug?: boolean; modelVersion?: 1 | 2 } = {}): Promise<IdentityDocumentDetection> {
+  if (options.modelVersion !== 1) {
+    const { detectIdentityCornersV2 } = await import('./identityCornerModelV2');
+    return detectIdentityCornersV2(source, options.debug);
+  }
   const cv = await loadDocumentScanner();
   const canvas = document.createElement('canvas'); const scale = Math.min(1, 1100 / Math.max(source.width, source.height));
   canvas.width = Math.round(source.width * scale); canvas.height = Math.round(source.height * scale);
@@ -337,30 +341,60 @@ export async function detectIdentityDocument(source: HTMLCanvasElement, options:
 export async function detectDocumentCorners(source: HTMLCanvasElement): Promise<ScanCorners | null> {
   return (await detectIdentityDocument(source)).corners;
 }
-export async function flattenIdentityDocument(source: HTMLCanvasElement, corners: ScanCorners, rotation = 0): Promise<HTMLCanvasElement> {
+export async function identityDocumentCropRegion(source: HTMLCanvasElement, corners: ScanCorners, rotation = 0) {
   if (!validScanCorners(corners)) throw new Error('Bốn góc bị giao nhau hoặc quá sát nhau. Hãy điều chỉnh lại.');
+  if (source.width < 2 || source.height < 2) throw new Error('Ảnh không đủ kích thước để cắt.');
   const cv = await loadDocumentScanner();
-  const pixels = corners.map((_, i) => corners[(i + rotation) % 4]).map(p => ({ x: p.x * source.width, y: p.y * source.height }));
+  const pixels = corners.map((_, i) => corners[(i + rotation) % 4]).map(p => ({ x: p.x * (source.width - 1), y: p.y * (source.height - 1) }));
   const distance = (a: ScanPoint, b: ScanPoint) => Math.hypot(a.x - b.x, a.y - b.y);
   const horizontal = Math.max(distance(pixels[0], pixels[1]), distance(pixels[3], pixels[2]));
   const vertical = Math.max(distance(pixels[0], pixels[3]), distance(pixels[1], pixels[2]));
   const longest = Math.max(1, Math.round(Math.max(horizontal, vertical)));
   const width = horizontal >= vertical ? longest : Math.max(1, Math.round(longest / 1.586));
   const height = horizontal >= vertical ? Math.max(1, Math.round(longest / 1.586)) : longest;
-  const input = cv.imread(source), output = new cv.Mat();
   const from = cv.matFromArray(4, 1, cv.CV_32FC2, pixels.flatMap(p => [p.x, p.y]));
-  const to = cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, width, 0, width, height, 0, height]);
+  const to = cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, width - 1, 0, width - 1, height - 1, 0, height - 1]);
+  const inverse = cv.getPerspectiveTransform(to, from);
+  try {
+    const m = inverse.data64F;
+    const centerDenominator = m[6] * (width - 1) / 2 + m[7] * (height - 1) / 2 + m[8];
+    // Inverse-project an enlarged card plane so all four margins sample real source pixels.
+    const expanded = (padding: number) => [
+      [-padding, -padding], [width - 1 + padding, -padding],
+      [width - 1 + padding, height - 1 + padding], [-padding, height - 1 + padding],
+    ].map(([x, y]) => {
+      const denominator = m[6] * x + m[7] * y + m[8];
+      return denominator * centerDenominator > 1e-12
+        ? { x: (m[0] * x + m[1] * y + m[2]) / denominator, y: (m[3] * x + m[4] * y + m[5]) / denominator }
+        : { x: NaN, y: NaN };
+    }) as ScanCorners;
+    const fits = (padding: number) => expanded(padding).every(p => Number.isFinite(p.x) && Number.isFinite(p.y)
+      && p.x >= -1e-5 && p.y >= -1e-5 && p.x <= source.width - 1 + 1e-5 && p.y <= source.height - 1 + 1e-5);
+    const requestedPadding = Math.max(24, Math.round(Math.min(width, height) * 0.08));
+    let low = 0, high = requestedPadding;
+    while (low < high) {
+      const middle = Math.ceil((low + high) / 2);
+      if (fits(middle)) low = middle; else high = middle - 1;
+    }
+    const samplingCorners = expanded(low).map(p => ({
+      x: Math.max(0, Math.min(1, p.x / (source.width - 1))),
+      y: Math.max(0, Math.min(1, p.y / (source.height - 1))),
+    })) as ScanCorners;
+    return { samplingCorners, padding: low, requestedPadding, cardWidth: width, cardHeight: height,
+      width: width + low * 2, height: height + low * 2 };
+  } finally { from.delete(); to.delete(); inverse.delete(); }
+}
+
+export async function flattenIdentityDocument(source: HTMLCanvasElement, corners: ScanCorners, rotation = 0): Promise<HTMLCanvasElement> {
+  const region = await identityDocumentCropRegion(source, corners, rotation);
+  const cv = await loadDocumentScanner();
+  const input = cv.imread(source), output = new cv.Mat();
+  const from = cv.matFromArray(4, 1, cv.CV_32FC2, region.samplingCorners.flatMap(p => [p.x * (source.width - 1), p.y * (source.height - 1)]));
+  const to = cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, region.width - 1, 0, region.width - 1, region.height - 1, 0, region.height - 1]);
   const transform = cv.getPerspectiveTransform(from, to);
   try {
-    cv.warpPerspective(input, output, transform, new cv.Size(width, height), cv.INTER_CUBIC, cv.BORDER_REPLICATE);
-    const card = document.createElement('canvas'); cv.imshow(card, output);
-    // Keep a visible safety margin around rounded card corners after warping.
-    // This prevents edge pixels from being clipped by JPEG resampling.
-    const padding = Math.max(14, Math.round(Math.min(width, height) * 0.045));
-    const canvas = document.createElement('canvas'); canvas.width = width + padding * 2; canvas.height = height + padding * 2;
-    const context = canvas.getContext('2d')!;
-    context.fillStyle = '#fff'; context.fillRect(0, 0, canvas.width, canvas.height);
-    context.drawImage(card, padding, padding);
+    cv.warpPerspective(input, output, transform, new cv.Size(region.width, region.height), cv.INTER_CUBIC, cv.BORDER_REPLICATE);
+    const canvas = document.createElement('canvas'); cv.imshow(canvas, output);
     return canvas;
   } finally { input.delete(); output.delete(); from.delete(); to.delete(); transform.delete(); }
 }

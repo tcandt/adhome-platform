@@ -25,28 +25,40 @@ try {
     const original = document.createElement('canvas'); original.width = 900; original.height = 600;
     const x = original.getContext('2d'); x.fillStyle = '#123'; x.fillRect(0, 0, 900, 600);
     const corners = [{ x: .12, y: .18 }, { x: .88, y: .12 }, { x: .85, y: .86 }, { x: .15, y: .88 }];
+    x.fillStyle = '#ddd'; x.beginPath(); corners.forEach((p,i)=>x[i?'lineTo':'moveTo'](p.x*900,p.y*600)); x.closePath(); x.fill();
     for (const [i, p] of corners.entries()) {
       x.fillStyle = ['#ff0000', '#00ff00', '#0000ff', '#ffff00'][i]; x.fillRect(p.x * 900 - 25, p.y * 600 - 25, 50, 50);
     }
     const warped = await window.scanModule.flattenIdentityDocument(original, corners);
+    const region = await window.scanModule.identityDocumentCropRegion(original, corners);
     const w = warped.getContext('2d');
-    let padding = 0;
-    while (padding < warped.height / 4 && [...w.getImageData(0, padding, warped.width, 1).data].every((v, i) => i % 4 === 3 || v === 255)) padding++;
+    const padding = region.padding;
     const pixels = [[padding + 4, padding + 4], [warped.width - padding - 5, padding + 4], [warped.width - padding - 5, warped.height - padding - 5], [padding + 4, warped.height - padding - 5]]
       .map(([x, y]) => [...w.getImageData(x, y, 1, 1).data].slice(0, 3));
     let invalidRejected = false;
     try { await window.scanModule.flattenIdentityDocument(original, [corners[0], corners[2], corners[1], corners[3]]); }
     catch { invalidRejected = true; }
-    return { results, padding, aspect: (warped.width - padding * 2) / (warped.height - padding * 2), pixels, invalidRejected };
+    const background = [[warped.width/2,1],[warped.width-2,warped.height/2],[warped.width/2,warped.height-2],[1,warped.height/2]]
+      .map(([x,y])=>[...w.getImageData(Math.floor(x),Math.floor(y),1,1).data].slice(0,3));
+    const fullFrame = await window.scanModule.identityDocumentCropRegion(original, [{x:0,y:0},{x:1,y:0},{x:1,y:1},{x:0,y:1}]);
+    const clipped = await window.scanModule.identityDocumentCropRegion(original, [{x:0,y:.1},{x:.8,y:.1},{x:.8,y:.9},{x:0,y:.9}]);
+    return { results, padding, requestedPadding:region.requestedPadding, cardShortSide:Math.min(region.cardWidth,region.cardHeight),
+      aspect:region.cardWidth/region.cardHeight, pixels, background, invalidRejected, fullFramePadding:fullFrame.padding, clippedPadding:clipped.padding,
+      expanded:region.samplingCorners, corners };
   });
   assert.ok(negative.results.every(r => !r.automatic), 'blank and non-document rectangles must never auto-queue');
   assert.ok(Math.abs(negative.aspect - 1.586) < .01);
-  assert.ok(negative.padding >= 8, 'padding is actual white canvas pixels, not a CSS preview border');
+  assert.equal(negative.padding, Math.max(24, Math.round(negative.cardShortSide * .08)), 'source sampling expands by 8% of the card short side when space is available');
+  assert.equal(negative.padding,negative.requestedPadding);
+  assert.equal(negative.fullFramePadding,0,'full-frame image has no pixels to expand into');
+  assert.equal(negative.clippedPadding,0,'clipped edge cannot be padded with invented pixels');
+  assert.ok(negative.expanded.every((p,i)=>Math.hypot(p.x-negative.corners[i].x,p.y-negative.corners[i].y)>.01),'all four sampling corners expand before cropping');
+  for(const pixel of negative.background)assert.deepEqual(pixel,[17,34,51],'all four margins retain actual dark source background, not a white canvas border');
   for (const [i, expected] of [[255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 0]].entries()) {
     assert.ok(expected.every((value, channel) => Math.abs(value - negative.pixels[i][channel]) < 5), 'perspective warp preserves all four independently colored corners');
   }
   assert.equal(negative.invalidRejected, true);
-  console.log('PASS four negative controls, perspective corner mapping, ID-1 ratio and crossed-corner rejection');
+  console.log('PASS source padding on all four sides, frame-bound limits, perspective corner mapping, ID-1 ratio, negative controls and crossed-corner rejection');
 
   const expectations = JSON.parse(await readFile('.artifacts/identity-scan/expectations.json', 'utf8'));
   let accepted = 0, count = 0;

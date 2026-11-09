@@ -26,7 +26,7 @@ export async function saveRentalProfile(tx: any, actor: any, room: any, entityId
 // Delegated from the existing authenticated Console API; all reads and writes
 // remain scoped to the actor's organization and allowed building.
 export async function handleRentalWorkflow(req: any, res: any, pathname: string, prisma: any, actor: any, helpers: any): Promise<boolean> {
-  const match = pathname.match(/^\/api\/v1\/console\/v2\/rental-workflow\/([^/]+)(?:\/(quote|start|profile|export|draft))?$/);
+  const match = pathname.match(/^\/api\/v1\/console\/v2\/rental-workflow\/([^/]+)(?:\/(quote|start|profile|export|draft|customers))?$/);
   if (!match) return false;
   const { sendJson, readJsonBody, calculateFirstPeriodRent, handleWithIdempotency } = helpers;
   try {
@@ -36,6 +36,26 @@ export async function handleRentalWorkflow(req: any, res: any, pathname: string,
     if (!isBuildingAllowedForActor(actor, room.buildingId, room.building.code)) fail('Không có quyền xử lý phòng này.', 403);
     if (actorHasPermission(actor, 'contracts.manage')) room.building.landlord = (await readBuildingLandlords(prisma, actor.orgId, [room.buildingId])).get(room.buildingId) || {};
     else delete room.building.landlord;
+    if (req.method === 'GET' && match[2] === 'customers') {
+      if (!actorHasPermission(actor, 'contracts.manage')) fail('Không có quyền chọn khách thuê.', 403);
+      const tenants = await prisma.tenant.findMany({ where: { orgId: actor.orgId, isActive: true, currentRoomId: null,
+        ...(actor.role === 'ADMIN' || actor.buildingScopes?.includes('*') ? {} : { primaryBuildingId: room.buildingId }),
+        contracts: { none: { status: { in: active } } }, occupants: { none: { OR: [{ isActive: true }, { occupancyStatus: 'SCHEDULED' }] } },
+        reservations: { none: { status: { in: ['PENDING', 'CONFIRMED'] } } } },
+        include: { occupants: { orderBy: { createdAt: 'desc' }, take: 1 }, contracts: { orderBy: { createdAt: 'desc' }, take: 1 } }, orderBy: { fullName: 'asc' } });
+      const entityIds = tenants.flatMap((tenant: any) => [tenant.contracts?.[0]?.id, tenant.occupants?.[0]?.contractId]).filter(Boolean);
+      const history = entityIds.length ? await prisma.consoleAuditLog.findMany({ where: { orgId: actor.orgId, entityType: 'RENTAL_DOCUMENT',
+        action: 'SAVE_RENTAL_PROFILE', entityId: { in: entityIds } }, orderBy: { createdAt: 'desc' } }) : [];
+      sendJson(res, 200, { ok: true, customers: tenants.map((tenant: any) => {
+        const occupant = tenant.occupants?.[0];
+        const saved = history.find((event: any) => event.entityId === (occupant?.contractId || tenant.contracts?.[0]?.id))?.metadata;
+        const person = occupant && occupant.relationToPrimary !== 'PRIMARY' ? saved?.members?.find((p: any) => p.occupantId === occupant.id || tenant.idNumber && p.idNumber === tenant.idNumber) : saved?.tenant;
+        const details = { ...(occupant ? occupantPerson(occupant) : {}), ...(person || {}) };
+        return { id: tenant.id, person: { fullName: tenant.fullName, birthDate: details.birthDate || '', gender: details.gender || '', address: details.address || '',
+          phone: tenant.phone || '', idNumber: tenant.idNumber || '', emergencyContact: tenant.emergencyContact || '' } };
+      }) });
+      return true;
+    }
     const load = async () => {
       const [reservations, contracts] = await Promise.all([
         prisma.roomReservation.findMany({ where: { orgId: actor.orgId, roomId: room.id }, include: { deposits: true }, orderBy: { createdAt: 'desc' }, take: 20 }),
@@ -212,6 +232,26 @@ export async function handleRentalWorkflow(req: any, res: any, pathname: string,
         const joiningShared = body.intent !== 'HOLD' && rentalModel === 'SHARED_ROOM' && existingContracts.length > 0 && existingContracts.every((contract: any) => contract.rentalModel === 'SHARED_ROOM');
         if ((existingContracts.length && !joiningShared) || resCount || !fresh || (existingContracts.length && fresh.rentalModel !== 'SHARED_ROOM') || !(joiningShared ? ['AVAILABLE', 'VACANT', 'OCCUPIED', 'RESERVED'] : body.intent === 'IMPORT' ? ['AVAILABLE', 'VACANT', 'OCCUPIED'] : ['AVAILABLE', 'VACANT']).includes(fresh.occupancyStatus)) fail('Phòng không còn đủ điều kiện tạo thuê mới. Hãy tải lại hồ sơ.', 409);
         if (joiningShared && existingContracts.reduce((sum: number, contract: any) => sum + contract.occupantsCount, 0) + members.length + 1 > room.maxOccupants) fail('Phòng ghép đã hết chỗ.', 409);
+        let selectedTenant: any = null;
+        if (body.customerSource === 'EXISTING' && !body.existingTenantId) fail('Chọn khách có sẵn trước khi tiếp tục.');
+        if (body.customerSource === 'NEW') {
+          const phone = p.tenant.phone.replace(/\D/g, '').replace(/^84/, '0');
+          const duplicate = await tx.tenant.findFirst({ where: { orgId: actor.orgId, OR: [{ normalizedPhone: phone }, ...(p.tenant.idNumber ? [{ idNumber: p.tenant.idNumber }] : [])] } });
+          if (duplicate) fail('Khách đã có hồ sơ. Hãy chọn Khách có sẵn.', 409);
+        }
+        if (body.existingTenantId) {
+          await tx.$executeRaw`SELECT id FROM "tenants" WHERE id = ${String(body.existingTenantId)} FOR UPDATE`;
+          selectedTenant = await tx.tenant.findFirst({ where: { id: String(body.existingTenantId), orgId: actor.orgId, isActive: true } });
+          if (!selectedTenant || !(actor.role === 'ADMIN' || actor.buildingScopes?.includes('*') || selectedTenant.primaryBuildingId === room.buildingId)) fail('Không tìm thấy khách trong phạm vi phụ trách.', 404);
+          const [contracts, occupants, reservations] = await Promise.all([
+            tx.contract.count({ where: { orgId: actor.orgId, tenantId: selectedTenant.id, status: { in: active } } }),
+            tx.roomOccupant.count({ where: { orgId: actor.orgId, tenantId: selectedTenant.id, OR: [{ isActive: true }, { occupancyStatus: 'SCHEDULED' }] } }),
+            tx.roomReservation.count({ where: { orgId: actor.orgId, tenantId: selectedTenant.id, status: { in: ['PENDING', 'CONFIRMED'] } } }),
+          ]);
+          if (selectedTenant.currentRoomId || contracts || occupants || reservations) fail('Khách đã có hợp đồng, chỗ ở hoặc phiếu giữ phòng. Hãy chọn lại khách.', 409);
+          const phone = p.tenant.phone.replace(/\D/g, '').replace(/^84/, '0');
+          if (phone !== selectedTenant.normalizedPhone || p.tenant.idNumber !== (selectedTenant.idNumber || '') || p.tenant.fullName.trim() !== selectedTenant.fullName.trim()) fail('Thông tin định danh khách có sẵn đã thay đổi. Hãy chọn lại hồ sơ.', 409);
+        }
         const code = `${body.intent === 'HOLD' ? 'GC' : 'HD'}-${room.code}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
         let entity: any;
         if (body.intent === 'HOLD') {
@@ -219,6 +259,7 @@ export async function handleRentalWorkflow(req: any, res: any, pathname: string,
           if (!Number.isInteger(days) || days < 1 || days > 30) fail('Hạn giữ từ 1 đến 30 ngày.');
           entity = await tx.roomReservation.create({ data: {
             orgId: actor.orgId, buildingId: room.buildingId, roomId: room.id, reservationCode: code,
+            ...(selectedTenant ? { tenantId: selectedTenant.id } : {}),
             customerName: p.tenant.fullName.trim(), customerPhone: p.tenant.phone.trim(), holdAmountVnd: BigInt(amount),
             status: paid >= amount && paid > 0 ? 'CONFIRMED' : 'PENDING', expectedMoveIn: body.startDate,
             holdUntil: new Date(Date.now() + days * 86400000),
@@ -226,7 +267,7 @@ export async function handleRentalWorkflow(req: any, res: any, pathname: string,
         } else {
           const org = await tx.organization.findUnique({ where: { id: actor.orgId } });
           const phone = p.tenant.phone.replace(/\D/g, '').replace(/^84/, '0');
-          let tenant = await tx.tenant.findFirst({ where: { orgId: actor.orgId, normalizedPhone: phone } });
+          let tenant = selectedTenant || await tx.tenant.findFirst({ where: { orgId: actor.orgId, normalizedPhone: phone } });
           if (tenant && tenant.fullName.toLocaleLowerCase('vi') !== p.tenant.fullName.trim().toLocaleLowerCase('vi')) fail('Số điện thoại đã thuộc khách khác. Kiểm tra lại khách trước khi lưu.', 409);
           if (tenant && joiningShared && await tx.contract.count({ where: { roomId: room.id, tenantId: tenant.id, status: { in: active } } })) fail('Khách đã có hợp đồng tại phòng ghép này.', 409);
           if (!tenant) tenant = await tx.tenant.create({ data: { orgId: actor.orgId, primaryBuildingId: room.buildingId,

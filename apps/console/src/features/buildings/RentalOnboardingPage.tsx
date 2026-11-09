@@ -46,9 +46,9 @@ const billingPolicyLabel = (policy: unknown, formula: string) => {
   if (resolved === 'CUSTOM_FIRST_CYCLE' || formula.startsWith('Tùy chỉnh')) return 'Kỳ đầu tùy chỉnh';
   return 'Theo ngày thực tế';
 };
-function PersonFields({ value, onChange, title, landlord = false, requiredErrors = {} }: { value: Person; onChange: (v: Person) => void; title: string; landlord?: boolean; requiredErrors?: Partial<Record<'fullName' | 'phone' | 'idNumber', string>> }) {
-  const input = (key: keyof Person, label: string, type = 'text', placeholder?: string) => { const error = requiredErrors[key as 'fullName' | 'phone' | 'idNumber']; const numeric = key === 'idNumber' || key === 'phone'; return <Field label={label} wide={key === 'fullName' || key === 'address'}><input className={fieldClass} type={type} inputMode={numeric ? 'numeric' : undefined} pattern={numeric ? '[0-9]*' : undefined} maxLength={key === 'phone' ? 10 : key === 'idNumber' ? 12 : undefined} value={value[key] || ''} placeholder={error || placeholder} autoComplete={key === 'fullName' ? 'name' : key === 'phone' ? 'tel' : 'off'} aria-invalid={!!error || undefined} aria-label={error ? `${label}: ${error}` : undefined} onChange={e => onChange({ ...value, [key]: numeric ? e.target.value.replace(/\D/g, '').slice(0, key === 'phone' ? 10 : 12) : e.target.value })} /></Field>; };
-  return <fieldset className="rental-person"><legend><Users size={16} /><span className="rental-person-title">{title}</span><IdentityQrScanner onApply={details => onChange({ ...value, ...details })} /></legend><div className="rental-fields">
+function PersonFields({ value, onChange, title, landlord = false, identityLocked = false, requiredErrors = {} }: { value: Person; onChange: (v: Person) => void; title: string; landlord?: boolean; identityLocked?: boolean; requiredErrors?: Partial<Record<'fullName' | 'phone' | 'idNumber', string>> }) {
+  const input = (key: keyof Person, label: string, type = 'text', placeholder?: string) => { const error = requiredErrors[key as 'fullName' | 'phone' | 'idNumber']; const numeric = key === 'idNumber' || key === 'phone'; return <Field label={label} wide={key === 'fullName' || key === 'address'}><input className={fieldClass} readOnly={identityLocked && ['fullName', 'phone', 'idNumber'].includes(key)} type={type} inputMode={numeric ? 'numeric' : undefined} pattern={numeric ? '[0-9]*' : undefined} maxLength={key === 'phone' ? 10 : key === 'idNumber' ? 12 : undefined} value={value[key] || ''} placeholder={error || placeholder} autoComplete={key === 'fullName' ? 'name' : key === 'phone' ? 'tel' : 'off'} aria-invalid={!!error || undefined} aria-label={error ? `${label}: ${error}` : undefined} onChange={e => onChange({ ...value, [key]: numeric ? e.target.value.replace(/\D/g, '').slice(0, key === 'phone' ? 10 : 12) : e.target.value })} /></Field>; };
+  return <fieldset className="rental-person"><legend><Users size={16} /><span className="rental-person-title">{title}</span>{!identityLocked && <IdentityQrScanner onApply={details => onChange({ ...value, ...details })} />}</legend><div className="rental-fields">
     {input('fullName', 'Họ và tên', 'text', 'Nhập đầy đủ theo giấy tờ')}{input('phone', 'Số điện thoại', 'tel', 'Số điện thoại liên hệ')}
     {input('idNumber', 'Số định danh / giấy tờ', 'text', 'Số căn cước')}{input('birthDate', 'Ngày sinh', 'date')}
     {!landlord && <Field label="Giới tính"><select className={fieldClass} value={value.gender} onChange={e => onChange({ ...value, gender: e.target.value })}><option value="">Chọn giới tính</option><option>Nam</option><option>Nữ</option><option>Khác</option></select></Field>}
@@ -80,6 +80,12 @@ export function RentalOnboardingPage({ roomId, initialIntent, onClose, embedded 
   const [docFormat, setDocFormat] = useState('docx');
   const [docPerson, setDocPerson] = useState(0);
   const [intent, setIntent] = useState<Intent | undefined>(initialIntent);
+  const [customerMode, setCustomerMode] = useState<'NEW' | 'EXISTING'>('NEW');
+  const [existingTenantId, setExistingTenantId] = useState('');
+  const [customers, setCustomers] = useState<Array<{id: string; person: Person}>>([]);
+  const [customerQuery, setCustomerQuery] = useState('');
+  const [customersLoading, setCustomersLoading] = useState(false);
+  const [customersError, setCustomersError] = useState('');
   const [busy, setBusy] = useState(false);
   const [editingDraft, setEditingDraft] = useState(false);
   const [botStatus, setBotStatus] = useState<{ botConfigured: boolean; linked: boolean; registrationDeliveryStatus: string | null; invoiceDeliveryStatus: string | null; invoiceOutstandingVnd?: number | null; invoiceStatus?: string | null } | null>(null);
@@ -117,11 +123,20 @@ export function RentalOnboardingPage({ roomId, initialIntent, onClose, embedded 
         setTerms(t => ({ ...t, rentalModel: c?.rentalModel === 'SHARED_ROOM' || (!c && data.room.rentalModel === 'SHARED_ROOM') ? 'SHARED_ROOM' : 'ENTIRE_ROOM', monthlyRentVnd: Number(c?.monthlyRentVnd ?? 0), depositVnd: Number(c?.depositVnd ?? 0), startDate: c?.startDate || r?.expectedMoveIn || t.startDate, endDate: c?.endDate || t.endDate }));
         setProfile((p: any) => data.profile ? { ...p, ...data.profile, landlord: { ...p.landlord, ...data.profile.landlord }, tenant: { ...p.tenant, ...data.profile.tenant } } : { ...p, ...data.documentDefaults, rentalAddress: [data.room.building.streetAddress, data.room.building.ward, data.room.building.province].filter(Boolean).join(', '),
           tenant: { ...p.tenant, fullName: r?.customerName || c?.tenant?.fullName || '', phone: r?.customerPhone || c?.tenant?.phone || '', idNumber: c?.tenant?.idNumber || '' } });
-        if (r || c) setStage('record'); else if (initialIntent) setStage('details');
+        if (r || c) setStage('record'); else if (initialIntent === 'IMPORT') setStage('details');
       }
     }).catch(e => live && setError(e.message)).finally(() => live && setBusy(false));
     return () => { live = false; };
   }, [base, initialIntent]);
+  useEffect(() => {
+    if (stage !== 'intent' || customerMode !== 'EXISTING' || intent === 'IMPORT') return;
+    let live = true;
+    setCustomersLoading(true); setCustomersError('');
+    request(`${base}/customers`).then(data => { if (live) setCustomers(data.customers || []); })
+      .catch(e => { if (live) { setCustomers([]); setCustomersError(e.message); } })
+      .finally(() => { if (live) setCustomersLoading(false); });
+    return () => { live = false; };
+  }, [base, customerMode, stage, intent]);
   useEffect(() => { if (error) feedback.current?.focus(); }, [error]);
   useEffect(() => { if (initialized.current) heading.current?.focus({ preventScroll: true }); }, [stage, detailStep]);
   useEffect(() => { const listener = (e: BeforeUnloadEvent) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } }; window.addEventListener('beforeunload', listener); return () => window.removeEventListener('beforeunload', listener); }, [dirty]);
@@ -196,7 +211,7 @@ export function RentalOnboardingPage({ roomId, initialIntent, onClose, embedded 
   const submit = () => editingDraft ? perform(`${base}/draft`, { ...terms, documentProfile: profile })
     : converting ? perform(`/reservations/${encodeURIComponent(reservation.id)}/convert-to-contract`, { ...terms, expectedBookingBalance: quote.bookingDepositB, documentProfile: profile,
     coOccupants: profile.members.map((p: Person) => ({ ...p, dateOfBirth: p.birthDate, relationToPrimary: p.documentRole === 'CO_REPRESENTATIVE' ? 'OTHER' : 'FAMILY' })) })
-    : perform(`${base}/start`, { ...terms, intent, paidAmountVnd: intent === 'DIRECT' ? 0 : terms.paidAmountVnd, documentProfile: profile });
+    : perform(`${base}/start`, { ...terms, intent, ...(intent !== 'IMPORT' ? { customerSource: customerMode, ...(customerMode === 'EXISTING' ? { existingTenantId } : {}) } : {}), paidAmountVnd: intent === 'DIRECT' ? 0 : terms.paidAmountVnd, documentProfile: profile });
   const exportFile = async (kind: string, format: string, personIndex = 0) => {
     setBusy(true); setError('');
     try {
@@ -242,7 +257,7 @@ export function RentalOnboardingPage({ roomId, initialIntent, onClose, embedded 
     if (Object.keys(errors).length) { setTenantErrors(errors); requestAnimationFrame(() => workspace.current?.querySelector<HTMLInputElement>('input[aria-invalid="true"]')?.focus()); return; }
     setBusy(true);
     try {
-      const params = new URLSearchParams({ checkDuplicates: '1', phone: profile.tenant.phone, idNumber: profile.tenant.idNumber, ...(reservation?.tenantId || contract?.tenantId ? { excludeId: reservation?.tenantId || contract?.tenantId } : {}) });
+      const params = new URLSearchParams({ checkDuplicates: '1', phone: profile.tenant.phone, idNumber: profile.tenant.idNumber, ...(reservation?.tenantId || contract?.tenantId || existingTenantId ? { excludeId: reservation?.tenantId || contract?.tenantId || existingTenantId } : {}) });
       const matches = await fetch(`${api}/tenants?${params}`, { headers: { 'X-Requested-With': 'AdHome-Console' } });
       const data = await matches.json();
       if (!matches.ok || data.ok === false) throw new Error(data.message || 'Không thể kiểm tra thông tin khách thuê.');
@@ -263,7 +278,7 @@ export function RentalOnboardingPage({ roomId, initialIntent, onClose, embedded 
     {profile.members.map((p: Person, i: number) => memberFields(p, i))}
     <Button type="button" className="rental-add-member" disabled={busy || profile.members.length >= 20 || profile.members.length + 1 >= state?.room.maxOccupants} onClick={addMember}><Plus size={16} />Thêm người cùng ở</Button>
   </section>;
-  const personEditor = <><PersonFields title="HĐ Chính" value={profile.tenant} requiredErrors={tenantErrors} onChange={p => { setTenantErrors(previous => ({ ...previous, ...(p.fullName.trim() ? { fullName: undefined } : {}), ...(p.phone.trim() ? { phone: undefined } : {}), ...(p.idNumber.trim() ? { idNumber: undefined } : {}) })); editProfile('tenant', p); }} />{intent !== 'HOLD' && terms.rentalModel !== 'SHARED_ROOM' && membersEditor}</>;
+  const personEditor = <>{existingTenantId && <p className="text-sm text-slate-500">Khách có sẵn · {profile.tenant.fullName}</p>}<PersonFields title="HĐ Chính" value={profile.tenant} identityLocked={!!existingTenantId && intent !== 'IMPORT'} requiredErrors={tenantErrors} onChange={p => { setTenantErrors(previous => ({ ...previous, ...(p.fullName.trim() ? { fullName: undefined } : {}), ...(p.phone.trim() ? { phone: undefined } : {}), ...(p.idNumber.trim() ? { idNumber: undefined } : {}) })); editProfile('tenant', p); }} />{intent !== 'HOLD' && terms.rentalModel !== 'SHARED_ROOM' && membersEditor}</>;
   return <section ref={workspace} className={`rental-workspace${embedded ? ' rental-embedded' : ''}`} data-testid="rental-onboarding-page" data-stage={stage} data-detail-step={stage === 'details' ? detailStep : undefined} aria-busy={busy}>
     <header className="rental-page-heading"><div><h1 ref={heading} tabIndex={-1} className="outline-none">{titles[stage]}</h1><p>{stage === 'intent' ? 'Từ thông tin khách đến hợp đồng và hồ sơ cư trú.' : stage === 'details' && detailStep === 'people' ? 'Thông tin này sẽ được tự điền vào hợp đồng và CT01.' : stage === 'profile' ? 'Một bộ thông tin, đầy đủ giấy tờ cần dùng.' : 'Kiểm tra thông tin trước khi lưu giao dịch.'}</p></div><span className="rental-room-tag"><Home size={14} />{state?.room.code || '…'}</span></header>
     {error && <div ref={feedback} tabIndex={-1} role="alert" className="rental-feedback rental-error">{error}</div>}{message && <p role="status" className="rental-feedback rental-success"><CheckCircle2 size={16} />{message}</p>}
@@ -279,8 +294,15 @@ export function RentalOnboardingPage({ roomId, initialIntent, onClose, embedded 
           ['HOLD', 'Đặt cọc giữ phòng', 'Giữ phòng trước ngày khách nhận nhà.', Wallet],
           ['IMPORT', 'Đồng bộ dữ liệu', 'Tiếp quản khách đang ở và số dư đã có.', Users],
         ] as const).map(([id, title, desc, Icon]) => <label key={id} className={`rental-intent ${intent === id ? 'is-selected' : ''}`}><span className="rental-intent-icon"><Icon size={21} strokeWidth={1.7} /></span><span className="min-w-0 flex-1"><b>{title}</b><span className="rental-intent-description">{desc}</span></span><input type="radio" name="rental-intent" aria-label={title} checked={intent === id} onChange={() => setIntent(id)} /></label>)}</fieldset>
-        <p className="rental-auto-note"><FileCheck2 size={17} />Nhập thông tin một lần, dùng cho hợp đồng và CT01.</p>
-        <div className="rental-actions">{button('Quay lại', close, true)}{button('Tiếp tục', () => { setDetailStep('people'); move('details'); }, false, !intent)}</div>
+        {intent && intent !== 'IMPORT' && <section className="grid gap-3" aria-label="Nguồn khách thuê">
+          <fieldset className="flex flex-wrap gap-4"><legend className="mb-2 text-sm font-semibold">Khách thuê</legend>{([['EXISTING', 'Khách có sẵn'], ['NEW', 'Khách mới']] as const).map(([mode, label]) => <label key={mode} className="inline-flex min-h-11 items-center gap-2 text-sm"><input type="radio" name="customer-mode" checked={customerMode === mode} onChange={() => { setCustomerMode(mode); setExistingTenantId(''); editProfile('tenant', blankPerson()); setTenantErrors({}); }} />{label}</label>)}</fieldset>
+          {customerMode === 'EXISTING' && <>
+            <Field label="Tìm khách có sẵn"><input className={fieldClass} type="search" value={customerQuery} onChange={e => setCustomerQuery(e.target.value)} placeholder="Họ tên, số điện thoại hoặc CCCD" /></Field>
+            {customersLoading ? <p role="status">Đang tải khách có sẵn…</p> : customersError ? <p role="alert" className="text-sm text-rose-600">{customersError}</p> : <Field label="Chọn khách có sẵn"><select className={fieldClass} value={existingTenantId} onChange={e => { const customer = customers.find(c => c.id === e.target.value); setExistingTenantId(customer?.id || ''); editProfile('tenant', { ...blankPerson(), ...customer?.person }); setTenantErrors({}); }}><option value="">Chọn khách</option>{customers.filter(c => [c.person.fullName, c.person.phone, c.person.idNumber].some(value => value?.toLocaleLowerCase('vi').includes(customerQuery.trim().toLocaleLowerCase('vi')))).map(c => <option key={c.id} value={c.id}>{c.person.fullName} · {c.person.phone}</option>)}</select></Field>}
+            {!customersLoading && !customersError && !customers.length && <p role="status" className="text-sm text-slate-500">Không có khách đủ điều kiện.</p>}
+          </>}
+        </section>}
+        <div className="rental-actions">{button('Quay lại', close, true)}{button('Tiếp tục', () => { setDetailStep('people'); move('details'); }, false, !intent || intent !== 'IMPORT' && customerMode === 'EXISTING' && (!existingTenantId || customersLoading || !!customersError))}</div>
       </>}
       {stage === 'details' && <>
         {detailStep === 'people' ? <>{personEditor}<div className="rental-actions">{button('Quay lại', () => move(converting || editingDraft ? 'record' : 'intent'), true)}{button('Tiếp tục', goTerms)}</div></> : <>

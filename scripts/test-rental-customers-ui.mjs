@@ -1,0 +1,45 @@
+import assert from 'node:assert/strict';
+import {mkdir} from 'node:fs/promises';
+import {chromium,webkit} from 'playwright';
+const base=process.env.ADHOME_UI_URL||'http://127.0.0.1:5192';
+const browser=await(process.env.ADHOME_WEBKIT_LAYOUT==='1'?webkit.launch({headless:true}):chromium.launch({channel:'chrome',headless:true}));
+await mkdir('.artifacts/rental-customers',{recursive:true});
+try{for(const width of [1440,390,320]){const context=await browser.newContext({viewport:{width,height:900},reducedMotion:'reduce'}),page=await context.newPage(),errors=[],writes=[],duplicateQueries=[];
+page.on('pageerror',e=>errors.push(e.message));
+const building={id:'b1',code:'QA',name:'QA BUILDING',status:'ACTIVE',streetAddress:'QA ADDRESS',floors:[],stats:{totalRooms:1,availableRooms:1,occupiedRooms:0}};
+const room={id:'qa-room',buildingId:'b1',buildingCode:'QA',buildingName:building.name,building,code:'101',roomType:'Studio',rentalModel:'ENTIRE_ROOM',maxOccupants:4,listPriceVnd:4500000,occupancyStatus:'AVAILABLE',effectiveElectricRateVnd:3800,effectiveWaterRateVnd:15000};
+const person={fullName:'EXISTING QA',phone:'0900000001',idNumber:'000000000001',birthDate:'1990-01-01',gender:'Nam',address:'SAVED ADDRESS'};
+await page.route('**/api/**',async route=>{const url=new URL(route.request().url()),p=url.pathname;
+if(p.endsWith('/auth/me'))return route.fulfill({json:{ok:true,actor:{id:'qa',email:'qa@example.test',orgId:'qa',role:'ADMIN',buildingScopes:['*']}}});
+if(p.endsWith('/bootstrap'))return route.fulfill({json:{ok:true,buildings:[building],rooms:[room],tenants:[]}});
+if(p.endsWith('/rental-workflow/qa-room'))return route.fulfill({json:{ok:true,room,contract:null,reservation:null}});
+if(p.endsWith('/customers'))return route.fulfill({json:{ok:true,customers:[{id:'existing-1',person}]}});
+if(p.endsWith('/tenants')){duplicateQueries.push(url.searchParams.get('excludeId'));return route.fulfill({json:{ok:true,duplicatePhone:false,duplicateIdNumber:false}})}
+if(p.endsWith('/quote'))return route.fulfill({json:{ok:true,rent:{formula:'QA'},totalInitialInvoiceDue:9000000,rentFirstPeriodVnd:4500000}});
+if(p.endsWith('/start')){writes.push(route.request().postDataJSON());return route.fulfill({status:409,json:{ok:false,message:'QA eligibility changed'}})}
+return route.fulfill({json:{ok:true,items:[],occupants:[]}});
+});
+await page.goto(base+'/?module=buildings&rentalRoom=qa-room');
+await page.getByRole('radio',{name:'Thuê ở ngay',exact:true}).check();
+await page.getByRole('radio',{name:'Khách có sẵn',exact:true}).check();
+assert.equal(await page.getByRole('button',{name:'Tiếp tục',exact:true}).isDisabled(),true);
+await page.locator('label').filter({hasText:'Chọn khách có sẵn'}).locator('select').selectOption('existing-1');
+await page.screenshot({path:`.artifacts/rental-customers/selection-${width}.png`,fullPage:true});
+await page.getByRole('button',{name:'Tiếp tục',exact:true}).click();
+assert.equal(await page.getByLabel('Họ và tên',{exact:true}).inputValue(),person.fullName);
+assert.equal(await page.getByLabel('Ngày sinh',{exact:true}).inputValue(),person.birthDate);
+assert.equal(await page.getByLabel('Địa chỉ thường trú',{exact:true}).inputValue(),person.address);
+assert.equal(await page.getByLabel('Số điện thoại',{exact:true}).getAttribute('readonly'),'');
+await page.getByRole('button',{name:'Tiếp tục',exact:true}).click();assert.equal(duplicateQueries.at(-1),'existing-1');
+await page.locator('label').filter({hasText:'Giá thuê hàng tháng'}).locator('input').fill('4500000');
+await page.locator('label').filter({hasText:'Cọc hợp đồng yêu cầu'}).locator('input').fill('4500000');
+await page.getByRole('button',{name:'Tiếp tục — xem lại',exact:true}).click();await page.getByRole('button',{name:'Xác nhận lập hợp đồng',exact:true}).click();
+await page.getByRole('alert').filter({hasText:'QA eligibility changed'}).waitFor();assert.equal(writes[0].existingTenantId,'existing-1');assert.equal(writes[0].customerSource,'EXISTING');
+await page.getByRole('button',{name:'Sửa thông tin',exact:true}).click();await page.getByRole('button',{name:'Quay lại',exact:true}).click();await page.getByRole('button',{name:'Quay lại',exact:true}).click();
+await page.getByRole('radio',{name:'Đặt cọc giữ phòng',exact:true}).check();
+assert.equal(await page.getByRole('radio',{name:'Khách có sẵn',exact:true}).isChecked(),true);
+await page.getByRole('radio',{name:'Khách mới',exact:true}).check();await page.getByRole('button',{name:'Tiếp tục',exact:true}).click();
+assert.equal(await page.getByLabel('Họ và tên',{exact:true}).inputValue(),'');assert.equal(await page.getByLabel('Họ và tên',{exact:true}).getAttribute('readonly'),null);
+assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.deepEqual(errors,[]);await context.close();
+}}finally{await browser.close();}
+console.log('PASS existing/new customer choices for direct/hold, prefill, identity reuse, duplicate exclusion, conflict state and mobile layout');

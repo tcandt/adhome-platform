@@ -28,7 +28,9 @@ try{for(const width of [1440,390,320]){
  await page.getByRole('button',{name:'Thêm khách thuê',exact:true}).click();
  await page.getByRole('radio',{name:'Thuê ở ngay',exact:true}).check();
  await page.getByRole('button',{name:'Tiếp tục',exact:true}).click();
- assert.equal(await page.locator('.rental-section-heading').getByRole('switch').count(),1);
+ assert.equal(await page.locator('.rental-members').getByRole('switch').count(),0);
+ await page.getByRole('button',{name:'Thêm người cùng ở',exact:true}).click();
+ assert.equal(await page.locator('.rental-members').getByRole('switch').count(),1);
  assert.deepEqual(errors,[]);await context.close();
 }}finally{await browser.close();}
 console.log('PASS current building directory, floor/room navigation and tenant switch at 1440/390/320px');

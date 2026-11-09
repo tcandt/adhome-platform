@@ -79,7 +79,6 @@ export function RentalOnboardingPage({ roomId, initialIntent, onClose, embedded 
   const [docKind, setDocKind] = useState('CT01');
   const [docFormat, setDocFormat] = useState('docx');
   const [docPerson, setDocPerson] = useState(0);
-  const [representativeMode, setRepresentativeMode] = useState(false);
   const [intent, setIntent] = useState<Intent | undefined>(initialIntent);
   const [busy, setBusy] = useState(false);
   const [editingDraft, setEditingDraft] = useState(false);
@@ -254,15 +253,15 @@ export function RentalOnboardingPage({ roomId, initialIntent, onClose, embedded 
       setError(''); setDetailStep('terms'); scrollTop();
     } catch (e: any) { setError(e.message); } finally { setBusy(false); }
   };
-  const addMember = () => editProfile('members', [...profile.members, { ...blankPerson(), relationship: '', documentRole: representativeMode ? 'CO_REPRESENTATIVE' : 'HOUSEHOLD_MEMBER' }]);
+  const addMember = () => editProfile('members', [...profile.members, { ...blankPerson(), relationship: '', documentRole: 'HOUSEHOLD_MEMBER' }]);
   const memberFields = (p: Person, i: number, editableRole = true) => <div className="rental-member" key={p.occupantId || i}>
     {editableRole && <ContractRepresentativeSwitch checked={p.documentRole === 'CO_REPRESENTATIVE'} disabled={busy} onCheckedChange={checked => editProfile('members', profile.members.map((x: Person, j: number) => i === j ? { ...x, documentRole: checked ? 'CO_REPRESENTATIVE' : 'HOUSEHOLD_MEMBER' } : x))} />}
     <PersonFields title={`${personLabel(p)} ${i + 1}`} value={{ ...p, relationship: p.relationship || '' }} onChange={v => editProfile('members', profile.members.map((x: Person, j: number) => i === j ? v : x))} />
     {editableRole && <button type="button" disabled={busy} className="rental-text-button text-rose-600" onClick={() => editProfile('members', profile.members.filter((_: Person, j: number) => j !== i))}>Xóa người này</button>}
   </div>;
-  const membersEditor = <section className="rental-members"><div className="rental-section-heading !flex-wrap"><h2>Người cùng ở</h2><div className="flex flex-wrap items-center justify-end gap-2"><span className="text-xs text-slate-500">{profile.members.length} người</span><ContractRepresentativeSwitch compact checked={representativeMode} disabled={busy} onCheckedChange={setRepresentativeMode} /></div></div>
+  const membersEditor = <section className="rental-members"><div className="rental-section-heading"><h2>Người cùng ở</h2><span>{profile.members.length} người</span></div>
     {profile.members.map((p: Person, i: number) => memberFields(p, i))}
-    <Button type="button" className="rental-add-member" disabled={busy || profile.members.length >= 20 || profile.members.length + 1 >= state?.room.maxOccupants} onClick={addMember}><Plus size={16} />{representativeMode ? 'Thêm đại diện HĐ' : 'Thêm người cùng hộ'}</Button>
+    <Button type="button" className="rental-add-member" disabled={busy || profile.members.length >= 20 || profile.members.length + 1 >= state?.room.maxOccupants} onClick={addMember}><Plus size={16} />Thêm người cùng ở</Button>
   </section>;
   const personEditor = <><PersonFields title="HĐ Chính" value={profile.tenant} requiredErrors={tenantErrors} onChange={p => { setTenantErrors(previous => ({ ...previous, ...(p.fullName.trim() ? { fullName: undefined } : {}), ...(p.phone.trim() ? { phone: undefined } : {}), ...(p.idNumber.trim() ? { idNumber: undefined } : {}) })); editProfile('tenant', p); }} />{intent !== 'HOLD' && terms.rentalModel !== 'SHARED_ROOM' && membersEditor}</>;
   return <section ref={workspace} className={`rental-workspace${embedded ? ' rental-embedded' : ''}`} data-testid="rental-onboarding-page" data-stage={stage} data-detail-step={stage === 'details' ? detailStep : undefined} aria-busy={busy}>

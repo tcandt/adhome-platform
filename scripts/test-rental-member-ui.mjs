@@ -29,15 +29,13 @@ try {
     catch(error){console.error(errors);console.error(await page.locator('body').innerText());throw error;}
     await page.getByRole('button',{name:'Tiếp tục',exact:true}).click();
     const section = page.locator('.rental-members');
-    const mode = section.getByRole('switch').first();
-    assert.equal(await section.locator('.rental-section-heading').getByRole('switch').count(),1,'member mode is beside the count in the section heading');
-    assert.equal(await mode.isChecked(),false);
-    await mode.scrollIntoViewIfNeeded();
-    await page.screenshot({path:`.artifacts/rental-members/ui/member-switch-${width}.png`,fullPage:true});
-    await page.getByRole('button',{name:'Thêm người cùng hộ',exact:true}).click();
-    await mode.focus(); await page.keyboard.press('Space');
-    assert.equal(await mode.isChecked(),true);
-    await page.getByRole('button',{name:'Thêm đại diện HĐ',exact:true}).click();
+    assert.equal(await section.getByRole('switch').count(),0,'no duplicate global switch');
+    await page.getByRole('button',{name:'Thêm người cùng ở',exact:true}).click();
+    assert.equal(await section.getByRole('switch').count(),1,'one member has exactly one switch');
+    await page.getByRole('button',{name:'Thêm người cùng ở',exact:true}).click();
+    const representativeSwitch = page.locator('.rental-member').nth(1).getByRole('switch');
+    await representativeSwitch.press('Space');
+    assert.equal(await representativeSwitch.isChecked(),true);
     assert.equal(await page.getByLabel('Mối quan hệ với khách chính',{exact:true}).count(),1);
     const people = page.locator('.rental-person');
     await people.nth(0).getByLabel('Họ và tên',{exact:true}).fill('KHACH CHINH QA');
@@ -51,11 +49,11 @@ try {
     assert.equal(await people.nth(1).getByLabel('Họ và tên',{exact:true}).inputValue(),'THANH VIEN HO QA');
     await householdSwitch.press('Space');
     assert.equal(await people.nth(1).getByLabel('Mối quan hệ với khách chính',{exact:true}).inputValue(),'Con');
-    await mode.focus(); await page.keyboard.press('Space');
-    await page.getByRole('button',{name:'Thêm người cùng hộ',exact:true}).click();
-    assert.equal(await page.getByRole('button',{name:'Thêm người cùng hộ',exact:true}).isDisabled(),true);
+    await page.getByRole('button',{name:'Thêm người cùng ở',exact:true}).click();
+    assert.equal(await section.getByRole('switch').count(),3,'exactly one switch per member');
+    assert.equal(await page.getByRole('button',{name:'Thêm người cùng ở',exact:true}).isDisabled(),true);
     await page.getByRole('button',{name:'Xóa người này',exact:true}).last().click();
-    await mode.scrollIntoViewIfNeeded();
+    await householdSwitch.scrollIntoViewIfNeeded();
     const controls = await section.locator('[role=switch],button').evaluateAll(elements => elements.map(el => ({label:el.getAttribute('aria-label') || el.textContent, left:el.getBoundingClientRect().left,right:el.getBoundingClientRect().right})));
     assert.ok(controls.every(box=>box.left>=0 && box.right<=width), JSON.stringify(controls));
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);

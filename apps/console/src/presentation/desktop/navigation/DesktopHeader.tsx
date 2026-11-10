@@ -284,7 +284,7 @@ export const DesktopHeader: React.FC = () => {
           {isUserMenuOpen && (
             <div
               data-testid="console-user-menu-popover"
-              className="absolute right-0 top-full mt-2 z-50 w-72 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 shadow-2xl"
+              className="absolute right-0 top-full mt-2 z-50 w-72 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-2 shadow-xl space-y-1"
             >
               <div className="border-b border-slate-100 dark:border-slate-800 px-3 py-2.5">
                 <div className="truncate text-xs font-bold text-slate-900 dark:text-white">
@@ -318,12 +318,12 @@ export const DesktopHeader: React.FC = () => {
                 )}
               </div>
 
-              <div className="py-1">
+              <div className="py-1 space-y-1">
                 <button
                   type="button"
                   data-testid="console-theme-toggle"
                   onClick={() => toggleTheme()}
-                  className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                  className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 >
                   <span className="flex items-center gap-2.5">
                     {theme === 'light' ? (
@@ -345,7 +345,7 @@ export const DesktopHeader: React.FC = () => {
                       setActiveModule('settings');
                       setIsUserMenuOpen(false);
                     }}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                    className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                   >
                     <Settings className="h-4 w-4 text-slate-500" />
                     Cài đặt & Thiết lập hệ thống
@@ -353,7 +353,7 @@ export const DesktopHeader: React.FC = () => {
                 )}
               </div>
 
-              <div className="border-t border-slate-100 dark:border-slate-800 pt-1">
+              <div className="border-t border-slate-100 dark:border-slate-800 pt-1.5">
                 <button
                   type="button"
                   data-testid="console-logout-button"
@@ -361,7 +361,7 @@ export const DesktopHeader: React.FC = () => {
                     setIsUserMenuOpen(false);
                     void logout();
                   }}
-                  className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors cursor-pointer"
+                  className="flex w-full items-center gap-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 px-3 py-2 text-xs font-bold text-rose-700 dark:text-rose-400 transition-colors cursor-pointer"
                 >
                   <LogOut className="h-4 w-4" />
                   Đăng xuất an toàn

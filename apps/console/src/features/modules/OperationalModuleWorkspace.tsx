@@ -354,6 +354,10 @@ export const OperationalModuleWorkspace: React.FC<
   const [lgDescription, setLgDescription] = useState('');
   const [lgError, setLgError] = useState<string | null>(null);
   const [isSavingLg, setIsSavingLg] = useState(false);
+  const [invoiceQuery, setInvoiceQuery] = useState('');
+  const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<'ALL' | 'UNPAID' | 'PAID' | 'OVERDUE'>('ALL');
+  const [financeQuery, setFinanceQuery] = useState('');
+  const [financeTypeFilter, setFinanceTypeFilter] = useState<'ALL' | 'INCOME' | 'EXPENSE'>('ALL');
   const [paymentQuery, setPaymentQuery] = useState('');
   const [paymentStateFilter, setPaymentStateFilter] = useState<'ALL' | 'MATCHED' | 'PENDING'>('ALL');
   const [paymentView, setPaymentView] = useState<'OVERVIEW' | 'INCOMING' | 'OUTGOING' | 'HISTORY'>('OVERVIEW');
@@ -1131,15 +1135,43 @@ export const OperationalModuleWorkspace: React.FC<
     if (!invoiceVietQr?.accountNumber || !invoiceVietQr.bankCode || invoicePayAmount <= 0) return null;
     return `https://vietqr.app/img?bank=${encodeURIComponent(invoiceVietQr.bankCode)}&acc=${encodeURIComponent(invoiceVietQr.accountNumber)}&template=compact&amount=${Math.trunc(invoicePayAmount)}&des=${encodeURIComponent(invoiceVietQr.transferContent)}&showinfo=true&holder=${encodeURIComponent(invoiceVietQr.accountName).replace(/%20/g, '+')}`;
   }, [invoicePayAmount, invoiceVietQr]);
-  const invoiceSummary = invoices.reduce(
-    (summary, invoice) => {
-      const remaining = Math.max(0, invoice.totalAmountVnd - invoice.paidAmountVnd);
-      summary.remainingVnd += remaining;
-      if (remaining <= 0) summary.paidCount += 1;
-      return summary;
-    },
-    { remainingVnd: 0, paidCount: 0 }
-  );
+  const invoiceSummary = useMemo(() => {
+    return invoices.reduce(
+      (acc, invoice) => {
+        const remaining = Math.max(0, invoice.totalAmountVnd - invoice.paidAmountVnd);
+        acc.remainingVnd += remaining;
+        acc.totalAmountVnd += invoice.totalAmountVnd;
+        acc.paidAmountVnd += invoice.paidAmountVnd;
+        if (remaining <= 0 || invoice.status === 'PAID') {
+          acc.paidCount += 1;
+        } else if (invoice.status === 'OVERDUE') {
+          acc.overdueCount += 1;
+        } else {
+          acc.unpaidCount += 1;
+        }
+        return acc;
+      },
+      { remainingVnd: 0, totalAmountVnd: 0, paidAmountVnd: 0, paidCount: 0, unpaidCount: 0, overdueCount: 0 }
+    );
+  }, [invoices]);
+
+  const filteredInvoices = useMemo(() => {
+    const q = invoiceQuery.trim().toLocaleLowerCase('vi');
+    return invoices.filter((inv) => {
+      const remaining = Math.max(0, inv.totalAmountVnd - inv.paidAmountVnd);
+      const isPaid = remaining <= 0 || inv.status === 'PAID';
+      const isOverdue = inv.status === 'OVERDUE';
+      const isUnpaid = !isPaid;
+
+      if (invoiceStatusFilter === 'PAID' && !isPaid) return false;
+      if (invoiceStatusFilter === 'UNPAID' && !isUnpaid) return false;
+      if (invoiceStatusFilter === 'OVERDUE' && !isOverdue) return false;
+
+      if (!q) return true;
+      return [inv.invoiceCode, inv.buildingCode, inv.roomCode, inv.tenantName]
+        .some((val) => val && String(val).toLocaleLowerCase('vi').includes(q));
+    });
+  }, [invoices, invoiceQuery, invoiceStatusFilter]);
 
   useEffect(() => {
     if (moduleId !== 'invoices') return;
@@ -1246,6 +1278,16 @@ export const OperationalModuleWorkspace: React.FC<
         occurredAt: string;
       }>)
     : [];
+
+  const filteredLedgerEntries = useMemo(() => {
+    const q = financeQuery.trim().toLocaleLowerCase('vi');
+    return ledgerEntries.filter((entry) => {
+      if (financeTypeFilter !== 'ALL' && entry.entryType !== financeTypeFilter) return false;
+      if (!q) return true;
+      return [entry.entryCode, entry.category, entry.description, entry.recordedBy]
+        .some((val) => val && String(val).toLocaleLowerCase('vi').includes(q));
+    });
+  }, [ledgerEntries, financeQuery, financeTypeFilter]);
 
   const reportBreakdown = Array.isArray(payload?.breakdown)
     ? (payload.breakdown as Array<{
@@ -2809,207 +2851,332 @@ export const OperationalModuleWorkspace: React.FC<
 
           {/* 4. INVOICES */}
           {moduleId === 'invoices' && (
-            <div className="invoice-workspace bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5 space-y-4">
-              <div className="invoice-period-header flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-2 dark:border-slate-800 dark:bg-[#111827]">
-                <button
-                  type="button"
-                  aria-label="Kỳ trước"
-                  onClick={() => setSelectedPeriod(shiftPeriodKey(selectedPeriod, -1))}
-                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </button>
-                <label className="flex min-w-0 flex-1 cursor-pointer items-center justify-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm font-bold text-slate-900 dark:bg-slate-900/60 dark:text-white">
-                  <Calendar className="h-4 w-4 shrink-0 text-brand-primary" />
-                  <span className="truncate">{formatPeriodDisplay(selectedPeriod)}</span>
-                  <input
-                    data-testid="input-module-period"
-                    type="month"
-                    value={selectedPeriod}
-                    onChange={(event) => {
-                      if (/^\d{4}-\d{2}$/.test(event.target.value)) setSelectedPeriod(event.target.value);
-                    }}
-                    className="sr-only"
-                  />
-                </label>
-                <button
-                  type="button"
-                  aria-label="Kỳ kế tiếp"
-                  onClick={() => setSelectedPeriod(shiftPeriodKey(selectedPeriod, 1))}
-                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-                <span className="h-7 w-px shrink-0 bg-slate-200 dark:bg-slate-800" aria-hidden="true" />
-                <AnimatedButton
-                  type="button"
-                  data-testid="btn-module-refresh"
-                  onClick={() => void loadModuleData()}
-                  disabled={isLoading}
-                  title="Đồng bộ lại dữ liệu hóa đơn"
-                  aria-label={isLoading ? 'Đang đồng bộ hóa đơn' : 'Đồng bộ hóa đơn'}
-                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-brand-primary transition-colors hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60 dark:hover:bg-blue-950/40"
-                >
-                  <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-                </AnimatedButton>
+            <div className="invoice-workspace rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 dark:border-slate-800 dark:bg-[#111827] space-y-4">
+              {/* Header & Period Navigator */}
+              <div className="invoice-period-header flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-slate-50/60 p-2.5 dark:border-slate-800 dark:bg-slate-900/40">
+                <div className="flex items-center gap-1.5 flex-1 min-w-[240px]">
+                  <button
+                    type="button"
+                    aria-label="Kỳ trước"
+                    onClick={() => setSelectedPeriod(shiftPeriodKey(selectedPeriod, -1))}
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-white hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <label className="flex min-w-0 flex-1 cursor-pointer items-center justify-center gap-2 rounded-lg bg-white px-3 py-1.5 text-xs font-bold text-slate-900 shadow-2xs dark:bg-slate-800 dark:text-white">
+                    <Calendar className="h-3.5 w-3.5 shrink-0 text-brand-primary" />
+                    <span className="truncate">{formatPeriodDisplay(selectedPeriod)}</span>
+                    <input
+                      data-testid="input-module-period"
+                      type="month"
+                      value={selectedPeriod}
+                      onChange={(event) => {
+                        if (/^\d{4}-\d{2}$/.test(event.target.value)) setSelectedPeriod(event.target.value);
+                      }}
+                      className="sr-only"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    aria-label="Kỳ kế tiếp"
+                    onClick={() => setSelectedPeriod(shiftPeriodKey(selectedPeriod, 1))}
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-white hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <AnimatedButton
+                    type="button"
+                    data-testid="btn-module-refresh"
+                    onClick={() => void loadModuleData()}
+                    disabled={isLoading}
+                    title="Đồng bộ lại dữ liệu hóa đơn"
+                    aria-label={isLoading ? 'Đang đồng bộ hóa đơn' : 'Đồng bộ hóa đơn'}
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200/80 bg-white text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-wait disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin text-brand-primary' : ''}`} />
+                  </AnimatedButton>
+                </div>
               </div>
+
               {invoices.length === 0 ? (
-                <div className="py-10 text-center space-y-2">
-                  <Receipt className="w-8 h-8 text-slate-400 mx-auto" />
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                    Chưa phát hành hóa đơn cho kỳ{' '}
-                    {formatPeriodDisplay(selectedPeriod)}
-                  </h3>
-                  <p className="text-xs text-slate-500 max-w-md mx-auto">
-                    Tất cả số tiền hóa đơn trên PostgreSQL được lưu trữ chính
-                    xác ở dạng số nguyên VND (<code>BigInt</code>).
-                  </p>
+                <div className="py-12 text-center space-y-3">
+                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 dark:bg-slate-800">
+                    <Receipt className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                      Chưa phát hành hóa đơn cho kỳ {formatPeriodDisplay(selectedPeriod)}
+                    </h3>
+                    <p className="mt-1 text-xs text-slate-500 max-w-md mx-auto">
+                      Hóa đơn sẽ tự động tạo từ hợp đồng đang hiệu lực hoặc có thể phát hành theo kỳ chốt điện nước.
+                    </p>
+                  </div>
                 </div>
               ) : (
                 <>
-                  <div className="invoice-summary-grid grid grid-cols-3 divide-x divide-slate-200 rounded-xl border border-slate-200 bg-slate-50/70 px-1 py-3 dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-900/50">
-                    <div className="min-w-0 px-3">
-                      <span className="block text-[10px] font-semibold uppercase text-slate-400">Hóa đơn</span>
-                      <strong className="mt-0.5 block text-sm tabular-nums text-slate-900 dark:text-white">{invoices.length}</strong>
+                  {/* KPI Summary Cards */}
+                  <div className="invoice-summary-grid grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-3.5 dark:border-slate-800 dark:bg-slate-900/40">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-slate-500">Tổng hóa đơn phát hành</span>
+                        <span className="rounded-md bg-slate-200/60 px-1.5 py-0.5 text-[11px] font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                          {invoices.length} HĐ
+                        </span>
+                      </div>
+                      <strong className="mt-1.5 block text-xl sm:text-2xl font-bold tracking-tight text-slate-900 tabular-nums dark:text-white">
+                        {invoiceSummary.totalAmountVnd.toLocaleString('vi-VN')} đ
+                      </strong>
                     </div>
-                    <div className="min-w-0 px-3">
-                      <span className="block text-[10px] font-semibold uppercase text-slate-400">Đã thu đủ</span>
-                      <strong className="mt-0.5 block text-sm tabular-nums text-emerald-600">{invoiceSummary.paidCount}</strong>
+
+                    <div className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-3.5 dark:border-emerald-950/60 dark:bg-emerald-950/20">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-emerald-800 dark:text-emerald-400">Đã thu đủ</span>
+                        <span className="rounded-md bg-emerald-100 px-1.5 py-0.5 text-[11px] font-bold text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300">
+                          {invoiceSummary.paidCount} HĐ
+                        </span>
+                      </div>
+                      <strong className="mt-1.5 block text-xl sm:text-2xl font-bold tracking-tight text-emerald-600 tabular-nums dark:text-emerald-400">
+                        {invoiceSummary.paidAmountVnd.toLocaleString('vi-VN')} đ
+                      </strong>
                     </div>
-                    <div className="min-w-0 px-3">
-                      <span className="block text-[10px] font-semibold uppercase text-slate-400">Còn phải thu</span>
-                      <strong className={`mt-0.5 block truncate text-sm tabular-nums ${invoiceSummary.remainingVnd > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+
+                    <div className={`rounded-xl border p-3.5 ${
+                      invoiceSummary.remainingVnd > 0
+                        ? 'border-rose-200/80 bg-rose-50/40 dark:border-rose-950/60 dark:bg-rose-950/20'
+                        : 'border-slate-200/80 bg-slate-50/50 dark:border-slate-800 dark:bg-slate-900/40'
+                    }`}>
+                      <div className="flex items-center justify-between">
+                        <span className={`text-xs font-medium ${invoiceSummary.remainingVnd > 0 ? 'text-rose-800 dark:text-rose-400' : 'text-slate-500'}`}>
+                          Còn phải thu
+                        </span>
+                        <span className={`rounded-md px-1.5 py-0.5 text-[11px] font-bold ${
+                          invoiceSummary.remainingVnd > 0
+                            ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/60 dark:text-rose-300'
+                            : 'bg-slate-200/60 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                        }`}>
+                          {invoiceSummary.unpaidCount + invoiceSummary.overdueCount} HĐ
+                        </span>
+                      </div>
+                      <strong className={`mt-1.5 block text-xl sm:text-2xl font-bold tracking-tight tabular-nums ${
+                        invoiceSummary.remainingVnd > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400'
+                      }`}>
                         {invoiceSummary.remainingVnd.toLocaleString('vi-VN')} đ
                       </strong>
                     </div>
                   </div>
 
-                  {/* Mobile Cards View (md:hidden) */}
-                  <div className="md:hidden space-y-3">
-                    {invoices.map((inv) => {
-                      const remaining = Math.max(0, inv.totalAmountVnd - inv.paidAmountVnd);
-                      const status = getInvoiceStatus(inv.status, remaining, inv.paidAmountVnd);
-                      return (
-                        <div
-                          key={inv.id}
-                          data-testid={`invoice-card-${inv.id}`}
-                          className="invoice-mobile-card overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-[#111827]"
+                  {/* Filter & Search Toolbar */}
+                  <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between pt-1">
+                    {/* Status Tabs */}
+                    <div className="flex items-center gap-1 overflow-x-auto rounded-xl border border-slate-200/80 bg-slate-100/60 p-1 dark:border-slate-800 dark:bg-slate-900" role="tablist">
+                      {([
+                        ['ALL', 'Tất cả', invoices.length],
+                        ['UNPAID', 'Chờ thu', invoiceSummary.unpaidCount],
+                        ['OVERDUE', 'Quá hạn', invoiceSummary.overdueCount],
+                        ['PAID', 'Đã thu', invoiceSummary.paidCount],
+                      ] as const).map(([val, label, count]) => {
+                        const active = invoiceStatusFilter === val;
+                        return (
+                          <button
+                            key={val}
+                            type="button"
+                            role="tab"
+                            aria-selected={active}
+                            onClick={() => setInvoiceStatusFilter(val)}
+                            className={`flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-xs font-semibold transition-colors ${
+                              active
+                                ? 'bg-white text-slate-900 shadow-2xs dark:bg-slate-800 dark:text-white'
+                                : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+                            }`}
+                          >
+                            <span>{label}</span>
+                            <span className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                              active
+                                ? 'bg-slate-100 text-slate-800 dark:bg-slate-700 dark:text-slate-200'
+                                : 'bg-slate-200/60 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                            }`}>
+                              {count}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Search Input */}
+                    <div className="relative flex-1 sm:max-w-xs">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                      <input
+                        value={invoiceQuery}
+                        onChange={(e) => setInvoiceQuery(e.target.value)}
+                        placeholder="Tìm mã HĐ, phòng, tên khách..."
+                        className="h-9 w-full rounded-xl border border-slate-200/80 bg-slate-50/50 pl-8 pr-7 text-xs text-slate-900 outline-none transition focus:border-brand-primary focus:bg-white focus:ring-2 focus:ring-blue-100 dark:border-slate-800 dark:bg-slate-900 dark:text-white dark:focus:ring-blue-950"
+                      />
+                      {invoiceQuery && (
+                        <button
+                          type="button"
+                          onClick={() => setInvoiceQuery('')}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                         >
-                          <div className="flex items-start justify-between gap-3 px-4 pb-3 pt-4">
-                            <div className="min-w-0">
-                              <span className="block truncate font-mono text-[11px] font-semibold text-slate-500 dark:text-slate-400">{inv.invoiceCode}</span>
-                              <strong className="mt-1 block text-sm text-slate-900 dark:text-white">{inv.buildingCode} · {inv.roomCode}</strong>
-                              {inv.tenantName && <span className="mt-0.5 block truncate text-xs text-slate-500">{inv.tenantName}</span>}
-                            </div>
-                            <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 ring-inset ${status.className}`}>
-                              {status.label}
-                            </span>
-                          </div>
-                          <div className="grid grid-cols-2 gap-x-4 border-y border-slate-100 bg-slate-50/60 px-4 py-3 text-xs dark:border-slate-800 dark:bg-slate-900/40">
-                            <div>
-                              <span className="block text-[10px] font-medium text-slate-500">Tổng hóa đơn</span>
-                              <span className="mt-0.5 block font-bold tabular-nums text-slate-900 dark:text-white">{inv.totalAmountVnd.toLocaleString('vi-VN')} đ</span>
-                            </div>
-                            <div>
-                              <span className="block text-[10px] font-medium text-slate-500">Còn phải thu</span>
-                              <span className={`mt-0.5 block font-bold tabular-nums ${remaining > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                                {remaining.toLocaleString('vi-VN')} đ
-                              </span>
-                            </div>
-                          </div>
-                          <div className="flex min-h-12 items-center justify-between gap-3 px-4 py-2.5">
-                            <span className="flex items-center gap-1.5 text-[11px] text-slate-500">
-                              <CalendarClock className="h-3.5 w-3.5" /> Hạn {formatInvoiceDate(inv.dueDate)}
-                            </span>
-                            {remaining > 0 ? (
-                            <AnimatedButton
-                              type="button"
-                              data-testid={`btn-pay-invoice-mobile-${inv.id}`}
-                              onClick={() => handleOpenInvoicePaymentModal(inv)}
-                              className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-brand-primary px-3 text-[11px] font-bold text-white shadow-sm hover:bg-brand-hover"
-                            >
-                              <CreditCard className="h-3 w-3" /> Thu tiền
-                            </AnimatedButton>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600">
-                                <CheckCircle2 className="h-4 w-4" /> Hoàn tất
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
 
-                  {/* Desktop Table View (hidden md:block) */}
-                  <div className="hidden md:block overflow-x-auto">
-                    <table className="w-full text-left text-xs" data-testid="invoices-table">
-                      <thead>
-                        <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 font-semibold">
-                          <th className="pb-3">Mã hóa đơn</th>
-                          <th className="pb-3">Phòng / Khách</th>
-                          <th className="pb-3">Hạn thanh toán</th>
-                          <th className="pb-3">Tổng phải thu</th>
-                          <th className="pb-3">Đã thu</th>
-                          <th className="pb-3">Còn thiếu</th>
-                          <th className="pb-3">Trạng thái</th>
-                          <th className="pb-3 text-right">Thao tác</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                        {invoices.map((inv) => {
+                  {filteredInvoices.length === 0 ? (
+                    <div className="py-10 text-center space-y-1.5 border-t border-slate-100 dark:border-slate-800">
+                      <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">Không tìm thấy hóa đơn phù hợp</p>
+                      <p className="text-[11px] text-slate-500">Thử thay đổi từ khóa hoặc bộ lọc trạng thái</p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Mobile Cards View (md:hidden) */}
+                      <div className="md:hidden space-y-2.5">
+                        {filteredInvoices.map((inv) => {
                           const remaining = Math.max(0, inv.totalAmountVnd - inv.paidAmountVnd);
                           const status = getInvoiceStatus(inv.status, remaining, inv.paidAmountVnd);
                           return (
-                            <tr key={inv.id}>
-                              <td className="py-3 font-mono font-bold">
-                                {inv.invoiceCode}
-                              </td>
-                              <td className="py-3">
-                                <b>
-                                  {inv.buildingCode} · {inv.roomCode}
-                                </b>
-                                {inv.tenantName ? ` — ${inv.tenantName}` : ''}
-                              </td>
-                              <td className="py-3 font-mono">{formatInvoiceDate(inv.dueDate)}</td>
-                              <td className="py-3 font-bold tabular-nums">
-                                {inv.totalAmountVnd.toLocaleString('vi-VN')} đ
-                              </td>
-                              <td className="py-3 tabular-nums text-emerald-600 font-semibold">
-                                {inv.paidAmountVnd.toLocaleString('vi-VN')} đ
-                              </td>
-                              <td className="py-3 tabular-nums font-semibold">
-                                <span className={remaining > 0 ? 'text-rose-600 font-bold' : 'text-slate-400'}>
-                                  {remaining.toLocaleString('vi-VN')} đ
-                                </span>
-                              </td>
-                              <td className="py-3">
-                                <span className={`rounded-full px-2 py-0.5 text-[10.5px] font-bold ring-1 ring-inset ${status.className}`}>
+                            <div
+                              key={inv.id}
+                              data-testid={`invoice-card-${inv.id}`}
+                              className="invoice-mobile-card overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-4 shadow-2xs space-y-3 dark:border-slate-800 dark:bg-[#111827]"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-mono text-xs font-bold text-slate-900 dark:text-white">{inv.invoiceCode}</span>
+                                    <span className="text-slate-300 dark:text-slate-700">·</span>
+                                    <span className="text-xs font-bold text-brand-primary">{inv.buildingCode} · {inv.roomCode}</span>
+                                  </div>
+                                  {inv.tenantName && (
+                                    <span className="mt-0.5 block truncate text-xs text-slate-600 dark:text-slate-400">
+                                      {inv.tenantName}
+                                    </span>
+                                  )}
+                                </div>
+                                <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-bold ring-1 ring-inset ${status.className}`}>
                                   {status.label}
                                 </span>
-                              </td>
-                              <td className="py-3 text-right">
-                                <ActionMenu
-                                  items={[
-                                    ...(remaining > 0
-                                      ? [
-                                          {
-                                            label: 'Thu tiền hóa đơn',
-                                            variant: 'primary' as const,
-                                            testId: 'action-pay-invoice',
-                                            onClick: () => handleOpenInvoicePaymentModal(inv),
-                                          },
-                                        ]
-                                      : []),
-                                  ]}
-                                />
-                              </td>
-                            </tr>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-50/70 p-2.5 text-xs dark:bg-slate-900/50">
+                                <div>
+                                  <span className="block text-[10px] font-medium text-slate-500">Tổng hóa đơn</span>
+                                  <span className="mt-0.5 block font-bold tabular-nums text-slate-900 dark:text-white">
+                                    {inv.totalAmountVnd.toLocaleString('vi-VN')} đ
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="block text-[10px] font-medium text-slate-500">Còn phải thu</span>
+                                  <span className={`mt-0.5 block font-bold tabular-nums ${remaining > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600'}`}>
+                                    {remaining.toLocaleString('vi-VN')} đ
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="flex min-h-11 items-center justify-between gap-3 pt-0.5">
+                                <span className="flex items-center gap-1.5 text-xs text-slate-500">
+                                  <CalendarClock className="h-3.5 w-3.5 text-slate-400" /> Hạn {formatInvoiceDate(inv.dueDate)}
+                                </span>
+                                {remaining > 0 ? (
+                                  <AnimatedButton
+                                    type="button"
+                                    data-testid={`btn-pay-invoice-mobile-${inv.id}`}
+                                    onClick={() => handleOpenInvoicePaymentModal(inv)}
+                                    className="inline-flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-brand-primary px-3.5 text-xs font-bold text-white shadow-2xs hover:bg-brand-hover active:scale-98"
+                                  >
+                                    <CreditCard className="h-3.5 w-3.5" /> Thu tiền
+                                  </AnimatedButton>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                                    <CheckCircle2 className="h-4 w-4" /> Hoàn tất
+                                  </span>
+                                )}
+                              </div>
+                            </div>
                           );
                         })}
-                      </tbody>
-                    </table>
-                  </div>
+                      </div>
+
+                      {/* Desktop Table View (hidden md:block) */}
+                      <div className="hidden md:block overflow-x-auto rounded-xl border border-slate-200/80 dark:border-slate-800">
+                        <table className="w-full text-left text-xs border-collapse" data-testid="invoices-table">
+                          <thead>
+                            <tr className="border-b border-slate-200/80 bg-slate-50/70 text-slate-500 font-semibold dark:border-slate-800 dark:bg-slate-900/50">
+                              <th className="py-2.5 px-3 w-px whitespace-nowrap">Mã hóa đơn</th>
+                              <th className="py-2.5 px-3 min-w-[180px]">Phòng / Khách thuê</th>
+                              <th className="py-2.5 px-3 w-px whitespace-nowrap">Hạn thanh toán</th>
+                              <th className="py-2.5 px-3 w-px whitespace-nowrap text-right">Tổng phải thu</th>
+                              <th className="py-2.5 px-3 w-px whitespace-nowrap text-right">Đã thu</th>
+                              <th className="py-2.5 px-3 w-px whitespace-nowrap text-right">Còn thiếu</th>
+                              <th className="py-2.5 px-3 w-px whitespace-nowrap text-center">Trạng thái</th>
+                              <th className="py-2.5 px-3 w-px whitespace-nowrap text-right">Thao tác</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                            {filteredInvoices.map((inv) => {
+                              const remaining = Math.max(0, inv.totalAmountVnd - inv.paidAmountVnd);
+                              const status = getInvoiceStatus(inv.status, remaining, inv.paidAmountVnd);
+                              return (
+                                <tr key={inv.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors">
+                                  <td className="py-3 px-3 font-mono font-bold text-slate-900 dark:text-white w-px whitespace-nowrap">
+                                    {inv.invoiceCode}
+                                  </td>
+                                  <td className="py-3 px-3">
+                                    <span className="font-bold text-slate-900 dark:text-white">
+                                      {inv.buildingCode} · {inv.roomCode}
+                                    </span>
+                                    {inv.tenantName ? (
+                                      <span className="block text-[11px] text-slate-500 mt-0.5">
+                                        {inv.tenantName}
+                                      </span>
+                                    ) : null}
+                                  </td>
+                                  <td className="py-3 px-3 font-mono text-slate-500 w-px whitespace-nowrap">
+                                    {formatInvoiceDate(inv.dueDate)}
+                                  </td>
+                                  <td className="py-3 px-3 font-bold tabular-nums text-right w-px whitespace-nowrap text-slate-900 dark:text-white">
+                                    {inv.totalAmountVnd.toLocaleString('vi-VN')} đ
+                                  </td>
+                                  <td className="py-3 px-3 tabular-nums font-semibold text-emerald-600 text-right w-px whitespace-nowrap">
+                                    {inv.paidAmountVnd.toLocaleString('vi-VN')} đ
+                                  </td>
+                                  <td className="py-3 px-3 tabular-nums font-semibold text-right w-px whitespace-nowrap">
+                                    <span className={remaining > 0 ? 'text-rose-600 font-bold dark:text-rose-400' : 'text-slate-400'}>
+                                      {remaining.toLocaleString('vi-VN')} đ
+                                    </span>
+                                  </td>
+                                  <td className="py-3 px-3 text-center w-px whitespace-nowrap">
+                                    <span className={`inline-block rounded-full px-2.5 py-0.5 text-[10.5px] font-bold ring-1 ring-inset ${status.className}`}>
+                                      {status.label}
+                                    </span>
+                                  </td>
+                                  <td className="py-3 px-3 text-right w-px whitespace-nowrap">
+                                    {remaining > 0 ? (
+                                      <button
+                                        type="button"
+                                        data-testid="action-pay-invoice"
+                                        onClick={() => handleOpenInvoicePaymentModal(inv)}
+                                        className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-brand-primary px-3 text-xs font-bold text-white shadow-2xs hover:bg-brand-hover transition-colors"
+                                      >
+                                        <CreditCard className="h-3 w-3" /> Thu tiền
+                                      </button>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                                        <CheckCircle2 className="h-3.5 w-3.5" /> Đã xong
+                                      </span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  )}
                 </>
               )}
             </div>
@@ -3018,82 +3185,321 @@ export const OperationalModuleWorkspace: React.FC<
           {/* 5. PAYMENTS & RECONCILIATION */}
           {moduleId === 'payments' && (
             <div className="space-y-4" data-testid="payments-reconciliation-workspace">
-              <section className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white dark:border-slate-800 dark:bg-[#111827]">
-                <div className="p-4 sm:p-5">
+              <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white dark:border-slate-800 dark:bg-[#111827]">
+                <div className="p-4 sm:p-5 space-y-4">
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2"><span className="grid h-8 w-8 place-items-center rounded-lg bg-blue-50 text-brand-primary dark:bg-blue-950/40"><ArrowRightLeft className="h-4 w-4" /></span><div><p className="text-[10px] font-bold uppercase text-slate-400">Đối soát tài khoản</p><h2 className="text-base font-bold text-slate-950 dark:text-white">Kỳ {formatPeriodDisplay(selectedPeriod)}</h2></div></div>
+                    <div className="flex items-center gap-2.5">
+                      <span className="grid h-9 w-9 place-items-center rounded-xl bg-blue-50 text-brand-primary dark:bg-blue-950/40">
+                        <ArrowRightLeft className="h-4.5 w-4.5" />
+                      </span>
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Đối soát tài khoản</p>
+                        <h2 className="text-base font-bold text-slate-900 dark:text-white">Kỳ {formatPeriodDisplay(selectedPeriod)}</h2>
+                      </div>
                     </div>
-                    <AnimatedButton type="button" aria-label="Đồng bộ dữ liệu đối soát" title="Đồng bộ" onClick={() => void loadModuleData()} disabled={isLoading} className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"><RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} /></AnimatedButton>
+                    <AnimatedButton
+                      type="button"
+                      aria-label="Đồng bộ dữ liệu đối soát"
+                      title="Đồng bộ"
+                      onClick={() => void loadModuleData()}
+                      disabled={isLoading}
+                      className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-slate-200/80 bg-white text-slate-600 shadow-2xs hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin text-brand-primary' : ''}`} />
+                    </AnimatedButton>
                   </div>
 
-                  <div className="mt-4 rounded-xl bg-slate-950 p-4 text-white dark:bg-slate-900">
-                    <p className="text-[10px] font-semibold text-slate-400">Dòng tiền ròng trong kỳ</p>
-                    <p className="mt-1 text-2xl font-bold tabular-nums">{netTransactionVnd >= 0 ? '+' : ''}{netTransactionVnd.toLocaleString('vi-VN')} đ</p>
-                    <div className="mt-4 grid grid-cols-2 gap-3 border-t border-white/10 pt-3">
-                      <div className="flex items-center gap-2"><span className="grid h-8 w-8 place-items-center rounded-lg bg-emerald-400/15 text-emerald-300"><ArrowDownLeft className="h-4 w-4" /></span><div className="min-w-0"><p className="text-[10px] text-slate-400">Tiền vào</p><p className="truncate text-xs font-bold tabular-nums text-emerald-300">+{incomingTransactionVnd.toLocaleString('vi-VN')} đ</p></div></div>
-                      <div className="flex items-center gap-2"><span className="grid h-8 w-8 place-items-center rounded-lg bg-rose-400/15 text-rose-300"><ArrowUpRight className="h-4 w-4" /></span><div className="min-w-0"><p className="text-[10px] text-slate-400">Tiền ra</p><p className="truncate text-xs font-bold tabular-nums text-rose-300">-{outgoingTransactionVnd.toLocaleString('vi-VN')} đ</p></div></div>
+                  {/* Net Cashflow Banner */}
+                  <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5 text-white shadow-sm">
+                    <p className="text-xs font-medium text-slate-400">Dòng tiền ròng trong kỳ</p>
+                    <p className="mt-1 text-2xl sm:text-3xl font-bold tracking-tight tabular-nums">
+                      {netTransactionVnd >= 0 ? '+' : ''}{netTransactionVnd.toLocaleString('vi-VN')} đ
+                    </p>
+                    <div className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-800 pt-3">
+                      <div className="flex items-center gap-2.5">
+                        <span className="grid h-8 w-8 place-items-center rounded-lg bg-emerald-500/15 text-emerald-400">
+                          <ArrowDownLeft className="h-4 w-4" />
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-medium text-slate-400">Tiền nhận vào</p>
+                          <p className="truncate text-xs font-bold tabular-nums text-emerald-400">
+                            +{incomingTransactionVnd.toLocaleString('vi-VN')} đ
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2.5">
+                        <span className="grid h-8 w-8 place-items-center rounded-lg bg-rose-500/15 text-rose-400">
+                          <ArrowUpRight className="h-4 w-4" />
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-medium text-slate-400">Tiền chuyển ra</p>
+                          <p className="truncate text-xs font-bold tabular-nums text-rose-400">
+                            -{outgoingTransactionVnd.toLocaleString('vi-VN')} đ
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="mt-3 grid grid-cols-3 divide-x divide-slate-200 rounded-lg border border-slate-200 py-2.5 dark:divide-slate-700 dark:border-slate-700">
-                    <div className="px-3"><p className="text-[10px] text-slate-500">Đã khớp nội dung</p><p className="mt-0.5 text-sm font-bold text-emerald-600">{matchedTransactionCount}</p></div>
-                    <div className="px-3"><p className="text-[10px] text-slate-500">Chờ xử lý</p><p className="mt-0.5 text-sm font-bold text-amber-600">{pendingTransactionCount}</p></div>
-                    <div className="px-3"><p className="text-[10px] text-slate-500">Kết nối</p><p className="mt-0.5 text-sm font-bold text-slate-900 dark:text-white">{configuredProviderCount}/{paymentProviders.length}</p></div>
+                  {/* 3 Metrics Strip */}
+                  <div className="grid grid-cols-3 divide-x divide-slate-200/80 rounded-xl border border-slate-200/80 bg-slate-50/50 py-2.5 dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-900/40">
+                    <div className="px-3">
+                      <p className="text-[10px] font-semibold text-slate-500">Đã khớp nội dung</p>
+                      <p className="mt-0.5 text-base font-bold text-emerald-600 tabular-nums">{matchedTransactionCount}</p>
+                    </div>
+                    <div className="px-3">
+                      <p className="text-[10px] font-semibold text-slate-500">Chờ xử lý</p>
+                      <p className="mt-0.5 text-base font-bold text-amber-600 tabular-nums">{pendingTransactionCount}</p>
+                    </div>
+                    <div className="px-3">
+                      <p className="text-[10px] font-semibold text-slate-500">Kênh kết nối</p>
+                      <p className="mt-0.5 text-base font-bold text-slate-900 dark:text-white tabular-nums">{configuredProviderCount}/{paymentProviders.length}</p>
+                    </div>
                   </div>
                 </div>
 
-                <div className="border-t border-slate-100 px-2 dark:border-slate-800">
+                {/* Tab Bar */}
+                <div className="border-t border-slate-100 px-2 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-900/20">
                   <div className="grid grid-cols-4" role="tablist" aria-label="Quản lý giao dịch đối soát">
-                    {([['OVERVIEW', 'Cần xử lý', AlertCircle, pendingTransactionCount], ['INCOMING', 'Tiền vào', ArrowDownLeft, transactions.filter(tx => (tx.direction || 'IN') === 'IN').length], ['OUTGOING', 'Tiền ra', ArrowUpRight, transactions.filter(tx => tx.direction === 'OUT').length], ['HISTORY', 'Lịch sử', History, transactions.length]] as const).map(([value, label, Icon, count]) => (
-                      <button key={value} type="button" role="tab" aria-selected={paymentView === value} onClick={() => setPaymentView(value)} className={`relative flex h-14 min-w-0 flex-col items-center justify-center gap-0.5 px-0.5 text-[10px] font-bold transition sm:h-12 sm:flex-row sm:gap-1.5 sm:text-xs ${paymentView === value ? 'text-brand-primary' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}><span className="flex items-center gap-1"><Icon className="h-3.5 w-3.5 shrink-0" /><span className="whitespace-nowrap">{label}</span></span><span className={`rounded-full px-1.5 py-0.5 text-[9px] ${paymentView === value ? 'bg-blue-50 text-brand-primary dark:bg-blue-950/40' : 'bg-slate-100 text-slate-500 dark:bg-slate-800'}`}>{count}</span>{paymentView === value && <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-brand-primary" />}</button>
-                    ))}
+                    {([
+                      ['OVERVIEW', 'Cần xử lý', AlertCircle, pendingTransactionCount],
+                      ['INCOMING', 'Tiền vào', ArrowDownLeft, transactions.filter(tx => (tx.direction || 'IN') === 'IN').length],
+                      ['OUTGOING', 'Tiền ra', ArrowUpRight, transactions.filter(tx => tx.direction === 'OUT').length],
+                      ['HISTORY', 'Lịch sử', History, transactions.length]
+                    ] as const).map(([value, label, Icon, count]) => {
+                      const active = paymentView === value;
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          role="tab"
+                          aria-selected={active}
+                          onClick={() => setPaymentView(value)}
+                          className={`relative flex h-13 min-w-0 flex-col items-center justify-center gap-0.5 px-1 text-xs font-bold transition-colors sm:h-11 sm:flex-row sm:gap-1.5 ${
+                            active ? 'text-brand-primary' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                          }`}
+                        >
+                          <span className="flex items-center gap-1.5">
+                            <Icon className="h-3.5 w-3.5 shrink-0" />
+                            <span className="truncate">{label}</span>
+                          </span>
+                          <span className={`rounded-full px-1.5 py-0.2 text-[9px] font-bold ${
+                            active
+                              ? 'bg-blue-50 text-brand-primary dark:bg-blue-950/60'
+                              : 'bg-slate-200/60 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                          }`}>
+                            {count}
+                          </span>
+                          {active && <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-brand-primary" />}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               </section>
 
-              <section>
-                <div className="mb-2 flex items-center justify-between px-0.5">
-                  <div><h3 className="text-sm font-bold text-slate-900 dark:text-white">Kênh thanh toán</h3><p className="text-[11px] text-slate-500">{configuredProviderCount}/{paymentProviders.length} kênh đã cấu hình</p></div>
-                  <button type="button" onClick={() => setActiveModule('settings')} className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-bold text-brand-primary hover:bg-blue-50 dark:hover:bg-blue-950/30"><Settings2 className="h-3.5 w-3.5" /> Cấu hình</button>
+              {/* Payment Providers Cards */}
+              <section className="space-y-2">
+                <div className="flex items-center justify-between px-0.5">
+                  <div>
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Kênh thanh toán</h3>
+                    <p className="text-[11px] text-slate-500">{configuredProviderCount}/{paymentProviders.length} kênh đã kết nối</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveModule('settings')}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-bold text-brand-primary hover:bg-blue-50 dark:hover:bg-blue-950/30"
+                  >
+                    <Settings2 className="h-3.5 w-3.5" /> Cấu hình
+                  </button>
                 </div>
-                <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                <div className="grid grid-cols-1 gap-2.5 md:grid-cols-3">
                   {paymentProviders.map((p) => (
-                    <div key={p.providerId} className="rounded-xl border border-slate-200/90 bg-white p-3.5 dark:border-slate-800 dark:bg-[#111827]">
+                    <div key={p.providerId} className="rounded-2xl border border-slate-200/80 bg-white p-3.5 dark:border-slate-800 dark:bg-[#111827]">
                       <div className="flex items-center gap-3">
-                        <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${p.status === 'UNCONFIGURED' ? 'bg-slate-100 text-slate-500 dark:bg-slate-800' : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40'}`}><CreditCard className="h-4 w-4" /></span>
-                        <div className="min-w-0 flex-1"><span className="block truncate text-xs font-bold text-slate-900 dark:text-white">{p.displayName}</span><span className={`mt-0.5 block text-[10px] font-semibold ${p.status === 'UNCONFIGURED' ? 'text-slate-500' : 'text-emerald-600 dark:text-emerald-400'}`}>{p.status === 'UNCONFIGURED' ? 'Chưa kết nối' : 'Đang hoạt động'}</span></div>
-                        <span className={`h-2 w-2 shrink-0 rounded-full ${p.status === 'UNCONFIGURED' ? 'bg-slate-300 dark:bg-slate-600' : 'bg-emerald-500'}`} aria-hidden="true" />
+                        <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${
+                          p.status === 'UNCONFIGURED' ? 'bg-slate-100 text-slate-500 dark:bg-slate-800' : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40'
+                        }`}>
+                          <CreditCard className="h-4 w-4" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <span className="block truncate text-xs font-bold text-slate-900 dark:text-white">{p.displayName}</span>
+                          <span className={`mt-0.5 block text-[10px] font-semibold ${
+                            p.status === 'UNCONFIGURED' ? 'text-slate-400' : 'text-emerald-600 dark:text-emerald-400'
+                          }`}>
+                            {p.status === 'UNCONFIGURED' ? 'Chưa kết nối' : 'Đang hoạt động'}
+                          </span>
+                        </div>
+                        <span className={`h-2 w-2 shrink-0 rounded-full ${
+                          p.status === 'UNCONFIGURED' ? 'bg-slate-300 dark:bg-slate-600' : 'bg-emerald-500'
+                        }`} aria-hidden="true" />
                       </div>
                     </div>
                   ))}
                 </div>
               </section>
 
-              <section className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white dark:border-slate-800 dark:bg-[#111827]">
+              {/* Transactions List */}
+              <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white dark:border-slate-800 dark:bg-[#111827]">
                 <div className="border-b border-slate-100 p-4 dark:border-slate-800 sm:p-5">
-                  <div className="flex items-center justify-between gap-3"><div><h3 className="text-sm font-bold text-slate-900 dark:text-white">{paymentViewMeta.title}</h3><p className="mt-0.5 text-[11px] text-slate-500">{paymentViewMeta.description}</p></div><span className="text-xs font-bold tabular-nums text-slate-500">{filteredTransactions.length}</span></div>
-                  <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                    <label className="relative flex-1"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><span className="sr-only">Tìm giao dịch</span><input value={paymentQuery} onChange={event => setPaymentQuery(event.target.value)} placeholder="Mã giao dịch, nội dung, hóa đơn..." className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs outline-none transition focus:border-brand-primary focus:bg-white focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-900 dark:focus:ring-blue-950" /></label>
-                    <div className="grid grid-cols-3 rounded-lg bg-slate-100 p-1 dark:bg-slate-900" aria-label="Lọc trạng thái đối soát">
-                      {([['ALL', 'Tất cả'], ['MATCHED', 'Đã khớp'], ['PENDING', 'Cần xử lý']] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setPaymentStateFilter(value)} aria-pressed={paymentStateFilter === value} className={`h-8 whitespace-nowrap rounded-md px-2 text-[11px] font-bold transition ${paymentStateFilter === value ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}>{label}</button>)}
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900 dark:text-white">{paymentViewMeta.title}</h3>
+                      <p className="mt-0.5 text-xs text-slate-500">{paymentViewMeta.description}</p>
+                    </div>
+                    <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-bold tabular-nums text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                      {filteredTransactions.length} GD
+                    </span>
+                  </div>
+                  <div className="mt-3.5 flex flex-col gap-2.5 sm:flex-row">
+                    <label className="relative flex-1">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                      <span className="sr-only">Tìm giao dịch</span>
+                      <input
+                        value={paymentQuery}
+                        onChange={event => setPaymentQuery(event.target.value)}
+                        placeholder="Mã giao dịch, nội dung, hóa đơn..."
+                        className="h-9 w-full rounded-xl border border-slate-200/80 bg-slate-50/50 pl-8 pr-3 text-xs text-slate-900 outline-none transition focus:border-brand-primary focus:bg-white focus:ring-2 focus:ring-blue-100 dark:border-slate-800 dark:bg-slate-900 dark:text-white dark:focus:ring-blue-950"
+                      />
+                    </label>
+                    <div className="grid grid-cols-3 rounded-xl border border-slate-200/80 bg-slate-100/60 p-1 dark:border-slate-800 dark:bg-slate-900" role="group" aria-label="Lọc trạng thái đối soát">
+                      {([['ALL', 'Tất cả'], ['MATCHED', 'Đã khớp'], ['PENDING', 'Cần xử lý']] as const).map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setPaymentStateFilter(value)}
+                          aria-pressed={paymentStateFilter === value}
+                          className={`h-7 whitespace-nowrap rounded-lg px-2 text-xs font-bold transition-colors ${
+                            paymentStateFilter === value
+                              ? 'bg-white text-slate-900 shadow-2xs dark:bg-slate-800 dark:text-white'
+                              : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
                     </div>
                   </div>
                 </div>
+
                 {filteredTransactions.length === 0 ? (
-                  <div className="space-y-1.5 py-8 text-center"><CreditCard className="mx-auto h-8 w-8 text-slate-400" /><h3 className="text-sm font-bold text-slate-900 dark:text-white">{transactions.length === 0 ? `Chưa có giao dịch trong kỳ ${formatPeriodDisplay(selectedPeriod)}` : 'Không tìm thấy giao dịch phù hợp'}</h3><p className="text-xs text-slate-500">{transactions.length === 0 ? 'Kết nối kênh thanh toán để tự động nhận giao dịch.' : 'Thử đổi từ khóa hoặc bộ lọc trạng thái.'}</p></div>
+                  <div className="space-y-2 py-10 text-center">
+                    <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 dark:bg-slate-800">
+                      <CreditCard className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                        {transactions.length === 0 ? `Chưa có giao dịch trong kỳ ${formatPeriodDisplay(selectedPeriod)}` : 'Không tìm thấy giao dịch phù hợp'}
+                      </h3>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        {transactions.length === 0 ? 'Kết nối kênh thanh toán để tự động nhận giao dịch.' : 'Thử đổi từ khóa hoặc bộ lọc trạng thái.'}
+                      </p>
+                    </div>
+                  </div>
                 ) : (
                   <>
+                    {/* Mobile Transactions List (md:hidden) */}
                     <div className="divide-y divide-slate-100 dark:divide-slate-800 md:hidden">
                       {filteredTransactions.map(tx => {
                         const isMatched = Boolean(tx.invoiceCode) || ['MATCHED', 'RECONCILED', 'VERIFIED'].includes(tx.reconcileState);
                         const direction = tx.direction || 'IN';
                         const matchLabel = tx.matchType === 'SUGGESTED' ? 'Gợi ý khớp' : isMatched ? 'Khớp chính xác' : 'Chưa khớp';
-                        return <article key={tx.id} className="p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><div className="flex items-center gap-2"><span className={`grid h-7 w-7 place-items-center rounded-lg ${direction === 'IN' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40' : 'bg-rose-50 text-rose-600 dark:bg-rose-950/40'}`}>{direction === 'IN' ? <ArrowDownLeft className="h-3.5 w-3.5" /> : <ArrowUpRight className="h-3.5 w-3.5" />}</span><div><span className="block text-xs font-bold text-slate-900 dark:text-white">{tx.providerId}</span><span className="block text-[10px] text-slate-500">{tx.payerName || tx.accountName || (direction === 'IN' ? 'Tiền nhận vào' : 'Tiền chuyển ra')}</span></div></div></div><p className={`shrink-0 text-sm font-bold tabular-nums ${direction === 'IN' ? 'text-emerald-600' : 'text-rose-600'}`}>{direction === 'IN' ? '+' : '-'}{tx.amountVnd.toLocaleString('vi-VN')} đ</p></div><div className="mt-3 rounded-lg bg-slate-50 p-3 dark:bg-slate-900/60"><div className="flex items-center justify-between gap-2"><span className="text-[10px] font-semibold text-slate-500">Nội dung giao dịch</span><span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${isMatched ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : tx.matchType === 'SUGGESTED' ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'}`}>{matchLabel}</span></div><p className="mt-1.5 line-clamp-2 text-xs font-medium text-slate-700 dark:text-slate-200">{tx.referenceText || 'Không có nội dung chuyển khoản'}</p></div><div className="mt-3 flex items-end justify-between gap-3"><div className="min-w-0"><p className="truncate font-mono text-[10px] text-slate-400">{tx.externalTxId}</p><p className="mt-1 text-[10px] text-slate-500">{new Date(tx.occurredAt || tx.verifiedAt).toLocaleString('vi-VN')}</p></div><div className="text-right"><span className="block text-[10px] text-slate-500">Hóa đơn</span><span className={`font-mono text-[11px] font-bold ${tx.invoiceCode ? 'text-brand-primary' : 'text-amber-600'}`}>{tx.invoiceCode || (tx.matchType === 'SUGGESTED' ? 'Xem gợi ý' : 'Chưa gán')}</span></div></div></article>;
+                        return (
+                          <article key={tx.id} className="p-4 space-y-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-xl ${
+                                  direction === 'IN' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40' : 'bg-rose-50 text-rose-600 dark:bg-rose-950/40'
+                                }`}>
+                                  {direction === 'IN' ? <ArrowDownLeft className="h-4 w-4" /> : <ArrowUpRight className="h-4 w-4" />}
+                                </span>
+                                <div className="min-w-0">
+                                  <span className="block text-xs font-bold text-slate-900 dark:text-white">{tx.providerId}</span>
+                                  <span className="block truncate text-[11px] text-slate-500">{tx.payerName || tx.accountName || (direction === 'IN' ? 'Tiền nhận vào' : 'Tiền chuyển ra')}</span>
+                                </div>
+                              </div>
+                              <p className={`shrink-0 text-sm font-bold tabular-nums ${direction === 'IN' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                {direction === 'IN' ? '+' : '-'}{tx.amountVnd.toLocaleString('vi-VN')} đ
+                              </p>
+                            </div>
+
+                            <div className="rounded-xl bg-slate-50/70 p-3 dark:bg-slate-900/50">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-[10px] font-semibold text-slate-500">Nội dung chuyển khoản</span>
+                                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                                  isMatched
+                                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                                    : tx.matchType === 'SUGGESTED'
+                                    ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+                                    : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+                                }`}>
+                                  {matchLabel}
+                                </span>
+                              </div>
+                              <p className="mt-1 line-clamp-2 text-xs font-medium text-slate-700 dark:text-slate-200">
+                                {tx.referenceText || 'Không có nội dung'}
+                              </p>
+                            </div>
+
+                            <div className="flex items-end justify-between gap-3 text-xs">
+                              <div className="min-w-0">
+                                <p className="truncate font-mono text-[11px] text-slate-400">{tx.externalTxId}</p>
+                                <p className="mt-0.5 text-[11px] text-slate-500">{new Date(tx.occurredAt || tx.verifiedAt).toLocaleString('vi-VN')}</p>
+                              </div>
+                              <div className="text-right">
+                                <span className="block text-[10px] text-slate-400">Hóa đơn</span>
+                                <span className={`font-mono text-xs font-bold ${tx.invoiceCode ? 'text-brand-primary' : 'text-amber-600'}`}>
+                                  {tx.invoiceCode || (tx.matchType === 'SUGGESTED' ? 'Xem gợi ý' : 'Chưa gán')}
+                                </span>
+                              </div>
+                            </div>
+                          </article>
+                        );
                       })}
                     </div>
-                    <div className="hidden overflow-x-auto p-5 md:block">
-                      <table className="w-full text-left text-xs"><thead><tr className="border-b border-slate-100 font-semibold text-slate-400 dark:border-slate-800"><th className="pb-3">Cổng</th><th className="pb-3">Mã GD ngân hàng</th><th className="pb-3">Số tiền</th><th className="pb-3">Nội dung</th><th className="pb-3">Hóa đơn khớp</th><th className="pb-3">Đối soát</th></tr></thead><tbody className="divide-y divide-slate-100 dark:divide-slate-800">{filteredTransactions.map(tx => <tr key={tx.id}><td className="py-3 font-bold">{tx.providerId}</td><td className="py-3 font-mono">{tx.externalTxId}</td><td className="py-3 font-bold tabular-nums">{tx.amountVnd.toLocaleString('vi-VN')} đ</td><td className="py-3">{tx.referenceText || '—'}</td><td className="py-3 font-mono">{tx.invoiceCode || 'Chưa gán'}</td><td className="py-3">{tx.reconcileState}</td></tr>)}</tbody></table>
+
+                    {/* Desktop Transactions Table (hidden md:block) */}
+                    <div className="hidden overflow-x-auto p-4 md:block">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="border-b border-slate-200/80 bg-slate-50/70 font-semibold text-slate-500 dark:border-slate-800 dark:bg-slate-900/50">
+                            <th className="py-2.5 px-3 w-px whitespace-nowrap">Cổng</th>
+                            <th className="py-2.5 px-3 w-px whitespace-nowrap">Mã GD ngân hàng</th>
+                            <th className="py-2.5 px-3 w-px whitespace-nowrap text-right">Số tiền</th>
+                            <th className="py-2.5 px-3 min-w-[200px]">Nội dung</th>
+                            <th className="py-2.5 px-3 w-px whitespace-nowrap font-mono">Hóa đơn khớp</th>
+                            <th className="py-2.5 px-3 w-px whitespace-nowrap text-center">Đối soát</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                          {filteredTransactions.map(tx => (
+                            <tr key={tx.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors">
+                              <td className="py-3 px-3 font-bold text-slate-900 dark:text-white w-px whitespace-nowrap">{tx.providerId}</td>
+                              <td className="py-3 px-3 font-mono text-slate-500 w-px whitespace-nowrap">{tx.externalTxId}</td>
+                              <td className="py-3 px-3 font-bold tabular-nums text-right w-px whitespace-nowrap">
+                                <span className={(tx.direction || 'IN') === 'IN' ? 'text-emerald-600' : 'text-rose-600'}>
+                                  {(tx.direction || 'IN') === 'IN' ? '+' : '-'}{tx.amountVnd.toLocaleString('vi-VN')} đ
+                                </span>
+                              </td>
+                              <td className="py-3 px-3 text-slate-700 dark:text-slate-300">{tx.referenceText || '—'}</td>
+                              <td className="py-3 px-3 font-mono font-bold w-px whitespace-nowrap">
+                                <span className={tx.invoiceCode ? 'text-brand-primary' : 'text-slate-400'}>
+                                  {tx.invoiceCode || 'Chưa gán'}
+                                </span>
+                              </td>
+                              <td className="py-3 px-3 text-center w-px whitespace-nowrap">
+                                <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                                  tx.reconcileState === 'MATCHED'
+                                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                                    : 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
+                                }`}>
+                                  {tx.reconcileState}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   </>
                 )}
@@ -3104,32 +3510,50 @@ export const OperationalModuleWorkspace: React.FC<
           {/* 6. FINANCE & CASHBOOK LEDGER */}
           {moduleId === 'finance' && (
             <div className="space-y-4">
+              {/* 3 KPI Cards */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="p-4 rounded-xl bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800">
-                  <span className="text-[11px] font-semibold text-slate-500">
-                    Tổng thu kỳ {formatPeriodDisplay(selectedPeriod)}
-                  </span>
-                  <div className="mt-1 text-lg font-bold text-emerald-600 tabular-nums">
+                <div className="rounded-2xl border border-emerald-100 bg-white p-4.5 dark:border-emerald-950/60 dark:bg-[#111827]">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                      Tổng thu kỳ {formatPeriodDisplay(selectedPeriod)}
+                    </span>
+                    <span className="grid h-8 w-8 place-items-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400">
+                      <ArrowDownLeft className="h-4 w-4" />
+                    </span>
+                  </div>
+                  <div className="mt-2 text-2xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400 tabular-nums">
                     +{financeSummary.totalIncomeVnd.toLocaleString('vi-VN')} đ
                   </div>
                 </div>
-                <div className="p-4 rounded-xl bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800">
-                  <span className="text-[11px] font-semibold text-slate-500">
-                    Tổng chi kỳ {formatPeriodDisplay(selectedPeriod)}
-                  </span>
-                  <div className="mt-1 text-lg font-bold text-rose-600 tabular-nums">
+
+                <div className="rounded-2xl border border-rose-100 bg-white p-4.5 dark:border-rose-950/60 dark:bg-[#111827]">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                      Tổng chi kỳ {formatPeriodDisplay(selectedPeriod)}
+                    </span>
+                    <span className="grid h-8 w-8 place-items-center rounded-xl bg-rose-50 text-rose-600 dark:bg-rose-950/50 dark:text-rose-400">
+                      <ArrowUpRight className="h-4 w-4" />
+                    </span>
+                  </div>
+                  <div className="mt-2 text-2xl font-bold tracking-tight text-rose-600 dark:text-rose-400 tabular-nums">
                     -{financeSummary.totalExpenseVnd.toLocaleString('vi-VN')} đ
                   </div>
                 </div>
-                <div className="p-4 rounded-xl bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800">
-                  <span className="text-[11px] font-semibold text-slate-500">
-                    Dòng tiền ròng (Net Cashflow)
-                  </span>
+
+                <div className="rounded-2xl border border-slate-200/80 bg-white p-4.5 dark:border-slate-800 dark:bg-[#111827]">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                      Dòng tiền ròng (Net Cashflow)
+                    </span>
+                    <span className="grid h-8 w-8 place-items-center rounded-xl bg-blue-50 text-brand-primary dark:bg-blue-950/50 dark:text-blue-400">
+                      <Wallet className="h-4 w-4" />
+                    </span>
+                  </div>
                   <div
-                    className={`mt-1 text-lg font-bold tabular-nums ${
+                    className={`mt-2 text-2xl font-bold tracking-tight tabular-nums ${
                       financeSummary.netCashflowVnd >= 0
-                        ? 'text-emerald-600'
-                        : 'text-rose-600'
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : 'text-rose-600 dark:text-rose-400'
                     }`}
                   >
                     {financeSummary.netCashflowVnd >= 0 ? '+' : ''}
@@ -3138,73 +3562,203 @@ export const OperationalModuleWorkspace: React.FC<
                 </div>
               </div>
 
-              <div className="bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5">
-                {ledgerEntries.length === 0 ? (
-                  <div className="py-8 text-center space-y-1.5">
-                    <Wallet className="w-8 h-8 text-slate-400 mx-auto" />
-                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                      Chưa có phiếu thu / chi trong kỳ{' '}
-                      {formatPeriodDisplay(selectedPeriod)}
+              {/* Sổ quỹ Main Container */}
+              <div className="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 dark:border-slate-800 dark:bg-[#111827] space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                      <Wallet className="h-4 w-4 text-brand-primary" />
+                      Sổ quỹ thu chi
                     </h3>
-                    <p className="text-xs text-slate-500">
-                      Ghi nhận các khoản thu chi phát sinh để quản lý dòng tiền
-                      chuẩn xác trên PostgreSQL.
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      Chứng từ thu chi ghi nhận chính xác theo kỳ kế toán
                     </p>
                   </div>
+                  {hasCapability('canAccessFinance') && (
+                    <button
+                      type="button"
+                      data-testid="btn-open-create-ledger"
+                      onClick={() => {
+                        setLgError(null);
+                        setLgBuildingId(activeBuildings[0]?.id || '');
+                        setIsLedgerModalOpen(true);
+                      }}
+                      className="inline-flex min-h-9 items-center gap-1.5 rounded-xl bg-brand-primary px-3.5 py-2 text-xs font-bold text-white shadow-2xs hover:bg-brand-hover active:scale-98 transition-transform"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      <span>Ghi phiếu thu / chi</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Filter and Search */}
+                <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between pt-1">
+                  <div className="flex items-center gap-1 overflow-x-auto rounded-xl border border-slate-200/80 bg-slate-100/60 p-1 dark:border-slate-800 dark:bg-slate-900" role="tablist">
+                    {([
+                      ['ALL', 'Tất cả', ledgerEntries.length],
+                      ['INCOME', 'Phiếu thu', ledgerEntries.filter(e => e.entryType === 'INCOME').length],
+                      ['EXPENSE', 'Phiếu chi', ledgerEntries.filter(e => e.entryType === 'EXPENSE').length],
+                    ] as const).map(([val, label, count]) => {
+                      const active = financeTypeFilter === val;
+                      return (
+                        <button
+                          key={val}
+                          type="button"
+                          role="tab"
+                          aria-selected={active}
+                          onClick={() => setFinanceTypeFilter(val)}
+                          className={`flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-xs font-semibold transition-colors ${
+                            active
+                              ? 'bg-white text-slate-900 shadow-2xs dark:bg-slate-800 dark:text-white'
+                              : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+                          }`}
+                        >
+                          <span>{label}</span>
+                          <span className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                            active
+                              ? 'bg-slate-100 text-slate-800 dark:bg-slate-700 dark:text-slate-200'
+                              : 'bg-slate-200/60 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                          }`}>
+                            {count}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="relative flex-1 sm:max-w-xs">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                    <input
+                      value={financeQuery}
+                      onChange={(e) => setFinanceQuery(e.target.value)}
+                      placeholder="Tìm mã phiếu, hạng mục, diễn giải..."
+                      className="h-9 w-full rounded-xl border border-slate-200/80 bg-slate-50/50 pl-8 pr-7 text-xs text-slate-900 outline-none transition focus:border-brand-primary focus:bg-white focus:ring-2 focus:ring-blue-100 dark:border-slate-800 dark:bg-slate-900 dark:text-white dark:focus:ring-blue-950"
+                    />
+                    {financeQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setFinanceQuery('')}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {ledgerEntries.length === 0 ? (
+                  <div className="py-10 text-center space-y-2">
+                    <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 dark:bg-slate-800">
+                      <Wallet className="h-5 w-5" />
+                    </div>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                      Chưa có phiếu thu / chi trong kỳ {formatPeriodDisplay(selectedPeriod)}
+                    </h3>
+                    <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                      Ghi nhận các khoản thu chi phát sinh để quản lý dòng tiền chuẩn xác trên PostgreSQL.
+                    </p>
+                  </div>
+                ) : filteredLedgerEntries.length === 0 ? (
+                  <div className="py-8 text-center space-y-1 border-t border-slate-100 dark:border-slate-800">
+                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">Không tìm thấy chứng từ phù hợp</p>
+                    <p className="text-[11px] text-slate-500">Thử thay đổi từ khóa hoặc bộ lọc loại phiếu</p>
+                  </div>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs">
-                      <thead>
-                        <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 font-semibold">
-                          <th className="pb-3">Mã phiếu</th>
-                          <th className="pb-3">Loại</th>
-                          <th className="pb-3">Hạng mục</th>
-                          <th className="pb-3">Diễn giải</th>
-                          <th className="pb-3">Số tiền</th>
-                          <th className="pb-3">Người ghi</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                        {ledgerEntries.map((e) => (
-                          <tr key={e.id}>
-                            <td className="py-3 font-mono font-bold">
-                              {e.entryCode}
-                            </td>
-                            <td className="py-3">
-                              <span
-                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                  e.entryType === 'INCOME'
-                                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                                    : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
-                                }`}
-                              >
-                                {e.entryType === 'INCOME'
-                                  ? 'Phiếu thu'
-                                  : 'Phiếu chi'}
-                              </span>
-                            </td>
-                            <td className="py-3 font-semibold">{e.category}</td>
-                            <td className="py-3 text-slate-600 dark:text-slate-300">
-                              {e.description}
-                            </td>
-                            <td
-                              className={`py-3 font-bold tabular-nums ${
+                  <>
+                    {/* Mobile Sổ quỹ Cards (md:hidden) */}
+                    <div className="md:hidden space-y-2.5">
+                      {filteredLedgerEntries.map((e) => (
+                        <div
+                          key={e.id}
+                          className="rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-2xs space-y-2 dark:border-slate-800 dark:bg-[#111827]"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <span className="font-mono text-xs font-bold text-slate-900 dark:text-white">{e.entryCode}</span>
+                              <span className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mt-0.5">{e.category}</span>
+                            </div>
+                            <span
+                              className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold ${
                                 e.entryType === 'INCOME'
-                                  ? 'text-emerald-600'
-                                  : 'text-rose-600'
+                                  ? 'bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/15 dark:bg-emerald-950/40 dark:text-emerald-300'
+                                  : 'bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-600/15 dark:bg-rose-950/40 dark:text-rose-300'
                               }`}
                             >
-                              {e.entryType === 'INCOME' ? '+' : '-'}
-                              {e.amountVnd.toLocaleString('vi-VN')} đ
-                            </td>
-                            <td className="py-3 text-slate-500 font-mono text-[11px]">
-                              {e.recordedBy}
-                            </td>
+                              {e.entryType === 'INCOME' ? 'Phiếu thu' : 'Phiếu chi'}
+                            </span>
+                          </div>
+
+                          <p className="text-xs text-slate-700 dark:text-slate-300 line-clamp-2">
+                            {e.description}
+                          </p>
+
+                          <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-2 text-xs">
+                            <span className="text-[11px] text-slate-400 font-mono">
+                              Người ghi: {e.recordedBy}
+                            </span>
+                            <span
+                              className={`font-bold tabular-nums text-sm ${
+                                e.entryType === 'INCOME' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                              }`}
+                            >
+                              {e.entryType === 'INCOME' ? '+' : '-'}{e.amountVnd.toLocaleString('vi-VN')} đ
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Desktop Sổ quỹ Table (hidden md:block) */}
+                    <div className="hidden md:block overflow-x-auto rounded-xl border border-slate-200/80 dark:border-slate-800">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="border-b border-slate-200/80 bg-slate-50/70 text-slate-500 font-semibold dark:border-slate-800 dark:bg-slate-900/50">
+                            <th className="py-2.5 px-3 w-px whitespace-nowrap">Mã phiếu</th>
+                            <th className="py-2.5 px-3 w-px whitespace-nowrap text-center">Loại</th>
+                            <th className="py-2.5 px-3 w-px whitespace-nowrap">Hạng mục</th>
+                            <th className="py-2.5 px-3 min-w-[200px]">Diễn giải</th>
+                            <th className="py-2.5 px-3 w-px whitespace-nowrap text-right">Số tiền</th>
+                            <th className="py-2.5 px-3 w-px whitespace-nowrap text-right">Người ghi</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                          {filteredLedgerEntries.map((e) => (
+                            <tr key={e.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors">
+                              <td className="py-3 px-3 font-mono font-bold text-slate-900 dark:text-white w-px whitespace-nowrap">
+                                {e.entryCode}
+                              </td>
+                              <td className="py-3 px-3 text-center w-px whitespace-nowrap">
+                                <span
+                                  className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                                    e.entryType === 'INCOME'
+                                      ? 'bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/15 dark:bg-emerald-950/40 dark:text-emerald-300'
+                                      : 'bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-600/15 dark:bg-rose-950/40 dark:text-rose-300'
+                                  }`}
+                                >
+                                  {e.entryType === 'INCOME' ? 'Phiếu thu' : 'Phiếu chi'}
+                                </span>
+                              </td>
+                              <td className="py-3 px-3 font-semibold text-slate-900 dark:text-white w-px whitespace-nowrap">{e.category}</td>
+                              <td className="py-3 px-3 text-slate-600 dark:text-slate-300">
+                                {e.description}
+                              </td>
+                              <td
+                                className={`py-3 px-3 font-bold tabular-nums text-right w-px whitespace-nowrap ${
+                                  e.entryType === 'INCOME' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                                }`}
+                              >
+                                {e.entryType === 'INCOME' ? '+' : '-'}
+                                {e.amountVnd.toLocaleString('vi-VN')} đ
+                              </td>
+                              <td className="py-3 px-3 text-slate-500 font-mono text-[11px] text-right w-px whitespace-nowrap">
+                                {e.recordedBy}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
                 )}
               </div>
             </div>

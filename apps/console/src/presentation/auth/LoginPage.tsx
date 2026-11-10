@@ -39,22 +39,22 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center p-4 bg-gradient-to-br from-slate-50 via-blue-50/40 to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
-      <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl border border-appBorder-light dark:border-appBorder-dark shadow-elevated p-8">
+    <div className="min-h-screen w-full flex items-center justify-center p-4 bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
+      <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-xl p-6 sm:p-8">
         {/* Official Brand Header — Unified Login (Zero Role Tabs) */}
-        <div className="flex flex-col items-center text-center mb-7">
+        <div className="flex flex-col items-center text-center mb-6">
           <div data-brand-dock="console-login" className="flex flex-col items-center">
-          <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-slate-800 border border-blue-100 dark:border-slate-700 flex items-center justify-center mb-3 shadow-sm">
-            <BrandMark testId="header-brand-logo-img" className="h-8 w-8 select-none" />
+            <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-slate-800 border border-blue-100/80 dark:border-slate-700 flex items-center justify-center mb-2.5 shadow-2xs">
+              <BrandMark testId="header-brand-logo-img" className="h-8 w-8 select-none" />
+            </div>
+            <BrandWordmark className="h-auto w-[118px]" />
           </div>
-          <BrandWordmark className="h-auto w-[118px]" />
-          </div>
-          <span className="text-[11px] font-bold tracking-[0.14em] uppercase text-brand-primary mt-1.5">
+          <span className="text-[10.5px] font-bold tracking-[0.14em] uppercase text-brand-primary mt-1.5">
             QUẢN LÝ CĂN HỘ DỊCH VỤ
           </span>
           <h1
             data-testid="console-login-heading"
-            className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100 mt-4"
+            className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100 mt-3"
           >
             Đăng nhập hệ thống quản lý AdHome
           </h1>
@@ -64,7 +64,7 @@ export const LoginPage: React.FC = () => {
         {showForgotNotice && (
           <div
             data-testid="console-forgot-password-notice"
-            className="mb-4 p-3 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-200 text-xs flex items-start gap-2"
+            className="mb-4 p-3 rounded-xl bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200/80 dark:border-blue-800 text-blue-800 dark:text-blue-200 text-xs flex items-start gap-2"
           >
             <Info className="w-4 h-4 shrink-0 mt-0.5 text-brand-primary" />
             <span>
@@ -80,7 +80,7 @@ export const LoginPage: React.FC = () => {
           <div
             data-testid="console-login-error"
             role="alert"
-            className="mb-4 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs flex items-center gap-2"
+            className="mb-4 p-3.5 rounded-xl bg-rose-50/90 dark:bg-rose-950/40 border border-rose-200/80 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 text-xs flex items-center gap-2.5"
           >
             <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
             <span>{errorMsg}</span>
@@ -92,7 +92,7 @@ export const LoginPage: React.FC = () => {
           <div>
             <label
               htmlFor="console-login-email"
-              className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1.5"
+              className="text-xs font-semibold text-slate-700 dark:text-slate-300 block mb-1.5"
             >
               Email hoặc tên đăng nhập
             </label>
@@ -107,8 +107,8 @@ export const LoginPage: React.FC = () => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="w-full text-xs font-medium pl-10 pr-3 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-primary text-slate-900 dark:text-slate-100"
-                placeholder="ten.nhanvien@adhome.vn"
+                className="w-full text-xs font-medium pl-10 pr-3 py-2.5 rounded-xl bg-slate-50/60 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700 focus:outline-none focus:bg-white dark:focus:bg-slate-800 focus:border-brand-primary focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-950 text-slate-900 dark:text-slate-100 transition-colors"
+                placeholder="admin@adhome.vn"
               />
             </div>
           </div>
@@ -117,7 +117,7 @@ export const LoginPage: React.FC = () => {
             <div className="flex items-center justify-between mb-1.5">
               <label
                 htmlFor="console-login-password"
-                className="text-xs font-bold text-slate-700 dark:text-slate-300"
+                className="text-xs font-semibold text-slate-700 dark:text-slate-300"
               >
                 Mật khẩu
               </label>
@@ -139,14 +139,14 @@ export const LoginPage: React.FC = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="w-full text-xs font-medium pl-10 pr-10 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-primary text-slate-900 dark:text-slate-100"
+                className="w-full text-xs font-medium pl-10 pr-10 py-2.5 rounded-xl bg-slate-50/60 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700 focus:outline-none focus:bg-white dark:focus:bg-slate-800 focus:border-brand-primary focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-950 text-slate-900 dark:text-slate-100 transition-colors"
                 placeholder="Nhập mật khẩu tài khoản..."
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
-                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
               >
                 {showPassword ? (
                   <EyeOff className="w-4 h-4" />
@@ -157,14 +157,14 @@ export const LoginPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 py-1">
+          <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 py-0.5">
             <label className="flex items-center gap-2 cursor-pointer select-none">
               <input
                 data-testid="console-login-remember"
                 type="checkbox"
                 checked={rememberMe}
                 onChange={(e) => setRememberMe(e.target.checked)}
-                className="rounded text-brand-primary focus:ring-0"
+                className="rounded border-slate-300 text-brand-primary focus:ring-0"
               />
               <span>Ghi nhớ đăng nhập</span>
             </label>
@@ -174,7 +174,7 @@ export const LoginPage: React.FC = () => {
             data-testid="console-login-submit"
             type="submit"
             disabled={isSubmitting}
-            className="w-full py-3.5 rounded-xl bg-brand-primary hover:bg-brand-hover disabled:opacity-50 text-white text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2 group cursor-pointer"
+            className="w-full min-h-[44px] rounded-xl bg-brand-primary hover:bg-brand-hover disabled:opacity-50 text-white text-xs font-bold transition-all shadow-2xs hover:shadow-xs active:scale-98 flex items-center justify-center gap-2 group cursor-pointer"
           >
             {isSubmitting ? (
               <>
@@ -191,7 +191,7 @@ export const LoginPage: React.FC = () => {
         </form>
 
         {/* Server-Derived RBAC Notice */}
-        <div className="mt-6 pt-4 border-t border-appBorder-light dark:border-appBorder-dark text-center">
+        <div className="mt-5 pt-3.5 border-t border-slate-100 dark:border-slate-800 text-center">
           <p
             data-testid="console-login-rbac-note"
             className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-center gap-1.5"

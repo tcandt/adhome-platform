@@ -400,7 +400,7 @@ export const SettingsWorkspaceView: React.FC = () => {
       {settingsTab === 'staff' ? (
         <AccountManagementView />
       ) : isLoading ? (
-        <div className="p-12 bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl flex items-center justify-center gap-2 text-xs text-slate-500">
+        <div className="p-12 bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800 rounded-2xl flex items-center justify-center gap-2 text-xs text-slate-500">
           <Loader2 className="w-4 h-4 animate-spin text-brand-primary" />
           <span>Đang tải cấu hình hệ thống từ PostgreSQL...</span>
         </div>
@@ -423,7 +423,7 @@ export const SettingsWorkspaceView: React.FC = () => {
                     'Đã cập nhật thông tin tổ chức trên PostgreSQL.'
                   );
                 }}
-                className="lg:col-span-7 p-5 bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl space-y-4"
+                className="lg:col-span-7 p-5 bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800 rounded-2xl space-y-4"
               >
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
                   <Building2 className="w-4 h-4 text-brand-primary" />
@@ -501,7 +501,7 @@ export const SettingsWorkspaceView: React.FC = () => {
                 </div>
               </form>
 
-              <div className="lg:col-span-5 p-5 bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl space-y-3">
+              <div className="lg:col-span-5 p-5 bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800 rounded-2xl space-y-3">
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white">
                   Danh mục tòa nhà thuộc tổ chức ({allBuildings.length} tòa)
                 </h3>
@@ -558,7 +558,7 @@ export const SettingsWorkspaceView: React.FC = () => {
                   'Đã lưu biểu giá.'
                 );
               }}
-              className="p-5 bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl space-y-5"
+              className="p-5 bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800 rounded-2xl space-y-5"
             >
               <div>
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -722,7 +722,7 @@ export const SettingsWorkspaceView: React.FC = () => {
                   <div
                     key={ch.id}
                     data-testid={`notification-channel-card-${ch.channelType}`}
-                    className="flex min-h-16 min-w-0 items-center justify-between gap-3 rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 dark:border-slate-800 dark:bg-[#111827]"
+                    className="flex min-h-16 min-w-0 items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-white px-3 py-2.5 dark:border-slate-800 dark:bg-[#111827]"
                   >
                     <div className="flex min-w-0 items-center gap-3">
                       <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-500/10"><BellRing className="h-4 w-4" /></span>
@@ -824,7 +824,7 @@ export const SettingsWorkspaceView: React.FC = () => {
           {settingsTab === 'hunonic' && hunonicIntegration && (
             <div
               data-testid="hunonic-settings-card"
-              className="max-w-2xl p-5 bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl space-y-4"
+              className="max-w-2xl p-5 bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800 rounded-2xl space-y-4"
             >
               <div className="flex items-start justify-between gap-2">
                 <div>
@@ -923,7 +923,7 @@ export const SettingsWorkspaceView: React.FC = () => {
 
           {/* TAB 7: CRON SCHEDULER */}
           {settingsTab === 'cron' && (
-            <div className="p-5 bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl space-y-4">
+            <div className="p-5 bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800 rounded-2xl space-y-4">
               <div>
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
                   <Clock className="w-4 h-4 text-brand-primary" />
@@ -1013,7 +1013,7 @@ export const SettingsWorkspaceView: React.FC = () => {
           {/* TAB 8: AUDIT LOGS & SECURITY */}
           {settingsTab === 'audit' && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-              <div className="lg:col-span-7 p-5 bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl space-y-3">
+              <div className="lg:col-span-7 p-5 bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800 rounded-2xl space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
                     <ShieldCheck className="w-4 h-4 text-brand-primary" />
@@ -1049,7 +1049,7 @@ export const SettingsWorkspaceView: React.FC = () => {
                 <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-3 text-xs dark:border-slate-800"><span>Trang {businessPage}/{businessPageCount}</span><div className="flex gap-2"><button type="button" disabled={auditLoading || businessPage <= 1} onClick={() => setBusinessPage(p => p - 1)} className="min-h-10 rounded-lg border px-3 disabled:opacity-40">Trước</button><button type="button" disabled={auditLoading || businessPage >= businessPageCount} onClick={() => setBusinessPage(p => p + 1)} className="min-h-10 rounded-lg border px-3 disabled:opacity-40">Sau</button></div></div>
               </div>
 
-              <div className="lg:col-span-5 p-5 bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl space-y-3">
+              <div className="lg:col-span-5 p-5 bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800 rounded-2xl space-y-3">
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white">
                   Lịch sử xác thực đăng nhập
                 </h3>

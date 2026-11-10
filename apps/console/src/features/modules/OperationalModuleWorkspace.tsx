@@ -1315,7 +1315,7 @@ export const OperationalModuleWorkspace: React.FC<
           Tier 2: context bar (building scope + period), only when relevant */}
       <div
         data-testid="module-workspace-toolbar"
-        className="module-workspace-toolbar bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-xl"
+        className="module-workspace-toolbar bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800 rounded-xl"
       >
         <div className="module-workspace-toolbar-row flex items-center justify-between gap-4 px-4 py-3">
         <div className="module-workspace-heading min-w-0">
@@ -1524,7 +1524,7 @@ export const OperationalModuleWorkspace: React.FC<
       )}
 
       {isLoading ? (
-        <div className="p-12 bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl flex items-center justify-center gap-2 text-xs text-slate-500">
+        <div className="p-12 bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800 rounded-2xl flex items-center justify-center gap-2 text-xs text-slate-500">
           <Loader2 className="w-4 h-4 animate-spin text-brand-primary" />
           <span>Đang truy vấn dữ liệu thực tế từ PostgreSQL...</span>
         </div>
@@ -1533,7 +1533,7 @@ export const OperationalModuleWorkspace: React.FC<
           {/* 1. DEPOSITS & RESERVATIONS */}
           {moduleId === 'deposits' && (
             <div className="module-content-stack space-y-4">
-              <div className="module-surface bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5 space-y-3">
+              <div className="module-surface bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
                     <KeyRound className="w-4 h-4 text-amber-500" />
@@ -1646,7 +1646,7 @@ export const OperationalModuleWorkspace: React.FC<
               </div>
 
               {/* Deposit Records Table */}
-              <div className="module-surface bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5 space-y-3">
+              <div className="module-surface bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 space-y-3">
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
                   <Wallet className="w-4 h-4 text-emerald-600" />
                   Sổ theo dõi tiền cọc (Deposits Ledger)
@@ -1828,7 +1828,7 @@ export const OperationalModuleWorkspace: React.FC<
 
           {/* 2. CONTRACTS & OCCUPANCY SOURCE OF TRUTH */}
           {moduleId === 'contracts' && (
-            <div className="bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5 space-y-4">
+            <div className="bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 space-y-4">
               {/* SUB-VIEW TOGGLE: CONTRACTS VS OCCUPANCY */}
               <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
                 <div className="flex items-center gap-2">
@@ -2038,7 +2038,7 @@ export const OperationalModuleWorkspace: React.FC<
                         <div
                           key={c.id}
                           data-testid={`contract-mobile-card-${c.contractCode}`}
-                          className="p-3.5 rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900/60 space-y-2.5 text-xs shadow-xs"
+                          className="p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900/60 space-y-2.5 text-xs shadow-xs"
                         >
                           <div className="flex items-center justify-between gap-2">
                             <div className="font-bold text-slate-900 dark:text-white text-xs flex items-center gap-1.5 min-w-0">
@@ -2208,7 +2208,7 @@ export const OperationalModuleWorkspace: React.FC<
                   </div>
 
                   {/* Desktop Contracts Table */}
-                  <div className="hidden md:block overflow-x-auto rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900/60 shadow-xs">
+                  <div className="hidden md:block overflow-x-auto rounded-xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900/60 shadow-xs">
                     <table
                       data-testid="contracts-table"
                       className="w-full text-left text-xs"
@@ -2424,7 +2424,7 @@ export const OperationalModuleWorkspace: React.FC<
           {moduleId === 'settlements' && (
             <div className="space-y-4">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div className="p-5 bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl space-y-3">
+                <div className="p-5 bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800 rounded-2xl space-y-3">
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
                       <ClipboardCheck className="w-4 h-4 text-brand-primary" />
@@ -2493,7 +2493,7 @@ export const OperationalModuleWorkspace: React.FC<
                   </div>
                 </div>
 
-                <div className="p-5 bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl space-y-3">
+                <div className="p-5 bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800 rounded-2xl space-y-3">
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
                       <Clock className="w-4 h-4 text-brand-primary" />
@@ -2543,7 +2543,7 @@ export const OperationalModuleWorkspace: React.FC<
                 {/* HUNONIC BACKGROUND SYNC JOBS */}
                 <div
                   data-testid="card-hunonic-sync-jobs"
-                  className="p-5 bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl space-y-3"
+                  className="p-5 bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800 rounded-2xl space-y-3"
                 >
                   <div className="flex items-center justify-between">
                     <div>
@@ -2607,7 +2607,7 @@ export const OperationalModuleWorkspace: React.FC<
                 {/* WATER BILLING CALCULATION MODES */}
                 <div
                   data-testid="card-water-calculation-settlement"
-                  className="p-5 bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl space-y-3"
+                  className="p-5 bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800 rounded-2xl space-y-3"
                 >
                   <div className="flex items-center justify-between">
                     <div>
@@ -2726,7 +2726,7 @@ export const OperationalModuleWorkspace: React.FC<
               </div>
 
               {/* Electric Meters & Telemetry */}
-              <div className="bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5 space-y-3">
+              <div className="bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 space-y-3">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
                     <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
@@ -3766,7 +3766,7 @@ export const OperationalModuleWorkspace: React.FC<
 
           {/* 7. REPORTS & ANALYTICS */}
           {moduleId === 'reports' && (
-            <div className="bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5">
+            <div className="bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
                   <BarChart3 className="w-4 h-4 text-brand-primary" />

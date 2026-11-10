@@ -5,6 +5,7 @@
   "compatibility_date": "2026-11-02",
   "workers_dev": true,
   "routes": [{ "pattern": "adhome.vn", "custom_domain": true }],
+  "vars": { "PUBLIC_API_ORIGIN": "https://api.adhome.vn", "PUBLIC_ROOMS_API_ORIGIN": "https://console-api.adhome.vn" },
   "assets": {
     "directory": "./apps/landing/dist",
     "binding": "ASSETS",

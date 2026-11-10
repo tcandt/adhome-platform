@@ -11,6 +11,7 @@ import {
   Info,
 } from 'lucide-react';
 import { BrandWordmark } from '@/shared/ui/BrandWordmark';
+import { BrandMark } from '@/shared/ui/BrandMark';
 import { useAuth } from '@/app/providers/AuthContext';
 
 export const LoginPage: React.FC = () => {
@@ -44,15 +45,7 @@ export const LoginPage: React.FC = () => {
         <div className="flex flex-col items-center text-center mb-7">
           <div data-brand-dock="console-login" className="flex flex-col items-center">
           <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-slate-800 border border-blue-100 dark:border-slate-700 flex items-center justify-center mb-3 shadow-sm">
-            <img
-              src="/brand/adhome-icon.svg"
-              alt="AdHome"
-              width={32}
-              height={32}
-              data-brand-part="icon"
-              data-testid="header-brand-logo-img"
-              className="w-8 h-8 object-contain select-none"
-            />
+            <BrandMark testId="header-brand-logo-img" className="h-8 w-8 select-none" />
           </div>
           <BrandWordmark className="h-auto w-[118px]" />
           </div>

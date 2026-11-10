@@ -1,5 +1,6 @@
 import React from 'react';
 import { BrandWordmark } from './BrandWordmark';
+import { BrandMark } from './BrandMark';
 
 interface BrandLogoProps {
   collapsed?: boolean;
@@ -24,14 +25,7 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
         data-brand-dock="console-icon"
         data-testid="brand-logo-icon"
       >
-        <img
-          src="/brand/adhome-icon.svg"
-          alt="AdHome"
-          data-brand-part="icon"
-          data-testid="brand-logo-icon-img header-brand-logo-img"
-          className="h-full w-full shrink-0 object-contain select-none"
-          draggable={false}
-        />
+        <BrandMark testId="brand-logo-icon-img header-brand-logo-img" className="h-full w-full shrink-0 select-none" />
       </div>
     );
   }
@@ -56,8 +50,7 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
   return (
     <div className={`relative flex shrink-0 items-center gap-2.5 ${className}`}
       data-brand-dock="console-horizontal" data-testid="brand-logo-horizontal">
-      <img src="/brand/adhome-icon.svg" alt="" data-brand-part="icon"
-        className={`${iconSize} shrink-0 object-contain select-none`} draggable={false} />
+      <BrandMark decorative className={`${iconSize} shrink-0 select-none`} />
       <BrandWordmark className={size === 'sm' ? 'h-auto w-[94px]' : size === 'lg' ? 'h-auto w-[125px]' : 'h-auto w-[110px]'} />
     </div>
   );

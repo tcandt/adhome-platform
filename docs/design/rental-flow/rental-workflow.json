@@ -1,0 +1,178 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Thêm thuê · Quy trình đề xuất",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    {
+      "id": "entry",
+      "label": "Vào quy trình"
+    },
+    {
+      "id": "sync",
+      "label": "Đồng bộ dữ liệu"
+    },
+    {
+      "id": "hold",
+      "label": "Đặt cọc giữ phòng"
+    },
+    {
+      "id": "live",
+      "label": "Thuê ở ngay"
+    }
+  ],
+  "mainPath": [
+    "room",
+    "intent",
+    "liveForm",
+    "liveSave"
+  ],
+  "nodes": [
+    {
+      "id": "room",
+      "lane": "entry",
+      "col": 0,
+      "type": "frontend",
+      "label": "Chọn phòng",
+      "sublabel": "Tab Khách ở → Thêm thuê",
+      "width": 170
+    },
+    {
+      "id": "intent",
+      "lane": "entry",
+      "col": 1,
+      "type": "frontend",
+      "label": "Chọn nhu cầu",
+      "sublabel": "Trang riêng · 3 lựa chọn",
+      "width": 170
+    },
+    {
+      "id": "syncForm",
+      "lane": "sync",
+      "col": 2,
+      "type": "frontend",
+      "label": "Nhập dữ liệu cũ",
+      "sublabel": "Khách · Hợp đồng · Số dư",
+      "width": 170
+    },
+    {
+      "id": "syncSave",
+      "lane": "sync",
+      "col": 3,
+      "type": "backend",
+      "label": "Kiểm tra & ghi nhận",
+      "sublabel": "Không thu tiền lần nữa",
+      "width": 170
+    },
+    {
+      "id": "syncDone",
+      "lane": "sync",
+      "col": 4,
+      "type": "database",
+      "label": "Dữ liệu tiếp quản",
+      "sublabel": "Khách ở · Hợp đồng · Số dư đầu",
+      "width": 170
+    },
+    {
+      "id": "holdForm",
+      "lane": "hold",
+      "col": 2,
+      "type": "frontend",
+      "label": "Thông tin giữ phòng",
+      "sublabel": "Khách · Cọc · Hạn giữ",
+      "width": 170
+    },
+    {
+      "id": "holdSave",
+      "lane": "hold",
+      "col": 3,
+      "type": "backend",
+      "label": "Xác nhận giữ phòng",
+      "sublabel": "Phân biệt hẹn cọc và đã thu",
+      "width": 170
+    },
+    {
+      "id": "holdDone",
+      "lane": "hold",
+      "col": 4,
+      "type": "database",
+      "label": "Phiếu giữ phòng",
+      "sublabel": "Chuyển thuê khi nhận phòng",
+      "width": 170
+    },
+    {
+      "id": "liveForm",
+      "lane": "live",
+      "col": 2,
+      "type": "frontend",
+      "label": "Thông tin nhận phòng",
+      "sublabel": "Khách · Giá · Dịch vụ · Chỉ số",
+      "width": 170
+    },
+    {
+      "id": "liveSave",
+      "lane": "live",
+      "col": 3,
+      "type": "backend",
+      "label": "Xác nhận thuê ở",
+      "sublabel": "Kiểm tra phòng & hợp đồng trùng",
+      "width": 170
+    },
+    {
+      "id": "liveDone",
+      "lane": "live",
+      "col": 4,
+      "type": "database",
+      "label": "Hợp đồng đang ở",
+      "sublabel": "Nhận phòng · Công nợ · Thu thực tế",
+      "width": 170
+    }
+  ],
+  "edges": [
+    {
+      "from": "room",
+      "to": "intent"
+    },
+    {
+      "from": "intent",
+      "to": "syncForm",
+      "label": "Tiếp quản"
+    },
+    {
+      "from": "intent",
+      "to": "holdForm",
+      "label": "Giữ chỗ"
+    },
+    {
+      "from": "intent",
+      "to": "liveForm",
+      "label": "Nhận phòng"
+    },
+    {
+      "from": "syncForm",
+      "to": "syncSave"
+    },
+    {
+      "from": "syncSave",
+      "to": "syncDone"
+    },
+    {
+      "from": "holdForm",
+      "to": "holdSave"
+    },
+    {
+      "from": "holdSave",
+      "to": "holdDone"
+    },
+    {
+      "from": "liveForm",
+      "to": "liveSave"
+    },
+    {
+      "from": "liveSave",
+      "to": "liveDone"
+    }
+  ]
+}

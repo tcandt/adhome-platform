@@ -1,0 +1,62 @@
+{
+  "sourceDirectory": "E:/DATA/homeland-new/homeland-saas/tai-lieu",
+  "copiedOn": "2026-11-03",
+  "private": true,
+  "files": [
+    {
+      "name": "CT01.docx",
+      "sha256": "0cf4e3f5ed53c374def24d5c67db8cc4dfbc79d0fa3ece7d248aa16662731fc9",
+      "bytes": 249839
+    },
+    {
+      "name": "CT01_backup.docx",
+      "sha256": "55dc2a5ec6401f4f7f8b977c1ec483dea080917be7c03a5d77f64e7325a5878f",
+      "bytes": 36452
+    },
+    {
+      "name": "CT01_test.pdf",
+      "sha256": "7b9c7748548f9545f96df98e3bcc6a52f6015eb75216f4d9f6a535b55c8dc031",
+      "bytes": 213645
+    },
+    {
+      "name": "Giay-phep-KD.jpg",
+      "sha256": "2d77e4ed2c492e21057c84bb1365204953e182b29e184a51a48711bd43669a1e",
+      "bytes": 979387
+    },
+    {
+      "name": "HD-COC-GIU-PHONG.docx",
+      "sha256": "4995f29d576ee40d47d23e2c6ede130cd736e3304a9453eecf7ad34a277a1226",
+      "bytes": 18878
+    },
+    {
+      "name": "HOP_DONG_1PN.docx",
+      "sha256": "365110f119cf8073d67778f8bb2fdff0b303a2c62ad4816ab5ebaeaef5d7267a",
+      "bytes": 471886
+    },
+    {
+      "name": "HOP_DONG_2PN.docx",
+      "sha256": "1dc60b35dcd85a131dcdbdbc279c1b31ff366f9455835846176a3fd8742672a6",
+      "bytes": 32055
+    },
+    {
+      "name": "so-do-MS.jpg",
+      "sha256": "e822d65bfedcd311a66e0ddfa7e4152dd2602c7d0122370781dfacddfa802bbb",
+      "bytes": 673599
+    },
+    {
+      "name": "so-do-MT.jpg",
+      "sha256": "bc4c6d1d356dd55be34a10a89ecea31c33ee25705c93bd2ece7034e6afb4fdde",
+      "bytes": 899810
+    },
+    {
+      "name": "test_output.docx",
+      "sha256": "ef526e9fecd00aea5773fd00459f7e6be59386b48748dc73975f29cd06ae7679",
+      "bytes": 32427
+    },
+    {
+      "name": "test_output.pdf",
+      "sha256": "00b1611fc557ddca4679974c2af03f81fe32fb79bba144c3dd41108c9d433600",
+      "bytes": 212710
+    }
+  ]
+}

@@ -53,14 +53,17 @@ export default {
       return asset;
     }
     if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
-    const methods = PUBLIC_ROUTES.get(url.pathname);
+    const methods = url.pathname.startsWith('/api/v1/public/room-images/') ? ['GET'] : PUBLIC_ROUTES.get(url.pathname);
     if (!methods) return failure('Not found', 404);
     if (!methods.includes(request.method)) return new Response(null, {
       status: 405, headers: { Allow: methods.join(', '), 'Cache-Control': 'no-store' },
     });
-    if (!env.PUBLIC_API_ORIGIN) return failure('Dịch vụ đang được kết nối. Vui lòng liên hệ 05678.67889 hoặc admin@adhome.vn.');
+    const upstreamOrigin = url.pathname === '/api/v1/public/rooms' || url.pathname.startsWith('/api/v1/public/room-images/')
+      ? env.PUBLIC_ROOMS_API_ORIGIN || env.PUBLIC_API_ORIGIN
+      : env.PUBLIC_API_ORIGIN;
+    if (!upstreamOrigin) return failure('Dịch vụ đang được kết nối. Vui lòng liên hệ 05678.67889 hoặc admin@adhome.vn.');
     let origin;
-    try { origin = new URL(env.PUBLIC_API_ORIGIN); } catch { return failure('API configuration unavailable'); }
+    try { origin = new URL(upstreamOrigin); } catch { return failure('API configuration unavailable'); }
     if (origin.protocol !== 'https:' || origin.origin === url.origin || origin.pathname !== '/' || origin.username || origin.password) {
       return failure('API configuration unavailable');
     }

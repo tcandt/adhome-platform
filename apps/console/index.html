@@ -3,8 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <!-- Reset a persisted Safari zoom during navigation; pinch zoom is restored once the page finishes loading. -->
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+    <!-- Use the device width while preserving native browser pinch zoom. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5, user-scalable=yes" />
     <meta name="description" content="AdHome Console V2 — Nền tảng SaaS quản lý căn hộ dịch vụ và vận hành cơ sở lưu trú." />
     <title>AdHome — Console Quản lý Căn hộ Dịch vụ</title>
     <!-- Google Fonts: Inter -->
@@ -76,16 +76,6 @@
         </div>
       </div>
     </div>
-    <script>
-      (() => {
-        const viewport = document.querySelector('meta[name="viewport"]');
-        if (!viewport) return;
-        const enableAccessibleZoom = () => {
-          viewport.setAttribute('content', 'width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5, user-scalable=yes');
-        };
-        window.addEventListener('load', enableAccessibleZoom, { once: true });
-      })();
-    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

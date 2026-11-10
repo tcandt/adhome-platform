@@ -120,7 +120,7 @@ export const SafeDeleteModal: React.FC<SafeDeleteModalProps> = ({
       data-testid="modal-safe-delete"
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm"
     >
-      <div className="relative w-full max-w-lg bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden">
+      <div className="relative w-full max-w-lg bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl max-h-[92dvh] overflow-y-auto">
         <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/80 dark:bg-slate-900/60">
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-rose-100 dark:bg-rose-950 text-rose-600">

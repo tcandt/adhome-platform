@@ -1,0 +1,9 @@
+diagram_type: workflow
+output: E:/DATA/AdHome-Platform/docs/design/rental-flow/rental-workflow.html
+specification_sha256: 8cf390c6fa09ad5fe9402ba86e14d95fda93c02abab0d10d00a2c6bd932289f8
+artifact_sha256: d86fe2822e33fabfd0c6d11de318949e7c73ccd0274efde48e52dafc8d0ae7f7
+validation: 9/9 showcase, 0 errors, 0 warnings
+browser_evidence: passed
+visual_review: passed
+correction_rounds: 1
+Visual inspection: inspected light and dark screenshots at 2048x1320; labels, branches and containers readable with no visible overlap. Automated browser evidence covers 1440x900, 1600x1000, 1920x1080, 2048x1320.

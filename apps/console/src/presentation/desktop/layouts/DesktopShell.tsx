@@ -7,6 +7,7 @@ import { OperationalModuleWorkspace } from '@/features/modules/OperationalModule
 import { OverviewDashboard } from '@/features/overview/OverviewDashboard';
 import { SettingsWorkspaceView } from '@/features/settings/SettingsWorkspaceView';
 import { GlobalSearchModal } from '@/shared/ui/GlobalSearchModal';
+import { EmptyBuildingScope } from '@/shared/ui/EmptyBuildingScope';
 import { SidebarInset, SidebarProvider } from '@/shared/ui/animate-sidebar';
 import { DesktopHeader } from '../navigation/DesktopHeader';
 import { DesktopSidebar } from '../navigation/DesktopSidebar';
@@ -22,7 +23,7 @@ export const DesktopShell: React.FC = () => {
     return true;
   });
 
-  const { activeModule, currentNavConfig } = useNavigation();
+  const { activeModule, currentNavConfig, isBuildingScopeEmpty } = useNavigation();
   const { hasCapability } = useAuth();
 
   const handleOpenChange = useCallback((open: boolean) => {
@@ -59,6 +60,8 @@ export const DesktopShell: React.FC = () => {
                   được cấp quyền cho phân hệ này.
                 </p>
               </div>
+            ) : isBuildingScopeEmpty && currentNavConfig.supportsBuildingScope && activeModule !== 'buildings' ? (
+              <EmptyBuildingScope showSelector />
             ) : activeModule === 'overview' ? (
               <OverviewDashboard />
             ) : activeModule === 'buildings' ? (

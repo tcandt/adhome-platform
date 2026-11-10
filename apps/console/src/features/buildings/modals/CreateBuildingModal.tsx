@@ -7,6 +7,7 @@ import { BuildingFormDialog } from '@/shared/ui/BuildingFormDialog';
 import { BuildingLandlordFields, emptyBuildingLandlord } from '@/shared/ui/BuildingLandlordFields';
 import { Button } from '@animate-ui/react/primitives/buttons/button';
 import { NumberInput } from '@/shared/ui/NumberInput';
+import { PrivateDocumentFields, usePrivateDocuments } from '@/shared/ui/PrivateDocumentFields';
 
 interface CreateBuildingModalProps {
   isOpen: boolean;
@@ -20,6 +21,8 @@ export const CreateBuildingModal: React.FC<CreateBuildingModalProps> = ({
   onCreated,
 }) => {
   const { createBuilding, organization } = usePortfolio();
+  const documents = usePrivateDocuments('buildings');
+  const [createdBuildingId, setCreatedBuildingId] = useState<string>();
 
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
@@ -53,6 +56,8 @@ export const CreateBuildingModal: React.FC<CreateBuildingModalProps> = ({
     setInitialFloorsCount(3);
     setDescription('');
     setError(null);
+    setCreatedBuildingId(undefined);
+    documents.reset();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -70,7 +75,7 @@ export const CreateBuildingModal: React.FC<CreateBuildingModalProps> = ({
 
     setIsSaving(true);
     setError(null);
-    const res = await createBuilding({
+    const res = createdBuildingId ? { ok: true, data: { building: { id: createdBuildingId } } } : await createBuilding({
       code: normalizedCode,
       name: name.trim() || normalizedCode,
       streetAddress: streetAddress.trim(),
@@ -87,15 +92,19 @@ export const CreateBuildingModal: React.FC<CreateBuildingModalProps> = ({
       ),
       description: description.trim() || undefined,
     });
-    setIsSaving(false);
-
     if (!res.ok) {
+      setIsSaving(false);
       setError(res.message || 'Không thể khởi tạo tòa nhà.');
       return;
     }
 
     const createdId = (res.data as { building?: { id?: string } } | undefined)
       ?.building?.id;
+    if (!createdId) { setIsSaving(false); setError('Chưa xác nhận được mã tòa nhà. Vui lòng tải lại dữ liệu.'); return; }
+    setCreatedBuildingId(createdId);
+    try { if (documents.hasChanges) await documents.flush(createdId); }
+    catch (e) { setIsSaving(false); setError(`Đã tạo tòa nhà. ${e instanceof Error ? e.message : 'Chưa lưu đủ tài liệu.'}`); return; }
+    setIsSaving(false);
     resetForm();
     onClose();
     if (onCreated) onCreated(createdId);
@@ -233,6 +242,7 @@ id="createbuildingmodal-field-5"                 data-testid="input-building-ini
           </div>
 
           <BuildingLandlordFields value={landlord} onChange={setLandlord} />
+          <PrivateDocumentFields state={documents} disabled={isSaving} />
           </fieldset>
           </div>
 

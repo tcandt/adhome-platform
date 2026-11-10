@@ -21,6 +21,7 @@ export interface RoomImage {
 }
 
 export interface RoomListing {
+  rentalModel?: 'ENTIRE_ROOM' | 'SHARED_ROOM';
   id: string;
   slug: string;
   roomCode: string;

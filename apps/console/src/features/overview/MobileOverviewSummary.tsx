@@ -4,7 +4,6 @@ import { useAuth } from '@/app/providers/AuthContext';
 import { useNavigation } from '@/app/providers/NavigationContext';
 import { usePortfolio } from '@/app/providers/PortfolioContext';
 import { formatPeriodDisplay } from '@/app/navigation/navigationConfig';
-import { BuildingScopeSelector } from '@/shared/ui/BuildingScopeSelector';
 
 import { ContractCreationWizardModal as ContractWizard } from '../modules/modals/ContractCreationWizardModal';
 const money = (n: number) => `${Math.trunc(n).toLocaleString('vi-VN')} đ`;
@@ -39,7 +38,6 @@ export function MobileOverviewSummary() {
       </button>
     </div>
     {busy && <p role="status" className="text-xs text-slate-500 dark:text-slate-400">Đang cập nhật dữ liệu…</p>}
-    <BuildingScopeSelector className="mobile-overview-scope w-full" />
     <div data-testid="mobile-room-kpis" className="grid grid-cols-2 gap-3">
       {metrics.map(([label, value, hint, color]) => <div key={label} className={`${card} min-w-0 p-3`}>
         <p className="text-xs font-medium text-slate-500 dark:text-slate-400">{label}</p>

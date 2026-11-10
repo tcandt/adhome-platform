@@ -7549,14 +7549,47 @@ export async function handleConsoleV2Api(
       });
     }
 
-    const initialContract = inv.contractId && (inv.policySnapshot as any)?.type === 'FIRST_COMBINED_INVOICE'
-      ? await prisma.contract.findFirst({ where: { id: inv.contractId, orgId: actor.orgId }, select: { status: true, waterBillingMethod: true } }) : null;
+    const [initialContract, paymentConnections] = await Promise.all([
+      inv.contractId && (inv.policySnapshot as any)?.type === 'FIRST_COMBINED_INVOICE'
+        ? prisma.contract.findFirst({ where: { id: inv.contractId, orgId: actor.orgId }, select: { status: true, waterBillingMethod: true } })
+        : null,
+      prisma.paymentProviderConnection.findMany({
+        where: {
+          orgId: actor.orgId,
+          providerId: 'SEPAY',
+          environment: 'LIVE',
+          isEnabled: true,
+          status: 'VERIFIED',
+          OR: [{ buildingId: inv.buildingId }, { buildingId: null }],
+          accounts: { some: {} },
+        },
+        include: { accounts: { orderBy: [{ bankCode: 'asc' }, { accountNumber: 'asc' }], take: 1 } },
+        orderBy: { updatedAt: 'desc' },
+      }),
+    ]);
+    const paymentConnection = paymentConnections.find(connection => connection.buildingId === inv.buildingId)
+      || paymentConnections.find(connection => connection.buildingId === null);
+    const paymentAccount = paymentConnection?.accounts[0] || null;
+    const remainingAmountVnd = Math.max(0, toSafeVndNumber(inv.totalAmountVnd) - toSafeVndNumber(inv.paidAmountVnd));
+    const transferContent = inv.invoiceCode.replace(/[^A-Za-z0-9]/g, '').slice(0, 50).toUpperCase();
+    const qrUrl = paymentAccount && remainingAmountVnd > 0
+      ? `https://vietqr.app/img?bank=${encodeURIComponent(paymentAccount.bankCode)}&acc=${encodeURIComponent(paymentAccount.accountNumber)}&template=compact&amount=${remainingAmountVnd}&des=${encodeURIComponent(transferContent)}&showinfo=true&holder=${encodeURIComponent(paymentAccount.accountName).replace(/%20/g, '+')}`
+      : null;
     const proofs = await paymentProofMap(prisma, actor.orgId, inv.payments.map(payment => payment.id));
     return sendJson(res, 200, {
       ok: true,
       automaticHandover: initialContract?.status === 'DRAFT' ? {
         electricRequired: inv.room.electricBillingMode !== 'HUNONIC_AUTO' && Boolean(inv.room.electricMeter || (inv.room.electricRateVnd && inv.room.electricRateVnd > 0)),
         waterRequired: initialContract.waterBillingMethod === 'PER_M3' || inv.room.waterBillingMethod === 'PER_M3',
+      } : null,
+      vietQr: paymentAccount ? {
+        providerId: paymentConnection?.providerId || 'SEPAY',
+        bankCode: paymentAccount.bankCode,
+        accountNumber: paymentAccount.accountNumber,
+        accountName: paymentAccount.accountName,
+        transferContent,
+        amountVnd: remainingAmountVnd,
+        qrUrl,
       } : null,
       invoice: {
         ...inv,

@@ -61,6 +61,36 @@ h3,
   line-height: 1.4;
 }
 
+:is([role="dialog"], [data-testid^="modal-"]) h2,
+:is([role="dialog"], [data-testid^="modal-"]) [data-ui-heading="dialog"] {
+  font-size: var(--ui-dialog-title-size) !important;
+  line-height: 1.35;
+}
+
+/* Shared form typography, including native date/select controls and popup portals. */
+:is([role="dialog"], [data-testid^="modal-"], .rental-workspace) {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="hidden"]),
+select, textarea {
+  font-size: var(--form-control-font-size) !important;
+  font-weight: var(--form-control-font-weight) !important;
+  line-height: var(--form-control-line-height) !important;
+  font-family: inherit;
+  letter-spacing: 0;
+}
+input::placeholder, textarea::placeholder, select option { font-size: inherit; }
+.money-input-control {
+  padding-right: 2rem !important;
+}
+.money-input-control[data-money-suffix-wide="true"] {
+  padding-right: 4.25rem !important;
+}
+.money-input-suffix {
+  max-width: 4rem;
+  white-space: nowrap;
+}
 .supplementary-contract-control,
 .supplementary-contract-money-control {
   box-sizing: border-box;
@@ -115,41 +145,14 @@ h3,
   min-width: 0;
   padding: 0;
 }
-:is([role="dialog"], [data-testid^="modal-"]) h2,
-:is([role="dialog"], [data-testid^="modal-"]) [data-ui-heading="dialog"] {
-  font-size: var(--ui-dialog-title-size) !important;
-  line-height: 1.35;
-}
-
-/* Shared form typography, including native date/select controls and popup portals. */
-:is([role="dialog"], [data-testid^="modal-"], .rental-workspace) {
-  -webkit-text-size-adjust: 100%;
-  text-size-adjust: 100%;
-}
-input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="hidden"]),
-select, textarea {
-  font-size: var(--form-control-font-size) !important;
-  font-weight: var(--form-control-font-weight) !important;
-  line-height: var(--form-control-line-height) !important;
-  font-family: inherit;
-  letter-spacing: 0;
-}
-input::placeholder, textarea::placeholder, select option { font-size: inherit; }
-.money-input-control {
-  padding-right: 2rem !important;
-}
-.money-input-control[data-money-suffix-wide="true"] {
-  padding-right: 4.25rem !important;
-}
-.money-input-suffix {
-  max-width: 4rem;
-  white-space: nowrap;
-}
 :is([role="dialog"], [data-testid^="modal-"], .rental-workspace) :is(label, button) {
   font-size: var(--form-label-font-size) !important;
   letter-spacing: 0;
 }
 .building-form-dialog { font-size: var(--form-control-font-size); }
+:is([role="dialog"], [data-testid^="modal-"]).building-form-dialog :is(label, button) { font-size: 13px !important; }
+.building-form-dialog input[type="file"] { font-size: 13px !important; }
+.building-form-dialog select { font-size: 13px !important; }
 .building-form-dialog :is(input, select) {
   height: var(--form-control-height);
   min-height: var(--form-control-height);
@@ -464,6 +467,25 @@ html[data-motion="reduced"] ::after {
     flex: 0 0 auto;
   }
 
+  .operational-workspace[data-module="invoices"] .module-workspace-toolbar {
+    display: none;
+  }
+
+  .invoice-workspace {
+    border: 0 !important;
+    background: transparent !important;
+    padding: 0 !important;
+  }
+  .invoice-summary-grid {
+    background: var(--surface);
+  }
+  .invoice-period-header {
+    box-shadow: 0 1px 2px rgb(15 23 42 / 0.035);
+  }
+  .invoice-mobile-card {
+    box-shadow: 0 1px 2px rgb(15 23 42 / 0.04), 0 8px 24px rgb(15 23 42 / 0.045);
+  }
+
   .operational-workspace [class~="p-5"][class~="rounded-2xl"] {
     padding: var(--mobile-section-padding);
     border-radius: 16px;
@@ -556,27 +578,3 @@ html[data-motion="reduced"] ::after {
     padding-inline: 14px;
   }
 }
-
-.building-floor-node::before {
-  content: "";
-  position: absolute;
-  left: -12px;
-  top: -8px;
-  bottom: -8px;
-  border-left: 1px solid #cbd5e1;
-  pointer-events: none;
-}
-.building-floor-node:first-child::before { top: 32px; }
-.building-floor-node:last-child::before { bottom: calc(100% - 32px); }
-.building-floor-node::after {
-  content: "";
-  position: absolute;
-  left: -12px;
-  top: 32px;
-  width: calc(12px + var(--floor-indent, 0px));
-  border-top: 1px solid #cbd5e1;
-  pointer-events: none;
-}
-.dark .building-floor-node::before,
-.dark .building-floor-node::after { border-color: #475569; }
-

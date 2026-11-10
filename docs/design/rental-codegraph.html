@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AdHome · Sơ đồ quy trình thuê phòng</title>
+<style>
+:root{font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:#e8f1fb;background:#091422;color-scheme:dark;--panel:#112236;--border:#29435a;--muted:#a7bdd0;--cyan:#39c6d3;--amber:#f5b857;--green:#62d6a0;--blue:#79aaf8;--red:#f28d91}
+*{box-sizing:border-box}body{margin:0}main{max-width:1500px;margin:auto;padding:28px 20px 70px}h1{font-size:clamp(27px,3vw,42px);margin:8px 0}h2{font-size:23px;margin:0 0 9px}h3{font-size:16px;margin:0 0 6px}p{line-height:1.55}.lead{color:var(--muted);max-width:920px;margin:0 0 24px}.eyebrow{color:var(--cyan);font-weight:800;letter-spacing:.12em;text-transform:uppercase;font-size:12px}.tabs{display:flex;gap:8px;flex-wrap:wrap;position:sticky;top:0;background:#091422ed;padding:10px 0;z-index:10;border-bottom:1px solid var(--border)}button{font:inherit}.tab{border:1px solid var(--border);color:#d9e8f4;background:var(--panel);border-radius:10px;padding:11px 15px;min-height:44px;cursor:pointer}.tab[aria-selected=true]{background:#174456;border-color:var(--cyan);color:#fff}.tab:focus-visible,a:focus-visible{outline:3px solid var(--amber);outline-offset:3px}.chapter{padding-top:28px}.chapter[hidden]{display:none}.intro{color:var(--muted);margin:0 0 19px}.flow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;align-items:stretch}.step{position:relative;background:var(--panel);border:1px solid var(--border);border-top:4px solid var(--blue);border-radius:14px;padding:15px 16px 18px;min-height:150px}.step::after{content:"→";position:absolute;right:-15px;top:47%;color:var(--cyan);font-weight:900;z-index:1;font-size:21px}.step:nth-child(4n)::after,.step:last-child::after{content:none}.step.console{border-top-color:var(--cyan)}.step.api{border-top-color:var(--blue)}.step.data{border-top-color:var(--green)}.step.bot{border-top-color:#bc97f5}.step.warning{border-top-color:var(--amber)}.step.fail{border-top-color:var(--red)}.num{display:inline-block;background:#253d52;border-radius:7px;padding:3px 7px;font-size:11px;letter-spacing:.08em;font-weight:800;color:#d6e8f5;margin-bottom:12px}.step p{margin:0;color:var(--muted);font-size:14px}.step code,.note code{color:#b9e7eb;font-size:.93em;overflow-wrap:anywhere}.branch{margin:17px 0 27px;border-left:4px solid var(--amber);background:#1e2b37;padding:14px 17px;border-radius:0 10px 10px 0;line-height:1.55}.branch strong{color:#ffd48b}.branch.bad{border-color:var(--red)}.branch.good{border-color:var(--green)}.branch p{margin:4px 0 0;color:#c5d6e5}.detail{margin-top:25px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.note{border:1px solid var(--border);background:#0e1e30;border-radius:12px;padding:16px}.note h3{color:#b5e6e9}.note p,.note li{color:#c0d1df;font-size:14px;line-height:1.55}.note ul{margin:8px 0 0;padding-left:20px}.code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;color:#b6d2e8;overflow-wrap:anywhere}.legend{display:flex;flex-wrap:wrap;gap:14px;color:var(--muted);font-size:13px;margin:20px 0}.swatch{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px}.link{color:#a6e7ed}.small{color:var(--muted);font-size:13px}.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}@media(max-width:1050px){.flow{grid-template-columns:repeat(2,minmax(0,1fr))}.step:nth-child(4n)::after{content:"→"}.step:nth-child(2n)::after{content:none}}@media(max-width:620px){main{padding:20px 14px 50px}.tabs{position:static}.tab{flex:1 1 calc(50% - 8px)}.flow,.detail{grid-template-columns:1fr}.step{min-height:0}.step::after,.step:nth-child(4n)::after{content:"↓";left:50%;right:auto;top:auto;bottom:-21px}.step:last-child::after{content:none}}@media(prefers-reduced-motion:no-preference){.tab{transition:background .18s,border-color .18s}}@media print{body{background:white;color:#182a39}.tabs{display:none}.chapter[hidden]{display:block}.step,.note,.branch{break-inside:avoid;background:white;color:#182a39}.step p,.note p,.note li,.intro{color:#31485b}.chapter{page-break-before:always}}
+</style>
+</head>
+<body><main>
+<div class="eyebrow">AdHome · Codegraph chi tiết</div>
+<h1>Từ chọn phòng đến hợp đồng, Bot và sổ sách</h1>
+<p class="lead">Chọn từng quy trình để xem các bước thực hiện, điều kiện rẽ nhánh, trạng thái dữ liệu và điểm nối trong code. Mũi tên biểu thị bước tiếp theo; các khung vàng hoặc đỏ ghi rõ trường hợp cần quay lại hay chờ xử lý.</p>
+<nav class="tabs" role="tablist" aria-label="Các quy trình thuê phòng">
+<button class="tab" id="tab-overview" role="tab" aria-controls="overview" aria-selected="true" tabindex="0">1 · Chọn phòng</button>
+<button class="tab" id="tab-model" role="tab" aria-controls="model" aria-selected="false" tabindex="-1">2 · Hình thức thuê</button>
+<button class="tab" id="tab-hold" role="tab" aria-controls="hold" aria-selected="false" tabindex="-1">3 · Giữ phòng</button>
+<button class="tab" id="tab-draft" role="tab" aria-controls="draft" aria-selected="false" tabindex="-1">4 · Hợp đồng nháp</button>
+<button class="tab" id="tab-bot" role="tab" aria-controls="bot" aria-selected="false" tabindex="-1">5 · Đăng ký Zalo</button>
+<button class="tab" id="tab-after" role="tab" aria-controls="after" aria-selected="false" tabindex="-1">6 · Sau bàn giao</button>
+</nav>
+<div class="legend" aria-label="Chú giải"><span><i class="swatch" style="background:var(--cyan)"></i>Console</span><span><i class="swatch" style="background:var(--blue)"></i>API</span><span><i class="swatch" style="background:var(--green)"></i>Dữ liệu / sổ sách</span><span><i class="swatch" style="background:#bc97f5"></i>Zalo Bot</span><span><i class="swatch" style="background:var(--amber)"></i>Điều kiện / quay lại</span></div>
+<section class="chapter" id="overview" role="tabpanel" aria-labelledby="tab-overview">
+<h2>1. Từ chọn phòng đến quyết định thuê</h2><p class="intro">Điểm vào chung cho ở ngay, đặt cọc giữ phòng và tiếp quản dữ liệu thuê.</p>
+<div class="flow">
+<article class="step console"><span class="num">01 · CONSOLE</span><h3>Chọn tòa nhà, tầng, phòng</h3><p>Mở hồ sơ phòng từ sơ đồ tòa nhà. Kiểm tra trạng thái và giá niêm yết.</p></article>
+<article class="step console"><span class="num">02 · CONSOLE</span><h3>Chọn nhu cầu</h3><p><b>DIRECT</b> ở ngay, <b>HOLD</b> giữ phòng bằng cọc, hoặc <b>IMPORT</b> tiếp quản dữ liệu thuê hiện có.</p></article>
+<article class="step console"><span class="num">03 · CONSOLE</span><h3>Chọn hình thức & nhập hồ sơ</h3><p>Với DIRECT hoặc IMPORT: chọn nguyên căn/phòng hay ở ghép; nhập khách chính, người ở, ngày thuê, giá và cọc.</p></article>
+<article class="step api"><span class="num">04 · API</span><h3>Xem trước và kiểm tra</h3><p>Với DIRECT, API tính tiền kỳ đầu, cọc cần chuyển và số còn phải thu. Có thể quay lại sửa.</p></article>
+<article class="step api"><span class="num">05 · API</span><h3>Xác nhận tạo</h3><p>Khóa phòng và ghi giao dịch. Yêu cầu trùng được kiểm tra để tránh tạo hai hồ sơ.</p></article>
+<article class="step warning"><span class="num">06 · RẼ NHÁNH</span><h3>HOLD → phiếu giữ chỗ</h3><p>Đi tới quy trình 2: cọc giữ, thu thực tế, chuyển hợp đồng hoặc hủy.</p></article>
+<article class="step data"><span class="num">07 · RẼ NHÁNH</span><h3>DIRECT → hợp đồng DRAFT</h3><p>Lưu rentalModel, cọc CONTRACT và hóa đơn đầu kỳ; đi tới quy trình hợp đồng và Bot.</p></article>
+<article class="step data"><span class="num">08 · RẼ NHÁNH</span><h3>IMPORT → số dư đầu kỳ</h3><p>Ghi nhận thông tin thuê và công nợ lịch sử; không tạo khoản thu mới cho tiền đã nhận trước đó.</p></article>
+</div>
+<div class="detail"><div class="note"><h3>Điểm nối giao diện</h3><p class="code">UnifiedBuildingCanvas → RoomProfileModal → RentalOnboardingPage</p></div><div class="note"><h3>Điểm nối API</h3><p class="code">GET /rental-workflow/:roomId<br>POST /rental-workflow/:roomId/quote<br>POST /rental-workflow/:roomId/start</p></div></div>
+</section>
+<section class="chapter" id="model" role="tabpanel" aria-labelledby="tab-model" hidden>
+<h2>2. Mapping Thuê ngay / Đồng bộ sổ sách → hình thức thuê</h2><p class="intro">Cùng một lựa chọn hình thức thuê được áp dụng khi tạo mới hoặc tiếp quản. Hình thức là thuộc tính của phòng và hợp đồng; người ở cùng được lưu riêng trong danh sách cư trú.</p>
+<div class="flow">
+<article class="step console"><span class="num">01 · ĐIỂM VÀO</span><h3>Chọn DIRECT hoặc IMPORT</h3><p>DIRECT lập hợp đồng nháp và hóa đơn kỳ đầu. IMPORT tiếp quản khách đã ở, cọc và công nợ lịch sử.</p></article>
+<article class="step console"><span class="num">02 · LỰA CHỌN</span><h3>Chọn hình thức thuê</h3><p><b>ENTIRE_ROOM</b> = nguyên căn/phòng. <b>SHARED_ROOM</b> = ở ghép chung một hợp đồng.</p></article>
+<article class="step console"><span class="num">03 · HỒ SƠ</span><h3>Khách đứng tên + người ở</h3><p>Khách chính là người thuê trong hợp đồng. Mỗi người ở cùng được ghi thành RoomOccupant; tổng số không vượt sức chứa.</p></article>
+<article class="step api"><span class="num">04 · KIỂM TRA</span><h3>Khóa và kiểm tra phòng</h3><p>API từ chối nếu đã có hợp đồng DRAFT/hiệu lực hoặc phiếu giữ còn hoạt động. Một phòng chỉ có một hợp đồng hoạt động trong luồng này.</p></article>
+</div>
+<div class="branch good"><strong>Nhánh A · Nguyên căn/phòng — ENTIRE_ROOM</strong><p>Một khách đứng tên thuê toàn bộ phòng; có thể khai thêm người cùng ở trong cùng hợp đồng. Giá thuê, cọc và hóa đơn tính cho toàn phòng.</p></div>
+<div class="flow"><article class="step data"><span class="num">A1 · DỮ LIỆU</span><h3>ConsoleRoom</h3><p><code>rentalModel = ENTIRE_ROOM</code>; phòng RESERVED khi tạo DIRECT, OCCUPIED khi IMPORT.</p></article><article class="step data"><span class="num">A2 · HỢP ĐỒNG</span><h3>Contract</h3><p><code>rentalModel = ENTIRE_ROOM</code>; một tenant chính và danh sách occupants.</p></article><article class="step data"><span class="num">A3 · TÀI CHÍNH</span><h3>Cọc / hóa đơn</h3><p>DIRECT lập hóa đơn kỳ đầu. IMPORT ghi cọc lịch sử và công nợ đầu kỳ, không ghi thu tiền cũ lần nữa.</p></article></div>
+<div class="branch good"><strong>Nhánh B · Ở ghép chung hợp đồng — SHARED_ROOM</strong><p>Khách chính đứng tên cùng các người ở ghép được kê khai; vẫn dùng một hợp đồng, một cọc và một hóa đơn cho phòng. Đây chưa phải mô hình từng giường có hợp đồng và hóa đơn riêng.</p></div>
+<div class="flow"><article class="step data"><span class="num">B1 · DỮ LIỆU</span><h3>ConsoleRoom</h3><p><code>rentalModel = SHARED_ROOM</code>; sức chứa <code>maxOccupants</code> giới hạn tổng người.</p></article><article class="step data"><span class="num">B2 · HỢP ĐỒNG</span><h3>Contract + Occupants</h3><p><code>rentalModel = SHARED_ROOM</code>; khách chính là PRIMARY, các bạn cùng phòng là ROOMMATE.</p></article><article class="step data"><span class="num">B3 · TÀI CHÍNH</span><h3>Cọc / hóa đơn chung</h3><p>Giá và cọc là tổng của hợp đồng; đối trừ, thu tiền và sổ sách theo một hóa đơn.</p></article></div>
+<div class="branch"><strong>Chuyển từ phiếu giữ phòng</strong><p>Phiếu HOLD chưa quyết định hình thức thuê. Khi bấm “Tiếp tục thuê”, người quản lý chọn nguyên căn/phòng hoặc ở ghép; API chuyển cọc và lưu hình thức vào hợp đồng và phòng.</p></div>
+<div class="detail"><div class="note"><h3>Mapping trường dữ liệu</h3><p class="code">terms.rentalModel → POST /rental-workflow/:roomId/start → Contract.rentalModel + ConsoleRoom.rentalModel<br>terms.rentalModel → POST /rental-workflow/:roomId/draft → cập nhật đồng bộ<br>terms.rentalModel → POST /reservations/:id/convert-to-contract</p></div><div class="note"><h3>Trạng thái sau lưu</h3><p>DIRECT → DRAFT, RESERVED, hóa đơn đầu kỳ. IMPORT → ACTIVE, OCCUPIED, cọc và công nợ mở đầu. Sau thu đủ hóa đơn DIRECT → ACTIVE, OCCUPIED.</p></div></div>
+</section>
+<section class="chapter" id="hold" role="tabpanel" aria-labelledby="tab-hold" hidden>
+<h2>3. Đặt cọc giữ phòng → chuyển thuê hoặc hủy</h2><p class="intro">Theo dõi tiền thỏa thuận, tiền thực nhận và cách đối trừ để sổ sách không ghi thu hai lần.</p>
+<div class="flow">
+<article class="step console"><span class="num">01 · CONSOLE</span><h3>Chọn HOLD</h3><p>Nhập khách, ngày dự kiến vào, thời hạn giữ, cọc thỏa thuận và tiền đã thực nhận.</p></article>
+<article class="step data"><span class="num">02 · DỮ LIỆU</span><h3>Tạo phiếu và cọc BOOKING</h3><p>Phiếu <b>PENDING</b> nếu chưa đủ cọc; <b>CONFIRMED</b> khi đã thu đủ.</p></article>
+<article class="step data"><span class="num">03 · SỔ SÁCH</span><h3>Ghi tiền thực nhận</h3><p>Chỉ số đã nhận mới tạo bút toán <code>LedgerEntry INCOME</code>. Phần chưa nhận là số cần thu.</p></article>
+<article class="step warning"><span class="num">04 · QUYẾT ĐỊNH</span><h3>Tiếp tục thuê hay hủy?</h3><p>Tiếp tục thuê mở bước tính đối trừ; hủy mở phương án hoàn, khấu trừ hoặc chờ hoàn.</p></article>
+</div>
+<div class="branch good"><strong>Nhánh tiếp tục thuê → hợp đồng DRAFT</strong><p>API tính cọc giữ khả dụng B, cọc hợp đồng yêu cầu C và tiền thuê kỳ đầu. Chuyển B vào cọc hợp đồng; phần dư được trừ tiền thuê, bảo lưu hoặc chờ hoàn theo lựa chọn. Chuyển cọc là dịch chuyển số dư, không phải khoản thu mới.</p></div>
+<div class="flow"><article class="step api"><span class="num">05A · API</span><h3>Xem trước đối trừ</h3><p>Hiển thị cọc chuyển, tín dụng tiền thuê, phần dư và số cần thu mới.</p></article><article class="step data"><span class="num">06A · DỮ LIỆU</span><h3>Chuyển sang hợp đồng</h3><p>Phiếu thành <b>CONVERTED</b>; tạo hợp đồng DRAFT, cọc CONTRACT và hóa đơn đầu kỳ.</p></article><article class="step console"><span class="num">07A · TIẾP THEO</span><h3>Kiểm tra bản nháp</h3><p>Đi tới quy trình 3 để sửa nếu sai; sau đó gửi lệnh đăng ký Zalo ở quy trình 4.</p></article></div>
+<div class="branch bad"><strong>Nhánh hủy giữ chỗ</strong><p>Chọn hoàn đủ, hoàn một phần hoặc không hoàn; ghi rõ phần khấu trừ. Khoản <b>PENDING_REFUND</b> chỉ trở thành chi thực tế khi người quản lý xác nhận đã trả tiền cho khách.</p></div>
+<div class="flow"><article class="step console"><span class="num">05B · CONSOLE</span><h3>Xem trước số hoàn</h3><p>Kiểm tra cọc khả dụng, số hoàn, khấu trừ và số còn chờ chi.</p></article><article class="step data"><span class="num">06B · SỔ SÁCH</span><h3>Hủy / xác nhận hoàn</h3><p>Ghi chi hoàn sau khi thực trả; cập nhật số dư cọc và trạng thái phiếu.</p></article></div>
+<div class="detail"><div class="note"><h3>Điểm nối API</h3><p class="code">POST /reservations/:id/convert-to-contract<br>POST /reservations/:id/cancel<br>POST /deposits/:id/refund</p></div><div class="note"><h3>Nguyên tắc kiểm tra</h3><p>Đối trừ cọc giữ và hoàn đang chờ không được tạo bút toán thu/chi như tiền mới phát sinh.</p></div></div>
+</section>
+<section class="chapter" id="draft" role="tabpanel" aria-labelledby="tab-draft" hidden>
+<h2>4. Hợp đồng nháp → phát hiện lỗi → sửa</h2><p class="intro">Người quản lý có thể quay lại sửa trước khi dữ liệu đã gắn với tiền thực thu hoặc tài khoản Bot của khách.</p>
+<div class="flow">
+<article class="step data"><span class="num">01 · DỮ LIỆU</span><h3>Hợp đồng DRAFT</h3><p>Có khách chính, người ở, điều khoản, cọc CONTRACT và hóa đơn đầu kỳ.</p></article>
+<article class="step console"><span class="num">02 · CONSOLE</span><h3>Kiểm tra hồ sơ</h3><p>Xem thông tin khách, ngày thuê, giá, cọc, tiền kỳ đầu và PDF/hồ sơ thuê.</p></article>
+<article class="step warning"><span class="num">03 · QUYẾT ĐỊNH</span><h3>Thông tin có sai?</h3><p>Nếu sai, bấm <b>Sửa hợp đồng nháp</b> để trở về bước nhập khách và điều khoản.</p></article>
+<article class="step api"><span class="num">04 · API</span><h3>Kiểm tra quyền sửa</h3><p>Chỉ cho sửa khi hợp đồng còn DRAFT, chưa có tiền thực thu và khách chưa liên kết Bot.</p></article>
+<article class="step console"><span class="num">05 · CONSOLE</span><h3>Sửa và xem trước</h3><p>Sửa khách, SĐT, người ở, ngày thuê, giá, cọc; xem lại phép tính kỳ đầu.</p></article>
+<article class="step data"><span class="num">06 · GIAO DỊCH</span><h3>Lưu đồng bộ</h3><p>Cập nhật hợp đồng, khách, người ở, cọc và hóa đơn đầu kỳ trong cùng giao dịch.</p></article>
+<article class="step console"><span class="num">07 · KIỂM TRA</span><h3>Tải lại hồ sơ</h3><p>Đọc lại dữ liệu từ API. Nếu vẫn sai, quay về bước 05; nếu đúng, sang đăng ký Bot.</p></article>
+</div>
+<div class="branch bad"><strong>Đã thu tiền hoặc khách đã liên kết Bot → khóa sửa trực tiếp</strong><p>Hóa đơn hoặc liên kết đã có hiệu lực với khách. Cần quy trình điều chỉnh riêng; màn hình không thay đổi hợp đồng nháp tại chỗ trong trường hợp này.</p></div>
+<div class="detail"><div class="note"><h3>Điểm nối code</h3><p class="code">RentalOnboardingPage → editingDraft<br>POST /rental-workflow/:roomId/draft<br>rentalWorkflowApi.ts → Prisma transaction</p></div><div class="note"><h3>Chuyển bước</h3><p>Hồ sơ đúng → quy trình 4. Hóa đơn đang chờ gửi vẫn cần giữ dữ liệu nhất quán; trạng thái <code>SENT</code> là xác nhận gửi từ Bot API.</p></div></div>
+</section>
+<section class="chapter" id="bot" role="tabpanel" aria-labelledby="tab-bot" hidden>
+<h2>5. Khách đăng ký Zalo → xác minh → gửi hóa đơn</h2><p class="intro">Console hiển thị câu lệnh có nút sao chép và trạng thái chờ dựa trên phản hồi thật từ API.</p>
+<div class="flow">
+<article class="step console"><span class="num">01 · CONSOLE</span><h3>Gợi ý lệnh</h3><p><code>DANGKY &lt;PHONG&gt; &lt;SĐT&gt;</code>. Người quản lý sao chép và hướng dẫn khách gửi trong chat riêng với Bot.</p></article>
+<article class="step bot"><span class="num">02 · KHÁCH</span><h3>Khách chủ động nhắn</h3><p>Webhook nhận tin. Console tiếp tục hiện đang chờ; không tự xác nhận theo thời gian.</p></article>
+<article class="step api"><span class="num">03 · ĐỐI CHIẾU</span><h3>Kiểm tra Console DB</h3><p>Bot hỏi API nội bộ bằng khóa xác thực: tổ chức, mã phòng, SĐT, hợp đồng DRAFT/đang hiệu lực.</p></article>
+<article class="step warning"><span class="num">04 · QUYẾT ĐỊNH</span><h3>Khớp duy nhất?</h3><p>Nếu sai cú pháp, không khớp, nhiều hợp đồng hoặc liên kết xung đột: trả lời trạng thái lỗi; chưa gửi hóa đơn.</p></article>
+<article class="step data"><span class="num">05 · BOT DB</span><h3>Lưu liên kết chat</h3><p>Ghi tenant ↔ chat; xếp tin xác nhận đăng ký và hóa đơn chưa thanh toán vào hàng đợi.</p></article>
+<article class="step bot"><span class="num">06 · BOT API</span><h3>Gửi tin xác nhận</h3><p>Áp mẫu <code>REGISTRATION_SUCCESS</code>; chỉ đánh dấu <b>SENT</b> khi nhà cung cấp trả thành công.</p></article>
+<article class="step bot"><span class="num">07 · BOT API</span><h3>Gửi hóa đơn</h3><p>Áp mẫu <code>INVOICE_ISSUED</code>, mã hóa đơn, số còn phải thu và hạn thanh toán.</p></article>
+<article class="step console"><span class="num">08 · CONSOLE</span><h3>Đọc trạng thái thật</h3><p>Thăm dò API trạng thái. <b>PENDING</b> là đang chờ; chỉ <b>SENT</b> mới báo đã gửi cho khách.</p></article>
+</div>
+<div class="branch bad"><strong>Bot API lỗi hoặc chưa xác nhận</strong><p>Tin vẫn nằm trong hàng đợi <code>PENDING</code> để gửi lại. Console không hiển thị “đã gửi hóa đơn”; người quản lý kiểm tra Bot và trạng thái hóa đơn.</p></div>
+<div class="detail"><div class="note"><h3>Hai cơ sở dữ liệu</h3><p>Console DB là nguồn hợp đồng và hóa đơn. Bot DB giữ cấu hình, liên kết chat, mẫu tin và hàng đợi. Bot không đọc bảng hóa đơn trực tiếp trong Bot DB.</p></div><div class="note"><h3>Điểm nối code/API</h3><p class="code">RentalOnboardingPage → GET /contracts/:id/zalo-bot-status<br>server.cjs → webhook → registration lookup<br>zalo-bot.cjs → outbox → Bot sendMessage</p></div></div>
+</section>
+<section class="chapter" id="after" role="tabpanel" aria-labelledby="tab-after" hidden>
+<h2>6. Thanh toán → bàn giao → thông báo định kỳ</h2><p class="intro">Nhận tiền chỉ được ghi theo số thực tế; thông báo về sau lấy từ hóa đơn đã phát hành và hợp đồng đang hiệu lực.</p>
+<div class="flow">
+<article class="step console"><span class="num">01 · HÓA ĐƠN</span><h3>Thu tiền tại hóa đơn</h3><p>Từ hồ sơ thuê chuyển tới đúng hóa đơn. Nhập số thực nhận, phương thức và tham chiếu trong mục Hóa đơn.</p></article>
+<article class="step warning"><span class="num">02 · KIỂM TRA</span><h3>Thu đủ hóa đơn đầu kỳ?</h3><p>Thu một phần giữ hợp đồng DRAFT. Khi thu đủ, nhập chỉ số điện/nước đầu kỳ nếu phòng dùng đồng hồ.</p></article>
+<article class="step api"><span class="num">03 · API</span><h3>Kiểm tra trước khi ghi tiền</h3><p>Kiểm tra cọc hợp đồng, chỉ số đầu kỳ và trạng thái DRAFT; thiếu điều kiện thì từ chối toàn bộ giao dịch.</p></article>
+<article class="step data"><span class="num">04 · GIAO DỊCH</span><h3>Thu tiền và bàn giao</h3><p>Phân bổ cọc rồi tiền thuê; ghi PaymentTransaction, Invoice, Deposit, LedgerEntry và kích hoạt phòng trong cùng giao dịch.</p></article>
+<article class="step data"><span class="num">05 · DỮ LIỆU</span><h3>Kích hoạt thuê</h3><p>Hợp đồng thành <b>ACTIVE</b>, phòng <b>OCCUPIED</b>, người ở <b>ACTIVE</b> sau khi thu đủ thành công.</p></article>
+<article class="step console"><span class="num">06 · TÀI LIỆU</span><h3>Xuất hồ sơ</h3><p>Hợp đồng, phiếu giữ chỗ, CT01 hoặc bộ hồ sơ cư trú theo dữ liệu đã lưu.</p></article>
+<article class="step api"><span class="num">07 · VỀ SAU</span><h3>API lấy ứng viên</h3><p>Hóa đơn ISSUED/PARTIAL/OVERDUE còn nợ và hợp đồng sắp hết hạn trong 30 ngày.</p></article>
+<article class="step bot"><span class="num">08 · BOT</span><h3>Xếp tin theo sự kiện</h3><p>Tiền phòng, điện nước và hạn hợp đồng theo liên kết chat; khóa sự kiện tránh xếp trùng.</p></article>
+</div>
+<div class="branch good"><strong>Mẫu tin cấu hình tại Cài đặt → Zalo Bot</strong><p>Popup cho phép sửa <code>REGISTRATION_SUCCESS</code>, <code>INVOICE_ISSUED</code>, <code>RENT_NOTICE</code>, <code>METER_NOTICE</code> và <code>CONTRACT_EXPIRING</code>. Bot chỉ đánh dấu đã gửi sau phản hồi thành công từ nhà cung cấp.</p></div>
+<div class="detail"><div class="note"><h3>Điểm nối API và sổ</h3><p class="code">POST /invoices/:id/pay<br>POST /contracts/:id/handover<br>POST /rental-workflow/:roomId/export</p></div><div class="note"><h3>Điểm nối thông báo</h3><p class="code">GET /internal/zalo-bot/notification-candidates<br>business-notifications.cjs → resident_outbox<br>message-templates.cjs → mẫu mặc định</p></div></div>
+</section>
+<p class="small">Sơ đồ mô tả luồng hiện có trong mã nguồn AdHome. Những trạng thái gửi tin phụ thuộc phản hồi thật của Bot API.</p>
+</main><script>
+const tabs=[...document.querySelectorAll('[role=tab]')];
+function activate(tab,focus=false){for(const item of tabs){const on=item===tab;item.setAttribute('aria-selected',String(on));item.tabIndex=on?0:-1;document.getElementById(item.getAttribute('aria-controls')).hidden=!on;}if(focus)tab.focus();history.replaceState(null,'','#'+tab.getAttribute('aria-controls'));}
+for(const tab of tabs){tab.addEventListener('click',()=>activate(tab));tab.addEventListener('keydown',event=>{if(!['ArrowRight','ArrowLeft','Home','End'].includes(event.key))return;event.preventDefault();let index=tabs.indexOf(tab);if(event.key==='ArrowRight')index=(index+1)%tabs.length;if(event.key==='ArrowLeft')index=(index-1+tabs.length)%tabs.length;if(event.key==='Home')index=0;if(event.key==='End')index=tabs.length-1;activate(tabs[index],true);});}
+const selected=tabs.find(tab=>tab.getAttribute('aria-controls')===location.hash.slice(1));if(selected)activate(selected);
+</script></body></html>

@@ -6,6 +6,7 @@ import {
   Database,
   Gauge,
   Landmark,
+  PackageOpen,
   ReceiptText,
   ShieldCheck,
   UsersRound,
@@ -26,6 +27,7 @@ const TAB_ICONS: Record<SettingsTabId, LucideIcon> = {
   cron: CalendarClock,
   audit: ShieldCheck,
   data: Database,
+  versions: PackageOpen,
 };
 
 const GROUPS: Array<{ label: string; tabs: SettingsTabId[] }> = [
@@ -39,7 +41,7 @@ const GROUPS: Array<{ label: string; tabs: SettingsTabId[] }> = [
   },
   {
     label: 'Hệ thống',
-    tabs: ['cron', 'audit', 'data'],
+    tabs: ['cron', 'audit', 'data', 'versions'],
   },
 ];
 

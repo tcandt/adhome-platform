@@ -1,0 +1,190 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Quy trình màn hình · Cọc giữ phòng",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    {
+      "id": "entry",
+      "label": "Tạo cọc giữ phòng"
+    },
+    {
+      "id": "cancel",
+      "label": "Hủy cọc"
+    },
+    {
+      "id": "rent",
+      "label": "Tiếp tục thuê"
+    }
+  ],
+  "mainPath": [
+    "room",
+    "intent",
+    "hold",
+    "review",
+    "ticket"
+  ],
+  "nodes": [
+    {
+      "id": "room",
+      "lane": "entry",
+      "col": 0,
+      "width": 160,
+      "type": "frontend",
+      "label": "01 · Phòng / Khách ở",
+      "sublabel": "Bấm Thêm thuê"
+    },
+    {
+      "id": "intent",
+      "lane": "entry",
+      "col": 1,
+      "width": 160,
+      "type": "frontend",
+      "label": "02 · Chọn nhu cầu",
+      "sublabel": "Chọn Đặt cọc giữ phòng"
+    },
+    {
+      "id": "hold",
+      "lane": "entry",
+      "col": 2,
+      "width": 160,
+      "type": "frontend",
+      "label": "03 · Điền phiếu cọc",
+      "sublabel": "Khách · Tiền · Hạn giữ"
+    },
+    {
+      "id": "review",
+      "lane": "entry",
+      "col": 3,
+      "width": 160,
+      "type": "frontend",
+      "label": "04 · Xem lại phiếu",
+      "sublabel": "Xác nhận tạo / thực thu"
+    },
+    {
+      "id": "ticket",
+      "lane": "entry",
+      "col": 4,
+      "width": 160,
+      "type": "frontend",
+      "label": "05 · Chi tiết phiếu",
+      "sublabel": "Hủy cọc / Tiếp tục thuê"
+    },
+    {
+      "id": "cancelForm",
+      "lane": "cancel",
+      "col": 4,
+      "width": 160,
+      "type": "frontend",
+      "label": "06 · Phương án hủy",
+      "sublabel": "Hoàn đủ / Một phần / Không hoàn"
+    },
+    {
+      "id": "cancelReview",
+      "lane": "cancel",
+      "col": 3,
+      "width": 160,
+      "type": "frontend",
+      "label": "07 · Xác nhận hủy",
+      "sublabel": "Xem phân bổ · Xác nhận chi"
+    },
+    {
+      "id": "terms",
+      "lane": "rent",
+      "col": 4,
+      "width": 160,
+      "type": "frontend",
+      "label": "08 · Thông tin thuê",
+      "sublabel": "Khách · Hợp đồng · Dịch vụ"
+    },
+    {
+      "id": "settle",
+      "lane": "rent",
+      "col": 3,
+      "width": 160,
+      "type": "frontend",
+      "label": "09 · Quyết toán cọc",
+      "sublabel": "Cọc chuyển · Dư · Còn phải thu"
+    },
+    {
+      "id": "contract",
+      "lane": "rent",
+      "col": 2,
+      "width": 160,
+      "type": "frontend",
+      "label": "10 · Chờ bàn giao",
+      "sublabel": "Hợp đồng · Hóa đơn · Tiền cọc"
+    },
+    {
+      "id": "payment",
+      "lane": "rent",
+      "col": 1,
+      "width": 160,
+      "type": "frontend",
+      "label": "11 · Thu tiền",
+      "sublabel": "Nhập thực thu · Đối soát"
+    },
+    {
+      "id": "handover",
+      "lane": "rent",
+      "col": 0,
+      "width": 160,
+      "type": "frontend",
+      "label": "12 · Bàn giao phòng",
+      "sublabel": "Chỉ số · Xác nhận → Đang ở"
+    }
+  ],
+  "edges": [
+    {
+      "from": "room",
+      "to": "intent"
+    },
+    {
+      "from": "intent",
+      "to": "hold"
+    },
+    {
+      "from": "hold",
+      "to": "review"
+    },
+    {
+      "from": "review",
+      "to": "ticket",
+      "label": "Lưu thành công"
+    },
+    {
+      "from": "ticket",
+      "to": "cancelForm",
+      "label": "Hủy cọc"
+    },
+    {
+      "from": "cancelForm",
+      "to": "cancelReview"
+    },
+    {
+      "from": "ticket",
+      "to": "terms",
+      "label": "Tiếp tục thuê"
+    },
+    {
+      "from": "terms",
+      "to": "settle"
+    },
+    {
+      "from": "settle",
+      "to": "contract",
+      "label": "Lập hợp đồng"
+    },
+    {
+      "from": "contract",
+      "to": "payment"
+    },
+    {
+      "from": "payment",
+      "to": "handover",
+      "label": "Đủ điều kiện"
+    }
+  ]
+}

@@ -235,7 +235,7 @@
   .rental-embedded .rental-actions-mobile { display: block; margin-top: auto; }
   .rental-embedded .rental-actions-mobile > .rental-actions { position: static; z-index: auto; isolation: auto; margin-top: 2px; padding-bottom: 0; }
   .rental-embedded .rental-actions-desktop { display: none; }
-  .rental-embedded .rental-fields .rental-input { height: 44px; font-size: 16px !important; }
+  .rental-embedded .rental-fields .rental-input { height: 44px; font-size: 13px !important; }
   .rental-embedded[data-stage="details"][data-detail-step="terms"] .rental-stage-body {
     overflow: hidden;
     gap: 10px;

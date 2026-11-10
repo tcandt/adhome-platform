@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, MapPin, Share2, ExternalLink } from 'lucide-react';
+import { X, MapPin, Share2, ExternalLink, Maximize2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { RoomListing } from '../types/room';
 import {
@@ -32,11 +32,15 @@ export const RoomDetailModal: React.FC<RoomDetailModalProps> = ({
   onOpenFullPage,
 }) => {
   const [copiedLink, setCopiedLink] = useState(false);
+  const [photoOpen, setPhotoOpen] = useState(false);
+  const [photoIndex, setPhotoIndex] = useState(0);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const closeBtnRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     setCopiedLink(false);
+    setPhotoOpen(false);
+    setPhotoIndex(0);
   }, [room]);
 
   // Body scroll lock, initial focus & keyboard focus trap (Tab / Shift+Tab / Escape)
@@ -53,8 +57,14 @@ export const RoomDetailModal: React.FC<RoomDetailModalProps> = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        onClose();
+        if (photoOpen) setPhotoOpen(false);
+        else onClose();
         return;
+      }
+
+      if (photoOpen && room.images.length > 1 && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+        e.preventDefault();
+        setPhotoIndex((index) => (index + (e.key === 'ArrowRight' ? 1 : -1) + room.images.length) % room.images.length);
       }
 
       if (e.key === 'Tab' && dialogRef.current) {
@@ -95,7 +105,7 @@ export const RoomDetailModal: React.FC<RoomDetailModalProps> = ({
       window.removeEventListener('keydown', handleKeyDown);
       previouslyFocused?.focus?.();
     };
-  }, [room, onClose]);
+  }, [room, onClose, photoOpen]);
 
   const handleCopyUrl = async () => {
     if (!room) return;
@@ -195,7 +205,12 @@ export const RoomDetailModal: React.FC<RoomDetailModalProps> = ({
             {/* Concise Body: Photo + Title/Price + 4 Key Specs */}
             <div className="p-4 sm:p-5 overflow-y-auto flex-1 space-y-4">
               {/* 1. Primary Photo */}
-              <div className="relative aspect-[16/9] rounded-card overflow-hidden bg-canvas-warm border border-line">
+              <button
+                type="button"
+                onClick={() => { setPhotoIndex(0); setPhotoOpen(true); }}
+                aria-label={`Mở rộng ảnh phòng ${room.roomCode}`}
+                className="relative block w-full aspect-[16/9] rounded-card overflow-hidden bg-canvas-warm border border-line text-left group"
+              >
                 <img
                   src={primaryImage.url}
                   srcSet={primaryImage.srcSet}
@@ -208,12 +223,13 @@ export const RoomDetailModal: React.FC<RoomDetailModalProps> = ({
                     Ảnh minh họa
                   </span>
                 )}
+                <span className="absolute top-2.5 left-2.5 p-1.5 rounded-lg bg-canvas-pure/90 text-ink" aria-hidden="true"><Maximize2 className="w-4 h-4" /></span>
                 {room.images.length > 1 && (
                   <span className="absolute bottom-2.5 right-2.5 px-2 py-0.5 rounded text-[11px] font-medium bg-ink/80 text-white tabular-nums">
-                    Album {room.images.length} ảnh ở trang chi tiết
+                    Xem album {room.images.length} ảnh
                   </span>
                 )}
-              </div>
+              </button>
 
               {/* 2. Title + Location + Price */}
               <div className="flex items-start justify-between gap-3 pb-3.5 border-b border-line">
@@ -252,7 +268,7 @@ export const RoomDetailModal: React.FC<RoomDetailModalProps> = ({
                     Thông số &amp; Nội thất
                   </span>
                   <strong className="text-ink font-semibold tabular-nums text-right">
-                    {room.area}m² · {room.roomType} · {room.furnishedLabel}
+                    {room.area}m² · {room.roomType} · {room.furnishedLabel} · {room.rentalModel === 'SHARED_ROOM' ? 'Ở ghép' : 'Nguyên căn'}
                   </strong>
                 </div>
                 <div className="px-3.5 py-2.5 flex items-center justify-between gap-3">
@@ -303,6 +319,31 @@ export const RoomDetailModal: React.FC<RoomDetailModalProps> = ({
               </button>
             </div>
           </motion.div>
+          {photoOpen && (
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label={`Album ảnh phòng ${room.roomCode}`}
+              className="fixed inset-0 z-[60] bg-ink/90 flex items-center justify-center p-0 sm:p-6"
+              onClick={(event) => { event.stopPropagation(); setPhotoOpen(false); }}
+            >
+              <div className="relative w-full max-w-4xl max-h-[100dvh] sm:max-h-[92dvh] overflow-y-auto bg-canvas-pure sm:rounded-section" onClick={(event) => event.stopPropagation()}>
+                <img
+                  src={(room.images[photoIndex] || primaryImage).url}
+                  alt={(room.images[photoIndex] || primaryImage).alt}
+                  className="block w-full h-auto"
+                />
+                <button type="button" onClick={() => setPhotoOpen(false)} aria-label="Đóng xem ảnh" className="absolute top-3 right-3 p-2.5 rounded-lg bg-canvas-pure/95 text-ink"><X className="w-5 h-5" /></button>
+                {room.images.length > 1 && (
+                  <>
+                    <button type="button" onClick={() => setPhotoIndex((photoIndex - 1 + room.images.length) % room.images.length)} aria-label="Ảnh trước" className="absolute left-3 top-[40%] p-2.5 rounded-lg bg-canvas-pure/95 text-ink"><ChevronLeft className="w-5 h-5" /></button>
+                    <button type="button" onClick={() => setPhotoIndex((photoIndex + 1) % room.images.length)} aria-label="Ảnh tiếp theo" className="absolute right-3 top-[40%] p-2.5 rounded-lg bg-canvas-pure/95 text-ink"><ChevronRight className="w-5 h-5" /></button>
+                  </>
+                )}
+                <div className="p-4 text-sm font-semibold text-ink">{room.shortTitle} · Ảnh {photoIndex + 1}/{Math.max(room.images.length, 1)}</div>
+              </div>
+            </div>
+          )}
         </motion.div>
       )}
     </AnimatePresence>

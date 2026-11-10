@@ -38,7 +38,8 @@ export type SettingsTabId =
   | 'hunonic'
   | 'cron'
   | 'audit'
-  | 'data';
+  | 'data'
+  | 'versions';
 
 export interface NavItemConfig {
   id: NavModuleId;
@@ -116,6 +117,11 @@ export const SETTINGS_TABS_CONFIG: SettingsTabConfig[] = [
     id: 'data',
     label: 'Quản lý dữ liệu',
     description: 'Sao lưu, phục hồi và xóa dữ liệu nghiệp vụ; giữ nguyên Cài đặt',
+  },
+  {
+    id: 'versions',
+    label: 'Phiên bản',
+    description: 'Phiên bản đang chạy và chi tiết thay đổi qua từng lần phát hành',
   },
 ];
 

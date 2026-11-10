@@ -1,386 +1,1428 @@
 {
   "schemaVersion": 1,
   "orgId": "org-adhome-anphu",
-  "syncJobId": "sync_job_1793464365172_1b1d9a66",
-  "exportedAt": "2026-10-31T16:32:45.224Z",
+  "syncJobId": "sync_job_1793690204604_227dc725",
+  "exportedAt": "2026-11-03T07:16:44.876Z",
+  "inventorySource": "HUNONIC_V2",
+  "inventoryAccount": "0329484353",
+  "inventoryFetchedAt": "2026-11-03T07:16:44.876Z",
+  "devices": [
+    {
+      "id": "HUN176130687343elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2025-10-24",
+      "providerDeviceId": "3077229",
+      "name": "EVN",
+      "homeName": "Nhà của Tính",
+      "providerRoomName": "Chưa xếp phòng",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 55.91,
+      "reportedMonth": "11",
+      "instantPowerW": 3813,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    },
+    {
+      "id": "HUN176057810310elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2025-10-16",
+      "providerDeviceId": "3077238",
+      "name": "NLMT",
+      "homeName": "Nhà của Tính",
+      "providerRoomName": "Chưa xếp phòng",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 259.16,
+      "reportedMonth": "07",
+      "instantPowerW": 16450,
+      "providerReportedAt": null,
+      "online": false,
+      "connectionStatus": "OFFLINE"
+    },
+    {
+      "id": "HUN175946541870elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2025-10-03",
+      "providerDeviceId": "2986257",
+      "name": "P31.07",
+      "homeName": "LK01 - ÂN PHÚ",
+      "providerRoomName": "CÔNG TƠ LK01-31",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 4.39,
+      "reportedMonth": "11",
+      "instantPowerW": 1134,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    },
+    {
+      "id": "HUN175954464217elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2025-10-04",
+      "providerDeviceId": "2986258",
+      "name": "P31.06",
+      "homeName": "LK01 - ÂN PHÚ",
+      "providerRoomName": "CÔNG TƠ LK01-31",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 17.89,
+      "reportedMonth": "11",
+      "instantPowerW": 9232,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    },
+    {
+      "id": "HUN175955049296elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2025-10-04",
+      "providerDeviceId": "3101591",
+      "name": "P31.05",
+      "homeName": "LK01 - ÂN PHÚ",
+      "providerRoomName": "CÔNG TƠ LK01-31",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 1.61,
+      "reportedMonth": "11",
+      "instantPowerW": 0,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    },
+    {
+      "id": "HUN176137819631elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2025-10-25",
+      "providerDeviceId": "2998105",
+      "name": "P31.04",
+      "homeName": "LK01 - ÂN PHÚ",
+      "providerRoomName": "CÔNG TƠ LK01-31",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 1.94,
+      "reportedMonth": "11",
+      "instantPowerW": 651,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    },
+    {
+      "id": "HUN175948578312elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2025-10-03",
+      "providerDeviceId": "2986246",
+      "name": "P31.03",
+      "homeName": "LK01 - ÂN PHÚ",
+      "providerRoomName": "CÔNG TƠ LK01-31",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 7.18,
+      "reportedMonth": "11",
+      "instantPowerW": 636,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    },
+    {
+      "id": "HUN175954219298elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2025-10-04",
+      "providerDeviceId": "2986249",
+      "name": "P31.02",
+      "homeName": "LK01 - ÂN PHÚ",
+      "providerRoomName": "CÔNG TƠ LK01-31",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 15.48,
+      "reportedMonth": "11",
+      "instantPowerW": 1420,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    },
+    {
+      "id": "HUN175369025418elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2025-07-28",
+      "providerDeviceId": "3101602",
+      "name": "P31.01",
+      "homeName": "LK01 - ÂN PHÚ",
+      "providerRoomName": "CÔNG TƠ LK01-31",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 2.85,
+      "reportedMonth": "11",
+      "instantPowerW": 342,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    },
+    {
+      "id": "HUN175954481871elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2025-10-04",
+      "providerDeviceId": "2986297",
+      "name": "P32.07",
+      "homeName": "LK01 - ÂN PHÚ",
+      "providerRoomName": "CÔNG TƠ LK01-32",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 1.85,
+      "reportedMonth": "11",
+      "instantPowerW": 639,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    },
+    {
+      "id": "HUN175954346226elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2025-10-04",
+      "providerDeviceId": "2986298",
+      "name": "P32.06",
+      "homeName": "LK01 - ÂN PHÚ",
+      "providerRoomName": "CÔNG TƠ LK01-32",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 2.87,
+      "reportedMonth": "11",
+      "instantPowerW": 110,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    },
+    {
+      "id": "HUN175948950432elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2025-10-03",
+      "providerDeviceId": "2986284",
+      "name": "P32.05",
+      "homeName": "LK01 - ÂN PHÚ",
+      "providerRoomName": "CÔNG TƠ LK01-32",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 19.41,
+      "reportedMonth": "11",
+      "instantPowerW": 1105,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    },
+    {
+      "id": "HUN175954350576elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2025-10-04",
+      "providerDeviceId": "2986290",
+      "name": "P32.04",
+      "homeName": "LK01 - ÂN PHÚ",
+      "providerRoomName": "CÔNG TƠ LK01-32",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 3.51,
+      "reportedMonth": "11",
+      "instantPowerW": 874,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    },
+    {
+      "id": "HUN175948957454elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2025-10-03",
+      "providerDeviceId": "2986271",
+      "name": "P32.03",
+      "homeName": "LK01 - ÂN PHÚ",
+      "providerRoomName": "CÔNG TƠ LK01-32",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 2.71,
+      "reportedMonth": "11",
+      "instantPowerW": 661,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    },
+    {
+      "id": "HUN175949226327elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2025-10-03",
+      "providerDeviceId": "2986273",
+      "name": "P32.02",
+      "homeName": "LK01 - ÂN PHÚ",
+      "providerRoomName": "CÔNG TƠ LK01-32",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 6.55,
+      "reportedMonth": "11",
+      "instantPowerW": 5910,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    },
+    {
+      "id": "HUN176947690321elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2026-01-27",
+      "providerDeviceId": "3152473",
+      "name": "P32.01",
+      "homeName": "LK01 - ÂN PHÚ",
+      "providerRoomName": "CÔNG TƠ LK01-32",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 1.12,
+      "reportedMonth": "11",
+      "instantPowerW": 111,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    },
+    {
+      "id": "HUN178116027692elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2026-06-11",
+      "providerDeviceId": "4010464",
+      "name": "Ổ CẮM TRỆT",
+      "homeName": "LK08 - ÂN PHÚ",
+      "providerRoomName": "CÔNG TƠ",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 0.36,
+      "reportedMonth": "11",
+      "instantPowerW": 0,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    },
+    {
+      "id": "HUN178676250880elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2026-08-15",
+      "providerDeviceId": "4013615",
+      "name": "Tổng LK08-24",
+      "homeName": "LK08 - ÂN PHÚ",
+      "providerRoomName": "CÔNG TƠ",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 103.9,
+      "reportedMonth": "11",
+      "instantPowerW": 5557,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    },
+    {
+      "id": "HUN178495063223elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2026-07-25",
+      "providerDeviceId": "4010533",
+      "name": "Tổng LK08-25",
+      "homeName": "LK08 - ÂN PHÚ",
+      "providerRoomName": "CÔNG TƠ",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 67.71,
+      "reportedMonth": "11",
+      "instantPowerW": 6198,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    },
+    {
+      "id": "HUN178736262816elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2026-08-22",
+      "providerDeviceId": "4013616",
+      "name": "P24.01",
+      "homeName": "LK08 - ÂN PHÚ",
+      "providerRoomName": "CÔNG TƠ",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 3.33,
+      "reportedMonth": "11",
+      "instantPowerW": 293,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    },
+    {
+      "id": "HUN178676205659elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2026-08-15",
+      "providerDeviceId": "4021993",
+      "name": "P24-02",
+      "homeName": "LK08 - ÂN PHÚ",
+      "providerRoomName": "CÔNG TƠ",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 0.64,
+      "reportedMonth": "11",
+      "instantPowerW": 344,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    },
+    {
+      "id": "HUN178738288588elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2026-08-22",
+      "providerDeviceId": "4022001",
+      "name": "P24-03",
+      "homeName": "LK08 - ÂN PHÚ",
+      "providerRoomName": "CÔNG TƠ",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 23.65,
+      "reportedMonth": "11",
+      "instantPowerW": 5835,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    },
+    {
+      "id": "HUN178676169249elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2026-08-15",
+      "providerDeviceId": "4022022",
+      "name": "P24-04",
+      "homeName": "LK08 - ÂN PHÚ",
+      "providerRoomName": "CÔNG TƠ",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 5.84,
+      "reportedMonth": "11",
+      "instantPowerW": 541,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    },
+    {
+      "id": "HUN178676284383elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2026-08-15",
+      "providerDeviceId": "4022141",
+      "name": "P24-05",
+      "homeName": "LK08 - ÂN PHÚ",
+      "providerRoomName": "CÔNG TƠ",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 4.74,
+      "reportedMonth": "11",
+      "instantPowerW": 362,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    },
+    {
+      "id": "HUN178719031338elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2026-08-20",
+      "providerDeviceId": "4022160",
+      "name": "P24-06",
+      "homeName": "LK08 - ÂN PHÚ",
+      "providerRoomName": "CÔNG TƠ",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 5.24,
+      "reportedMonth": "11",
+      "instantPowerW": 0,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    },
+    {
+      "id": "HUN178495168618elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2026-07-25",
+      "providerDeviceId": "4022173",
+      "name": "P24-07",
+      "homeName": "LK08 - ÂN PHÚ",
+      "providerRoomName": "CÔNG TƠ",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 7.14,
+      "reportedMonth": "11",
+      "instantPowerW": 1169,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    },
+    {
+      "id": "HUN178676269067elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2026-08-15",
+      "providerDeviceId": "4022232",
+      "name": "P24-08",
+      "homeName": "LK08 - ÂN PHÚ",
+      "providerRoomName": "CÔNG TƠ",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 4.73,
+      "reportedMonth": "11",
+      "instantPowerW": 395,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    },
+    {
+      "id": "HUN178495054996elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2026-07-25",
+      "providerDeviceId": "4022239",
+      "name": "P24-09",
+      "homeName": "LK08 - ÂN PHÚ",
+      "providerRoomName": "CÔNG TƠ",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 20.25,
+      "reportedMonth": "11",
+      "instantPowerW": 531,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    },
+    {
+      "id": "HUN178676236593elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2026-08-15",
+      "providerDeviceId": "4022248",
+      "name": "P24-10",
+      "homeName": "LK08 - ÂN PHÚ",
+      "providerRoomName": "CÔNG TƠ",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 11.63,
+      "reportedMonth": "11",
+      "instantPowerW": 4175,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    },
+    {
+      "id": "HUN178676195211elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2026-08-15",
+      "providerDeviceId": "4010465",
+      "name": "P25-01",
+      "homeName": "LK08 - ÂN PHÚ",
+      "providerRoomName": "CÔNG TƠ",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 2.56,
+      "reportedMonth": "11",
+      "instantPowerW": 111,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    },
+    {
+      "id": "HUN178676241614elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2026-08-15",
+      "providerDeviceId": "4022698",
+      "name": "P25.02",
+      "homeName": "LK08 - ÂN PHÚ",
+      "providerRoomName": "CÔNG TƠ",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 1.64,
+      "reportedMonth": "11",
+      "instantPowerW": 142,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    },
+    {
+      "id": "HUN178662147821elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2026-08-13",
+      "providerDeviceId": "4022704",
+      "name": "P25.03",
+      "homeName": "LK08 - ÂN PHÚ",
+      "providerRoomName": "CÔNG TƠ",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 1.65,
+      "reportedMonth": "11",
+      "instantPowerW": 0,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    },
+    {
+      "id": "HUN178495040111elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2026-07-25",
+      "providerDeviceId": "4022706",
+      "name": "P25.04",
+      "homeName": "LK08 - ÂN PHÚ",
+      "providerRoomName": "CÔNG TƠ",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 9.48,
+      "reportedMonth": "11",
+      "instantPowerW": 472,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    },
+    {
+      "id": "HUN178719039860elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2026-08-20",
+      "providerDeviceId": "4022690",
+      "name": "P25.05",
+      "homeName": "LK08 - ÂN PHÚ",
+      "providerRoomName": "CÔNG TƠ",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 3.09,
+      "reportedMonth": "11",
+      "instantPowerW": 62,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    },
+    {
+      "id": "HUN178495307758elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2026-07-25",
+      "providerDeviceId": "4022685",
+      "name": "P25.06",
+      "homeName": "LK08 - ÂN PHÚ",
+      "providerRoomName": "CÔNG TƠ",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 4.24,
+      "reportedMonth": "11",
+      "instantPowerW": 489,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    },
+    {
+      "id": "HUN178495160678elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2026-07-25",
+      "providerDeviceId": "4022671",
+      "name": "P25.07",
+      "homeName": "LK08 - ÂN PHÚ",
+      "providerRoomName": "CÔNG TƠ",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 6.22,
+      "reportedMonth": "11",
+      "instantPowerW": 898,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    },
+    {
+      "id": "HUN178721023388elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2026-08-20",
+      "providerDeviceId": "4022655",
+      "name": "P25.08",
+      "homeName": "LK08 - ÂN PHÚ",
+      "providerRoomName": "CÔNG TƠ",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 5.17,
+      "reportedMonth": "11",
+      "instantPowerW": 433,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    },
+    {
+      "id": "HUN178736276589elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2026-08-22",
+      "providerDeviceId": "4022675",
+      "name": "P25.09",
+      "homeName": "LK08 - ÂN PHÚ",
+      "providerRoomName": "CÔNG TƠ",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 5.33,
+      "reportedMonth": "11",
+      "instantPowerW": 541,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    },
+    {
+      "id": "HUN178736261265elmeterN1",
+      "isShared": true,
+      "electricityGroupId": "1",
+      "createdDate": "2026-08-22",
+      "providerDeviceId": "4022664",
+      "name": "P25.10",
+      "homeName": "LK08 - ÂN PHÚ",
+      "providerRoomName": "CÔNG TƠ",
+      "cumulativeKwh": null,
+      "monthReportedKwh": 10.95,
+      "reportedMonth": "11",
+      "instantPowerW": 160,
+      "providerReportedAt": null,
+      "online": true,
+      "connectionStatus": "ONLINE"
+    }
+  ],
   "status": "SUCCESS",
   "summary": {
-    "totalMeters": 17,
-    "syncedMeters": 17,
+    "totalMeters": 34,
+    "syncedMeters": 34,
     "failedMeters": 0
   },
   "meters": [
     {
-      "buildingId": "bld-lk08-24",
-      "roomId": "d82445b4-1c57-41bc-9437-e3cffe220624",
-      "roomCode": "P.24-03",
-      "meterId": "a6fc2e5e-65dc-47f1-91b6-9fed56821ea1",
-      "hunonicDeviceId": "MOCK-LK08-24-P.24-03",
+      "buildingId": "bld-lk0824-4549",
+      "roomId": "e8a0c89f-c6e2-4582-bc3d-52889a8b6f41",
+      "roomCode": "P24.03",
+      "meterId": "c171d9e7-6535-4cb8-bd9f-c0e509b709bf",
+      "hunonicDeviceId": "HUN178738288588elmeterN1",
       "meterType": "ROOM",
       "provider": "HUNONIC",
       "reading": {
-        "basis": "CUMULATIVE",
-        "valueKwh": 9236,
-        "instantPowerW": 299,
-        "measuredAt": "2026-10-31T16:32:45.197Z",
-        "quality": "VALID"
+        "basis": "MONTHLY_CONSUMPTION",
+        "valueKwh": 23.65,
+        "instantPowerW": 5835,
+        "measuredAt": null,
+        "quality": "UNVERIFIED"
       },
       "tariff": {
         "mode": "custom",
-        "verifiedRateVnd": 4200,
-        "verifiedAt": "2026-10-31T16:32:42.015Z"
+        "verifiedRateVnd": 3967,
+        "verifiedAt": "2026-11-03T07:21:50.567Z"
       },
       "syncStatus": "SUCCESS"
     },
     {
-      "buildingId": "bld-lk01-31",
-      "roomId": "154c39b3-76c4-4667-9f23-14319ddb1015",
-      "roomCode": "P.31-06",
-      "meterId": "f61dd649-b5e6-49fa-92d0-66c2f1d8e129",
-      "hunonicDeviceId": "MOCK-LK01-31-P.31-06",
+      "buildingId": "bld-lk0824-4549",
+      "roomId": "6a0461d4-d928-4f85-aadf-1a928fe43229",
+      "roomCode": "P24.04",
+      "meterId": "311f3d7f-13ce-44cc-9a54-ddb2ac937155",
+      "hunonicDeviceId": "HUN178676169249elmeterN1",
       "meterType": "ROOM",
       "provider": "HUNONIC",
       "reading": {
-        "basis": "CUMULATIVE",
-        "valueKwh": 163,
-        "instantPowerW": 1455,
-        "measuredAt": "2026-10-31T16:32:45.201Z",
-        "quality": "VALID"
+        "basis": "MONTHLY_CONSUMPTION",
+        "valueKwh": 5.84,
+        "instantPowerW": 541,
+        "measuredAt": null,
+        "quality": "UNVERIFIED"
       },
       "tariff": {
         "mode": "custom",
-        "verifiedRateVnd": 4200,
-        "verifiedAt": "2026-10-31T16:32:42.015Z"
+        "verifiedRateVnd": 3967,
+        "verifiedAt": "2026-11-03T07:21:50.764Z"
       },
       "syncStatus": "SUCCESS"
     },
     {
-      "buildingId": "bld-lk08-24",
-      "roomId": "79b64c80-2584-4261-a90b-777399615e3c",
-      "roomCode": "P.24-04",
-      "meterId": "071f3a8a-c245-480d-b430-154d7641557a",
-      "hunonicDeviceId": "MOCK-LK08-24-P.24-04",
+      "buildingId": "bld-lk0824-4549",
+      "roomId": "1b60767c-6b59-4265-9cf0-b9944a0cb454",
+      "roomCode": "P24.06",
+      "meterId": "a4a360e5-e1f5-45e7-89e2-7f9917a05533",
+      "hunonicDeviceId": "HUN178719031338elmeterN1",
       "meterType": "ROOM",
       "provider": "HUNONIC",
       "reading": {
-        "basis": "CUMULATIVE",
-        "valueKwh": 12246,
-        "instantPowerW": 720,
-        "measuredAt": "2026-10-31T16:32:45.203Z",
-        "quality": "VALID"
-      },
-      "tariff": {
-        "mode": "custom",
-        "verifiedRateVnd": 4200,
-        "verifiedAt": "2026-10-31T16:32:42.015Z"
-      },
-      "syncStatus": "SUCCESS"
-    },
-    {
-      "buildingId": "bld-lk01-31",
-      "roomId": "cbb075b8-c878-4721-aa82-27245c365466",
-      "roomCode": "P.31-04",
-      "meterId": "167c2bb9-9eee-4093-9b6f-a442d6a8f4df",
-      "hunonicDeviceId": "MOCK-LK01-31-P.31-04",
-      "meterType": "ROOM",
-      "provider": "HUNONIC",
-      "reading": {
-        "basis": "CUMULATIVE",
-        "valueKwh": 1023,
-        "instantPowerW": 1417,
-        "measuredAt": "2026-10-31T16:32:45.204Z",
-        "quality": "VALID"
-      },
-      "tariff": {
-        "mode": "custom",
-        "verifiedRateVnd": 4200,
-        "verifiedAt": "2026-10-31T16:32:42.015Z"
-      },
-      "syncStatus": "SUCCESS"
-    },
-    {
-      "buildingId": "bld-lk08-25",
-      "roomId": "f17221fa-203d-4ed6-9306-34eeefba8a83",
-      "roomCode": "P.25-05",
-      "meterId": "95ec6579-8df6-471e-9b75-8aadcba8cb83",
-      "hunonicDeviceId": "MOCK-LK08-25-P.25-05",
-      "meterType": "ROOM",
-      "provider": "HUNONIC",
-      "reading": {
-        "basis": "CUMULATIVE",
-        "valueKwh": 4291,
-        "instantPowerW": 1034,
-        "measuredAt": "2026-10-31T16:32:45.206Z",
-        "quality": "VALID"
-      },
-      "tariff": {
-        "mode": "custom",
-        "verifiedRateVnd": 4200,
-        "verifiedAt": "2026-10-31T16:32:42.015Z"
-      },
-      "syncStatus": "SUCCESS"
-    },
-    {
-      "buildingId": "bld-s4b",
-      "roomId": "rm-s4b-s4402",
-      "roomCode": "S4-402",
-      "meterId": "mtr-s4b-s4402",
-      "hunonicDeviceId": "MOCK-S4-402-OFFLINE",
-      "meterType": "ROOM",
-      "provider": "HUNONIC",
-      "reading": {
-        "basis": "CUMULATIVE",
-        "valueKwh": 160,
+        "basis": "MONTHLY_CONSUMPTION",
+        "valueKwh": 5.24,
         "instantPowerW": 0,
-        "measuredAt": "2026-10-31T16:32:45.207Z",
-        "quality": "OFFLINE"
+        "measuredAt": null,
+        "quality": "UNVERIFIED"
       },
       "tariff": {
         "mode": "custom",
-        "verifiedRateVnd": 4200,
-        "verifiedAt": "2026-10-31T16:32:42.015Z"
+        "verifiedRateVnd": 3967,
+        "verifiedAt": "2026-11-03T07:21:51.183Z"
       },
       "syncStatus": "SUCCESS"
     },
     {
-      "buildingId": "bld-lk01-32",
-      "roomId": "a03cf108-a664-42db-afd7-04744736df21",
-      "roomCode": "P.32-06",
-      "meterId": "e0e6407c-fa3b-4fe1-8de9-b62d21d683b9",
-      "hunonicDeviceId": "MOCK-LK01-32-P.32-06",
+      "buildingId": "bld-lk0824-4549",
+      "roomId": "aa3160e7-d5a2-49d7-a5ae-ad8578cc840f",
+      "roomCode": "P24.08",
+      "meterId": "1f2ce46c-252a-41f6-8cbc-d51a70694b8c",
+      "hunonicDeviceId": "HUN178676269067elmeterN1",
       "meterType": "ROOM",
       "provider": "HUNONIC",
       "reading": {
-        "basis": "CUMULATIVE",
-        "valueKwh": 6828,
-        "instantPowerW": 140,
-        "measuredAt": "2026-10-31T16:32:45.208Z",
-        "quality": "VALID"
+        "basis": "MONTHLY_CONSUMPTION",
+        "valueKwh": 4.73,
+        "instantPowerW": 395,
+        "measuredAt": null,
+        "quality": "UNVERIFIED"
       },
       "tariff": {
         "mode": "custom",
-        "verifiedRateVnd": 4200,
-        "verifiedAt": "2026-10-31T16:32:42.015Z"
+        "verifiedRateVnd": 3967,
+        "verifiedAt": "2026-11-03T07:21:51.638Z"
       },
       "syncStatus": "SUCCESS"
     },
     {
-      "buildingId": "bld-lk01-31",
-      "roomId": "558bd979-0364-4e1e-828c-ca70db70fbe2",
-      "roomCode": "P.31-01",
-      "meterId": "06cce595-0855-41a4-9464-7bc1d059ad2e",
-      "hunonicDeviceId": "MOCK-LK01-31-P.31-01",
+      "buildingId": "bld-lk0824-4549",
+      "roomId": "19b1ea8d-efeb-47ed-88e3-27438f65fb01",
+      "roomCode": "P24.10",
+      "meterId": "7224c422-4453-4922-90b9-00d0154721e2",
+      "hunonicDeviceId": "HUN178676236593elmeterN1",
       "meterType": "ROOM",
       "provider": "HUNONIC",
       "reading": {
-        "basis": "CUMULATIVE",
-        "valueKwh": 11601,
-        "instantPowerW": 712,
-        "measuredAt": "2026-10-31T16:32:45.210Z",
-        "quality": "VALID"
+        "basis": "MONTHLY_CONSUMPTION",
+        "valueKwh": 11.63,
+        "instantPowerW": 4175,
+        "measuredAt": null,
+        "quality": "UNVERIFIED"
       },
       "tariff": {
         "mode": "custom",
-        "verifiedRateVnd": 4200,
-        "verifiedAt": "2026-10-31T16:32:42.015Z"
+        "verifiedRateVnd": 3967,
+        "verifiedAt": "2026-11-03T07:21:52.064Z"
       },
       "syncStatus": "SUCCESS"
     },
     {
-      "buildingId": "bld-lk08-25",
-      "roomId": "7b2d6a99-4623-46c6-b38d-2f63dce2e916",
-      "roomCode": "P.25-08",
-      "meterId": "d93a7522-3e9b-402f-9253-378c6439ecfa",
-      "hunonicDeviceId": "MOCK-LK08-25-P.25-08",
+      "buildingId": "bld-lk01.31-1054",
+      "roomId": "543ffcda-a284-4cfd-9434-69cbeea55249",
+      "roomCode": "P31.06",
+      "meterId": "65a1f821-cdb3-4bfc-a976-33adce1508f0",
+      "hunonicDeviceId": "HUN175954464217elmeterN1",
       "meterType": "ROOM",
       "provider": "HUNONIC",
       "reading": {
-        "basis": "CUMULATIVE",
-        "valueKwh": 10569,
-        "instantPowerW": 682,
-        "measuredAt": "2026-10-31T16:32:45.211Z",
-        "quality": "VALID"
+        "basis": "MONTHLY_CONSUMPTION",
+        "valueKwh": 17.89,
+        "instantPowerW": 9232,
+        "measuredAt": null,
+        "quality": "UNVERIFIED"
       },
       "tariff": {
         "mode": "custom",
-        "verifiedRateVnd": 4200,
-        "verifiedAt": "2026-10-31T16:32:42.015Z"
+        "verifiedRateVnd": 3967,
+        "verifiedAt": "2026-11-03T07:21:46.763Z"
       },
       "syncStatus": "SUCCESS"
     },
     {
-      "buildingId": "bld-lk01-32",
-      "roomId": "7075cf01-69a9-44cd-b269-ecc86a288025",
-      "roomCode": "P.32-05",
-      "meterId": "5ee87912-586e-47ac-a0bf-e65d9d4f1c9d",
-      "hunonicDeviceId": "MOCK-LK01-32-P.32-05",
+      "buildingId": "bld-lk01.31-1054",
+      "roomId": "cce78603-e2a6-405b-833f-95f48a3f0283",
+      "roomCode": "P31.02",
+      "meterId": "4e75b58e-8f9c-4d53-84d2-37d2e7988150",
+      "hunonicDeviceId": "HUN175954219298elmeterN1",
       "meterType": "ROOM",
       "provider": "HUNONIC",
       "reading": {
-        "basis": "CUMULATIVE",
-        "valueKwh": 9838,
-        "instantPowerW": 1091,
-        "measuredAt": "2026-10-31T16:32:45.212Z",
-        "quality": "VALID"
+        "basis": "MONTHLY_CONSUMPTION",
+        "valueKwh": 15.48,
+        "instantPowerW": 1420,
+        "measuredAt": null,
+        "quality": "UNVERIFIED"
       },
       "tariff": {
         "mode": "custom",
-        "verifiedRateVnd": 4200,
-        "verifiedAt": "2026-10-31T16:32:42.015Z"
+        "verifiedRateVnd": 3967,
+        "verifiedAt": "2026-11-03T07:21:47.633Z"
       },
       "syncStatus": "SUCCESS"
     },
     {
-      "buildingId": "bld-lk08-24",
-      "roomId": "3cb6fbc8-b8ad-4712-b957-76d2c3edd58f",
-      "roomCode": "P.24-06",
-      "meterId": "3487059c-5b2a-40e1-9a49-9a0c2ba860c4",
-      "hunonicDeviceId": "MOCK-LK08-24-P.24-06",
+      "buildingId": "bld-lk01.32-58ea",
+      "roomId": "4818e4e0-abdb-4739-87c2-83ea467ff5f5",
+      "roomCode": "P32.02",
+      "meterId": "d4c3c91a-3d8b-4b7f-9bbf-95746abfcf68",
+      "hunonicDeviceId": "HUN175949226327elmeterN1",
       "meterType": "ROOM",
       "provider": "HUNONIC",
       "reading": {
-        "basis": "CUMULATIVE",
-        "valueKwh": 6613,
-        "instantPowerW": 620,
-        "measuredAt": "2026-10-31T16:32:45.215Z",
-        "quality": "VALID"
+        "basis": "MONTHLY_CONSUMPTION",
+        "valueKwh": 6.55,
+        "instantPowerW": 5910,
+        "measuredAt": null,
+        "quality": "UNVERIFIED"
       },
       "tariff": {
         "mode": "custom",
-        "verifiedRateVnd": 4200,
-        "verifiedAt": "2026-10-31T16:32:42.015Z"
+        "verifiedRateVnd": 3967,
+        "verifiedAt": "2026-11-03T07:21:49.064Z"
       },
       "syncStatus": "SUCCESS"
     },
     {
-      "buildingId": "bld-lk08-25",
-      "roomId": "75dc9d40-97f9-4b64-ac8a-dcd0fd0332e8",
-      "roomCode": "P.25-03",
-      "meterId": "9581b3b0-ef94-4bbe-974f-ab11faa73a7e",
-      "hunonicDeviceId": "MOCK-LK08-25-P.25-03",
+      "buildingId": "bld-lk0825-fdda",
+      "roomId": "761c0eef-90cc-4fa1-b0de-ed303d3d305c",
+      "roomCode": "P25.01",
+      "meterId": "3b2e09c4-53e2-4b56-b675-05537bc3bfd1",
+      "hunonicDeviceId": "HUN178676195211elmeterN1",
       "meterType": "ROOM",
       "provider": "HUNONIC",
       "reading": {
-        "basis": "CUMULATIVE",
-        "valueKwh": 14568,
-        "instantPowerW": 949,
-        "measuredAt": "2026-10-31T16:32:45.216Z",
-        "quality": "VALID"
+        "basis": "MONTHLY_CONSUMPTION",
+        "valueKwh": 2.56,
+        "instantPowerW": 111,
+        "measuredAt": null,
+        "quality": "UNVERIFIED"
       },
       "tariff": {
         "mode": "custom",
-        "verifiedRateVnd": 4200,
-        "verifiedAt": "2026-10-31T16:32:42.015Z"
+        "verifiedRateVnd": 3967,
+        "verifiedAt": "2026-11-03T07:21:52.284Z"
       },
       "syncStatus": "SUCCESS"
     },
     {
-      "buildingId": "bld-lk01-31",
-      "roomId": "b54edf7d-0950-49df-a6d0-a8a1b3e7509a",
-      "roomCode": "P.31-05",
-      "meterId": "0416f025-bb4c-4806-8ce4-08f120038af0",
-      "hunonicDeviceId": "MOCK-LK01-31-P.31-05",
+      "buildingId": "bld-lk0825-fdda",
+      "roomId": "1c7eb982-7042-4e0f-b560-69f924f06113",
+      "roomCode": "P25.03",
+      "meterId": "e08224a5-8eb7-4345-a449-8826b27c8156",
+      "hunonicDeviceId": "HUN178662147821elmeterN1",
       "meterType": "ROOM",
       "provider": "HUNONIC",
       "reading": {
-        "basis": "CUMULATIVE",
-        "valueKwh": 3689,
-        "instantPowerW": 1024,
-        "measuredAt": "2026-10-31T16:32:45.217Z",
-        "quality": "VALID"
+        "basis": "MONTHLY_CONSUMPTION",
+        "valueKwh": 1.65,
+        "instantPowerW": 0,
+        "measuredAt": null,
+        "quality": "UNVERIFIED"
       },
       "tariff": {
         "mode": "custom",
-        "verifiedRateVnd": 4200,
-        "verifiedAt": "2026-10-31T16:32:42.015Z"
+        "verifiedRateVnd": 3967,
+        "verifiedAt": "2026-11-03T07:21:52.713Z"
       },
       "syncStatus": "SUCCESS"
     },
     {
-      "buildingId": "bld-lk01-31",
-      "roomId": "68916599-0899-4b7d-a834-834220ca145e",
-      "roomCode": "P.31-02",
-      "meterId": "473ac43e-41ba-4ced-94c0-97952f80add1",
-      "hunonicDeviceId": "MOCK-LK01-31-P.31-02",
+      "buildingId": "bld-lk0825-fdda",
+      "roomId": "2b7545b1-2874-4691-ad0f-08ca3e07a307",
+      "roomCode": "P25.04",
+      "meterId": "7a086cbc-02f3-4456-a3d1-1bb531e3ad39",
+      "hunonicDeviceId": "HUN178495040111elmeterN1",
       "meterType": "ROOM",
       "provider": "HUNONIC",
       "reading": {
-        "basis": "CUMULATIVE",
-        "valueKwh": 4678,
-        "instantPowerW": 1545,
-        "measuredAt": "2026-10-31T16:32:45.218Z",
-        "quality": "VALID"
+        "basis": "MONTHLY_CONSUMPTION",
+        "valueKwh": 9.48,
+        "instantPowerW": 472,
+        "measuredAt": null,
+        "quality": "UNVERIFIED"
       },
       "tariff": {
         "mode": "custom",
-        "verifiedRateVnd": 4200,
-        "verifiedAt": "2026-10-31T16:32:42.015Z"
+        "verifiedRateVnd": 3967,
+        "verifiedAt": "2026-11-03T07:21:52.920Z"
       },
       "syncStatus": "SUCCESS"
     },
     {
-      "buildingId": "bld-s4b",
-      "roomId": "rm-s4b-s4401",
-      "roomCode": "S4-401",
-      "meterId": "mtr-s4b-s4401",
-      "hunonicDeviceId": "MOCK-S4-401",
+      "buildingId": "bld-lk0824-4549",
+      "roomId": "bf2a85a4-2f88-4376-af03-b73a2d1bffb9",
+      "roomCode": "P24.05",
+      "meterId": "148e321a-da82-4738-b831-6a38160ca22f",
+      "hunonicDeviceId": "HUN178676284383elmeterN1",
       "meterType": "ROOM",
       "provider": "HUNONIC",
       "reading": {
-        "basis": "CUMULATIVE",
-        "valueKwh": 572,
-        "instantPowerW": 488,
-        "measuredAt": "2026-10-31T16:32:45.220Z",
-        "quality": "VALID"
+        "basis": "MONTHLY_CONSUMPTION",
+        "valueKwh": 4.74,
+        "instantPowerW": 362,
+        "measuredAt": null,
+        "quality": "UNVERIFIED"
       },
       "tariff": {
         "mode": "custom",
-        "verifiedRateVnd": 4200,
-        "verifiedAt": "2026-10-31T16:32:42.015Z"
+        "verifiedRateVnd": 3967,
+        "verifiedAt": "2026-11-03T07:21:50.963Z"
       },
       "syncStatus": "SUCCESS"
     },
     {
-      "buildingId": "bld-s4b",
-      "roomId": "rm-s4b-s4403",
-      "roomCode": "S4-403",
-      "meterId": "mtr-s4b-s4403",
-      "hunonicDeviceId": "MOCK-S4-403-STALE",
+      "buildingId": "bld-lk0824-4549",
+      "roomId": "bf98a723-534e-4a39-936a-6ffaf6d31b82",
+      "roomCode": "P24.07",
+      "meterId": "9e4a08be-aee3-42e7-9feb-9f958d17c672",
+      "hunonicDeviceId": "HUN178495168618elmeterN1",
       "meterType": "ROOM",
       "provider": "HUNONIC",
       "reading": {
-        "basis": "CUMULATIVE",
-        "valueKwh": 732,
-        "instantPowerW": 1415,
-        "measuredAt": "2026-10-31T06:32:45.221Z",
-        "quality": "STALE"
+        "basis": "MONTHLY_CONSUMPTION",
+        "valueKwh": 7.14,
+        "instantPowerW": 1169,
+        "measuredAt": null,
+        "quality": "UNVERIFIED"
       },
       "tariff": {
         "mode": "custom",
-        "verifiedRateVnd": 4200,
-        "verifiedAt": "2026-10-31T16:32:42.015Z"
+        "verifiedRateVnd": 3967,
+        "verifiedAt": "2026-11-03T07:21:51.421Z"
       },
       "syncStatus": "SUCCESS"
     },
     {
-      "buildingId": "bld-s4b",
-      "roomId": "rm-s4b-s4404",
-      "roomCode": "S4-404",
-      "meterId": "mtr-s4b-s4404",
-      "hunonicDeviceId": "MOCK-S4-404",
+      "buildingId": "bld-lk01.31-1054",
+      "roomId": "4f6b6e38-b4a6-4767-9d88-4dff9a104bd0",
+      "roomCode": "P31.07",
+      "meterId": "29974c72-b0ef-4d62-9620-c99508b4828b",
+      "hunonicDeviceId": "HUN175946541870elmeterN1",
       "meterType": "ROOM",
       "provider": "HUNONIC",
       "reading": {
-        "basis": "CUMULATIVE",
-        "valueKwh": 298,
-        "instantPowerW": 1826,
-        "measuredAt": "2026-10-31T16:32:45.223Z",
-        "quality": "VALID"
+        "basis": "MONTHLY_CONSUMPTION",
+        "valueKwh": 4.39,
+        "instantPowerW": 1134,
+        "measuredAt": null,
+        "quality": "UNVERIFIED"
       },
       "tariff": {
         "mode": "custom",
-        "verifiedRateVnd": 4200,
-        "verifiedAt": "2026-10-31T16:32:42.015Z"
+        "verifiedRateVnd": 3967,
+        "verifiedAt": "2026-11-03T07:21:46.534Z"
+      },
+      "syncStatus": "SUCCESS"
+    },
+    {
+      "buildingId": "bld-lk01.31-1054",
+      "roomId": "728868f5-c537-4ee0-a6d9-7c608e025208",
+      "roomCode": "P31.05",
+      "meterId": "95e47e41-355f-4698-87c6-71439203bae9",
+      "hunonicDeviceId": "HUN175955049296elmeterN1",
+      "meterType": "ROOM",
+      "provider": "HUNONIC",
+      "reading": {
+        "basis": "MONTHLY_CONSUMPTION",
+        "valueKwh": 1.61,
+        "instantPowerW": 0,
+        "measuredAt": null,
+        "quality": "UNVERIFIED"
+      },
+      "tariff": {
+        "mode": "custom",
+        "verifiedRateVnd": 3967,
+        "verifiedAt": "2026-11-03T07:21:46.985Z"
+      },
+      "syncStatus": "SUCCESS"
+    },
+    {
+      "buildingId": "bld-lk01.31-1054",
+      "roomId": "30319365-6fdc-4669-bf5e-d9a39d268bef",
+      "roomCode": "P31.04",
+      "meterId": "1a4f30de-aedc-424c-8559-4aefe732b8cf",
+      "hunonicDeviceId": "HUN176137819631elmeterN1",
+      "meterType": "ROOM",
+      "provider": "HUNONIC",
+      "reading": {
+        "basis": "MONTHLY_CONSUMPTION",
+        "valueKwh": 1.94,
+        "instantPowerW": 651,
+        "measuredAt": null,
+        "quality": "UNVERIFIED"
+      },
+      "tariff": {
+        "mode": "custom",
+        "verifiedRateVnd": 3967,
+        "verifiedAt": "2026-11-03T07:21:47.214Z"
+      },
+      "syncStatus": "SUCCESS"
+    },
+    {
+      "buildingId": "bld-lk01.32-58ea",
+      "roomId": "17675036-a4a8-4896-9905-aa799559c241",
+      "roomCode": "P32.05",
+      "meterId": "cb8adaeb-c56f-4811-935b-b943873c05cf",
+      "hunonicDeviceId": "HUN175948950432elmeterN1",
+      "meterType": "ROOM",
+      "provider": "HUNONIC",
+      "reading": {
+        "basis": "MONTHLY_CONSUMPTION",
+        "valueKwh": 19.41,
+        "instantPowerW": 1105,
+        "measuredAt": null,
+        "quality": "UNVERIFIED"
+      },
+      "tariff": {
+        "mode": "custom",
+        "verifiedRateVnd": 3967,
+        "verifiedAt": "2026-11-03T07:21:48.457Z"
+      },
+      "syncStatus": "SUCCESS"
+    },
+    {
+      "buildingId": "bld-lk01.32-58ea",
+      "roomId": "b0078c17-0f1d-414a-bfce-681925ac7f2c",
+      "roomCode": "P32.04",
+      "meterId": "9b188867-e7c5-46a9-9b18-3d220464a8d7",
+      "hunonicDeviceId": "HUN175954350576elmeterN1",
+      "meterType": "ROOM",
+      "provider": "HUNONIC",
+      "reading": {
+        "basis": "MONTHLY_CONSUMPTION",
+        "valueKwh": 3.51,
+        "instantPowerW": 874,
+        "measuredAt": null,
+        "quality": "UNVERIFIED"
+      },
+      "tariff": {
+        "mode": "custom",
+        "verifiedRateVnd": 3967,
+        "verifiedAt": "2026-11-03T07:21:48.664Z"
+      },
+      "syncStatus": "SUCCESS"
+    },
+    {
+      "buildingId": "bld-lk0825-fdda",
+      "roomId": "085ec86e-07fb-468b-a090-68273b67f556",
+      "roomCode": "P25.05",
+      "meterId": "9ba3cff6-5fe0-4882-bafa-5a1ae0098bd2",
+      "hunonicDeviceId": "HUN178719039860elmeterN1",
+      "meterType": "ROOM",
+      "provider": "HUNONIC",
+      "reading": {
+        "basis": "MONTHLY_CONSUMPTION",
+        "valueKwh": 3.09,
+        "instantPowerW": 62,
+        "measuredAt": null,
+        "quality": "UNVERIFIED"
+      },
+      "tariff": {
+        "mode": "custom",
+        "verifiedRateVnd": 3967,
+        "verifiedAt": "2026-11-03T07:21:53.130Z"
+      },
+      "syncStatus": "SUCCESS"
+    },
+    {
+      "buildingId": "bld-lk0825-fdda",
+      "roomId": "dd88a7ee-3b2f-45a8-85a0-1fb0480ca91d",
+      "roomCode": "P25.09",
+      "meterId": "6c930ca6-148b-4c91-a336-e16c7486c2c0",
+      "hunonicDeviceId": "HUN178736276589elmeterN1",
+      "meterType": "ROOM",
+      "provider": "HUNONIC",
+      "reading": {
+        "basis": "MONTHLY_CONSUMPTION",
+        "valueKwh": 5.33,
+        "instantPowerW": 541,
+        "measuredAt": null,
+        "quality": "UNVERIFIED"
+      },
+      "tariff": {
+        "mode": "custom",
+        "verifiedRateVnd": 3967,
+        "verifiedAt": "2026-11-03T07:21:54.044Z"
+      },
+      "syncStatus": "SUCCESS"
+    },
+    {
+      "buildingId": "bld-lk0825-fdda",
+      "roomId": "ec44d774-93c3-47bb-8443-2253a607efea",
+      "roomCode": "P25.10",
+      "meterId": "27d0628e-5ccc-4211-bfd9-f4d41647c0e7",
+      "hunonicDeviceId": "HUN178736261265elmeterN1",
+      "meterType": "ROOM",
+      "provider": "HUNONIC",
+      "reading": {
+        "basis": "MONTHLY_CONSUMPTION",
+        "valueKwh": 10.95,
+        "instantPowerW": 160,
+        "measuredAt": null,
+        "quality": "UNVERIFIED"
+      },
+      "tariff": {
+        "mode": "custom",
+        "verifiedRateVnd": 3967,
+        "verifiedAt": "2026-11-03T07:21:54.244Z"
+      },
+      "syncStatus": "SUCCESS"
+    },
+    {
+      "buildingId": "bld-lk01.32-58ea",
+      "roomId": "56eb23cb-703a-4815-b104-13afa9271764",
+      "roomCode": "P32.06",
+      "meterId": "913f801d-8fa2-4697-97a1-02010b170f31",
+      "hunonicDeviceId": "HUN175954346226elmeterN1",
+      "meterType": "ROOM",
+      "provider": "HUNONIC",
+      "reading": {
+        "basis": "MONTHLY_CONSUMPTION",
+        "valueKwh": 2.87,
+        "instantPowerW": 110,
+        "measuredAt": null,
+        "quality": "UNVERIFIED"
+      },
+      "tariff": {
+        "mode": "custom",
+        "verifiedRateVnd": 3967,
+        "verifiedAt": "2026-11-03T07:21:48.248Z"
+      },
+      "syncStatus": "SUCCESS"
+    },
+    {
+      "buildingId": "bld-lk01.32-58ea",
+      "roomId": "1cf30e5a-c61c-46f4-b2b1-d998d650e00d",
+      "roomCode": "P32.03",
+      "meterId": "9d12c5d5-aa0c-4ff2-8faa-9ec47aed7c0c",
+      "hunonicDeviceId": "HUN175948957454elmeterN1",
+      "meterType": "ROOM",
+      "provider": "HUNONIC",
+      "reading": {
+        "basis": "MONTHLY_CONSUMPTION",
+        "valueKwh": 2.71,
+        "instantPowerW": 661,
+        "measuredAt": null,
+        "quality": "UNVERIFIED"
+      },
+      "tariff": {
+        "mode": "custom",
+        "verifiedRateVnd": 3967,
+        "verifiedAt": "2026-11-03T07:21:48.869Z"
+      },
+      "syncStatus": "SUCCESS"
+    },
+    {
+      "buildingId": "bld-lk01.32-58ea",
+      "roomId": "744d8b19-3312-4781-9498-a08e95176602",
+      "roomCode": "P32.01",
+      "meterId": "0647918e-1d34-4936-9a58-17cc8c52b5fa",
+      "hunonicDeviceId": "HUN176947690321elmeterN1",
+      "meterType": "ROOM",
+      "provider": "HUNONIC",
+      "reading": {
+        "basis": "MONTHLY_CONSUMPTION",
+        "valueKwh": 1.12,
+        "instantPowerW": 111,
+        "measuredAt": null,
+        "quality": "UNVERIFIED"
+      },
+      "tariff": {
+        "mode": "custom",
+        "verifiedRateVnd": 3967,
+        "verifiedAt": "2026-11-03T07:21:49.277Z"
+      },
+      "syncStatus": "SUCCESS"
+    },
+    {
+      "buildingId": "bld-lk0825-fdda",
+      "roomId": "459c2288-909c-42e4-9cc1-0428ce6272f4",
+      "roomCode": "P25.02",
+      "meterId": "9081e2bd-4ff4-4510-bbfe-b208977a6398",
+      "hunonicDeviceId": "HUN178676241614elmeterN1",
+      "meterType": "ROOM",
+      "provider": "HUNONIC",
+      "reading": {
+        "basis": "MONTHLY_CONSUMPTION",
+        "valueKwh": 1.64,
+        "instantPowerW": 142,
+        "measuredAt": null,
+        "quality": "UNVERIFIED"
+      },
+      "tariff": {
+        "mode": "custom",
+        "verifiedRateVnd": 3967,
+        "verifiedAt": "2026-11-03T07:21:52.497Z"
+      },
+      "syncStatus": "SUCCESS"
+    },
+    {
+      "buildingId": "bld-lk0825-fdda",
+      "roomId": "45cc787e-796c-4000-8d05-01950f7c3dc9",
+      "roomCode": "P25.06",
+      "meterId": "30a219bb-1404-4754-bea4-5d4f1eab8a07",
+      "hunonicDeviceId": "HUN178495307758elmeterN1",
+      "meterType": "ROOM",
+      "provider": "HUNONIC",
+      "reading": {
+        "basis": "MONTHLY_CONSUMPTION",
+        "valueKwh": 4.24,
+        "instantPowerW": 489,
+        "measuredAt": null,
+        "quality": "UNVERIFIED"
+      },
+      "tariff": {
+        "mode": "custom",
+        "verifiedRateVnd": 3967,
+        "verifiedAt": "2026-11-03T07:21:53.366Z"
+      },
+      "syncStatus": "SUCCESS"
+    },
+    {
+      "buildingId": "bld-lk0825-fdda",
+      "roomId": "12882fc4-5689-4685-b967-4123c79758dd",
+      "roomCode": "P25.07",
+      "meterId": "21d8e54d-284c-4df9-9af8-e7f0d238d83c",
+      "hunonicDeviceId": "HUN178495160678elmeterN1",
+      "meterType": "ROOM",
+      "provider": "HUNONIC",
+      "reading": {
+        "basis": "MONTHLY_CONSUMPTION",
+        "valueKwh": 6.22,
+        "instantPowerW": 898,
+        "measuredAt": null,
+        "quality": "UNVERIFIED"
+      },
+      "tariff": {
+        "mode": "custom",
+        "verifiedRateVnd": 3967,
+        "verifiedAt": "2026-11-03T07:21:53.595Z"
+      },
+      "syncStatus": "SUCCESS"
+    },
+    {
+      "buildingId": "bld-lk0825-fdda",
+      "roomId": "71509fd5-6a70-49bd-9b7c-db8222a56a42",
+      "roomCode": "P25.08",
+      "meterId": "84f5d1ff-60c6-4296-9b1a-2d8ef1d54782",
+      "hunonicDeviceId": "HUN178721023388elmeterN1",
+      "meterType": "ROOM",
+      "provider": "HUNONIC",
+      "reading": {
+        "basis": "MONTHLY_CONSUMPTION",
+        "valueKwh": 5.17,
+        "instantPowerW": 433,
+        "measuredAt": null,
+        "quality": "UNVERIFIED"
+      },
+      "tariff": {
+        "mode": "custom",
+        "verifiedRateVnd": 3967,
+        "verifiedAt": "2026-11-03T07:21:53.841Z"
+      },
+      "syncStatus": "SUCCESS"
+    },
+    {
+      "buildingId": "bld-lk0824-4549",
+      "roomId": "0079e78e-109a-4b37-924c-5ea3e2adc183",
+      "roomCode": "P24.01",
+      "meterId": "43285140-f95a-44e0-9fde-66639b63dfd7",
+      "hunonicDeviceId": "HUN178736262816elmeterN1",
+      "meterType": "ROOM",
+      "provider": "HUNONIC",
+      "reading": {
+        "basis": "MONTHLY_CONSUMPTION",
+        "valueKwh": 3.33,
+        "instantPowerW": 293,
+        "measuredAt": null,
+        "quality": "UNVERIFIED"
+      },
+      "tariff": {
+        "mode": "custom",
+        "verifiedRateVnd": 3967,
+        "verifiedAt": "2026-11-03T07:21:50.124Z"
+      },
+      "syncStatus": "SUCCESS"
+    },
+    {
+      "buildingId": "bld-lk0824-4549",
+      "roomId": "fd1cd999-b633-44d0-9968-3282c1310257",
+      "roomCode": "P24.02",
+      "meterId": "763d1c90-5b7a-49aa-a25b-a18a356be113",
+      "hunonicDeviceId": "HUN178676205659elmeterN1",
+      "meterType": "ROOM",
+      "provider": "HUNONIC",
+      "reading": {
+        "basis": "MONTHLY_CONSUMPTION",
+        "valueKwh": 0.64,
+        "instantPowerW": 344,
+        "measuredAt": null,
+        "quality": "UNVERIFIED"
+      },
+      "tariff": {
+        "mode": "custom",
+        "verifiedRateVnd": 3967,
+        "verifiedAt": "2026-11-03T07:21:50.355Z"
+      },
+      "syncStatus": "SUCCESS"
+    },
+    {
+      "buildingId": "bld-lk0824-4549",
+      "roomId": "cfcfb538-1795-4aca-9996-90263852c5c3",
+      "roomCode": "P24.09",
+      "meterId": "ce9b593c-ec5c-4f32-8f02-91aa3fec4def",
+      "hunonicDeviceId": "HUN178495054996elmeterN1",
+      "meterType": "ROOM",
+      "provider": "HUNONIC",
+      "reading": {
+        "basis": "MONTHLY_CONSUMPTION",
+        "valueKwh": 20.25,
+        "instantPowerW": 531,
+        "measuredAt": null,
+        "quality": "UNVERIFIED"
+      },
+      "tariff": {
+        "mode": "custom",
+        "verifiedRateVnd": 3967,
+        "verifiedAt": "2026-11-03T07:21:51.851Z"
+      },
+      "syncStatus": "SUCCESS"
+    },
+    {
+      "buildingId": "bld-lk01.31-1054",
+      "roomId": "6c1d0b56-f6ce-447e-8adb-8d766b24828a",
+      "roomCode": "P31.03",
+      "meterId": "264bc06c-28e3-4b7e-a2b5-1d66ee07d2b7",
+      "hunonicDeviceId": "HUN175948578312elmeterN1",
+      "meterType": "ROOM",
+      "provider": "HUNONIC",
+      "reading": {
+        "basis": "MONTHLY_CONSUMPTION",
+        "valueKwh": 7.18,
+        "instantPowerW": 636,
+        "measuredAt": null,
+        "quality": "UNVERIFIED"
+      },
+      "tariff": {
+        "mode": "custom",
+        "verifiedRateVnd": 3967,
+        "verifiedAt": "2026-11-03T07:21:47.415Z"
+      },
+      "syncStatus": "SUCCESS"
+    },
+    {
+      "buildingId": "bld-lk01.31-1054",
+      "roomId": "b5ceb993-f93d-42d6-b012-a0934e2cc1a1",
+      "roomCode": "P31.01",
+      "meterId": "4dddf6e8-c4fb-443f-81c3-c8a368371d4d",
+      "hunonicDeviceId": "HUN175369025418elmeterN1",
+      "meterType": "ROOM",
+      "provider": "HUNONIC",
+      "reading": {
+        "basis": "MONTHLY_CONSUMPTION",
+        "valueKwh": 2.85,
+        "instantPowerW": 342,
+        "measuredAt": null,
+        "quality": "UNVERIFIED"
+      },
+      "tariff": {
+        "mode": "custom",
+        "verifiedRateVnd": 3967,
+        "verifiedAt": "2026-11-03T07:21:47.833Z"
+      },
+      "syncStatus": "SUCCESS"
+    },
+    {
+      "buildingId": "bld-lk01.32-58ea",
+      "roomId": "8ede9016-b548-4565-bea5-f2ee317feb45",
+      "roomCode": "P32.07",
+      "meterId": "6d29fd7e-b3ac-4076-8217-08202e1e7546",
+      "hunonicDeviceId": "HUN175954481871elmeterN1",
+      "meterType": "ROOM",
+      "provider": "HUNONIC",
+      "reading": {
+        "basis": "MONTHLY_CONSUMPTION",
+        "valueKwh": 1.85,
+        "instantPowerW": 639,
+        "measuredAt": null,
+        "quality": "UNVERIFIED"
+      },
+      "tariff": {
+        "mode": "custom",
+        "verifiedRateVnd": 3967,
+        "verifiedAt": "2026-11-03T07:21:48.050Z"
       },
       "syncStatus": "SUCCESS"
     }

@@ -104,7 +104,7 @@ export const RoomCard: React.FC<RoomCardProps> = ({
 
           {/* 4. Area, room type, furnished */}
           <p className="mt-1 sm:mt-1.5 text-sm text-ink-secondary tabular-nums">
-            {room.area}m² · {room.roomType} · {room.furnishedLabel}
+            {room.area}m² · {room.roomType} · {room.furnishedLabel} · {room.rentalModel === 'SHARED_ROOM' ? 'Ở ghép' : 'Nguyên căn'}
           </p>
         </div>
 

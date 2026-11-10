@@ -65,10 +65,20 @@ export default function App() {
   useEffect(() => {
     if (!isAuthenticated || typeof window === 'undefined') return;
     const handleFocus = () => {
+      if (document.visibilityState === 'hidden') return;
       void refreshSession();
     };
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) handleFocus();
+    };
     window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleFocus);
+    window.addEventListener('pageshow', handlePageShow);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleFocus);
+      window.removeEventListener('pageshow', handlePageShow);
+    };
   }, [isAuthenticated, refreshSession]);
 
   return (

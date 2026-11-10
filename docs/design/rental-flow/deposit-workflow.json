@@ -1,0 +1,180 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Cọc giữ phòng · Hủy hoặc chuyển thuê",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    {
+      "id": "full",
+      "label": "Phiếu cọc · Hoàn đủ"
+    },
+    {
+      "id": "part",
+      "label": "Hủy · Hoàn một phần"
+    },
+    {
+      "id": "none",
+      "label": "Hủy · Không hoàn"
+    },
+    {
+      "id": "rent",
+      "label": "Tiếp tục thuê"
+    }
+  ],
+  "mainPath": [
+    "balance",
+    "choose",
+    "allocate",
+    "collect",
+    "handover"
+  ],
+  "nodes": [
+    {
+      "id": "balance",
+      "lane": "full",
+      "col": 0,
+      "width": 185,
+      "type": "database",
+      "label": "Cọc khả dụng B",
+      "sublabel": "Thực thu trừ phần đã xử lý"
+    },
+    {
+      "id": "choose",
+      "lane": "full",
+      "col": 1,
+      "width": 185,
+      "type": "frontend",
+      "label": "Chọn hướng xử lý",
+      "sublabel": "Hủy cọc hoặc chuyển thuê"
+    },
+    {
+      "id": "fullForm",
+      "lane": "full",
+      "col": 2,
+      "width": 185,
+      "type": "frontend",
+      "label": "Hoàn đủ B",
+      "sublabel": "Lý do · Người nhận · Xác nhận chi"
+    },
+    {
+      "id": "fullDone",
+      "lane": "full",
+      "col": 3,
+      "width": 185,
+      "type": "backend",
+      "label": "Hủy & ghi hoàn",
+      "sublabel": "Hoàn B · Giữ lại 0"
+    },
+    {
+      "id": "partForm",
+      "lane": "part",
+      "col": 2,
+      "width": 185,
+      "type": "frontend",
+      "label": "Nhập phần hoàn H",
+      "sublabel": "Phần giữ lại = B − H"
+    },
+    {
+      "id": "partDone",
+      "lane": "part",
+      "col": 3,
+      "width": 185,
+      "type": "backend",
+      "label": "Hủy & phân bổ",
+      "sublabel": "Hoàn + Chi phí + Phạt = B"
+    },
+    {
+      "id": "noneForm",
+      "lane": "none",
+      "col": 2,
+      "width": 185,
+      "type": "frontend",
+      "label": "Không hoàn",
+      "sublabel": "Lý do · Chi phí và phạt"
+    },
+    {
+      "id": "noneDone",
+      "lane": "none",
+      "col": 3,
+      "width": 185,
+      "type": "backend",
+      "label": "Hủy & giữ lại B",
+      "sublabel": "Không có khoản chi hoàn"
+    },
+    {
+      "id": "allocate",
+      "lane": "rent",
+      "col": 2,
+      "width": 185,
+      "type": "frontend",
+      "label": "Lập hợp đồng",
+      "sublabel": "Chuyển cọc · Tính còn phải thu"
+    },
+    {
+      "id": "collect",
+      "lane": "rent",
+      "col": 3,
+      "width": 185,
+      "type": "backend",
+      "label": "Thu theo hóa đơn",
+      "sublabel": "Thu thực tế · Cập nhật nợ và cọc"
+    },
+    {
+      "id": "handover",
+      "lane": "rent",
+      "col": 4,
+      "width": 185,
+      "type": "database",
+      "label": "Bàn giao nhận phòng",
+      "sublabel": "Đủ điều kiện → ACTIVE / OCCUPIED"
+    }
+  ],
+  "edges": [
+    {
+      "from": "balance",
+      "to": "choose"
+    },
+    {
+      "from": "choose",
+      "to": "fullForm",
+      "label": "Hoàn đủ"
+    },
+    {
+      "from": "choose",
+      "to": "partForm",
+      "label": "Hoàn phần"
+    },
+    {
+      "from": "choose",
+      "to": "noneForm",
+      "label": "Giữ lại"
+    },
+    {
+      "from": "choose",
+      "to": "allocate",
+      "label": "Tiếp tục"
+    },
+    {
+      "from": "fullForm",
+      "to": "fullDone"
+    },
+    {
+      "from": "partForm",
+      "to": "partDone"
+    },
+    {
+      "from": "noneForm",
+      "to": "noneDone"
+    },
+    {
+      "from": "allocate",
+      "to": "collect"
+    },
+    {
+      "from": "collect",
+      "to": "handover"
+    }
+  ]
+}

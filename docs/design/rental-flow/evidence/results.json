@@ -1,0 +1,26 @@
+[
+  {
+    "width": 1440,
+    "reducedMotion": true,
+    "reviewWithoutWrite": true,
+    "failurePreservesFields": true,
+    "noFalseSuccess": true,
+    "noOverflow": true,
+    "keyboardFocus": true,
+    "cancelPartialPreview": true,
+    "conversion7mPreview": true,
+    "documentProfile": true
+  },
+  {
+    "width": 390,
+    "reducedMotion": true,
+    "reviewWithoutWrite": true,
+    "failurePreservesFields": true,
+    "noFalseSuccess": true,
+    "noOverflow": true,
+    "keyboardFocus": true,
+    "cancelPartialPreview": true,
+    "conversion7mPreview": true,
+    "documentProfile": true
+  }
+]

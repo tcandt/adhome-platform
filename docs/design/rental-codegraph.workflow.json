@@ -1,0 +1,42 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": { "title": "Từ chọn phòng đến sổ sách AdHome", "quality_profile": "showcase" },
+  "lanes": [
+    { "id": "console", "label": "Console · thao tác" },
+    { "id": "api", "label": "API · nghiệp vụ" },
+    { "id": "finance", "label": "Dữ liệu · sổ sách" }
+  ],
+  "mainPath": ["select_room", "choose_intent", "profile", "review", "start", "direct", "payment", "handover"],
+  "nodes": [
+    { "id": "select_room", "lane": "console", "col": 0, "type": "frontend", "label": "Chọn phòng", "sublabel": "RoomProfileModal" },
+    { "id": "choose_intent", "lane": "console", "col": 1, "type": "frontend", "label": "Chọn nhu cầu", "sublabel": "DIRECT · HOLD" },
+    { "id": "profile", "lane": "console", "col": 2, "type": "frontend", "label": "Nhập hồ sơ", "sublabel": "khách · điều khoản" },
+    { "id": "review", "lane": "console", "col": 3, "type": "frontend", "label": "Xem trước", "sublabel": "quote · kiểm tra" },
+    { "id": "start", "lane": "api", "col": 3, "type": "backend", "label": "Tạo thuê", "sublabel": "khóa phòng + lưu" },
+    { "id": "hold", "lane": "api", "col": 4, "type": "backend", "label": "Phiếu giữ chỗ", "sublabel": "PENDING / CONFIRMED" },
+    { "id": "convert", "lane": "api", "col": 5, "type": "backend", "label": "Đổi hợp đồng", "sublabel": "đối trừ cọc giữ" },
+    { "id": "direct", "lane": "finance", "col": 4, "type": "database", "label": "Hợp đồng nháp", "sublabel": "cọc + hóa đơn đầu" },
+    { "id": "payment", "lane": "finance", "col": 5, "type": "database", "label": "Thu & ghi sổ", "sublabel": "hóa đơn · cọc · sổ" },
+    { "id": "handover", "lane": "api", "col": 5, "yOffset": 76, "type": "backend", "label": "Bàn giao phòng", "sublabel": "ACTIVE · OCCUPIED" },
+    { "id": "cancel", "lane": "finance", "col": 3, "type": "database", "label": "Hủy giữ chỗ", "sublabel": "hoàn · khấu trừ · chờ" }
+  ],
+  "edges": [
+    { "from": "select_room", "to": "choose_intent" },
+    { "from": "choose_intent", "to": "profile" },
+    { "from": "profile", "to": "review" },
+    { "from": "review", "to": "start" },
+    { "from": "start", "to": "hold", "label": "HOLD" },
+    { "from": "start", "to": "direct", "label": "DIRECT" },
+    { "from": "hold", "to": "convert", "label": "tiếp tục thuê" },
+    { "from": "hold", "to": "cancel", "label": "hủy", "role": "branch" },
+    { "from": "direct", "to": "payment" },
+    { "from": "convert", "to": "payment" },
+    { "from": "payment", "to": "handover" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Ở ngay · hợp đồng nháp", "items": ["DIRECT tạo hợp đồng DRAFT, cọc CONTRACT và hóa đơn đầu kỳ", "Có thể sửa khách, người ở, điều khoản và hóa đơn trước khi thu tiền hoặc liên kết Bot", "Thu tiền cập nhật hóa đơn, cọc và sổ; bàn giao kích hoạt người ở"] },
+    { "dot": "amber", "title": "Giữ phòng · đối trừ", "items": ["HOLD tạo phiếu và cọc BOOKING; chỉ thực thu mới ghi sổ", "Chuyển hợp đồng đối trừ cọc, không ghi nhận thu mới", "Hủy giữ chỗ xử lý hoàn, khấu trừ hoặc chờ chi riêng"] },
+    { "dot": "emerald", "title": "Zalo Bot · thông báo", "items": ["Khách nhắn DANGKY <PHONG> <SĐT>; Bot đối chiếu Console API", "Chỉ báo đã gửi hóa đơn khi Bot API xác nhận SENT", "Sau bàn giao: tin tiền phòng, điện nước và nhắc hạn hợp đồng"] }
+  ]
+}

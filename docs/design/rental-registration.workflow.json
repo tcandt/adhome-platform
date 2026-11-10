@@ -1,0 +1,37 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": { "title": "Hợp đồng nháp → đăng ký Bot → gửi hóa đơn", "quality_profile": "showcase" },
+  "lanes": [
+    { "id": "console", "label": "Console" },
+    { "id": "backend", "label": "API & dữ liệu" },
+    { "id": "bot", "label": "Zalo Bot" },
+    { "id": "finance", "label": "Thanh toán" }
+  ],
+  "mainPath": ["room", "details", "draft", "command", "verify", "invoice", "payment"],
+  "nodes": [
+    { "id": "room", "lane": "console", "col": 0, "type": "frontend", "label": "Chọn phòng" },
+    { "id": "details", "lane": "console", "col": 1, "type": "frontend", "label": "Nhập thông tin", "sublabel": "khách · điều khoản" },
+    { "id": "draft", "lane": "backend", "col": 2, "type": "backend", "label": "Hợp đồng DRAFT", "sublabel": "hóa đơn đầu kỳ" },
+    { "id": "fix", "lane": "console", "col": 2, "type": "frontend", "label": "Sửa bản nháp", "sublabel": "trước thu tiền" },
+    { "id": "command", "lane": "console", "col": 3, "type": "frontend", "label": "Lệnh DANGKY", "sublabel": "sao chép · gửi khách" },
+    { "id": "verify", "lane": "bot", "col": 4, "type": "security", "label": "Xác minh khách", "sublabel": "Console API nội bộ" },
+    { "id": "invoice", "lane": "bot", "col": 5, "type": "messagebus", "label": "Gửi hóa đơn", "sublabel": "Bot API xác nhận" },
+    { "id": "payment", "lane": "finance", "col": 5, "type": "database", "label": "Thu tiền", "sublabel": "invoice + ledger" }
+  ],
+  "edges": [
+    { "from": "room", "to": "details" },
+    { "from": "details", "to": "draft" },
+    { "from": "draft", "to": "command" },
+    { "from": "draft", "to": "fix", "label": "phát hiện sai", "role": "branch" },
+    { "from": "fix", "to": "details", "label": "sửa và lưu", "role": "return" },
+    { "from": "command", "to": "verify", "label": "webhook" },
+    { "from": "verify", "to": "invoice", "label": "đã liên kết" },
+    { "from": "invoice", "to": "payment", "label": "SENT" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Sửa bản nháp", "items": ["Sửa khách, người ở, điều khoản và hóa đơn trong một giao dịch", "Khóa sửa khi đã thu tiền hoặc khách đã liên kết Bot"] },
+    { "dot": "emerald", "title": "Xác nhận thật", "items": ["Khách chủ động nhắn DANGKY trong chat riêng", "Console DB kiểm tra hợp đồng; Bot DB lưu chat và hàng đợi", "Console chỉ báo gửi hóa đơn khi Bot API trả thành công"] },
+    { "dot": "amber", "title": "Tin về sau", "items": ["Mẫu điện nước và tiền phòng lấy từ hóa đơn đã phát hành", "Nhắc hợp đồng trong 30 ngày trước khi hết hạn"] }
+  ]
+}

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { UserProfile, UserCapabilities } from '@/shared/types/auth';
 
 export const CONSOLE_CSRF_HEADER = 'AdHome-Console';
@@ -86,7 +86,7 @@ function mapActorToUserProfile(actor: BackendActorPayload): UserProfile {
     actor.role === 'ADMIN' ||
     (Array.isArray(actor.permissions) && actor.permissions.includes('system.admin'));
   const rawScopes = Array.isArray(actor.buildingScopes) ? actor.buildingScopes : [];
-  const normalizedScopes = rawScopes.map(normalizeScopeId).filter(Boolean);
+  const normalizedScopes = [...new Set(rawScopes.map(normalizeScopeId).filter(Boolean))].sort();
   const hasWildcard = isAdmin || normalizedScopes.includes('*');
 
   return {
@@ -102,7 +102,7 @@ function mapActorToUserProfile(actor: BackendActorPayload): UserProfile {
       : 'Quản lý tòa nhà (Manager)',
     organizationId: actor.orgId || 'org-adhome-anphu',
     organizationName: actor.orgName || 'Khu đô thị Ân Phú Serviced Living',
-    permissions: Array.isArray(actor.permissions) ? actor.permissions : [],
+    permissions: Array.isArray(actor.permissions) ? [...new Set(actor.permissions)].sort() : [],
     buildingScopes: hasWildcard ? ['*'] : normalizedScopes,
     assignedBuildingIds: hasWildcard ? 'ALL' : normalizedScopes,
     sessionVersion: Number(actor.sessionVersion || 1),
@@ -113,6 +113,7 @@ function mapActorToUserProfile(actor: BackendActorPayload): UserProfile {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const sessionRequest = useRef<Promise<boolean> | null>(null);
   const [activeBuildingId, setActiveBuildingIdState] = useState<string | 'ALL'>(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('adhome_active_building') || 'ALL';
@@ -135,7 +136,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [activeBuildingId]);
 
   const applyVerifiedUser = useCallback((nextUser: UserProfile | null) => {
-    setUser(nextUser);
+    // Session checks on resume must not invalidate portfolio data and open forms
+    // when the verified actor, permissions and building scope are unchanged.
+    setUser(previous => JSON.stringify(previous) === JSON.stringify(nextUser) ? previous : nextUser);
     if (!nextUser) {
       setActiveBuildingIdState('ALL');
       return;
@@ -152,34 +155,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const refreshSession = useCallback(async (): Promise<boolean> => {
+  const fetchSession = useCallback(async (): Promise<boolean> => {
     try {
       const res = await fetch('/api/v1/console/auth/me', {
         method: 'GET',
         credentials: 'include',
+        cache: 'no-store',
         headers: {
           Accept: 'application/json',
         },
       });
       if (!res.ok) {
-        applyVerifiedUser(null);
+        if (res.status === 401 || res.status === 403) {
+          applyVerifiedUser(null);
+        }
         return false;
       }
       const data = await res.json().catch(() => ({}));
       if (!data.ok || !data.actor) {
-        applyVerifiedUser(null);
+        // An invalid/partial response on resume is not proof of session expiry.
+        // Only an explicit 401/403 above may tear down the authenticated UI.
         return false;
       }
       const profile = mapActorToUserProfile(data.actor);
       applyVerifiedUser(profile);
       return true;
     } catch {
-      applyVerifiedUser(null);
+      // A temporary connection failure does not invalidate a verified session.
       return false;
     } finally {
       setIsLoading(false);
     }
   }, [applyVerifiedUser]);
+
+  const refreshSession = useCallback((): Promise<boolean> => {
+    // Focus and visibility events can arrive together when a mobile app resumes.
+    if (sessionRequest.current) return sessionRequest.current;
+    const request = fetchSession().finally(() => {
+      sessionRequest.current = null;
+    });
+    sessionRequest.current = request;
+    return request;
+  }, [fetchSession]);
 
   useEffect(() => {
     void refreshSession();
@@ -204,8 +221,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!res.ok || !data.ok || !data.actor) {
         return {
           ok: false,
-          errorCode: data.errorCode || 'LOGIN_FAILED',
-          message: data.message || 'Email hoặc mật khẩu không chính xác.',
+          errorCode: data.errorCode || (res.status >= 500 ? 'AUTH_SERVICE_UNAVAILABLE' : 'LOGIN_FAILED'),
+          message: data.message || (res.status === 401
+            ? 'Email hoặc mật khẩu không chính xác.'
+            : 'Không thể kết nối đến máy chủ xác thực. Vui lòng kiểm tra backend và thử lại.'),
         };
       }
 

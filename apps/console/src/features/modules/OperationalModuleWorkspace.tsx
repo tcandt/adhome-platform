@@ -4,7 +4,10 @@ import { Button as AnimatedButton } from '@animate-ui/react/primitives/buttons/b
 import { notifySave } from '@/shared/ui/SaveToast';
 import {
   AlertCircle,
+  ArrowDownLeft,
   ArrowRightLeft,
+  ArrowUpRight,
+  Banknote,
   BarChart3,
   Building2,
   Calendar,
@@ -14,6 +17,7 @@ import {
   ChevronRight,
   ClipboardCheck,
   Clock,
+  Copy,
   CreditCard,
   Edit3,
   FileSignature,
@@ -23,14 +27,18 @@ import {
   ShieldCheck,
   Users,
   Gauge,
+  History,
   KeyRound,
   Loader2,
   Lock,
   Droplets,
   Plus,
+  QrCode,
   Receipt,
   RefreshCw,
   RotateCcw,
+  Search,
+  Settings2,
   Trash2,
   UserCheck,
   Wallet,
@@ -67,6 +75,24 @@ function shiftPeriodKey(periodKey: string, deltaMonths: number): string {
     2,
     '0'
   )}`;
+}
+
+function formatInvoiceDate(value: string): string {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : value;
+}
+
+function getInvoiceStatus(status: string, remaining: number, paidAmount: number) {
+  if (remaining <= 0 || status === 'PAID') {
+    return { label: 'Đã thanh toán', className: 'bg-emerald-50 text-emerald-700 ring-emerald-600/15 dark:bg-emerald-950/50 dark:text-emerald-300' };
+  }
+  if (status === 'OVERDUE') {
+    return { label: 'Quá hạn', className: 'bg-rose-50 text-rose-700 ring-rose-600/15 dark:bg-rose-950/50 dark:text-rose-300' };
+  }
+  if (paidAmount > 0) {
+    return { label: 'Đã thu một phần', className: 'bg-amber-50 text-amber-700 ring-amber-600/15 dark:bg-amber-950/50 dark:text-amber-300' };
+  }
+  return { label: 'Chờ thanh toán', className: 'bg-blue-50 text-blue-700 ring-blue-600/15 dark:bg-blue-950/50 dark:text-blue-300' };
 }
 
 /**
@@ -168,9 +194,21 @@ export const OperationalModuleWorkspace: React.FC<
     buildingCode: string;
     roomCode: string;
     tenantName: string | null;
+    periodKey: string;
+    dueDate: string;
     totalAmountVnd: number;
     paidAmountVnd: number;
     status: string;
+  } | null>(null);
+  const [invoiceDetail, setInvoiceDetail] = useState<any | null>(null);
+  const [invoiceVietQr, setInvoiceVietQr] = useState<{
+    providerId: string;
+    bankCode: string;
+    accountNumber: string;
+    accountName: string;
+    transferContent: string;
+    amountVnd: number;
+    qrUrl: string | null;
   } | null>(null);
   const [invoicePayAmount, setInvoicePayAmount] = useState(0);
   const [invoicePayMethod, setInvoicePayMethod] = useState<'MANUAL_CASH' | 'MANUAL_TRANSFER' | 'SEPAY' | 'PAYOS'>('MANUAL_CASH');
@@ -316,6 +354,9 @@ export const OperationalModuleWorkspace: React.FC<
   const [lgDescription, setLgDescription] = useState('');
   const [lgError, setLgError] = useState<string | null>(null);
   const [isSavingLg, setIsSavingLg] = useState(false);
+  const [paymentQuery, setPaymentQuery] = useState('');
+  const [paymentStateFilter, setPaymentStateFilter] = useState<'ALL' | 'MATCHED' | 'PENDING'>('ALL');
+  const [paymentView, setPaymentView] = useState<'OVERVIEW' | 'INCOMING' | 'OUTGOING' | 'HISTORY'>('OVERVIEW');
 
   const loadModuleData = useCallback(async () => {
     setIsLoading(true);
@@ -461,6 +502,8 @@ export const OperationalModuleWorkspace: React.FC<
     buildingCode: string;
     roomCode: string;
     tenantName: string | null;
+    periodKey: string;
+    dueDate: string;
     totalAmountVnd: number;
     paidAmountVnd: number;
     status: string;
@@ -472,6 +515,8 @@ export const OperationalModuleWorkspace: React.FC<
     setInvoicePayRef('');
     setInvoicePayError(null);
     setInvoiceHandover(null);
+    setInvoiceDetail(null);
+    setInvoiceVietQr(null);
     invoicePaymentAttempt.current = null;
     setInvoiceElectricStart('');
     setInvoiceWaterStart('');
@@ -484,6 +529,8 @@ export const OperationalModuleWorkspace: React.FC<
       .then(async response => { if (!response.ok) throw new Error('Không tải được điều kiện bàn giao.'); return response.json(); })
       .then(data => {
         setInvoiceHandover(data.automaticHandover || null);
+        setInvoiceDetail(data.invoice || null);
+        setInvoiceVietQr(data.vietQr || null);
         setInvoicePaymentProofs((data.invoice?.payments || []).filter((payment: any) => payment.proofUrl));
       })
       .catch(() => setInvoicePayError('Không tải được điều kiện bàn giao. Đóng và mở lại hóa đơn trước khi thu tiền.'))
@@ -1060,6 +1107,40 @@ export const OperationalModuleWorkspace: React.FC<
       }>)
     : [];
 
+  const invoiceBreakdown = useMemo(() => {
+    if (!invoiceDetail) return [] as Array<{ label: string; amountVnd: number }>;
+    const rows = [
+      { label: 'Tiền phòng', amountVnd: Number(invoiceDetail.roomRentVnd || 0) },
+      { label: 'Tiền điện', amountVnd: Number(invoiceDetail.electricVnd || 0) },
+      { label: 'Tiền nước', amountVnd: Number(invoiceDetail.waterVnd || 0) },
+      { label: 'Phí dịch vụ', amountVnd: Number(invoiceDetail.serviceFeeVnd || 0) },
+      { label: 'Điều chỉnh', amountVnd: Number(invoiceDetail.adjustmentVnd || 0) },
+    ].filter(row => row.amountVnd !== 0);
+    const represented = rows.reduce((sum, row) => sum + row.amountVnd, 0);
+    const difference = Number(invoiceDetail.totalAmountVnd || 0) - represented;
+    if (difference !== 0) {
+      rows.push({
+        label: invoiceDetail.policySnapshot?.type === 'FIRST_COMBINED_INVOICE' ? 'Tiền cọc / khoản đầu kỳ' : 'Khoản khác',
+        amountVnd: difference,
+      });
+    }
+    return rows;
+  }, [invoiceDetail]);
+
+  const invoiceQrUrl = useMemo(() => {
+    if (!invoiceVietQr?.accountNumber || !invoiceVietQr.bankCode || invoicePayAmount <= 0) return null;
+    return `https://vietqr.app/img?bank=${encodeURIComponent(invoiceVietQr.bankCode)}&acc=${encodeURIComponent(invoiceVietQr.accountNumber)}&template=compact&amount=${Math.trunc(invoicePayAmount)}&des=${encodeURIComponent(invoiceVietQr.transferContent)}&showinfo=true&holder=${encodeURIComponent(invoiceVietQr.accountName).replace(/%20/g, '+')}`;
+  }, [invoicePayAmount, invoiceVietQr]);
+  const invoiceSummary = invoices.reduce(
+    (summary, invoice) => {
+      const remaining = Math.max(0, invoice.totalAmountVnd - invoice.paidAmountVnd);
+      summary.remainingVnd += remaining;
+      if (remaining <= 0) summary.paidCount += 1;
+      return summary;
+    },
+    { remainingVnd: 0, paidCount: 0 }
+  );
+
   useEffect(() => {
     if (moduleId !== 'invoices') return;
     const pendingId = sessionStorage.getItem('adhome:open-invoice-payment');
@@ -1104,8 +1185,42 @@ export const OperationalModuleWorkspace: React.FC<
         reconcileState: string;
         invoiceCode: string | null;
         verifiedAt: string;
+        direction?: 'IN' | 'OUT';
+        occurredAt?: string;
+        matchType?: 'EXACT' | 'SUGGESTED' | 'NONE';
+        accountName?: string | null;
       }>)
     : [];
+
+  const normalizedPaymentQuery = paymentQuery.trim().toLocaleLowerCase('vi');
+  const filteredTransactions = transactions.filter((tx) => {
+    const isMatched = Boolean(tx.invoiceCode) || ['MATCHED', 'RECONCILED', 'VERIFIED'].includes(tx.reconcileState);
+    const direction = tx.direction || 'IN';
+    if (paymentView === 'INCOMING' && direction !== 'IN') return false;
+    if (paymentView === 'OUTGOING' && direction !== 'OUT') return false;
+    if (paymentView === 'OVERVIEW' && isMatched) return false;
+    if (paymentStateFilter === 'MATCHED' && !isMatched) return false;
+    if (paymentStateFilter === 'PENDING' && isMatched) return false;
+    if (!normalizedPaymentQuery) return true;
+    return [tx.providerId, tx.externalTxId, tx.payerName, tx.referenceText, tx.invoiceCode]
+      .filter(Boolean)
+      .some(value => String(value).toLocaleLowerCase('vi').includes(normalizedPaymentQuery));
+  });
+  const matchedTransactionCount = transactions.filter(tx =>
+    Boolean(tx.invoiceCode) || ['MATCHED', 'RECONCILED', 'VERIFIED'].includes(tx.reconcileState)
+  ).length;
+  const pendingTransactionCount = transactions.length - matchedTransactionCount;
+  const incomingTransactionVnd = transactions.filter(tx => (tx.direction || 'IN') === 'IN').reduce((sum, tx) => sum + tx.amountVnd, 0);
+  const outgoingTransactionVnd = transactions.filter(tx => tx.direction === 'OUT').reduce((sum, tx) => sum + tx.amountVnd, 0);
+  const netTransactionVnd = incomingTransactionVnd - outgoingTransactionVnd;
+  const configuredProviderCount = paymentProviders.filter(provider => provider.status !== 'UNCONFIGURED').length;
+  const paymentViewMeta = paymentView === 'OVERVIEW'
+    ? { title: 'Hàng chờ xử lý', description: 'Giao dịch chưa khớp nội dung hoặc hóa đơn' }
+    : paymentView === 'INCOMING'
+      ? { title: 'Lịch sử tiền vào', description: 'Các khoản ghi có vào tài khoản nhận tiền' }
+      : paymentView === 'OUTGOING'
+        ? { title: 'Lịch sử tiền ra', description: 'Các khoản hoàn tiền, chi trả hoặc ghi nợ' }
+        : { title: 'Toàn bộ lịch sử', description: 'Dòng tiền vào và ra theo thời gian phát sinh' };
 
   const financeSummary = (payload?.summary as
     | {
@@ -1175,7 +1290,7 @@ export const OperationalModuleWorkspace: React.FC<
           className="module-toolbar-actions flex shrink-0 items-center gap-2"
         >
           {/* Utility action */}
-          <button
+          {moduleId !== 'invoices' && <button
             type="button"
             data-testid="btn-module-refresh"
             onClick={() => void loadModuleData()}
@@ -1186,7 +1301,7 @@ export const OperationalModuleWorkspace: React.FC<
               className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`}
             />
             <span>Đồng bộ</span>
-          </button>
+          </button>}
 
           {moduleId === 'deposits' && hasCapability('canManageContracts') && (
             <button
@@ -1291,7 +1406,7 @@ export const OperationalModuleWorkspace: React.FC<
               <div className="hidden md:block"><BuildingScopeSelector /></div>
             )}
 
-            {currentNavConfig.hasPeriodToolbar && (
+            {currentNavConfig.hasPeriodToolbar && moduleId !== 'invoices' && (
               <div
                 data-testid="period-selector-toolbar"
                 className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl"
@@ -2694,7 +2809,50 @@ export const OperationalModuleWorkspace: React.FC<
 
           {/* 4. INVOICES */}
           {moduleId === 'invoices' && (
-            <div className="bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5 space-y-4">
+            <div className="invoice-workspace bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5 space-y-4">
+              <div className="invoice-period-header flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-2 dark:border-slate-800 dark:bg-[#111827]">
+                <button
+                  type="button"
+                  aria-label="Kỳ trước"
+                  onClick={() => setSelectedPeriod(shiftPeriodKey(selectedPeriod, -1))}
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <label className="flex min-w-0 flex-1 cursor-pointer items-center justify-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm font-bold text-slate-900 dark:bg-slate-900/60 dark:text-white">
+                  <Calendar className="h-4 w-4 shrink-0 text-brand-primary" />
+                  <span className="truncate">{formatPeriodDisplay(selectedPeriod)}</span>
+                  <input
+                    data-testid="input-module-period"
+                    type="month"
+                    value={selectedPeriod}
+                    onChange={(event) => {
+                      if (/^\d{4}-\d{2}$/.test(event.target.value)) setSelectedPeriod(event.target.value);
+                    }}
+                    className="sr-only"
+                  />
+                </label>
+                <button
+                  type="button"
+                  aria-label="Kỳ kế tiếp"
+                  onClick={() => setSelectedPeriod(shiftPeriodKey(selectedPeriod, 1))}
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+                <span className="h-7 w-px shrink-0 bg-slate-200 dark:bg-slate-800" aria-hidden="true" />
+                <AnimatedButton
+                  type="button"
+                  data-testid="btn-module-refresh"
+                  onClick={() => void loadModuleData()}
+                  disabled={isLoading}
+                  title="Đồng bộ lại dữ liệu hóa đơn"
+                  aria-label={isLoading ? 'Đang đồng bộ hóa đơn' : 'Đồng bộ hóa đơn'}
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-brand-primary transition-colors hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60 dark:hover:bg-blue-950/40"
+                >
+                  <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                </AnimatedButton>
+              </div>
               {invoices.length === 0 ? (
                 <div className="py-10 text-center space-y-2">
                   <Receipt className="w-8 h-8 text-slate-400 mx-auto" />
@@ -2709,54 +2867,75 @@ export const OperationalModuleWorkspace: React.FC<
                 </div>
               ) : (
                 <>
+                  <div className="invoice-summary-grid grid grid-cols-3 divide-x divide-slate-200 rounded-xl border border-slate-200 bg-slate-50/70 px-1 py-3 dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-900/50">
+                    <div className="min-w-0 px-3">
+                      <span className="block text-[10px] font-semibold uppercase text-slate-400">Hóa đơn</span>
+                      <strong className="mt-0.5 block text-sm tabular-nums text-slate-900 dark:text-white">{invoices.length}</strong>
+                    </div>
+                    <div className="min-w-0 px-3">
+                      <span className="block text-[10px] font-semibold uppercase text-slate-400">Đã thu đủ</span>
+                      <strong className="mt-0.5 block text-sm tabular-nums text-emerald-600">{invoiceSummary.paidCount}</strong>
+                    </div>
+                    <div className="min-w-0 px-3">
+                      <span className="block text-[10px] font-semibold uppercase text-slate-400">Còn phải thu</span>
+                      <strong className={`mt-0.5 block truncate text-sm tabular-nums ${invoiceSummary.remainingVnd > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                        {invoiceSummary.remainingVnd.toLocaleString('vi-VN')} đ
+                      </strong>
+                    </div>
+                  </div>
+
                   {/* Mobile Cards View (md:hidden) */}
                   <div className="md:hidden space-y-3">
                     {invoices.map((inv) => {
                       const remaining = Math.max(0, inv.totalAmountVnd - inv.paidAmountVnd);
+                      const status = getInvoiceStatus(inv.status, remaining, inv.paidAmountVnd);
                       return (
                         <div
                           key={inv.id}
                           data-testid={`invoice-card-${inv.id}`}
-                          className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] space-y-3 shadow-xs"
+                          className="invoice-mobile-card overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-[#111827]"
                         >
-                          <div className="flex items-center justify-between">
-                            <span className="font-mono font-bold text-xs text-slate-900 dark:text-white">
-                              {inv.invoiceCode}
-                            </span>
-                            <span className="px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
-                              {inv.status}
+                          <div className="flex items-start justify-between gap-3 px-4 pb-3 pt-4">
+                            <div className="min-w-0">
+                              <span className="block truncate font-mono text-[11px] font-semibold text-slate-500 dark:text-slate-400">{inv.invoiceCode}</span>
+                              <strong className="mt-1 block text-sm text-slate-900 dark:text-white">{inv.buildingCode} · {inv.roomCode}</strong>
+                              {inv.tenantName && <span className="mt-0.5 block truncate text-xs text-slate-500">{inv.tenantName}</span>}
+                            </div>
+                            <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 ring-inset ${status.className}`}>
+                              {status.label}
                             </span>
                           </div>
-                          <div className="text-xs text-slate-600 dark:text-slate-300">
-                            <div className="font-semibold text-slate-900 dark:text-white">
-                              {inv.buildingCode} · {inv.roomCode}
-                            </div>
-                            {inv.tenantName && <div>Khách: {inv.tenantName}</div>}
-                            <div className="text-[11px] text-slate-500">Hạn: {inv.dueDate}</div>
-                          </div>
-                          <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
+                          <div className="grid grid-cols-2 gap-x-4 border-y border-slate-100 bg-slate-50/60 px-4 py-3 text-xs dark:border-slate-800 dark:bg-slate-900/40">
                             <div>
-                              <span className="text-[11px] text-slate-500 block">Tổng tiền</span>
-                              <span className="font-bold tabular-nums">{inv.totalAmountVnd.toLocaleString('vi-VN')} đ</span>
+                              <span className="block text-[10px] font-medium text-slate-500">Tổng hóa đơn</span>
+                              <span className="mt-0.5 block font-bold tabular-nums text-slate-900 dark:text-white">{inv.totalAmountVnd.toLocaleString('vi-VN')} đ</span>
                             </div>
                             <div>
-                              <span className="text-[11px] text-slate-500 block">Còn thiếu</span>
-                              <span className={`font-bold tabular-nums ${remaining > 0 ? 'text-rose-600 font-bold' : 'text-emerald-600'}`}>
+                              <span className="block text-[10px] font-medium text-slate-500">Còn phải thu</span>
+                              <span className={`mt-0.5 block font-bold tabular-nums ${remaining > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
                                 {remaining.toLocaleString('vi-VN')} đ
                               </span>
                             </div>
                           </div>
-                          {remaining > 0 && (
-                            <button
+                          <div className="flex min-h-12 items-center justify-between gap-3 px-4 py-2.5">
+                            <span className="flex items-center gap-1.5 text-[11px] text-slate-500">
+                              <CalendarClock className="h-3.5 w-3.5" /> Hạn {formatInvoiceDate(inv.dueDate)}
+                            </span>
+                            {remaining > 0 ? (
+                            <AnimatedButton
                               type="button"
                               data-testid={`btn-pay-invoice-mobile-${inv.id}`}
                               onClick={() => handleOpenInvoicePaymentModal(inv)}
-                              className="w-full min-h-[44px] py-2.5 px-4 bg-brand-primary text-white font-bold text-xs rounded-xl shadow-xs hover:bg-brand-hover active:scale-[0.99] flex items-center justify-center gap-2"
+                              className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-brand-primary px-3 text-[11px] font-bold text-white shadow-sm hover:bg-brand-hover"
                             >
-                              <CreditCard className="w-4 h-4" />
-                              Thu tiền hóa đơn
-                            </button>
-                          )}
+                              <CreditCard className="h-3 w-3" /> Thu tiền
+                            </AnimatedButton>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600">
+                                <CheckCircle2 className="h-4 w-4" /> Hoàn tất
+                              </span>
+                            )}
+                          </div>
                         </div>
                       );
                     })}
@@ -2780,6 +2959,7 @@ export const OperationalModuleWorkspace: React.FC<
                       <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                         {invoices.map((inv) => {
                           const remaining = Math.max(0, inv.totalAmountVnd - inv.paidAmountVnd);
+                          const status = getInvoiceStatus(inv.status, remaining, inv.paidAmountVnd);
                           return (
                             <tr key={inv.id}>
                               <td className="py-3 font-mono font-bold">
@@ -2791,7 +2971,7 @@ export const OperationalModuleWorkspace: React.FC<
                                 </b>
                                 {inv.tenantName ? ` — ${inv.tenantName}` : ''}
                               </td>
-                              <td className="py-3 font-mono">{inv.dueDate}</td>
+                              <td className="py-3 font-mono">{formatInvoiceDate(inv.dueDate)}</td>
                               <td className="py-3 font-bold tabular-nums">
                                 {inv.totalAmountVnd.toLocaleString('vi-VN')} đ
                               </td>
@@ -2804,8 +2984,8 @@ export const OperationalModuleWorkspace: React.FC<
                                 </span>
                               </td>
                               <td className="py-3">
-                                <span className="px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
-                                  {inv.status}
+                                <span className={`rounded-full px-2 py-0.5 text-[10.5px] font-bold ring-1 ring-inset ${status.className}`}>
+                                  {status.label}
                                 </span>
                               </td>
                               <td className="py-3 text-right">
@@ -2837,86 +3017,87 @@ export const OperationalModuleWorkspace: React.FC<
 
           {/* 5. PAYMENTS & RECONCILIATION */}
           {moduleId === 'payments' && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                {paymentProviders.map((p) => (
-                  <div
-                    key={p.providerId}
-                    className="p-4 rounded-xl bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 space-y-2"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                        <CreditCard className="w-3.5 h-3.5 text-brand-primary" />
-                        {p.displayName}
-                      </span>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-                        {p.status === 'UNCONFIGURED'
-                          ? 'Chưa cấu hình'
-                          : p.status}
-                      </span>
+            <div className="space-y-4" data-testid="payments-reconciliation-workspace">
+              <section className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white dark:border-slate-800 dark:bg-[#111827]">
+                <div className="p-4 sm:p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2"><span className="grid h-8 w-8 place-items-center rounded-lg bg-blue-50 text-brand-primary dark:bg-blue-950/40"><ArrowRightLeft className="h-4 w-4" /></span><div><p className="text-[10px] font-bold uppercase text-slate-400">Đối soát tài khoản</p><h2 className="text-base font-bold text-slate-950 dark:text-white">Kỳ {formatPeriodDisplay(selectedPeriod)}</h2></div></div>
                     </div>
-                    <div className="flex flex-wrap gap-1">
-                      {p.capabilities.map((cap) => (
-                        <span
-                          key={cap}
-                          className="rounded bg-slate-100 dark:bg-slate-800/80 px-1.5 py-0.5 font-mono text-[10px] text-slate-500"
-                        >
-                          {cap}
-                        </span>
-                      ))}
-                    </div>
+                    <AnimatedButton type="button" aria-label="Đồng bộ dữ liệu đối soát" title="Đồng bộ" onClick={() => void loadModuleData()} disabled={isLoading} className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"><RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} /></AnimatedButton>
                   </div>
-                ))}
-              </div>
 
-              <div className="bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5">
-                {transactions.length === 0 ? (
-                  <div className="py-8 text-center space-y-1.5">
-                    <CreditCard className="w-8 h-8 text-slate-400 mx-auto" />
-                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                      Chưa phát sinh giao dịch chuyển khoản trong kỳ{' '}
-                      {formatPeriodDisplay(selectedPeriod)}
-                    </h3>
-                    <p className="text-xs text-slate-500">
-                      Kết nối SePay, payOS hoặc Tingee trong mục Cài đặt &amp;
-                      Thiết lập để tự động nhận webhook biến động số dư.
-                    </p>
+                  <div className="mt-4 rounded-xl bg-slate-950 p-4 text-white dark:bg-slate-900">
+                    <p className="text-[10px] font-semibold text-slate-400">Dòng tiền ròng trong kỳ</p>
+                    <p className="mt-1 text-2xl font-bold tabular-nums">{netTransactionVnd >= 0 ? '+' : ''}{netTransactionVnd.toLocaleString('vi-VN')} đ</p>
+                    <div className="mt-4 grid grid-cols-2 gap-3 border-t border-white/10 pt-3">
+                      <div className="flex items-center gap-2"><span className="grid h-8 w-8 place-items-center rounded-lg bg-emerald-400/15 text-emerald-300"><ArrowDownLeft className="h-4 w-4" /></span><div className="min-w-0"><p className="text-[10px] text-slate-400">Tiền vào</p><p className="truncate text-xs font-bold tabular-nums text-emerald-300">+{incomingTransactionVnd.toLocaleString('vi-VN')} đ</p></div></div>
+                      <div className="flex items-center gap-2"><span className="grid h-8 w-8 place-items-center rounded-lg bg-rose-400/15 text-rose-300"><ArrowUpRight className="h-4 w-4" /></span><div className="min-w-0"><p className="text-[10px] text-slate-400">Tiền ra</p><p className="truncate text-xs font-bold tabular-nums text-rose-300">-{outgoingTransactionVnd.toLocaleString('vi-VN')} đ</p></div></div>
+                    </div>
                   </div>
+
+                  <div className="mt-3 grid grid-cols-3 divide-x divide-slate-200 rounded-lg border border-slate-200 py-2.5 dark:divide-slate-700 dark:border-slate-700">
+                    <div className="px-3"><p className="text-[10px] text-slate-500">Đã khớp nội dung</p><p className="mt-0.5 text-sm font-bold text-emerald-600">{matchedTransactionCount}</p></div>
+                    <div className="px-3"><p className="text-[10px] text-slate-500">Chờ xử lý</p><p className="mt-0.5 text-sm font-bold text-amber-600">{pendingTransactionCount}</p></div>
+                    <div className="px-3"><p className="text-[10px] text-slate-500">Kết nối</p><p className="mt-0.5 text-sm font-bold text-slate-900 dark:text-white">{configuredProviderCount}/{paymentProviders.length}</p></div>
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-100 px-2 dark:border-slate-800">
+                  <div className="grid grid-cols-4" role="tablist" aria-label="Quản lý giao dịch đối soát">
+                    {([['OVERVIEW', 'Cần xử lý', AlertCircle, pendingTransactionCount], ['INCOMING', 'Tiền vào', ArrowDownLeft, transactions.filter(tx => (tx.direction || 'IN') === 'IN').length], ['OUTGOING', 'Tiền ra', ArrowUpRight, transactions.filter(tx => tx.direction === 'OUT').length], ['HISTORY', 'Lịch sử', History, transactions.length]] as const).map(([value, label, Icon, count]) => (
+                      <button key={value} type="button" role="tab" aria-selected={paymentView === value} onClick={() => setPaymentView(value)} className={`relative flex h-14 min-w-0 flex-col items-center justify-center gap-0.5 px-0.5 text-[10px] font-bold transition sm:h-12 sm:flex-row sm:gap-1.5 sm:text-xs ${paymentView === value ? 'text-brand-primary' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}><span className="flex items-center gap-1"><Icon className="h-3.5 w-3.5 shrink-0" /><span className="whitespace-nowrap">{label}</span></span><span className={`rounded-full px-1.5 py-0.5 text-[9px] ${paymentView === value ? 'bg-blue-50 text-brand-primary dark:bg-blue-950/40' : 'bg-slate-100 text-slate-500 dark:bg-slate-800'}`}>{count}</span>{paymentView === value && <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-brand-primary" />}</button>
+                    ))}
+                  </div>
+                </div>
+              </section>
+
+              <section>
+                <div className="mb-2 flex items-center justify-between px-0.5">
+                  <div><h3 className="text-sm font-bold text-slate-900 dark:text-white">Kênh thanh toán</h3><p className="text-[11px] text-slate-500">{configuredProviderCount}/{paymentProviders.length} kênh đã cấu hình</p></div>
+                  <button type="button" onClick={() => setActiveModule('settings')} className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-bold text-brand-primary hover:bg-blue-50 dark:hover:bg-blue-950/30"><Settings2 className="h-3.5 w-3.5" /> Cấu hình</button>
+                </div>
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                  {paymentProviders.map((p) => (
+                    <div key={p.providerId} className="rounded-xl border border-slate-200/90 bg-white p-3.5 dark:border-slate-800 dark:bg-[#111827]">
+                      <div className="flex items-center gap-3">
+                        <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${p.status === 'UNCONFIGURED' ? 'bg-slate-100 text-slate-500 dark:bg-slate-800' : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40'}`}><CreditCard className="h-4 w-4" /></span>
+                        <div className="min-w-0 flex-1"><span className="block truncate text-xs font-bold text-slate-900 dark:text-white">{p.displayName}</span><span className={`mt-0.5 block text-[10px] font-semibold ${p.status === 'UNCONFIGURED' ? 'text-slate-500' : 'text-emerald-600 dark:text-emerald-400'}`}>{p.status === 'UNCONFIGURED' ? 'Chưa kết nối' : 'Đang hoạt động'}</span></div>
+                        <span className={`h-2 w-2 shrink-0 rounded-full ${p.status === 'UNCONFIGURED' ? 'bg-slate-300 dark:bg-slate-600' : 'bg-emerald-500'}`} aria-hidden="true" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white dark:border-slate-800 dark:bg-[#111827]">
+                <div className="border-b border-slate-100 p-4 dark:border-slate-800 sm:p-5">
+                  <div className="flex items-center justify-between gap-3"><div><h3 className="text-sm font-bold text-slate-900 dark:text-white">{paymentViewMeta.title}</h3><p className="mt-0.5 text-[11px] text-slate-500">{paymentViewMeta.description}</p></div><span className="text-xs font-bold tabular-nums text-slate-500">{filteredTransactions.length}</span></div>
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                    <label className="relative flex-1"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><span className="sr-only">Tìm giao dịch</span><input value={paymentQuery} onChange={event => setPaymentQuery(event.target.value)} placeholder="Mã giao dịch, nội dung, hóa đơn..." className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs outline-none transition focus:border-brand-primary focus:bg-white focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-900 dark:focus:ring-blue-950" /></label>
+                    <div className="grid grid-cols-3 rounded-lg bg-slate-100 p-1 dark:bg-slate-900" aria-label="Lọc trạng thái đối soát">
+                      {([['ALL', 'Tất cả'], ['MATCHED', 'Đã khớp'], ['PENDING', 'Cần xử lý']] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setPaymentStateFilter(value)} aria-pressed={paymentStateFilter === value} className={`h-8 whitespace-nowrap rounded-md px-2 text-[11px] font-bold transition ${paymentStateFilter === value ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'}`}>{label}</button>)}
+                    </div>
+                  </div>
+                </div>
+                {filteredTransactions.length === 0 ? (
+                  <div className="space-y-1.5 py-8 text-center"><CreditCard className="mx-auto h-8 w-8 text-slate-400" /><h3 className="text-sm font-bold text-slate-900 dark:text-white">{transactions.length === 0 ? `Chưa có giao dịch trong kỳ ${formatPeriodDisplay(selectedPeriod)}` : 'Không tìm thấy giao dịch phù hợp'}</h3><p className="text-xs text-slate-500">{transactions.length === 0 ? 'Kết nối kênh thanh toán để tự động nhận giao dịch.' : 'Thử đổi từ khóa hoặc bộ lọc trạng thái.'}</p></div>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs">
-                      <thead>
-                        <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 font-semibold">
-                          <th className="pb-3">Cổng</th>
-                          <th className="pb-3">Mã GD ngân hàng</th>
-                          <th className="pb-3">Số tiền</th>
-                          <th className="pb-3">Nội dung</th>
-                          <th className="pb-3">Hóa đơn khớp</th>
-                          <th className="pb-3">Đối soát</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                        {transactions.map((tx) => (
-                          <tr key={tx.id}>
-                            <td className="py-3 font-bold">{tx.providerId}</td>
-                            <td className="py-3 font-mono">
-                              {tx.externalTxId}
-                            </td>
-                            <td className="py-3 font-bold tabular-nums">
-                              {tx.amountVnd.toLocaleString('vi-VN')} đ
-                            </td>
-                            <td className="py-3">{tx.referenceText || '—'}</td>
-                            <td className="py-3 font-mono">
-                              {tx.invoiceCode || 'Chưa gán'}
-                            </td>
-                            <td className="py-3">{tx.reconcileState}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <>
+                    <div className="divide-y divide-slate-100 dark:divide-slate-800 md:hidden">
+                      {filteredTransactions.map(tx => {
+                        const isMatched = Boolean(tx.invoiceCode) || ['MATCHED', 'RECONCILED', 'VERIFIED'].includes(tx.reconcileState);
+                        const direction = tx.direction || 'IN';
+                        const matchLabel = tx.matchType === 'SUGGESTED' ? 'Gợi ý khớp' : isMatched ? 'Khớp chính xác' : 'Chưa khớp';
+                        return <article key={tx.id} className="p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><div className="flex items-center gap-2"><span className={`grid h-7 w-7 place-items-center rounded-lg ${direction === 'IN' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40' : 'bg-rose-50 text-rose-600 dark:bg-rose-950/40'}`}>{direction === 'IN' ? <ArrowDownLeft className="h-3.5 w-3.5" /> : <ArrowUpRight className="h-3.5 w-3.5" />}</span><div><span className="block text-xs font-bold text-slate-900 dark:text-white">{tx.providerId}</span><span className="block text-[10px] text-slate-500">{tx.payerName || tx.accountName || (direction === 'IN' ? 'Tiền nhận vào' : 'Tiền chuyển ra')}</span></div></div></div><p className={`shrink-0 text-sm font-bold tabular-nums ${direction === 'IN' ? 'text-emerald-600' : 'text-rose-600'}`}>{direction === 'IN' ? '+' : '-'}{tx.amountVnd.toLocaleString('vi-VN')} đ</p></div><div className="mt-3 rounded-lg bg-slate-50 p-3 dark:bg-slate-900/60"><div className="flex items-center justify-between gap-2"><span className="text-[10px] font-semibold text-slate-500">Nội dung giao dịch</span><span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${isMatched ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : tx.matchType === 'SUGGESTED' ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'}`}>{matchLabel}</span></div><p className="mt-1.5 line-clamp-2 text-xs font-medium text-slate-700 dark:text-slate-200">{tx.referenceText || 'Không có nội dung chuyển khoản'}</p></div><div className="mt-3 flex items-end justify-between gap-3"><div className="min-w-0"><p className="truncate font-mono text-[10px] text-slate-400">{tx.externalTxId}</p><p className="mt-1 text-[10px] text-slate-500">{new Date(tx.occurredAt || tx.verifiedAt).toLocaleString('vi-VN')}</p></div><div className="text-right"><span className="block text-[10px] text-slate-500">Hóa đơn</span><span className={`font-mono text-[11px] font-bold ${tx.invoiceCode ? 'text-brand-primary' : 'text-amber-600'}`}>{tx.invoiceCode || (tx.matchType === 'SUGGESTED' ? 'Xem gợi ý' : 'Chưa gán')}</span></div></div></article>;
+                      })}
+                    </div>
+                    <div className="hidden overflow-x-auto p-5 md:block">
+                      <table className="w-full text-left text-xs"><thead><tr className="border-b border-slate-100 font-semibold text-slate-400 dark:border-slate-800"><th className="pb-3">Cổng</th><th className="pb-3">Mã GD ngân hàng</th><th className="pb-3">Số tiền</th><th className="pb-3">Nội dung</th><th className="pb-3">Hóa đơn khớp</th><th className="pb-3">Đối soát</th></tr></thead><tbody className="divide-y divide-slate-100 dark:divide-slate-800">{filteredTransactions.map(tx => <tr key={tx.id}><td className="py-3 font-bold">{tx.providerId}</td><td className="py-3 font-mono">{tx.externalTxId}</td><td className="py-3 font-bold tabular-nums">{tx.amountVnd.toLocaleString('vi-VN')} đ</td><td className="py-3">{tx.referenceText || '—'}</td><td className="py-3 font-mono">{tx.invoiceCode || 'Chưa gán'}</td><td className="py-3">{tx.reconcileState}</td></tr>)}</tbody></table>
+                    </div>
+                  </>
                 )}
-              </div>
+              </section>
             </div>
           )}
 
@@ -4026,7 +4207,7 @@ export const OperationalModuleWorkspace: React.FC<
           <Dialog.Portal>
             <Dialog.Backdrop className="fixed inset-0 z-[120] bg-slate-950/60 backdrop-blur-[2px]" />
             <Dialog.Viewport className="fixed inset-0 z-[121] flex items-end justify-center sm:items-center sm:p-4">
-          <Dialog.Popup from="bottom" data-testid="invoice-payment-modal" aria-busy={isSavingInvoicePay} className="invoice-payment-dialog flex max-h-[calc(100dvh-0.75rem)] w-full max-w-md flex-col overflow-hidden rounded-t-3xl border border-slate-200 bg-white shadow-2xl outline-none dark:border-slate-800 dark:bg-[#111827] sm:max-h-[calc(100dvh-2rem)] sm:rounded-2xl">
+          <Dialog.Popup from="bottom" data-testid="invoice-payment-modal" aria-busy={isSavingInvoicePay} className="invoice-payment-dialog flex max-h-[calc(100dvh-0.5rem)] w-full max-w-4xl flex-col overflow-hidden rounded-t-3xl border border-slate-200 bg-white shadow-2xl outline-none dark:border-slate-800 dark:bg-[#111827] sm:max-h-[calc(100dvh-2rem)] sm:rounded-2xl">
             <div className="invoice-payment-header flex items-start justify-between gap-3 border-b border-slate-100 p-4 dark:border-slate-800">
               <div className="min-w-0">
               <Dialog.Title className="text-sm font-bold text-slate-900 dark:text-white flex items-start gap-2">
@@ -4047,96 +4228,62 @@ export const OperationalModuleWorkspace: React.FC<
             <form onSubmit={handleInvoicePaymentSubmit} className="invoice-payment-form min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-5">
               <div className="space-y-4">
               {invoicePayError && (
-                <div className="p-3 text-xs bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 rounded-xl">
+                <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700 dark:border-rose-900 dark:bg-rose-950/50 dark:text-rose-300">
                   {invoicePayError}
                 </div>
               )}
-              <div className="p-3 bg-slate-50 dark:bg-slate-800/80 rounded-xl text-xs space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Phòng / Tòa:</span>
-                  <span className="font-bold">{selectedInvoice.buildingCode} · {selectedInvoice.roomCode}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Khách thuê:</span>
-                  <span className="font-bold">{selectedInvoice.tenantName || '—'}</span>
-                </div>
-                <div className="flex justify-between border-t border-slate-200 dark:border-slate-700 pt-2">
-                  <span className="text-slate-500">Tổng phải thu:</span>
-                  <span className="font-bold tabular-nums">{selectedInvoice.totalAmountVnd.toLocaleString('vi-VN')} đ</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Đã thu:</span>
-                  <span className="font-bold tabular-nums text-emerald-600">{selectedInvoice.paidAmountVnd.toLocaleString('vi-VN')} đ</span>
-                </div>
-                <div className="flex justify-between border-t border-slate-200 dark:border-slate-700 pt-2">
-                  <span className="text-slate-700 dark:text-slate-300 font-semibold">Còn phải thu:</span>
-                  <span className="font-bold tabular-nums text-brand-primary text-sm">
-                    {Math.max(0, selectedInvoice.totalAmountVnd - selectedInvoice.paidAmountVnd).toLocaleString('vi-VN')} đ
-                  </span>
-                </div>
-              </div>
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)]">
+                <section className="space-y-4" aria-labelledby="invoice-detail-heading">
+                  <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-900/40">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h3 id="invoice-detail-heading" className="text-sm font-bold text-slate-900 dark:text-white">Chi tiết hóa đơn</h3>
+                        <p className="mt-0.5 text-xs text-slate-500">Kỳ {selectedInvoice.periodKey.slice(5, 7)}/{selectedInvoice.periodKey.slice(0, 4)} · Hạn thanh toán {selectedInvoice.dueDate.split('-').reverse().join('/')}</p>
+                      </div>
+                      <span className="rounded-md bg-blue-100 px-2 py-1 text-[11px] font-bold text-blue-700 dark:bg-blue-950 dark:text-blue-300">{selectedInvoice.status}</span>
+                    </div>
+                    <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
+                      <div><dt className="text-slate-500">Phòng / Tòa</dt><dd className="mt-0.5 font-bold">{selectedInvoice.roomCode} · {selectedInvoice.buildingCode}</dd></div>
+                      <div><dt className="text-slate-500">Khách thuê</dt><dd className="mt-0.5 font-bold">{selectedInvoice.tenantName || '—'}</dd></div>
+                    </dl>
+                    <div className="mt-4 border-t border-slate-200 pt-3 dark:border-slate-700">
+                      {invoiceHandoverLoading && !invoiceDetail ? <p role="status" className="text-xs text-slate-500">Đang tải chi tiết hóa đơn…</p> : invoiceBreakdown.length > 0 ? (
+                        <div className="space-y-2 text-xs">{invoiceBreakdown.map(row => <div key={row.label} className="flex items-center justify-between gap-4"><span className="text-slate-600 dark:text-slate-300">{row.label}</span><strong className="tabular-nums">{row.amountVnd.toLocaleString('vi-VN')} đ</strong></div>)}</div>
+                      ) : <p className="text-xs text-slate-500">Chưa có chi tiết khoản thu.</p>}
+                    </div>
+                    <div className="mt-4 space-y-2 border-t border-slate-200 pt-3 text-xs dark:border-slate-700">
+                      <div className="flex justify-between gap-4"><span className="text-slate-500">Tổng hóa đơn</span><strong className="tabular-nums">{selectedInvoice.totalAmountVnd.toLocaleString('vi-VN')} đ</strong></div>
+                      <div className="flex justify-between gap-4"><span className="text-slate-500">Đã thu</span><strong className="tabular-nums text-emerald-600">{selectedInvoice.paidAmountVnd.toLocaleString('vi-VN')} đ</strong></div>
+                      <div className="flex items-end justify-between gap-4 border-t border-slate-200 pt-3 dark:border-slate-700"><span className="font-semibold">Còn phải thu</span><strong className="text-lg tabular-nums text-brand-primary">{Math.max(0, selectedInvoice.totalAmountVnd - selectedInvoice.paidAmountVnd).toLocaleString('vi-VN')} đ</strong></div>
+                    </div>
+                  </div>
+                  {invoiceDetail?.payments?.length > 0 && <details className="rounded-lg border border-slate-200 px-4 py-3 text-xs dark:border-slate-800"><summary className="cursor-pointer font-semibold">Lịch sử thanh toán ({invoiceDetail.payments.length})</summary><div className="mt-3 space-y-2">{invoiceDetail.payments.map((payment: any) => <div key={payment.id} className="flex justify-between gap-3 border-t border-slate-100 pt-2 first:border-0 first:pt-0 dark:border-slate-800"><span><b>{payment.providerId === 'MANUAL_CASH' ? 'Tiền mặt' : payment.providerId}</b><small className="mt-0.5 block text-slate-500">{new Date(payment.verifiedAt).toLocaleString('vi-VN')}</small></span><strong className="tabular-nums">{Number(payment.amountVnd).toLocaleString('vi-VN')} đ</strong></div>)}</div></details>}
+                </section>
 
-              <div className="invoice-payment-primary-fields grid grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] gap-2.5">
-              <div className="min-w-0">
-                <label htmlFor="invoice-payment-method" className="block text-xs font-semibold mb-1">
-                  Phương thức thanh toán
-                </label>
-                <select
-                  id="invoice-payment-method"
-                  value={invoicePayMethod}
-                  onChange={(e) => setInvoicePayMethod(e.target.value as any)}
-                  className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-semibold"
-                >
-                  <option value="MANUAL_CASH">Tiền mặt (Thu trực tiếp)</option>
-                  <option value="MANUAL_TRANSFER">Chuyển khoản ngân hàng</option>
-                  <option value="SEPAY">SePay (Quét mã VietQR)</option>
-                  <option value="PAYOS">PayOS (Cổng thanh toán)</option>
-                </select>
-              </div>
+                <section className="space-y-4" aria-labelledby="invoice-payment-heading">
+                  <div>
+                    <h3 id="invoice-payment-heading" className="text-sm font-bold text-slate-900 dark:text-white">Ghi nhận thanh toán</h3>
+                    <p className="mt-0.5 text-xs text-slate-500">Chọn cách thu tiền và kiểm tra số tiền trước khi xác nhận.</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2" role="group" aria-label="Phương thức thanh toán chính">
+                    <AnimatedButton type="button" aria-pressed={invoicePayMethod === 'MANUAL_CASH'} onClick={() => setInvoicePayMethod('MANUAL_CASH')} className={`flex min-h-12 items-center justify-center gap-2 rounded-lg border px-3 text-xs font-bold ${invoicePayMethod === 'MANUAL_CASH' ? 'border-blue-600 bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300' : 'border-slate-200 text-slate-600 dark:border-slate-700 dark:text-slate-300'}`}><Banknote size={17} />Tiền mặt</AnimatedButton>
+                    <AnimatedButton type="button" aria-pressed={invoicePayMethod === 'SEPAY'} onClick={() => setInvoicePayMethod('SEPAY')} className={`flex min-h-12 items-center justify-center gap-2 rounded-lg border px-3 text-xs font-bold ${invoicePayMethod === 'SEPAY' ? 'border-blue-600 bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300' : 'border-slate-200 text-slate-600 dark:border-slate-700 dark:text-slate-300'}`}><QrCode size={17} />Quét QR</AnimatedButton>
+                  </div>
+                  <select id="invoice-payment-method" aria-label="Phương thức thanh toán" value={invoicePayMethod} onChange={(e) => setInvoicePayMethod(e.target.value as any)} className="sr-only"><option value="MANUAL_CASH">Tiền mặt (Thu trực tiếp)</option><option value="MANUAL_TRANSFER">Chuyển khoản ngân hàng</option><option value="SEPAY">SePay (Quét mã VietQR)</option><option value="PAYOS">PayOS (Cổng thanh toán)</option></select>
+                  <div><label htmlFor="invoice-payment-amount" className="mb-1.5 block text-xs font-semibold">Số tiền thu</label><MoneyInput id="invoice-payment-amount" min={1} value={invoicePayAmount} max={Math.max(0, selectedInvoice.totalAmountVnd - selectedInvoice.paidAmountVnd)} onChange={setInvoicePayAmount} className="min-h-12 bg-slate-50 text-sm font-bold text-brand-primary dark:bg-slate-800" required /></div>
 
-              <div className="min-w-0">
-                <label htmlFor="invoice-payment-amount" className="block text-xs font-semibold mb-1">
-                  Số tiền thu
-                </label>
-                <MoneyInput
-                  id="invoice-payment-amount"
-                  min={1}
-                  value={invoicePayAmount}
-                  max={Math.max(0, selectedInvoice.totalAmountVnd - selectedInvoice.paidAmountVnd)}
-                  onChange={setInvoicePayAmount}
-                  className="min-h-11 bg-slate-50 text-xs font-bold text-brand-primary dark:bg-slate-800"
-                  required
-                />
-              </div>
-              </div>
+                  {invoicePayMethod === 'SEPAY' && <div className="rounded-lg border border-blue-200 bg-blue-50/60 p-3 dark:border-blue-900 dark:bg-blue-950/20">
+                    {invoiceQrUrl && invoiceVietQr ? <div className="grid gap-3 sm:grid-cols-[180px_1fr] sm:items-center"><div className="mx-auto w-full max-w-[210px] rounded-lg border border-slate-200 bg-white p-2"><img src={invoiceQrUrl} alt={`Mã VietQR thanh toán hóa đơn ${selectedInvoice.invoiceCode}`} className="aspect-square w-full object-contain" /></div><dl className="min-w-0 space-y-2 text-xs"><div><dt className="text-slate-500">Ngân hàng</dt><dd className="font-bold">{invoiceVietQr.bankCode}</dd></div><div><dt className="text-slate-500">Chủ tài khoản</dt><dd className="font-bold break-words">{invoiceVietQr.accountName}</dd></div><div><dt className="text-slate-500">Số tài khoản</dt><dd className="flex items-center gap-1.5 font-bold"><span className="break-all">{invoiceVietQr.accountNumber}</span><button type="button" aria-label="Sao chép số tài khoản" title="Sao chép số tài khoản" onClick={() => void navigator.clipboard.writeText(invoiceVietQr.accountNumber)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-blue-700 hover:bg-blue-100 dark:text-blue-300"><Copy size={14} /></button></dd></div><div><dt className="text-slate-500">Nội dung chuyển khoản</dt><dd className="flex items-center gap-1.5 font-bold"><span className="break-all">{invoiceVietQr.transferContent}</span><button type="button" aria-label="Sao chép nội dung chuyển khoản" title="Sao chép nội dung chuyển khoản" onClick={() => void navigator.clipboard.writeText(invoiceVietQr.transferContent)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-blue-700 hover:bg-blue-100 dark:text-blue-300"><Copy size={14} /></button></dd></div></dl></div> : <div className="flex gap-2 text-xs text-amber-800 dark:text-amber-300"><AlertCircle size={16} className="shrink-0" /><p>Chưa có tài khoản SePay đã xác minh cho tòa nhà này. Cấu hình tài khoản nhận tiền trong Cài đặt trước khi quét QR.</p></div>}
+                  </div>}
 
-              {invoiceHandoverLoading && <p role="status" className="text-xs text-slate-500">Đang kiểm tra điều kiện bàn giao…</p>}
-              {invoiceHandover && (invoiceHandover.electricRequired || invoiceHandover.waterRequired) && invoicePayAmount >= selectedInvoice.totalAmountVnd - selectedInvoice.paidAmountVnd && (
-                <fieldset className="space-y-3 rounded-xl border border-blue-200 bg-blue-50 p-3 dark:border-blue-900 dark:bg-blue-950/30">
-                  <legend className="px-1 text-xs font-bold">Chỉ số đầu kỳ để bàn giao tự động</legend>
-                  {invoiceHandover.electricRequired && <label className="block text-xs font-semibold">Chỉ số điện (kWh)<input type="number" min="0" step="any" required value={invoiceElectricStart} onChange={e => { setInvoiceElectricStart(e.target.value); setInvoicePayError(null); }} className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" /></label>}
-                  {invoiceHandover.waterRequired && <label className="block text-xs font-semibold">Chỉ số nước (m³)<input type="number" min="0" step="any" required value={invoiceWaterStart} onChange={e => { setInvoiceWaterStart(e.target.value); setInvoicePayError(null); }} className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" /></label>}
-                  <p className="text-xs text-slate-600 dark:text-slate-300">Thu đủ hóa đơn sẽ kích hoạt hợp đồng, người ở và trạng thái phòng trong cùng giao dịch.</p>
-                </fieldset>
-              )}
+                  {invoiceHandoverLoading && <p role="status" className="text-xs text-slate-500">Đang kiểm tra điều kiện bàn giao…</p>}
+                  {invoiceHandover && (invoiceHandover.electricRequired || invoiceHandover.waterRequired) && invoicePayAmount >= selectedInvoice.totalAmountVnd - selectedInvoice.paidAmountVnd && (
+                    <fieldset className="space-y-3 rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-900 dark:bg-blue-950/30"><legend className="px-1 text-xs font-bold">Chỉ số đầu kỳ để bàn giao tự động</legend>{invoiceHandover.electricRequired && <label className="block text-xs font-semibold">Chỉ số điện (kWh)<input type="number" min="0" step="any" required value={invoiceElectricStart} onChange={e => { setInvoiceElectricStart(e.target.value); setInvoicePayError(null); }} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" /></label>}{invoiceHandover.waterRequired && <label className="block text-xs font-semibold">Chỉ số nước (m³)<input type="number" min="0" step="any" required value={invoiceWaterStart} onChange={e => { setInvoiceWaterStart(e.target.value); setInvoicePayError(null); }} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" /></label>}<p className="text-xs text-slate-600 dark:text-slate-300">Thu đủ hóa đơn sẽ kích hoạt hợp đồng, người ở và trạng thái phòng trong cùng giao dịch.</p></fieldset>
+                  )}
 
-              <div className="rounded-xl border border-dashed border-slate-300 p-3 dark:border-slate-700">
-                <input ref={invoiceProofInput} type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" aria-label="Ảnh chứng từ thanh toán" onChange={e => { const file = e.target.files?.[0] || null; e.target.value = ''; if (file && file.size > 8 * 1024 * 1024) { setInvoicePayError('Ảnh chứng từ phải nhỏ hơn 8 MB.'); return; } setInvoiceProof(file); setInvoicePayError(null); }} />
-                <div className="flex items-center justify-between gap-2"><div className="min-w-0"><p className="text-xs font-semibold">Ảnh chứng từ <span className="font-normal text-slate-500">(nếu có)</span></p><p className="truncate text-[11px] text-slate-500">{invoiceProof?.name || 'JPEG, PNG hoặc WebP · tối đa 8 MB'}</p></div><AnimatedButton type="button" onClick={() => invoiceProofInput.current?.click()} className="flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-xs font-semibold text-blue-700 dark:border-slate-700 dark:text-blue-300"><ImagePlus size={14} />{invoiceProof ? 'Đổi ảnh' : 'Tải ảnh'}</AnimatedButton></div>
-                {invoicePaymentProofs.length > 0 && <div className="mt-2 flex flex-wrap gap-2">{invoicePaymentProofs.map((proof, index) => <a key={proof.id} href={proof.proofUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-8 items-center gap-1 rounded-lg bg-slate-100 px-2 text-[11px] font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200"><ExternalLink size={12} />Chứng từ {index + 1}</a>)}</div>}
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold mb-1">
-                  Ghi chú / Mã giao dịch tham chiếu
-                </label>
-                <input
-                  type="text"
-                  placeholder="VD: GD-123456 hoặc Thu tiền đợt 1"
-                  value={invoicePayRef}
-                  onChange={(e) => setInvoicePayRef(e.target.value)}
-                  className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl"
-                />
+                  <div className="rounded-lg border border-dashed border-slate-300 p-3 dark:border-slate-700"><input ref={invoiceProofInput} type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" aria-label="Ảnh chứng từ thanh toán" onChange={e => { const file = e.target.files?.[0] || null; e.target.value = ''; if (file && file.size > 8 * 1024 * 1024) { setInvoicePayError('Ảnh chứng từ phải nhỏ hơn 8 MB.'); return; } setInvoiceProof(file); setInvoicePayError(null); }} /><div className="flex items-center justify-between gap-2"><div className="min-w-0"><p className="text-xs font-semibold">Ảnh chứng từ <span className="font-normal text-slate-500">(nếu có)</span></p><p className="truncate text-[11px] text-slate-500">{invoiceProof?.name || 'JPEG, PNG hoặc WebP · tối đa 8 MB'}</p></div><AnimatedButton type="button" onClick={() => invoiceProofInput.current?.click()} className="flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-xs font-semibold text-blue-700 dark:border-slate-700 dark:text-blue-300"><ImagePlus size={14} />{invoiceProof ? 'Đổi ảnh' : 'Tải ảnh'}</AnimatedButton></div>{invoicePaymentProofs.length > 0 && <div className="mt-2 flex flex-wrap gap-2">{invoicePaymentProofs.map((proof, index) => <a key={proof.id} href={proof.proofUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-8 items-center gap-1 rounded-lg bg-slate-100 px-2 text-[11px] font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200"><ExternalLink size={12} />Chứng từ {index + 1}</a>)}</div>}</div>
+                  <div><label className="mb-1 block text-xs font-semibold">Ghi chú / Mã giao dịch tham chiếu</label><input type="text" placeholder="VD: GD-123456 hoặc Thu tiền đợt 1" value={invoicePayRef} onChange={(e) => setInvoicePayRef(e.target.value)} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs dark:border-slate-700 dark:bg-slate-800" /></div>
+                </section>
               </div>
 
               </div>

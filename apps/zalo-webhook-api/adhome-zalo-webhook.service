@@ -1,0 +1,28 @@
+[Unit]
+Description=AdHome Zalo webhook API
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=adhome_app
+Group=adhome_app
+WorkingDirectory=/opt/adhome-api
+Environment=NODE_ENV=production
+Environment=PORT=8081
+Environment=PGDATABASE=adhome_prod
+Environment=PGUSER=adhome_app
+Environment=ZALO_APP_ID=1666153918084949772
+Environment=ZALO_OA_ID=3489044514324126353
+EnvironmentFile=-/etc/adhome-zalo-webhook.env
+ExecStart=/usr/bin/node /opt/adhome-api/server.cjs
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/run/postgresql
+
+[Install]
+WantedBy=multi-user.target

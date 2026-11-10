@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+// The API plugin reloads its middleware bundle when server sources change.
 import { adhomePublicApiPlugin } from './server/publicApiPlugin';
 
 export default defineConfig({

@@ -1,0 +1,11 @@
+diagram_type: workflow
+output: E:/DATA/AdHome-Platform/docs/design/rental-flow/screen-workflow.html
+specification_sha256: 95c6b6f241e6d3a9c98223998ff8dc11b3ef16d5f83ab7cdc04508ceae1c3a47
+artifact_sha256: 7036a241a4055a99a39b462bba362507e1de0ae1723bd1da31f9908a2b9695fe
+validation: 9/9 showcase, 0 errors, 0 warnings
+browser_evidence: passed
+visual_review: passed
+correction_rounds: 2
+Automated browser evidence: containment at 1440x900, 1600x1000, 1920x1080, 2048x1320.
+Visual inspection: exact delivered light/dark images at 2048x1320; labels readable, arrows distinguish cancellation and rental branches, no visible overlap. Three lanes read left-to-right on entry and right-to-left on branches; documented in SCREEN-FLOW.md.
+Scope: diagram and screen specification only, no implemented application or interaction testing.

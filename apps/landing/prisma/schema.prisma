@@ -39,6 +39,7 @@ model Organization {
   paymentTransactions  PaymentTransaction[]
   ledgerEntries        LedgerEntry[]
   integrations         IntegrationConnection[]
+  paymentConnections   PaymentProviderConnection[]
   notificationChannels NotificationChannelConfig[]
   cronJobs             CronJobConfig[]
   consoleAuditLogs     ConsoleAuditLog[]
@@ -61,6 +62,7 @@ model Building {
   description        String?
   managerName        String?  @map("manager_name")
   managerPhone       String?  @map("manager_phone")
+  landlord           Json     @default("{}") @map("landlord_profile")
   electricRateVnd    Int?     @map("electric_rate_vnd")
   waterBillingMethod String?  @map("water_billing_method")
   waterRateVnd       Int?     @map("water_rate_vnd")
@@ -77,6 +79,7 @@ model Building {
   contracts      Contract[]
   billingPeriods BillingPeriod[]
   invoices       Invoice[]
+  paymentConnections PaymentProviderConnection[]
 
   @@unique([orgId, code])
   @@index([orgId, isActive, displayOrder])
@@ -103,6 +106,7 @@ model Floor {
 }
 
 model PublicRoomListing {
+  rentalModel         String   @default("ENTIRE_ROOM") @map("rental_model")
   id                  String   @id
   orgId               String   @default("org-adhome-anphu") @map("org_id")
   buildingId          String   @map("building_id")
@@ -157,6 +161,7 @@ model PublicRoomListing {
 /// Authoritative internal Console Room record (separated operational states & integer VND).
 model ConsoleRoom {
   id                   String   @id @default(uuid())
+  images               Json     @default("[]")
   orgId                String   @map("org_id")
   buildingId           String   @map("building_id")
   floorId              String   @map("floor_id")
@@ -566,6 +571,65 @@ model IntegrationConnection {
   @@map("integration_connections")
 }
 
+model PaymentProviderConnection {
+  id                   String   @id @default(uuid())
+  orgId                String   @map("org_id")
+  providerId           String   @map("provider_id")
+  name                 String
+  environment          String   @default("LIVE")
+  buildingId           String?  @map("building_id")
+  isEnabled            Boolean  @default(false) @map("is_enabled")
+  status               String   @default("UNCONFIGURED")
+  credentialsEncrypted Json     @map("credentials_encrypted")
+  credentialFields     Json     @default("[]") @map("credential_fields")
+  version              Int      @default(1)
+  lastTestedAt         DateTime? @map("last_tested_at")
+  lastTestMessage      String?  @map("last_test_message")
+  verificationScope    String?  @map("verification_scope")
+  webhookEnabled       Boolean  @default(false) @map("webhook_enabled")
+  webhookAuth          String   @default("HMAC_SHA256") @map("webhook_auth")
+  webhookLastReceivedAt DateTime? @map("webhook_last_received_at")
+  webhookRegisteredAt  DateTime? @map("webhook_registered_at")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+  organization         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  building             Building? @relation(fields: [buildingId], references: [id], onDelete: Restrict)
+  accounts             PaymentReceivingAccount[]
+  webhookEvents        PaymentWebhookEvent[]
+
+  @@index([orgId, providerId])
+  @@map("payment_provider_connections")
+}
+
+model PaymentWebhookEvent {
+  id               String @id @default(uuid())
+  connectionId     String @map("connection_id")
+  eventKey         String @map("event_key")
+  identityHash     String @map("identity_hash")
+  payloadEncrypted Json @map("payload_encrypted")
+  amountVnd        BigInt? @map("amount_vnd")
+  eventType        String @map("event_type")
+  status           String @default("RECEIVED")
+  receivedAt       DateTime @default(now()) @map("received_at")
+  connection       PaymentProviderConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, eventKey])
+  @@index([connectionId, receivedAt])
+  @@map("payment_webhook_events")
+}
+
+model PaymentReceivingAccount {
+  id            String @id @default(uuid())
+  connectionId  String @map("connection_id")
+  bankCode      String @map("bank_code")
+  accountNumber String @map("account_number")
+  accountName   String @map("account_name")
+  connection    PaymentProviderConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, bankCode, accountNumber])
+  @@map("payment_receiving_accounts")
+}
+
 model NotificationChannelConfig {
   id               String    @id @default(uuid())
   orgId            String    @map("org_id")
@@ -591,6 +655,8 @@ model NotificationChannelConfig {
   @@unique([orgId, channelType])
   @@map("notification_channel_configs")
 }
+
+
 
 model CronJobConfig {
   id             String    @id @default(uuid())

@@ -379,7 +379,7 @@ export const RoomDetailPage: React.FC<RoomDetailPageProps> = ({
                     Mã phòng {room.roomCode}
                   </span>
                   <span className="text-ink-secondary tabular-nums">
-                    {room.area}m² · {room.roomType}
+                    {room.area}m² · {room.roomType} · {room.rentalModel === 'SHARED_ROOM' ? 'Ở ghép' : 'Nguyên căn'}
                   </span>
                 </div>
                 <h2 className="mt-1 text-lg font-bold text-ink leading-snug">
@@ -692,7 +692,7 @@ export const RoomDetailPage: React.FC<RoomDetailPageProps> = ({
             role="dialog"
             aria-modal="true"
             aria-label={`Album ảnh ${room.shortTitle}`}
-            className="fixed inset-0 z-50 bg-ink/85 flex items-center justify-center p-3 sm:p-6"
+            className="fixed inset-0 z-50 bg-ink/85 flex items-center justify-center p-0 sm:p-6"
             onClick={() => setLightboxOpen(false)}
           >
             <motion.div
@@ -700,14 +700,14 @@ export const RoomDetailPage: React.FC<RoomDetailPageProps> = ({
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.97, opacity: 0 }}
               transition={{ duration: 0.18 }}
-              className="bg-canvas-pure rounded-section max-w-4xl w-full overflow-hidden border border-line shadow-modal"
+              className="bg-canvas-pure sm:rounded-section max-w-4xl w-full max-h-[100dvh] sm:max-h-[92dvh] overflow-y-auto border border-line shadow-modal"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="relative bg-ink aspect-[16/10] flex items-center justify-center">
+              <div className="relative bg-canvas-warm">
                 <img
                   src={activeImage.url}
                   alt={activeImage.alt}
-                  className="w-full h-full object-contain"
+                  className="block w-full h-auto"
                 />
                 <button
                   type="button"

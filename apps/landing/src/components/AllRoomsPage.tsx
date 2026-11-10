@@ -39,6 +39,7 @@ export const AllRoomsPage: React.FC<AllRoomsPageProps> = ({
 }) => {
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'AVAILABLE' | 'COMING_SOON'>('AVAILABLE');
   const [typeFilter, setTypeFilter] = useState<string>('ALL');
+  const [rentalFilter, setRentalFilter] = useState<'ALL' | 'ENTIRE_ROOM' | 'SHARED_ROOM'>('ALL');
   const [buildingFilter, setBuildingFilter] = useState<string>('ALL');
   const [sortBy, setSortBy] = useState<SortKey>('DEFAULT');
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -76,6 +77,7 @@ export const AllRoomsPage: React.FC<AllRoomsPageProps> = ({
     if (typeFilter !== 'ALL') {
       list = list.filter((r) => r.roomType === typeFilter);
     }
+    if (rentalFilter !== 'ALL') list = list.filter(r => (r.rentalModel || 'ENTIRE_ROOM') === rentalFilter);
     if (buildingFilter !== 'ALL') {
       list = list.filter((r) => r.buildingCode === buildingFilter);
     }
@@ -88,7 +90,7 @@ export const AllRoomsPage: React.FC<AllRoomsPageProps> = ({
     });
 
     return list;
-  }, [rooms, statusFilter, typeFilter, buildingFilter, sortBy]);
+  }, [rooms, statusFilter, typeFilter, rentalFilter, buildingFilter, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(filteredRooms.length / PAGE_SIZE));
   const safePage = Math.min(currentPage, totalPages);
@@ -100,6 +102,7 @@ export const AllRoomsPage: React.FC<AllRoomsPageProps> = ({
   const handleResetFilters = () => {
     setStatusFilter('ALL');
     setTypeFilter('ALL');
+    setRentalFilter('ALL');
     setBuildingFilter('ALL');
     setSortBy('DEFAULT');
     setCurrentPage(1);
@@ -108,6 +111,7 @@ export const AllRoomsPage: React.FC<AllRoomsPageProps> = ({
   const activeFilterCount =
     (statusFilter !== 'ALL' ? 1 : 0) +
     (typeFilter !== 'ALL' ? 1 : 0) +
+    (rentalFilter !== 'ALL' ? 1 : 0) +
     (buildingFilter !== 'ALL' ? 1 : 0);
 
   const isVerifiedSource = sourceVerified && dataMode === 'LIVE';
@@ -218,6 +222,9 @@ export const AllRoomsPage: React.FC<AllRoomsPageProps> = ({
             </select>
 
             {/* Building */}
+            <select aria-label="Dạng phòng" value={rentalFilter} onChange={e => { setRentalFilter(e.target.value as typeof rentalFilter); setCurrentPage(1); }} className="px-3 py-2 rounded-lg text-xs sm:text-sm font-medium text-ink bg-canvas border border-line">
+              <option value="ALL">Tất cả dạng phòng</option><option value="ENTIRE_ROOM">Nguyên căn</option><option value="SHARED_ROOM">Ở ghép</option>
+            </select>
             <select
               aria-label="Tòa nhà"
               value={buildingFilter}
@@ -481,8 +488,12 @@ export const AllRoomsPage: React.FC<AllRoomsPageProps> = ({
 
                 <div>
                   <label className="block text-xs font-semibold text-ink mb-2">
-                    Tòa nhà
+                    Dạng phòng
                   </label>
+                  <select aria-label="Dạng phòng trên điện thoại" value={rentalFilter} onChange={e => { setRentalFilter(e.target.value as typeof rentalFilter); setCurrentPage(1); }} className="w-full px-3 py-2 rounded-lg text-sm text-ink bg-canvas border border-line"><option value="ALL">Tất cả dạng phòng</option><option value="ENTIRE_ROOM">Nguyên căn</option><option value="SHARED_ROOM">Ở ghép</option></select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-ink mb-2">Tòa nhà</label>
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"

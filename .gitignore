@@ -1,13 +1,23 @@
 # Dependencies
 node_modules/
 .pnpm-store/
+.npm-cache/
+
+# Cloudflare & tool caches
+.cf-auth/
+.wrangler/
 
 # Production builds
 dist/
+dist-api/
 build/
 .next/
 out/
 *.tsbuildinfo
+
+# Python
+__pycache__/
+*.pyc
 
 # Environment files
 .env
@@ -19,6 +29,7 @@ apps/*/.env*
 !.env.example
 
 # Logs
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -39,12 +50,16 @@ test-results/
 # Local identity training fixtures must not be published to Git.
 docs/LK08-24/
 docs/LK08-25/
+uploads/
 
 .chrome-profile-*
 
 # Database Backups & Dumps (Strictly Forbidden from Git)
 *.dump
 *.sql
+!apps/landing/prisma/sql/integration-hub.sql
+!apps/landing/prisma/sql/payment-webhooks.sql
+!apps/landing/prisma/updates/20261105_shared_room_listing.sql
 *.backup
 *.rdb
 backups/
@@ -53,4 +68,5 @@ rc1/adhome_v2_*.dump
 
 
 .tmp*
+
 

@@ -30,6 +30,7 @@ import { SettingsDialog } from '@/shared/ui/SettingsDialog';
 import { SettingsButton } from '@/shared/ui/SettingsButton';
 import { NumberInput } from '@/shared/ui/NumberInput';
 import { HunonicSettingsModal } from '@/features/modules/modals/HunonicSettingsModal';
+import { VersionHistory } from './VersionHistory';
 
 interface IntegrationRow {
   id: string;
@@ -1084,6 +1085,7 @@ export const SettingsWorkspaceView: React.FC = () => {
             </div>
           )}
           {settingsTab === 'data' && (user?.role === 'ORG_ADMIN' ? <DataManagement /> : <p className="rounded-xl border border-slate-200 bg-white p-5 text-sm dark:border-slate-800 dark:bg-[#111827]">Chỉ quản trị viên được quản lý dữ liệu.</p>)}
+          {settingsTab === 'versions' && <VersionHistory />}
         </>
       )}
         </main>

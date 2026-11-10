@@ -1,0 +1,11 @@
+diagram_type: workflow
+output: E:/DATA/AdHome-Platform/docs/design/rental-flow/deposit-workflow.html
+specification_sha256: 3a7dded4091c72286c838e474218a9712f5a06259ffe85a148b625e05ba34acb
+artifact_sha256: a498a028aa137526fa706020ec05b813d8365496a7030502d67b54212f1e1ad6
+validation: 9/9 showcase, 0 errors, 0 warnings
+browser_evidence: passed
+visual_review: passed
+correction_rounds: 1
+Automated browser: 1440x900, 1600x1000, 1920x1080, 2048x1320; containment passed.
+Visual review: inspected exact delivered light/dark screenshots at 2048x1320; branches, labels and containers readable with no visible overlap.
+Application/business transactions: not executed; documentation only.

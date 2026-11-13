@@ -114,7 +114,10 @@ async function internalBotApi(req: http.IncomingMessage, res: http.ServerRespons
     return true;
   }
   if (url.pathname === '/internal/zalo-bot/tenant-exists' && req.method === 'POST') {
-    const body = await readBody(req);
+    let raw = '';
+    for await (const chunk of req) { raw += chunk; if (raw.length > 4096) { json(res, 413, { error: 'too_large' }); return true; } }
+    let body: any;
+    try { body = JSON.parse(raw); } catch { json(res, 400, { error: 'invalid_json' }); return true; }
     const orgId = String(body.orgId || '').trim();
     const tenantId = String(body.tenantId || '').trim();
     if (!orgId || !tenantId) { json(res, 422, { error: 'invalid_tenant_lookup' }); return true; }

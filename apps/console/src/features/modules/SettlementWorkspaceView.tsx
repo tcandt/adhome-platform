@@ -2382,13 +2382,13 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                       </div>
                     </div>
 
-                    {/* Mobile Touch Action Buttons (min-h-11) */}
+                    {/* Mobile Compact Action Buttons (h-8 thin & balanced) */}
                     <div className="flex items-center gap-2 pt-0.5">
                       {row.water.status === 'NEED_M3_INPUT' ? (
                         <button
                           type="button"
                           onClick={() => openQuickInput(row, 'WATER')}
-                          className="flex-1 min-h-11 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-bold flex items-center justify-center gap-1.5"
+                          className="flex-1 h-8 rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white text-[11.5px] font-bold flex items-center justify-center gap-1.5"
                         >
                           <Droplets className="w-3.5 h-3.5" /> Nhập m³ nước
                         </button>
@@ -2396,7 +2396,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                         <button
                           type="button"
                           onClick={() => openQuickInput(row, 'ELECTRIC')}
-                          className="flex-1 min-h-11 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold flex items-center justify-center gap-1.5"
+                          className="flex-1 h-8 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[11.5px] font-bold flex items-center justify-center gap-1.5"
                         >
                           <Zap className="w-3.5 h-3.5" /> Nhập chỉ số điện
                         </button>
@@ -2404,7 +2404,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                         <button
                           type="button"
                           onClick={() => void handleApproveObligations([row.obligationKey], 'APPROVE')}
-                          className="flex-1 min-h-11 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center justify-center gap-1.5"
+                          className="flex-1 h-8 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11.5px] font-bold flex items-center justify-center gap-1.5"
                         >
                           <ShieldCheck className="w-3.5 h-3.5" /> Phê duyệt
                         </button>
@@ -2412,7 +2412,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                         <button
                           type="button"
                           onClick={() => void handleIssueAndSend([row.obligationKey])}
-                          className="flex-1 min-h-11 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center justify-center gap-1.5"
+                          className="flex-1 h-8 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11.5px] font-bold flex items-center justify-center gap-1.5"
                         >
                           <Send className="w-3.5 h-3.5" /> Gửi hóa đơn
                         </button>
@@ -2420,7 +2420,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                         <button
                           type="button"
                           onClick={() => openDrawerForRow(row, 'PAYMENT')}
-                          className="flex-1 min-h-11 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1.5"
+                          className="flex-1 h-8 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11.5px] font-bold flex items-center justify-center gap-1.5"
                         >
                           <Banknote className="w-3.5 h-3.5" /> Thu tiền / Đối soát
                         </button>
@@ -2429,7 +2429,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                       <button
                         type="button"
                         onClick={() => openDrawerForRow(row, 'OVERVIEW')}
-                        className="min-h-11 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200"
+                        className="h-8 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-[11.5px] font-bold text-slate-700 dark:text-slate-200 shrink-0"
                       >
                         Chi tiết
                       </button>
@@ -2518,7 +2518,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                     <Collapsible.Trigger
                       type="button"
                       data-testid={`btn-mobile-toggle-shared-${group.room.code}`}
-                      className="flex-1 min-h-11 rounded-xl border border-violet-200 dark:border-violet-800 bg-violet-50 hover:bg-violet-100 dark:bg-violet-950/50 text-violet-700 dark:text-violet-300 text-xs font-bold flex items-center justify-center gap-1.5 px-3"
+                      className="flex-1 h-8 rounded-lg border border-violet-200 dark:border-violet-800 bg-violet-50 hover:bg-violet-100 dark:bg-violet-950/50 text-violet-700 dark:text-violet-300 text-[11.5px] font-bold flex items-center justify-center gap-1.5 px-2.5"
                     >
                       <Users className="w-3.5 h-3.5 shrink-0" />
                       <span>
@@ -2536,7 +2536,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                       <button
                         type="button"
                         onClick={() => openQuickInput(row, 'WATER')}
-                        className="min-h-11 px-3 rounded-xl bg-cyan-600 text-white text-xs font-bold shrink-0"
+                        className="h-8 px-3 rounded-lg bg-cyan-600 text-white text-[11.5px] font-bold shrink-0"
                       >
                         Nhập m³
                       </button>
@@ -2544,7 +2544,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                       <button
                         type="button"
                         onClick={() => void handleIssueAndSend(sharedGroupKeys)}
-                        className="min-h-11 px-3 rounded-xl bg-blue-600 text-white text-xs font-bold shrink-0"
+                        className="h-8 px-3 rounded-lg bg-blue-600 text-white text-[11.5px] font-bold shrink-0"
                       >
                         Gửi cả phòng
                       </button>
@@ -2625,7 +2625,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                             <button
                               type="button"
                               onClick={() => openDrawerForRow(member, 'FEES')}
-                              className="w-full min-h-9 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[11px] font-bold text-slate-700 dark:text-slate-200"
+                              className="w-full h-8 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[11px] font-bold text-slate-700 dark:text-slate-200"
                             >
                               Xem / Sửa hóa đơn thành viên
                             </button>
@@ -2728,7 +2728,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                           setQuickInputModal((prev) => ({ ...prev, waterM3: e.target.value }))
                         }
                         placeholder="Ví dụ: 12"
-                        className="min-h-11 w-full rounded-xl border border-cyan-400 bg-white dark:bg-slate-800 px-3 font-mono text-sm font-bold"
+                        className="h-9 w-full rounded-lg border border-cyan-400 bg-white dark:bg-slate-800 px-3 font-mono text-xs font-bold"
                       />
                     </div>
                     {quickInputModal.waterM3.trim() !== '' &&
@@ -2748,7 +2748,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                   </div>
                 ) : (
                   <div className="space-y-3 text-xs">
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-2 gap-2.5">
                       <div>
                         <label className="block font-semibold text-slate-500 mb-1">
                           Chỉ số đầu kỳ (kWh)
@@ -2761,7 +2761,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                           onChange={(e) =>
                             setQuickInputModal((prev) => ({ ...prev, startKwh: e.target.value }))
                           }
-                          className="min-h-11 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 font-mono text-sm font-bold"
+                          className="h-9 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 font-mono text-xs font-bold"
                         />
                       </div>
                       <div>
@@ -2778,7 +2778,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                             setQuickInputModal((prev) => ({ ...prev, endKwh: e.target.value }))
                           }
                           placeholder="VD: 1250"
-                          className="min-h-11 w-full rounded-xl border border-amber-400 bg-white dark:bg-slate-800 px-3 font-mono text-sm font-bold"
+                          className="h-9 w-full rounded-lg border border-amber-400 bg-white dark:bg-slate-800 px-3 font-mono text-xs font-bold"
                         />
                       </div>
                     </div>
@@ -2789,7 +2789,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                   <button
                     type="button"
                     onClick={() => setQuickInputModal((prev) => ({ ...prev, open: false }))}
-                    className="min-h-10 rounded-xl border border-slate-200 dark:border-slate-700 px-3.5 text-xs font-semibold"
+                    className="h-8 rounded-lg border border-slate-200 dark:border-slate-700 px-3 text-xs font-semibold"
                   >
                     Hủy
                   </button>
@@ -2836,7 +2836,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                         setQuickInputModal((prev) => ({ ...prev, open: false }));
                       }
                     }}
-                    className="min-h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white px-4 text-xs font-bold"
+                    className="h-8 rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-3.5 text-xs font-bold"
                   >
                     Lưu &amp; Tính ngay
                   </SettlementShimmerButton>

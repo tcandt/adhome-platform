@@ -12,6 +12,7 @@ import { handleConsoleRoomImages, publicRoomImages, roomImages } from './roomIma
 import { handlePaymentProof, paymentProofMap } from './paymentProofApi';
 import { normalizeBuildingLandlord, readBuildingLandlords, writeBuildingLandlord } from './buildingLandlord';
 import { readHunonicHistory } from "./hunonicHistory";
+import { buildSettlementWorkspacePayload, handleSettlementCenterApi } from './settlementCenterApi';
 import crypto from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Prisma, type PrismaClient } from '@prisma/client';
@@ -4639,7 +4640,7 @@ export async function handleConsoleV2Api(
     }
 
     if (moduleKey === 'settlements') {
-      const [periods, meters, cronJobs, hunonic, syncJobs] = await Promise.all([
+      const [periods, meters, cronJobs, hunonic, syncJobs, settlementWorkspace] = await Promise.all([
         prisma.billingPeriod.findMany({
           where: {
             orgId: actor.orgId,
@@ -4670,12 +4671,19 @@ export async function handleConsoleV2Api(
           orderBy: { startedAt: 'desc' },
           take: 6,
         }),
+        buildSettlementWorkspacePayload({
+          prisma,
+          orgId: actor.orgId,
+          scopedBuildingIds: bldIds,
+          periodKey: activePeriod,
+        }),
       ]);
 
       return sendJson(res, 200, {
         ok: true,
         module: moduleKey,
         activePeriod,
+        ...settlementWorkspace,
         hunonicStatus: hunonic?.status || 'UNCONFIGURED',
         billingPeriods: authorizedBuildings
           .filter((b) => bldIds.includes(b.id))
@@ -4752,6 +4760,7 @@ export async function handleConsoleV2Api(
           electricVnd: toSafeVndNumber(i.electricVnd),
           waterVnd: toSafeVndNumber(i.waterVnd),
           serviceFeeVnd: toSafeVndNumber(i.serviceFeeVnd),
+          adjustmentVnd: toSafeVndNumber(i.adjustmentVnd),
           totalAmountVnd: toSafeVndNumber(i.totalAmountVnd),
           paidAmountVnd: toSafeVndNumber(i.paidAmountVnd),
           status: i.status,
@@ -4775,7 +4784,7 @@ export async function handleConsoleV2Api(
                 }
               : { buildingId: '__NONE__' }),
           },
-          include: { invoice: true },
+          include: { invoice: { include: { room: true, building: true, tenant: true } } },
           orderBy: { createdAt: 'desc' },
         }),
         prisma.integrationConnection.findMany({
@@ -4802,10 +4811,14 @@ export async function handleConsoleV2Api(
           providerId: t.providerId,
           externalTxId: t.externalTxId,
           amountVnd: toSafeVndNumber(t.amountVnd),
-          payerName: t.payerName,
+          payerName: t.payerName || t.invoice?.tenant?.fullName || null,
           referenceText: t.referenceText,
           reconcileState: t.reconcileState,
+          invoiceId: t.invoiceId || null,
           invoiceCode: t.invoice?.invoiceCode || null,
+          buildingCode: t.invoice?.building?.code || null,
+          roomCode: t.invoice?.room?.code || null,
+          tenantName: t.invoice?.tenant?.fullName || null,
           verifiedAt: t.verifiedAt.toISOString(),
         })),
       });
@@ -9600,6 +9613,29 @@ export async function handleConsoleV2Api(
         return sendJson(res, 200, { ok: true, cronJob: { ...existing, cronExpression, isEnabled } });
       }
     }
+  }
+
+  if (pathname.startsWith('/api/v1/console/v2/settlements/')) {
+    const allBuildings = await prisma.building.findMany({
+      where: { orgId: actor.orgId, status: { not: 'ARCHIVED' } },
+      select: { id: true, code: true },
+    });
+    const scopedBuildingIds = allBuildings
+      .filter((b) => isBuildingAllowedForActor(actor, b.id, b.code))
+      .map((b) => b.id);
+
+    const handledSettlement = await handleSettlementCenterApi({
+      req,
+      res,
+      pathname,
+      urlObj,
+      prisma,
+      actor,
+      scopedBuildingIds,
+      readJsonBody,
+      sendJson,
+    });
+    if (handledSettlement) return true;
   }
 
   return sendJson(res, 404, {

@@ -1,17 +1,23 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Dialog } from '@animate-ui/react/primitives/base-ui/dialog';
 import {
   AlertCircle,
   Building2,
+  Calendar,
+  Check,
   CheckCircle2,
+  Copy,
   Edit3,
   FileSignature,
   Home,
+  LayoutGrid,
   Loader2,
+  Mail,
   Phone,
   Search,
+  Table2,
   Trash2,
   UserCheck,
-  UserPlus,
   Users,
   X,
 } from 'lucide-react';
@@ -22,6 +28,12 @@ import type { ConsoleTenantDto } from '@/shared/types/portfolio';
 import { tenantDirectory } from '@/shared/data/tenantDirectory';
 import { Button } from '@animate-ui/react/primitives/buttons/button';
 
+export function formatTenantProfileId(tenant: Pick<ConsoleTenantDto, 'id'>): string {
+  const clean = tenant.id.replace(/^occupant:/, '').replace(/[^a-zA-Z0-9]/g, '');
+  const code = clean.slice(0, 6).toUpperCase() || '000000';
+  return `KH-${code}`;
+}
+
 export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void }> = ({ onOpenRoom }) => {
   const { hasCapability } = useAuth();
   const canManageTenants = hasCapability('canManageTenants');
@@ -31,7 +43,6 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
     tenants: tenantProfiles,
     rooms,
     activeBuildings,
-    createTenant,
     updateTenant,
     deleteTenant,
   } = usePortfolio();
@@ -40,8 +51,15 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
 
   const [searchQuery, setSearchQuery] = useState('');
   const [regFilter, setRegFilter] = useState<string>('ALL');
+  const [viewMode, setViewMode] = useState<'card' | 'table'>(() =>
+    typeof window !== 'undefined' && window.innerWidth < 1024 ? 'card' : 'table'
+  );
 
-  // Create / Edit modal state
+  // Profile detail modal state
+  const [detailTenant, setDetailTenant] = useState<ConsoleTenantDto | null>(null);
+  const [copiedId, setCopiedId] = useState(false);
+
+  // Edit modal state
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingTenant, setEditingTenant] = useState<ConsoleTenantDto | null>(
     null
@@ -72,6 +90,7 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
       if (e.key === 'Escape') {
         setIsFormOpen(false);
         setDeletingTenant(null);
+        setDetailTenant(null);
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -84,13 +103,16 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
         return false;
       }
       if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
+        const q = searchQuery.toLowerCase().trim();
+        const profileCode = formatTenantProfileId(t).toLowerCase();
+        const matchProfileCode = profileCode.includes(q) || t.id.toLowerCase().includes(q);
         const matchName = t.fullName.toLowerCase().includes(q);
         const matchPhone = t.phone.toLowerCase().includes(q);
         const matchId = (t.idNumber || '').toLowerCase().includes(q);
         const matchRoom = (t.currentRoomCode || '').toLowerCase().includes(q);
         const matchBuilding = (t.buildingCode || '').toLowerCase().includes(q);
         if (
+          !matchProfileCode &&
           !matchName &&
           !matchPhone &&
           !matchId &&
@@ -104,19 +126,9 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
     });
   }, [tenants, regFilter, searchQuery]);
 
-  const openCreateModal = () => {
-    setEditingTenant(null);
-    setFullName('');
-    setPhone('');
-    setEmail('');
-    setIdNumber('');
-    setResidenceRegStatus('PENDING');
-    setPrimaryBuildingId(activeBuildings[0]?.id || '');
-    setCurrentRoomId('');
-    setEmergencyContact('');
-    setNotes('');
-    setFormError(null);
-    setIsFormOpen(true);
+  const openDetailModal = (tenant: ConsoleTenantDto) => {
+    setCopiedId(false);
+    setDetailTenant(tenant);
   };
 
   const openEditModal = (tenant: ConsoleTenantDto) => {
@@ -143,6 +155,7 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
 
   const handleSaveTenant = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!editingTenant) return;
     setIsSaving(true);
     setFormError(null);
 
@@ -158,9 +171,7 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
       notes: notes.trim() || undefined,
     };
 
-    const res = editingTenant
-      ? await updateTenant(editingTenant.id, payload)
-      : await createTenant(payload);
+    const res = await updateTenant(editingTenant.id, payload);
     setIsSaving(false);
 
     if (!res.ok) {
@@ -185,6 +196,9 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
 
     if (focusedTenantId === deletingTenant.id) {
       setFocusedTenantId(null);
+    }
+    if (detailTenant?.id === deletingTenant.id) {
+      setDetailTenant(null);
     }
     setDeletingTenant(null);
   };
@@ -219,65 +233,91 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
   return (
     <div className="space-y-4" data-testid="console-tenants-directory">
       {/* Toolbar */}
-      <div className="p-3.5 bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex flex-1 flex-wrap items-center gap-2">
-          <div className="relative min-w-[200px] flex-1 max-w-sm">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+      <div className="p-3 sm:p-3.5 bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-xl flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
+        <div className="flex items-center gap-2 w-full lg:flex-1 lg:max-w-md">
+          <div className="relative flex-1 min-w-0">
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             <input
               data-testid="input-search-tenants"
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Tìm tên khách, SĐT, CCCD, mã phòng..."
-              className="w-full text-xs pl-8 pr-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary"
+              placeholder="Tìm ID, tên khách, SĐT, CCCD, mã phòng..."
+              className="h-9 w-full text-xs pl-8 pr-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary"
             />
           </div>
 
-          <div className="flex items-center p-0.5 bg-slate-100 dark:bg-slate-800 rounded-lg text-xs">
-            {[
-              { id: 'ALL', label: `Tất cả (${tenants.length})` },
-              {
-                id: 'REGISTERED',
-                label: `Đã tạm trú (${
-                  tenants.filter((t) => t.residenceRegStatus === 'REGISTERED')
-                    .length
-                })`,
-              },
-              {
-                id: 'PENDING',
-                label: `Chờ khai báo (${
-                  tenants.filter((t) => t.residenceRegStatus === 'PENDING')
-                    .length
-                })`,
-              },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setRegFilter(tab.id)}
-                className={`px-2.5 py-1.5 rounded-md font-semibold transition-colors ${
-                  regFilter === tab.id
-                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
-                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+          <div
+            role="group"
+            aria-label="Chế độ hiển thị danh sách khách thuê"
+            data-testid="tenants-view-mode-toggle"
+            className="inline-flex h-9 shrink-0 items-center rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 p-0.5 gap-0.5"
+          >
+            <button
+              type="button"
+              data-testid="btn-tenants-view-card"
+              aria-label="Hiển thị dạng thẻ (Card)"
+              aria-pressed={viewMode === 'card'}
+              title="Hiển thị dạng thẻ (Card)"
+              onClick={() => setViewMode('card')}
+              className={`inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
+                viewMode === 'card'
+                  ? 'bg-white dark:bg-slate-700 text-brand-primary dark:text-white shadow-xs'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              <LayoutGrid className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              data-testid="btn-tenants-view-table"
+              aria-label="Hiển thị dạng bảng (Table)"
+              aria-pressed={viewMode === 'table'}
+              title="Hiển thị dạng bảng (Table)"
+              onClick={() => setViewMode('table')}
+              className={`inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
+                viewMode === 'table'
+                  ? 'bg-white dark:bg-slate-700 text-brand-primary dark:text-white shadow-xs'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              <Table2 className="w-4 h-4" />
+            </button>
           </div>
         </div>
 
-        {canManageTenants && (
-          <button
-            type="button"
-            data-testid="btn-open-create-tenant"
-            onClick={openCreateModal}
-            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-bold bg-brand-primary hover:bg-brand-hover text-white rounded-xl shadow-sm transition-colors"
-          >
-            <UserPlus className="w-3.5 h-3.5" />
-            <span>Thêm khách thuê</span>
-          </button>
-        )}
+        <div className="flex items-center p-0.5 bg-slate-100 dark:bg-slate-800 rounded-lg text-xs overflow-x-auto no-scrollbar shrink-0">
+          {[
+            { id: 'ALL', label: `Tất cả (${tenants.length})` },
+            {
+              id: 'REGISTERED',
+              label: `Đã tạm trú (${
+                tenants.filter((t) => t.residenceRegStatus === 'REGISTERED')
+                  .length
+              })`,
+            },
+            {
+              id: 'PENDING',
+              label: `Chờ khai báo (${
+                tenants.filter((t) => t.residenceRegStatus === 'PENDING')
+                  .length
+              })`,
+            },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setRegFilter(tab.id)}
+              className={`whitespace-nowrap px-2.5 py-1.5 rounded-md font-semibold transition-colors ${
+                regFilter === tab.id
+                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Empty State */}
@@ -288,221 +328,272 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
             Chưa có hồ sơ khách thuê phù hợp trong phạm vi đang chọn
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
-            Tạo hồ sơ khách thuê và gán trực tiếp vào phòng lưu trú để quản lý
-            tạm trú, hợp đồng và hóa đơn tập trung trên PostgreSQL.
+            Hồ sơ khách thuê được tự động đồng bộ từ phòng lưu trú và hợp đồng thuê đang quản lý.
           </p>
-          {canManageTenants && (
-            <button
-              type="button"
-              onClick={openCreateModal}
-              className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold bg-brand-primary text-white rounded-xl hover:bg-brand-hover"
-            >
-              <UserPlus className="w-3.5 h-3.5" /> Thêm hồ sơ khách thuê đầu tiên
-            </button>
-          )}
+        </div>
+      ) : viewMode === 'card' ? (
+        <div
+          data-testid="tenants-mobile-cards"
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"
+        >
+          {filteredTenants.map((t) => {
+            const isFocused = focusedTenantId === t.id;
+            const profileCode = formatTenantProfileId(t);
+            return (
+              <div
+                key={t.id}
+                data-testid={`tenant-card-${t.phone}`}
+                className={`p-3.5 rounded-xl border bg-white dark:bg-[#111827] space-y-2.5 ${
+                  isFocused
+                    ? 'border-brand-primary ring-2 ring-brand-primary/30'
+                    : 'border-slate-200 dark:border-slate-800'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                      <button
+                        type="button"
+                        data-testid={`btn-tenant-id-${t.phone}`}
+                        onClick={() => openDetailModal(t)}
+                        className="inline-flex items-center rounded bg-slate-100 hover:bg-blue-50 dark:bg-slate-800 dark:hover:bg-blue-950/60 px-1.5 py-0.5 font-mono text-[10.5px] font-bold text-slate-600 hover:text-brand-primary dark:text-slate-300 transition-colors"
+                        title="Xem chi tiết hồ sơ khách thuê"
+                      >
+                        {profileCode}
+                      </button>
+                      {t.relationToPrimary && (
+                        <span className="text-[11px] text-slate-500">
+                          {t.relationToPrimary === 'PRIMARY'
+                            ? 'HĐ Chính'
+                            : t.relationToPrimary === 'OTHER'
+                            ? 'Đại diện HĐ'
+                            : 'Người cùng hộ'}
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      data-testid={`btn-tenant-name-${t.phone}`}
+                      onClick={() => openDetailModal(t)}
+                      className="text-left text-sm font-bold text-slate-900 dark:text-white hover:text-brand-primary dark:hover:text-blue-300 hover:underline underline-offset-2 transition-colors truncate block max-w-full"
+                    >
+                      {t.fullName}
+                    </button>
+                    <div className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500 font-mono">
+                      <Phone className="w-3 h-3 shrink-0" /> {t.phone || '—'}
+                    </div>
+                  </div>
+                  <div className="shrink-0">{renderRegBadge(t.residenceRegStatus)}</div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 text-xs">
+                  <div>
+                    <span className="text-[10.5px] text-slate-400 block">
+                      Phòng đang ở
+                    </span>
+                    <span className="font-bold text-slate-800 dark:text-slate-100">
+                      {t.currentRoomCode
+                        ? `${t.buildingCode} · ${t.currentRoomCode}`
+                        : t.buildingCode || 'Chưa xếp phòng'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10.5px] text-slate-400 block">
+                      Hợp đồng
+                    </span>
+                    <span className="font-semibold text-slate-700 dark:text-slate-200">
+                      {t.activeContractCode || 'Chưa lập HĐ'}
+                    </span>
+                  </div>
+                </div>
+
+                {canManageTenants && (isOccupantOnly(t) ? (
+                  <div className="flex justify-end border-t border-slate-100 dark:border-slate-800 pt-2">
+                    <Button
+                      type="button"
+                      className="inline-flex h-8 items-center gap-1 text-xs font-semibold text-blue-600"
+                      onClick={() => t.currentRoomId && onOpenRoom?.(t.currentRoomId)}
+                    >
+                      <Home size={13} /> Hồ sơ lưu trú
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => openEditModal(t)}
+                      className="h-8 px-2.5 rounded-lg text-[11.5px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 inline-flex items-center gap-1 transition-colors"
+                    >
+                      <Edit3 className="w-3 h-3" /> Sửa hồ sơ
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDeleteError(null);
+                        setDeletingTenant(t);
+                      }}
+                      className="h-8 px-2.5 rounded-lg text-[11.5px] font-semibold bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 text-rose-600 dark:text-rose-300 inline-flex items-center gap-1 transition-colors"
+                    >
+                      <Trash2 className="w-3 h-3" /> Xóa
+                    </button>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
         </div>
       ) : (
-        <>
-          {/* MOBILE TOUCH CARDS (< 1024px) */}
-          <div
-            data-testid="tenants-mobile-cards"
-            className="grid grid-cols-1 sm:grid-cols-2 gap-3 lg:hidden"
-          >
-            {filteredTenants.map((t) => {
-              const isFocused = focusedTenantId === t.id;
-              return (
-                <div
-                  key={t.id}
-                  data-testid={`tenant-card-${t.phone}`}
-                  className={`p-4 rounded-xl border bg-white dark:bg-[#111827] space-y-3 ${
-                    isFocused
-                      ? 'border-brand-primary ring-2 ring-brand-primary/30'
-                      : 'border-slate-200 dark:border-slate-800'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="text-sm font-bold text-slate-900 dark:text-white">
-                        {t.fullName}
-                      </div>
-                      {t.relationToPrimary && <span className="text-xs text-slate-500">{t.relationToPrimary === 'PRIMARY' ? 'HĐ Chính' : t.relationToPrimary === 'OTHER' ? 'Đại diện HĐ' : 'Người cùng hộ'}</span>}
-                      <div className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500 font-mono">
-                        <Phone className="w-3 h-3" /> {t.phone}
-                      </div>
-                    </div>
-                    {renderRegBadge(t.residenceRegStatus)}
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 text-xs">
-                    <div>
-                      <span className="text-[10.5px] text-slate-400 block">
-                        Phòng đang ở
-                      </span>
-                      <span className="font-bold text-slate-800 dark:text-slate-100">
-                        {t.currentRoomCode
-                          ? `${t.buildingCode} · ${t.currentRoomCode}`
-                          : t.buildingCode || 'Chưa xếp phòng'}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-[10.5px] text-slate-400 block">
-                        Hợp đồng
-                      </span>
-                      <span className="font-semibold text-slate-700 dark:text-slate-200">
-                        {t.activeContractCode || 'Chưa lập HĐ'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {canManageTenants && (isOccupantOnly(t) ? <div className="flex justify-end border-t pt-2"><Button type="button" className="inline-flex min-h-10 items-center gap-1 text-xs font-semibold text-blue-600" onClick={() => t.currentRoomId && onOpenRoom?.(t.currentRoomId)}><Home size={14} />Hồ sơ lưu trú</Button></div> : (
-                    <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-100 dark:border-slate-800">
-                      <button
-                        type="button"
-                        onClick={() => openEditModal(t)}
-                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 inline-flex items-center gap-1"
-                      >
-                        <Edit3 className="w-3 h-3" /> Sửa hồ sơ
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDeleteError(null);
-                          setDeletingTenant(t);
-                        }}
-                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-300 inline-flex items-center gap-1"
-                      >
-                        <Trash2 className="w-3 h-3" /> Xóa
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* DESKTOP TABLE (>= 1024px) */}
-          <div
-            data-testid="tenants-desktop-table-container"
-            className="hidden lg:block bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-xl overflow-hidden"
-          >
-            <div className="overflow-x-auto">
-              <table
-                data-testid="tenants-desktop-table"
-                className="w-full text-left text-xs"
-              >
-                <thead>
-                  <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50 text-slate-500 font-semibold">
-                    <th className="px-4 py-3">Khách thuê &amp; Liên hệ</th>
-                    <th className="px-4 py-3">CCCD / Định danh</th>
-                    <th className="px-4 py-3">Tòa nhà &amp; Phòng</th>
-                    <th className="px-4 py-3">Hợp đồng hiện tại</th>
-                    <th className="px-4 py-3">Tạm trú</th>
-                    <th className="px-4 py-3 text-right">Thao tác</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {filteredTenants.map((t) => {
-                    const isFocused = focusedTenantId === t.id;
-                    return (
-                      <tr
-                        key={t.id}
-                        data-testid={`tenant-row-${t.phone}`}
-                        className={`transition-colors ${
-                          isFocused
-                            ? 'bg-blue-50/70 dark:bg-blue-950/30'
-                            : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
-                        }`}
-                      >
-                        <td className="px-4 py-3.5">
-                          <div className="font-bold text-slate-900 dark:text-white">
-                            {t.fullName}
+        <div
+          data-testid="tenants-desktop-table-container"
+          className="bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-xl overflow-hidden"
+        >
+          <div className="overflow-x-auto">
+            <table
+              data-testid="tenants-desktop-table"
+              className="w-full text-left text-xs min-w-[780px]"
+            >
+              <thead>
+                <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50 text-slate-500 font-semibold">
+                  <th className="px-4 py-3">ID Hồ sơ</th>
+                  <th className="px-4 py-3">Khách thuê &amp; Liên hệ</th>
+                  <th className="px-4 py-3">CCCD / Định danh</th>
+                  <th className="px-4 py-3">Tòa nhà &amp; Phòng</th>
+                  <th className="px-4 py-3">Hợp đồng hiện tại</th>
+                  <th className="px-4 py-3">Tạm trú</th>
+                  <th className="px-4 py-3 text-right">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {filteredTenants.map((t) => {
+                  const isFocused = focusedTenantId === t.id;
+                  const profileCode = formatTenantProfileId(t);
+                  return (
+                    <tr
+                      key={t.id}
+                      data-testid={`tenant-row-${t.phone}`}
+                      className={`transition-colors ${
+                        isFocused
+                          ? 'bg-blue-50/70 dark:bg-blue-950/30'
+                          : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
+                      }`}
+                    >
+                      <td className="px-4 py-3.5 align-top whitespace-nowrap">
+                        <button
+                          type="button"
+                          data-testid={`btn-table-tenant-id-${t.phone}`}
+                          onClick={() => openDetailModal(t)}
+                          className="inline-flex items-center rounded-md bg-slate-100 hover:bg-blue-50 dark:bg-slate-800 dark:hover:bg-blue-950/60 px-2 py-0.5 font-mono text-[11px] font-bold text-slate-700 hover:text-brand-primary dark:text-slate-200 transition-colors"
+                          title="Xem chi tiết hồ sơ khách thuê"
+                        >
+                          {profileCode}
+                        </button>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <button
+                          type="button"
+                          data-testid={`btn-table-tenant-name-${t.phone}`}
+                          onClick={() => openDetailModal(t)}
+                          className="text-left font-bold text-slate-900 dark:text-white hover:text-brand-primary dark:hover:text-blue-300 hover:underline underline-offset-2 transition-colors"
+                        >
+                          {t.fullName}
+                        </button>
+                        {t.relationToPrimary && (
+                          <span className="ml-1.5 text-[11px] text-slate-500">
+                            · {t.relationToPrimary === 'PRIMARY' ? 'HĐ Chính' : t.relationToPrimary === 'OTHER' ? 'Đại diện HĐ' : 'Người cùng hộ'}
+                          </span>
+                        )}
+                        <div className="mt-0.5 text-[11px] text-slate-500 font-mono">
+                          {t.phone || '—'}
+                          {t.email ? ` · ${t.email}` : ''}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3.5 font-mono text-slate-600 dark:text-slate-300">
+                        {t.idNumber || '—'}
+                      </td>
+                      <td className="px-4 py-3.5">
+                        {t.currentRoomCode ? (
+                          <span className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/50 px-2.5 py-1 font-semibold text-brand-primary dark:text-blue-300">
+                            <Home className="w-3.5 h-3.5" />
+                            {t.buildingCode} · {t.currentRoomCode}
+                          </span>
+                        ) : t.buildingCode ? (
+                          <span className="inline-flex items-center gap-1 text-slate-500">
+                            <Building2 className="w-3.5 h-3.5" />{' '}
+                            {t.buildingCode} (chưa xếp phòng)
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">
+                            Chưa gán phòng
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3.5">
+                        {t.activeContractCode ? (
+                          <div>
+                            <button
+                              type="button"
+                              onClick={() => setActiveModule('contracts')}
+                              className="inline-flex items-center gap-1 font-mono font-bold text-slate-800 dark:text-slate-100 hover:text-brand-primary"
+                            >
+                              <FileSignature className="w-3.5 h-3.5 text-brand-primary" />
+                              {t.activeContractCode}
+                            </button>
+                            {t.monthlyRentVnd !== null && (
+                              <div className="text-[11px] text-slate-500">
+                                {t.monthlyRentVnd.toLocaleString('vi-VN')}{' '}
+                                đ/tháng
+                              </div>
+                            )}
                           </div>
-                          {t.relationToPrimary && <span className="text-xs text-slate-500">{t.relationToPrimary === 'PRIMARY' ? 'HĐ Chính' : t.relationToPrimary === 'OTHER' ? 'Đại diện HĐ' : 'Người cùng hộ'}</span>}
-                          <div className="mt-0.5 text-[11px] text-slate-500 font-mono">
-                            {t.phone}
-                            {t.email ? ` · ${t.email}` : ''}
+                        ) : (
+                          <span className="text-slate-400">
+                            Chưa có HĐ hiệu lực
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3.5">
+                        {renderRegBadge(t.residenceRegStatus)}
+                      </td>
+                      <td className="px-4 py-3.5 text-right">
+                        {canManageTenants && (isOccupantOnly(t) ? (
+                          <Button
+                            type="button"
+                            className="inline-flex h-8 items-center gap-1 text-xs font-semibold text-blue-600"
+                            onClick={() => t.currentRoomId && onOpenRoom?.(t.currentRoomId)}
+                          >
+                            <Home size={13} /> Hồ sơ lưu trú
+                          </Button>
+                        ) : (
+                          <div className="inline-flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              data-testid={`btn-edit-tenant-${t.phone}`}
+                              onClick={() => openEditModal(t)}
+                              className="h-8 px-2.5 rounded-lg text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 inline-flex items-center gap-1"
+                            >
+                              <Edit3 className="w-3 h-3" /> Sửa
+                            </button>
+                            <button
+                              type="button"
+                              data-testid={`btn-delete-tenant-${t.phone}`}
+                              onClick={() => {
+                                setDeleteError(null);
+                                setDeletingTenant(t);
+                              }}
+                              className="h-8 px-2.5 rounded-lg text-[11px] font-semibold bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 text-rose-600 dark:text-rose-300 inline-flex items-center gap-1"
+                            >
+                              <Trash2 className="w-3 h-3" /> Xóa
+                            </button>
                           </div>
-                        </td>
-                        <td className="px-4 py-3.5 font-mono text-slate-600 dark:text-slate-300">
-                          {t.idNumber || '—'}
-                        </td>
-                        <td className="px-4 py-3.5">
-                          {t.currentRoomCode ? (
-                            <span className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/50 px-2.5 py-1 font-semibold text-brand-primary dark:text-blue-300">
-                              <Home className="w-3.5 h-3.5" />
-                              {t.buildingCode} · {t.currentRoomCode}
-                            </span>
-                          ) : t.buildingCode ? (
-                            <span className="inline-flex items-center gap-1 text-slate-500">
-                              <Building2 className="w-3.5 h-3.5" />{' '}
-                              {t.buildingCode} (chưa xếp phòng)
-                            </span>
-                          ) : (
-                            <span className="text-slate-400">
-                              Chưa gán phòng
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3.5">
-                          {t.activeContractCode ? (
-                            <div>
-                              <button
-                                type="button"
-                                onClick={() => setActiveModule('contracts')}
-                                className="inline-flex items-center gap-1 font-mono font-bold text-slate-800 dark:text-slate-100 hover:text-brand-primary"
-                              >
-                                <FileSignature className="w-3.5 h-3.5 text-brand-primary" />
-                                {t.activeContractCode}
-                              </button>
-                              {t.monthlyRentVnd !== null && (
-                                <div className="text-[11px] text-slate-500">
-                                  {t.monthlyRentVnd.toLocaleString('vi-VN')}{' '}
-                                  đ/tháng
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-slate-400">
-                              Chưa có HĐ hiệu lực
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3.5">
-                          {renderRegBadge(t.residenceRegStatus)}
-                        </td>
-                        <td className="px-4 py-3.5 text-right">
-                          {canManageTenants && (isOccupantOnly(t) ? <Button type="button" className="inline-flex min-h-10 items-center gap-1 text-xs font-semibold text-blue-600" onClick={() => t.currentRoomId && onOpenRoom?.(t.currentRoomId)}><Home size={14} />Hồ sơ lưu trú</Button> : (
-                            <div className="inline-flex items-center gap-1.5">
-                              <button
-                                type="button"
-                                data-testid={`btn-edit-tenant-${t.phone}`}
-                                onClick={() => openEditModal(t)}
-                                className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 inline-flex items-center gap-1"
-                              >
-                                <Edit3 className="w-3 h-3" /> Sửa
-                              </button>
-                              <button
-                                type="button"
-                                data-testid={`btn-delete-tenant-${t.phone}`}
-                                onClick={() => {
-                                  setDeleteError(null);
-                                  setDeletingTenant(t);
-                                }}
-                                className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 text-rose-600 dark:text-rose-300 inline-flex items-center gap-1"
-                              >
-                                <Trash2 className="w-3 h-3" /> Xóa
-                              </button>
-                            </div>
-                          ))}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                        ))}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-        </>
+        </div>
       )}
 
       {/* CREATE / EDIT TENANT MODAL */}
@@ -761,6 +852,232 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
           </div>
         </div>
       )}
+
+      {/* TENANT PROFILE DETAIL DIALOG (Animate UI) */}
+      <Dialog.Root
+        open={Boolean(detailTenant)}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setDetailTenant(null);
+        }}
+      >
+        <Dialog.Portal>
+          <Dialog.Backdrop className="fixed inset-0 z-50 bg-slate-950/55 backdrop-blur-[2px]" />
+          <Dialog.Viewport className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+            <Dialog.Popup
+              from="bottom"
+              data-testid="modal-tenant-detail"
+              className="relative flex max-h-[calc(100dvh-1.5rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] shadow-2xl outline-none"
+            >
+              {detailTenant && (
+                <>
+                  <div className="flex items-start justify-between gap-3 border-b border-slate-100 dark:border-slate-800 px-4 py-3.5 bg-slate-50/70 dark:bg-slate-900/50 shrink-0">
+                    <div className="min-w-0 space-y-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const code = formatTenantProfileId(detailTenant);
+                            void navigator.clipboard?.writeText(code).catch(() => {});
+                            setCopiedId(true);
+                            setTimeout(() => setCopiedId(false), 1800);
+                          }}
+                          className="inline-flex items-center gap-1 rounded-md bg-slate-200/80 hover:bg-blue-100 dark:bg-slate-800 dark:hover:bg-blue-950 px-2 py-0.5 font-mono text-[11px] font-bold text-slate-700 dark:text-slate-200 transition-colors"
+                          title="Sao chép mã hồ sơ khách thuê"
+                        >
+                          <span>{formatTenantProfileId(detailTenant)}</span>
+                          {copiedId ? (
+                            <Check className="w-3 h-3 text-emerald-600" />
+                          ) : (
+                            <Copy className="w-3 h-3 text-slate-400" />
+                          )}
+                        </button>
+                        {detailTenant.relationToPrimary && (
+                          <span className="text-[11px] font-medium text-slate-500">
+                            {detailTenant.relationToPrimary === 'PRIMARY'
+                              ? 'HĐ Chính'
+                              : detailTenant.relationToPrimary === 'OTHER'
+                              ? 'Đại diện HĐ'
+                              : 'Người cùng hộ'}
+                          </span>
+                        )}
+                        {renderRegBadge(detailTenant.residenceRegStatus)}
+                      </div>
+                      <Dialog.Title className="text-base font-bold text-slate-900 dark:text-white truncate">
+                        {detailTenant.fullName}
+                      </Dialog.Title>
+                    </div>
+                    <Dialog.Close
+                      aria-label="Đóng chi tiết khách thuê"
+                      data-testid="btn-close-tenant-detail"
+                      className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                    </Dialog.Close>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto px-4 py-3 divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+                    {/* Contact & Identity */}
+                    <div className="pb-3 grid grid-cols-2 gap-x-4 gap-y-2.5">
+                      <div>
+                        <span className="text-[11px] text-slate-400 block">Số điện thoại</span>
+                        <span className="font-mono font-semibold text-slate-800 dark:text-slate-100 inline-flex items-center gap-1 mt-0.5">
+                          <Phone className="w-3 h-3 text-slate-400" />
+                          {detailTenant.phone || 'Chưa cập nhật'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[11px] text-slate-400 block">CCCD / Định danh</span>
+                        <span className="font-mono font-semibold text-slate-800 dark:text-slate-100 block mt-0.5">
+                          {detailTenant.idNumber || 'Chưa cập nhật'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[11px] text-slate-400 block">Email</span>
+                        <span className="text-slate-700 dark:text-slate-200 inline-flex items-center gap-1 mt-0.5 break-all">
+                          <Mail className="w-3 h-3 text-slate-400 shrink-0" />
+                          {detailTenant.email || 'Chưa cập nhật'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[11px] text-slate-400 block">Liên hệ khẩn cấp</span>
+                        <span className="text-slate-700 dark:text-slate-200 block mt-0.5">
+                          {detailTenant.emergencyContact || 'Chưa cập nhật'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Room & Contract */}
+                    <div className="py-3 grid grid-cols-2 gap-x-4 gap-y-2.5">
+                      <div>
+                        <span className="text-[11px] text-slate-400 block">Tòa nhà &amp; Phòng hiện tại</span>
+                        {detailTenant.currentRoomCode ? (
+                          <span className="font-bold text-brand-primary dark:text-blue-300 inline-flex items-center gap-1 mt-0.5">
+                            <Home className="w-3.5 h-3.5" />
+                            {detailTenant.buildingCode} · {detailTenant.currentRoomCode}
+                          </span>
+                        ) : (
+                          <span className="text-slate-500 block mt-0.5">
+                            {detailTenant.buildingCode ? `${detailTenant.buildingCode} (chưa xếp phòng)` : 'Chưa gán phòng'}
+                          </span>
+                        )}
+                      </div>
+                      <div>
+                        <span className="text-[11px] text-slate-400 block">Hợp đồng hiện tại</span>
+                        <span className="font-mono font-semibold text-slate-800 dark:text-slate-100 block mt-0.5">
+                          {detailTenant.activeContractCode || 'Chưa lập HĐ'}
+                        </span>
+                        {detailTenant.monthlyRentVnd !== null && (
+                          <span className="text-[11px] text-slate-500 block">
+                            {detailTenant.monthlyRentVnd.toLocaleString('vi-VN')} đ/tháng
+                          </span>
+                        )}
+                      </div>
+                      {detailTenant.activeContractEndDate && (
+                        <div>
+                          <span className="text-[11px] text-slate-400 block">Ngày hết hạn HĐ</span>
+                          <span className="text-slate-700 dark:text-slate-200 inline-flex items-center gap-1 mt-0.5">
+                            <Calendar className="w-3 h-3 text-slate-400" />
+                            {new Date(detailTenant.activeContractEndDate).toLocaleDateString('vi-VN')}
+                          </span>
+                        </div>
+                      )}
+                      <div>
+                        <span className="text-[11px] text-slate-400 block">ID hệ thống</span>
+                        <span className="font-mono text-[10.5px] text-slate-500 break-all block mt-0.5">
+                          {detailTenant.id}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Occupancy History if available */}
+                    {detailTenant.occupancyHistory && detailTenant.occupancyHistory.length > 0 && (
+                      <div className="py-3 space-y-1.5">
+                        <span className="text-[11px] font-semibold text-slate-500 block">
+                          Lịch sử lưu trú ({detailTenant.occupancyHistory.length})
+                        </span>
+                        <div className="space-y-1.5">
+                          {detailTenant.occupancyHistory.map((h) => (
+                            <div
+                              key={h.id}
+                              className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 dark:bg-slate-800/60 px-2.5 py-1.5 text-[11px]"
+                            >
+                              <div className="font-semibold text-slate-700 dark:text-slate-200">
+                                {h.buildingCode} · {h.roomCode}
+                                {h.contractCode ? ` (${h.contractCode})` : ''}
+                              </div>
+                              <div className="text-slate-500 font-mono">
+                                {new Date(h.moveInDate).toLocaleDateString('vi-VN')}
+                                {h.moveOutDate ? ` → ${new Date(h.moveOutDate).toLocaleDateString('vi-VN')}` : ' → Hiện tại'}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Notes & Timestamps */}
+                    {(detailTenant.notes || detailTenant.updatedAt) && (
+                      <div className="pt-3 space-y-1.5">
+                        {detailTenant.notes && (
+                          <div>
+                            <span className="text-[11px] text-slate-400 block">Ghi chú nội bộ</span>
+                            <p className="text-slate-700 dark:text-slate-200 mt-0.5 whitespace-pre-line">
+                              {detailTenant.notes}
+                            </p>
+                          </div>
+                        )}
+                        <div className="text-[10.5px] text-slate-400 flex items-center justify-between pt-1">
+                          <span>Tạo: {new Date(detailTenant.createdAt).toLocaleDateString('vi-VN')}</span>
+                          <span>Cập nhật: {new Date(detailTenant.updatedAt).toLocaleDateString('vi-VN')}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 dark:border-slate-800 px-4 py-3 bg-slate-50/50 dark:bg-slate-900/40 shrink-0">
+                    {detailTenant.currentRoomId && onOpenRoom && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const roomId = detailTenant.currentRoomId!;
+                          setDetailTenant(null);
+                          onOpenRoom(roomId);
+                        }}
+                        className="h-8 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/50 px-3 text-xs font-semibold text-brand-primary dark:text-blue-300 inline-flex items-center gap-1.5 hover:bg-blue-100 transition-colors"
+                      >
+                        <Home className="w-3.5 h-3.5" />
+                        <span>Xem phòng</span>
+                      </button>
+                    )}
+                    {canManageTenants && !isOccupantOnly(detailTenant) && (
+                      <button
+                        type="button"
+                        data-testid="btn-detail-edit-tenant"
+                        onClick={() => {
+                          const target = detailTenant;
+                          setDetailTenant(null);
+                          openEditModal(target);
+                        }}
+                        className="h-8 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 px-3 text-xs font-semibold text-slate-700 dark:text-slate-200 inline-flex items-center gap-1.5 transition-colors"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                        <span>Sửa hồ sơ</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setDetailTenant(null)}
+                      className="h-8 rounded-lg bg-brand-primary hover:bg-brand-hover px-3.5 text-xs font-bold text-white transition-colors"
+                    >
+                      Đóng
+                    </button>
+                  </div>
+                </>
+              )}
+            </Dialog.Popup>
+          </Dialog.Viewport>
+        </Dialog.Portal>
+      </Dialog.Root>
     </div>
   );
 };

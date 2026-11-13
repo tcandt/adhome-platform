@@ -70,13 +70,15 @@ export function MobileOverviewSummary() {
         ))}
       </div>
 
-      <section className={`${card} p-4.5`} aria-label="Tài chính theo kỳ">
-        <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3 dark:border-slate-800">
-          <div>
+      <section className={`${card} overflow-hidden p-4`} aria-label="Tài chính theo kỳ">
+        <div className="grid grid-cols-[minmax(0,1fr)_140px] items-center gap-3 border-b border-slate-100 pb-3 dark:border-slate-800">
+          <div className="min-w-0">
             <h2 className="text-sm font-bold text-slate-900 dark:text-white">Tài chính</h2>
-            <p className="text-[11px] text-slate-500">Kỳ {formatPeriodDisplay(selectedPeriod)}</p>
+            <p className="mt-0.5 truncate text-[11px] text-slate-500 dark:text-slate-400">
+              Kỳ {formatPeriodDisplay(selectedPeriod)}
+            </p>
           </div>
-          <label className="flex items-center gap-1">
+          <label className="block min-w-0">
             <span className="sr-only">Kỳ tài chính</span>
             <input
               aria-label="Kỳ tài chính"
@@ -85,36 +87,36 @@ export function MobileOverviewSummary() {
               onChange={e => {
                 if (/^\d{4}-\d{2}$/.test(e.target.value)) setSelectedPeriod(e.target.value);
               }}
-              className="h-9 min-w-0 max-w-[140px] rounded-xl border border-slate-200/80 bg-slate-50 px-2.5 text-xs font-semibold text-slate-800 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200 [color-scheme:light] dark:[color-scheme:dark]"
+              className="block h-9 w-full min-w-0 max-w-full rounded-xl border border-slate-200/80 bg-slate-50 px-2.5 text-center text-xs font-semibold text-slate-800 shadow-2xs outline-none transition-colors focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200 dark:focus:border-blue-500 dark:focus:ring-blue-950 [color-scheme:light] dark:[color-scheme:dark]"
             />
           </label>
         </div>
 
-        <div className="mt-3">
-          <p className="text-xs text-slate-500 dark:text-slate-400">Tiền phòng theo hợp đồng / tháng</p>
-          <p className="mt-1 text-2xl font-bold tabular-nums tracking-tight text-slate-900 dark:text-white">
+        <div className="py-4">
+          <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Tiền phòng theo hợp đồng / tháng</p>
+          <p className="mt-1.5 break-words text-[1.65rem] font-bold leading-none tabular-nums tracking-tight text-slate-950 dark:text-white">
             {ready ? money(kpis.contractedMonthlyRentVnd) : '—'}
           </p>
-          <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+          <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
             {kpis.activeContractsCount} hợp đồng đang có hiệu lực
           </p>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-100 pt-3 dark:border-slate-800">
-          <div className="rounded-xl bg-amber-50/60 p-2.5 dark:bg-amber-950/20">
-            <p className="text-[11px] font-medium text-amber-700 dark:text-amber-300">Còn phải thu</p>
-            <p className="mt-1 text-base font-bold tabular-nums text-amber-800 dark:text-amber-200 truncate" title={money(kpis.periodReceivableVnd)}>
+        <div className="grid grid-cols-2 gap-2.5 border-t border-slate-100 pt-3 dark:border-slate-800">
+          <div className="min-w-0 rounded-xl border border-amber-100/80 bg-amber-50/70 p-3 dark:border-amber-900/40 dark:bg-amber-950/20">
+            <p className="truncate text-[11px] font-semibold text-amber-700 dark:text-amber-300">Còn phải thu</p>
+            <p className="mt-1.5 truncate text-base font-bold leading-tight tabular-nums text-amber-800 dark:text-amber-200" title={money(kpis.periodReceivableVnd)}>
               {ready ? compactMoney(kpis.periodReceivableVnd) : '—'}
             </p>
           </div>
-          <div className="rounded-xl bg-emerald-50/60 p-2.5 dark:bg-emerald-950/20">
-            <p className="text-[11px] font-medium text-emerald-700 dark:text-emerald-300">Đã thu trong kỳ</p>
-            <p className="mt-1 text-base font-bold tabular-nums text-emerald-800 dark:text-emerald-200 truncate" title={money(kpis.periodCollectedVnd)}>
+          <div className="min-w-0 rounded-xl border border-emerald-100/80 bg-emerald-50/70 p-3 dark:border-emerald-900/40 dark:bg-emerald-950/20">
+            <p className="truncate text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">Đã thu trong kỳ</p>
+            <p className="mt-1.5 truncate text-base font-bold leading-tight tabular-nums text-emerald-800 dark:text-emerald-200" title={money(kpis.periodCollectedVnd)}>
               {ready ? compactMoney(kpis.periodCollectedVnd) : '—'}
             </p>
           </div>
         </div>
-        <p className="mt-2.5 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+        <p className="mt-3 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
           Số dư chưa thu · {kpis.overdueInvoicesCount} hóa đơn quá hạn (mọi kỳ).
         </p>
       </section>

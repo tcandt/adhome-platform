@@ -17,7 +17,6 @@ import { useAuth } from '@/app/providers/AuthContext';
 import { useNavigation } from '@/app/providers/NavigationContext';
 import { usePortfolio } from '@/app/providers/PortfolioContext';
 import { formatPeriodDisplay } from '@/app/navigation/navigationConfig';
-import { BuildingScopeSelector } from '@/shared/ui/BuildingScopeSelector';
 
 function formatVnd(amount: number): string {
   return `${Math.trunc(amount).toLocaleString('vi-VN')} đ`;
@@ -90,7 +89,6 @@ export const OverviewDashboard: React.FC<{ mobile?: boolean }> = ({ mobile = fal
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
-          <BuildingScopeSelector />
           <button
             type="button"
             onClick={() => void refreshPortfolio()}

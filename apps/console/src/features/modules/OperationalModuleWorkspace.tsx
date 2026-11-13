@@ -60,7 +60,6 @@ import { HunonicSettingsModal } from './modals/HunonicSettingsModal';
 import { SettlementWorkspaceView } from './SettlementWorkspaceView';
 import { ActionMenu } from '@/shared/ui/ActionMenu';
 import { ContractDocumentLink } from '@/shared/ui/ContractDocumentDialog';
-import { BuildingScopeSelector } from '@/shared/ui/BuildingScopeSelector';
 import { MoneyInput } from '@/shared/ui/MoneyInput';
 import {
   formatContractDisplayCode,
@@ -1548,19 +1547,13 @@ export const OperationalModuleWorkspace: React.FC<
         </div>
         </div>
 
-        {(currentNavConfig.supportsBuildingScope ||
-          currentNavConfig.hasPeriodToolbar) && (
+        {currentNavConfig.hasPeriodToolbar && (
           <div
             data-testid="module-toolbar-context"
             className="module-toolbar-context flex flex-wrap items-center gap-2 border-t border-slate-100 dark:border-slate-800 px-4 py-2.5"
           >
-            {currentNavConfig.supportsBuildingScope && (
-              <div className="hidden md:block"><BuildingScopeSelector /></div>
-            )}
-
-            {currentNavConfig.hasPeriodToolbar && (
-              <div
-                data-testid="period-selector-toolbar"
+            <div
+              data-testid="period-selector-toolbar"
                 className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl"
               >
                 <button
@@ -1608,7 +1601,6 @@ export const OperationalModuleWorkspace: React.FC<
                   </button>
                 )}
               </div>
-            )}
           </div>
         )}
       </div>
@@ -2558,10 +2550,6 @@ export const OperationalModuleWorkspace: React.FC<
                 </div>
 
                 <div className="flex flex-1 md:flex-initial items-center justify-between md:justify-end gap-2 min-w-0">
-                  <div className="hidden md:block">
-                    <BuildingScopeSelector />
-                  </div>
-
                   <div className="flex min-w-0 flex-1 md:flex-initial items-center gap-1.5">
                     <button
                       type="button"
@@ -3020,10 +3008,6 @@ export const OperationalModuleWorkspace: React.FC<
                 </div>
 
                 <div className="flex flex-1 md:flex-initial items-center justify-between md:justify-end gap-2 min-w-0">
-                  <div className="hidden md:block">
-                    <BuildingScopeSelector />
-                  </div>
-
                   <div className="flex min-w-0 flex-1 md:flex-initial items-center gap-1.5">
                     <button
                       type="button"

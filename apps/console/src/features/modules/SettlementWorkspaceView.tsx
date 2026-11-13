@@ -3,7 +3,6 @@ import { Dialog } from '@animate-ui/react/primitives/base-ui/dialog';
 import { Collapsible } from '@animate-ui/react/primitives/base-ui/collapsible';
 import {
   AlertCircle,
-  AlertTriangle,
   ArrowUpDown,
   Banknote,
   Building2,
@@ -35,7 +34,6 @@ import {
 } from 'lucide-react';
 import { formatPeriodDisplay } from '@/app/navigation/navigationConfig';
 import { CONSOLE_CSRF_HEADER, useAuth } from '@/app/providers/AuthContext';
-import { BuildingScopeSelector } from '@/shared/ui/BuildingScopeSelector';
 import { ActionMenu } from '@/shared/ui/ActionMenu';
 import { notifySave } from '@/shared/ui/SaveToast';
 import {
@@ -808,23 +806,54 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
 
   return (
     <div
-      className="settlement-center-workspace space-y-4"
+      className="settlement-center-workspace space-y-3 sm:space-y-3.5"
       data-testid="settlement-center-workspace"
     >
       {/* =====================================================================
-          PART A — HEADER NGHIỆP VỤ (Section 3.1)
+          PART A — THANH ĐIỀU KHIỂN QUYẾT TOÁN (DESKTOP SLIM + MOBILE COMPACT)
          ===================================================================== */}
-      <div className="rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#111827] p-3.5 sm:p-5 shadow-xs space-y-3.5">
-        <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2
-                className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white tracking-tight"
-                data-testid="settlement-header-title"
-              >
-                Tổng hợp kỳ &amp; Quyết toán
-              </h2>
-              <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800 px-2.5 py-0.5 text-[11px] font-bold text-blue-700 dark:text-blue-300">
+      <div className="rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#111827] p-2.5 sm:p-3.5 shadow-2xs space-y-2.5">
+        {/* DESKTOP CONTROL TOOLBAR (>= md) — Title & Building Scope reside in DesktopHeader */}
+        <div className="hidden md:block space-y-2.5">
+          {/* Row 1: Period + Automation Mode | Primary & Bulk Actions */}
+          <div className="flex flex-wrap items-center justify-between gap-2.5">
+            <div className="flex flex-wrap items-center gap-2 min-w-0">
+              {/* Month / Year Picker */}
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  aria-label="Kỳ trước"
+                  onClick={() => onChangePeriod(shiftPeriodKey(selectedPeriod, -1))}
+                  className="inline-flex h-9 w-8 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <label className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 text-xs font-bold text-slate-900 dark:text-white">
+                  <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Kỳ {formatPeriodDisplay(selectedPeriod)}</span>
+                  <input
+                    data-testid="input-module-period"
+                    type="month"
+                    value={selectedPeriod}
+                    onChange={(e) => {
+                      if (/^\d{4}-\d{2}$/.test(e.target.value)) {
+                        onChangePeriod(e.target.value);
+                      }
+                    }}
+                    className="sr-only"
+                  />
+                </label>
+                <button
+                  type="button"
+                  aria-label="Kỳ sau"
+                  onClick={() => onChangePeriod(shiftPeriodKey(selectedPeriod, 1))}
+                  className="inline-flex h-9 w-8 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+
+              <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800 px-2.5 py-1 text-[11px] font-bold text-blue-700 dark:text-blue-300">
                 <Sparkles className="w-3 h-3" />
                 {automationPolicy.mode === 'AUTO_FULL'
                   ? 'Chế độ B: Tự động hoàn toàn'
@@ -833,107 +862,274 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                   : 'Chế độ A: Tự động nháp – Chờ duyệt'}
               </span>
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Kiểm tra chi phí, lập hóa đơn và theo dõi thanh toán theo kỳ.
-            </p>
+
+            {/* Primary / Secondary / Tertiary Action Hierarchy */}
+            <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
+              <button
+                type="button"
+                data-testid="btn-settlement-refresh"
+                onClick={() => void onRefresh()}
+                disabled={isLoading || isMutating}
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors whitespace-nowrap"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+                <span>Làm mới</span>
+              </button>
+
+              {canManageSettlements && (
+                <SettlementShimmerButton
+                  type="button"
+                  data-testid="btn-settlement-bulk-approve"
+                  isLoading={isMutating}
+                  loadingText="Đang duyệt..."
+                  shimmerColor="#4f46e5"
+                  disabled={dynamicProgress.completeDataCount === 0}
+                  onClick={() => void handleApproveObligations(selectedKeys, 'APPROVE')}
+                  className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/90 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 px-3 py-1.5 text-xs font-bold transition-colors disabled:opacity-50"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>
+                    Phê duyệt hàng loạt
+                    {selectedKeys.length > 0 ? ` (${selectedKeys.length})` : ''}
+                  </span>
+                </SettlementShimmerButton>
+              )}
+
+              {canManageInvoices && (
+                <SettlementShimmerButton
+                  type="button"
+                  data-testid="btn-settlement-bulk-issue-send"
+                  isLoading={isMutating}
+                  loadingText="Đang gửi..."
+                  shimmerColor="#059669"
+                  disabled={dynamicKpis.readyInvoicesCount === 0}
+                  onClick={() => void handleIssueAndSend(selectedKeys)}
+                  className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/90 dark:bg-emerald-950/60 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 px-3 py-1.5 text-xs font-bold transition-colors disabled:opacity-50"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>
+                    Phát hành &amp; gửi
+                    {selectedKeys.length > 0 ? ` (${selectedKeys.length})` : ''}
+                  </span>
+                </SettlementShimmerButton>
+              )}
+
+              {canManageSettlements && (
+                <SettlementShimmerButton
+                  type="button"
+                  data-testid="btn-settlement-compile-primary"
+                  isLoading={isMutating}
+                  loadingText="Đang tổng hợp..."
+                  onClick={() => void handleCompilePeriod()}
+                  className="inline-flex min-h-9 items-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-1.5 text-xs font-extrabold shadow-xs transition-colors disabled:opacity-50"
+                >
+                  <ClipboardCheck className="w-3.5 h-3.5" />
+                  <span>Tổng hợp kỳ</span>
+                </SettlementShimmerButton>
+              )}
+
+              <ActionMenu
+                items={[
+                  {
+                    label: `Xuất bảng quyết toán (${selectedPeriod}.csv)`,
+                    icon: <FileSpreadsheet className="w-4 h-4 text-emerald-600" />,
+                    onClick: () => exportSettlementCsv(filteredRows, selectedPeriod),
+                  },
+                  {
+                    label: 'Khóa sổ kỳ & Lịch sử khóa sổ',
+                    icon: <Lock className="w-4 h-4 text-amber-600" />,
+                    onClick: () => setLockModalOpen(true),
+                  },
+                  ...(canManageSettlements
+                    ? [
+                        {
+                          label: 'Chế độ A: Tự động tạo nháp – Chờ duyệt',
+                          icon: <ShieldCheck className="w-4 h-4 text-blue-600" />,
+                          onClick: () => void handleUpdateAutomationMode('AUTO_DRAFT_WAIT_APPROVAL'),
+                        },
+                        {
+                          label: 'Chế độ B: Tự động hoàn toàn (Phát hành & Gửi)',
+                          icon: <Sparkles className="w-4 h-4 text-indigo-600" />,
+                          onClick: () => void handleUpdateAutomationMode('AUTO_FULL'),
+                        },
+                        {
+                          label: 'Chế độ C: Vận hành thủ công',
+                          icon: <Settings2 className="w-4 h-4 text-slate-600" />,
+                          onClick: () => void handleUpdateAutomationMode('MANUAL'),
+                        },
+                      ]
+                    : []),
+                ]}
+              />
+            </div>
           </div>
 
-          {/* Primary / Secondary / Tertiary Action Hierarchy */}
-          <div className="flex flex-wrap items-center xl:justify-end gap-2 shrink-0">
-            {/* Tertiary: Làm mới dữ liệu */}
-            <button
-              type="button"
-              data-testid="btn-settlement-refresh"
-              onClick={() => void onRefresh()}
-              disabled={isLoading || isMutating}
-              className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 px-2.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors whitespace-nowrap"
+          {/* Row 2: Compact Filter Bar */}
+          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800/80">
+            {availableBuildings.length > 1 && (
+              <select
+                aria-label="Lọc nhanh tòa có phát sinh"
+                data-testid="select-settlement-building-filter"
+                value={buildingFilter}
+                onChange={(e) => {
+                  setBuildingFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="h-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 text-xs font-semibold text-slate-800 dark:text-slate-200"
+              >
+                <option value="ALL">Mọi tòa phát sinh ({availableBuildings.length})</option>
+                {availableBuildings.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.code} — {b.name}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            <select
+              aria-label="Phương thức tính nước"
+              data-testid="select-settlement-water-filter"
+              value={waterModeFilter}
+              onChange={(e) => {
+                setWaterModeFilter(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="h-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 text-xs font-semibold text-slate-800 dark:text-slate-200"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-              <span className="hidden sm:inline">Làm mới</span>
-            </button>
+              <option value="ALL">Mọi phương thức nước</option>
+              <option value="PER_M3">Nước theo khối (m³)</option>
+              <option value="PER_PERSON">Nước theo đầu người</option>
+              <option value="FIXED_PER_ROOM">Nước khoán phòng</option>
+            </select>
 
-            {/* Secondary: Phê duyệt hàng loạt */}
+            <div className="relative flex-1 min-w-[220px]">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="search"
+                data-testid="input-settlement-search"
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setCurrentPage(1);
+                }}
+                placeholder="Tìm mã phòng, tên khách, SĐT, mã hợp đồng, mã HĐ..."
+                className="h-9 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-8 pr-3 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:border-blue-500 focus:bg-white dark:focus:bg-slate-900 focus:outline-none"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* MOBILE COMPACT CONTROL TOOLBAR (< md) — Title & Building Scope live in MobileHeader */}
+        <div className="md:hidden space-y-2">
+          {/* Row 1: Period Picker + Primary CTA + Action Overflow */}
+          <div className="flex items-center gap-1.5">
+            <div className="flex flex-1 min-w-0 items-center gap-1">
+              <button
+                type="button"
+                aria-label="Kỳ trước"
+                onClick={() => onChangePeriod(shiftPeriodKey(selectedPeriod, -1))}
+                className="inline-flex h-9 w-8 shrink-0 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <label className="inline-flex flex-1 min-w-0 h-9 cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 text-xs font-bold text-slate-900 dark:text-white">
+                <Calendar className="w-3.5 h-3.5 shrink-0 text-blue-600" />
+                <span className="whitespace-nowrap">
+                  T{selectedPeriod.slice(5)}/{selectedPeriod.slice(0, 4)}
+                </span>
+                <input
+                  data-testid="mobile-period-input"
+                  type="month"
+                  value={selectedPeriod}
+                  onChange={(e) => {
+                    if (/^\d{4}-\d{2}$/.test(e.target.value)) {
+                      onChangePeriod(e.target.value);
+                    }
+                  }}
+                  className="sr-only"
+                />
+              </label>
+              <button
+                type="button"
+                aria-label="Kỳ sau"
+                onClick={() => onChangePeriod(shiftPeriodKey(selectedPeriod, 1))}
+                className="inline-flex h-9 w-8 shrink-0 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+
             {canManageSettlements && (
               <SettlementShimmerButton
                 type="button"
-                data-testid="btn-settlement-bulk-approve"
+                data-testid="mobile-btn-compile"
                 isLoading={isMutating}
-                loadingText="Đang duyệt..."
-                shimmerColor="#4f46e5"
-                disabled={dynamicProgress.completeDataCount === 0}
-                onClick={() => void handleApproveObligations(selectedKeys, 'APPROVE')}
-                className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/90 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 px-3.5 py-2 text-xs font-bold transition-colors disabled:opacity-50"
-              >
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span>
-                  Phê duyệt hàng loạt
-                  {selectedKeys.length > 0 ? ` (${selectedKeys.length})` : ''}
-                </span>
-              </SettlementShimmerButton>
-            )}
-
-            {/* Secondary: Phát hành & gửi */}
-            {canManageInvoices && (
-              <SettlementShimmerButton
-                type="button"
-                data-testid="btn-settlement-bulk-issue-send"
-                isLoading={isMutating}
-                loadingText="Đang gửi..."
-                shimmerColor="#059669"
-                disabled={dynamicKpis.readyInvoicesCount === 0}
-                onClick={() => void handleIssueAndSend(selectedKeys)}
-                className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/90 dark:bg-emerald-950/60 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 px-3.5 py-2 text-xs font-bold transition-colors disabled:opacity-50"
-              >
-                <Send className="w-3.5 h-3.5" />
-                <span>
-                  Phát hành &amp; gửi
-                  {selectedKeys.length > 0 ? ` (${selectedKeys.length})` : ''}
-                </span>
-              </SettlementShimmerButton>
-            )}
-
-            {/* Primary: Tổng hợp kỳ */}
-            {canManageSettlements && (
-              <SettlementShimmerButton
-                type="button"
-                data-testid="btn-settlement-compile-primary"
-                isLoading={isMutating}
-                loadingText="Đang tổng hợp..."
+                loadingText="Đang tính..."
                 onClick={() => void handleCompilePeriod()}
-                className="inline-flex min-h-10 items-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 text-xs font-extrabold shadow-xs transition-colors disabled:opacity-50"
+                className="inline-flex h-9 shrink-0 items-center gap-1 rounded-xl bg-blue-600 hover:bg-blue-700 text-white px-2.5 text-xs font-extrabold shadow-xs disabled:opacity-50"
               >
                 <ClipboardCheck className="w-3.5 h-3.5" />
-                <span>Tổng hợp kỳ</span>
+                <span>Tổng hợp</span>
               </SettlementShimmerButton>
             )}
 
-            {/* More Actions Menu (Xuất CSV/Excel, Khóa sổ kỳ, Chế độ tự động) */}
             <ActionMenu
               items={[
                 {
-                  label: `Xuất bảng quyết toán (${selectedPeriod}.csv)`,
+                  label: 'Làm mới dữ liệu',
+                  icon: <RefreshCw className="w-4 h-4 text-slate-600" />,
+                  onClick: () => void onRefresh(),
+                },
+                ...(canManageSettlements
+                  ? [
+                      {
+                        label: `Phê duyệt hàng loạt${selectedKeys.length > 0 ? ` (${selectedKeys.length})` : ''}`,
+                        icon: <ShieldCheck className="w-4 h-4 text-indigo-600" />,
+                        onClick: () => {
+                          if (dynamicProgress.completeDataCount > 0) {
+                            void handleApproveObligations(selectedKeys, 'APPROVE');
+                          }
+                        },
+                      },
+                    ]
+                  : []),
+                ...(canManageInvoices
+                  ? [
+                      {
+                        label: `Phát hành & gửi${selectedKeys.length > 0 ? ` (${selectedKeys.length})` : ''}`,
+                        icon: <Send className="w-4 h-4 text-emerald-600" />,
+                        onClick: () => {
+                          if (dynamicKpis.readyInvoicesCount > 0) {
+                            void handleIssueAndSend(selectedKeys);
+                          }
+                        },
+                      },
+                    ]
+                  : []),
+                {
+                  label: `Xuất CSV (${selectedPeriod})`,
                   icon: <FileSpreadsheet className="w-4 h-4 text-emerald-600" />,
                   onClick: () => exportSettlementCsv(filteredRows, selectedPeriod),
                 },
                 {
-                  label: 'Khóa sổ kỳ & Lịch sử khóa sổ',
+                  label: 'Khóa sổ kỳ & Lịch sử',
                   icon: <Lock className="w-4 h-4 text-amber-600" />,
                   onClick: () => setLockModalOpen(true),
                 },
                 ...(canManageSettlements
                   ? [
                       {
-                        label: 'Chế độ A: Tự động tạo nháp – Chờ duyệt',
+                        label: 'Chế độ A: Tự động nháp',
                         icon: <ShieldCheck className="w-4 h-4 text-blue-600" />,
                         onClick: () => void handleUpdateAutomationMode('AUTO_DRAFT_WAIT_APPROVAL'),
                       },
                       {
-                        label: 'Chế độ B: Tự động hoàn toàn (Phát hành & Gửi)',
+                        label: 'Chế độ B: Tự động hoàn toàn',
                         icon: <Sparkles className="w-4 h-4 text-indigo-600" />,
                         onClick: () => void handleUpdateAutomationMode('AUTO_FULL'),
                       },
                       {
-                        label: 'Chế độ C: Vận hành thủ công',
+                        label: 'Chế độ C: Thủ công',
                         icon: <Settings2 className="w-4 h-4 text-slate-600" />,
                         onClick: () => void handleUpdateAutomationMode('MANUAL'),
                       },
@@ -942,101 +1138,72 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
               ]}
             />
           </div>
-        </div>
 
-        {/* Filter Bar Row */}
-        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800/80">
-          {/* Month / Year Picker */}
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              aria-label="Kỳ trước"
-              onClick={() => onChangePeriod(shiftPeriodKey(selectedPeriod, -1))}
-              className="inline-flex h-10 w-9 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <label className="inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 text-xs font-bold text-slate-900 dark:text-white">
-              <Calendar className="w-3.5 h-3.5 text-blue-600" />
-              <span>Kỳ {formatPeriodDisplay(selectedPeriod)}</span>
+          {/* Row 2: Search + Water Filter */}
+          <div className="flex items-center gap-1.5">
+            <div className="relative flex-1 min-w-0">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
-                data-testid="input-module-period"
-                type="month"
-                value={selectedPeriod}
+                type="search"
+                data-testid="mobile-search-input"
+                value={searchQuery}
                 onChange={(e) => {
-                  if (/^\d{4}-\d{2}$/.test(e.target.value)) {
-                    onChangePeriod(e.target.value);
-                  }
+                  setSearchQuery(e.target.value);
+                  setCurrentPage(1);
                 }}
-                className="sr-only"
+                placeholder="Tìm phòng, tên khách, SĐT..."
+                className="h-9 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-8 pr-2.5 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:border-blue-500 focus:bg-white dark:focus:bg-slate-900 focus:outline-none"
               />
-            </label>
-            <button
-              type="button"
-              aria-label="Kỳ sau"
-              onClick={() => onChangePeriod(shiftPeriodKey(selectedPeriod, 1))}
-              className="inline-flex h-10 w-9 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* Global BuildingScopeSelector + Local Building Filter */}
-          <div className="hidden md:block">
-            <BuildingScopeSelector />
-          </div>
-
-          {availableBuildings.length > 1 && (
+            </div>
             <select
-              aria-label="Lọc nhanh tòa có phát sinh"
-              data-testid="select-settlement-building-filter"
-              value={buildingFilter}
+              aria-label="Phương thức tính nước"
+              data-testid="mobile-water-filter"
+              value={waterModeFilter}
               onChange={(e) => {
-                setBuildingFilter(e.target.value);
+                setWaterModeFilter(e.target.value);
                 setCurrentPage(1);
               }}
-              className="h-10 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 text-xs font-semibold text-slate-800 dark:text-slate-200"
+              className="h-9 w-[122px] shrink-0 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 text-[11.5px] font-semibold text-slate-800 dark:text-slate-200"
             >
-              <option value="ALL">Mọi tòa phát sinh ({availableBuildings.length})</option>
-              {availableBuildings.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.code} — {b.name}
-                </option>
-              ))}
+              <option value="ALL">Nước: Tất cả</option>
+              <option value="PER_M3">Theo khối m³</option>
+              <option value="PER_PERSON">Đầu người</option>
+              <option value="FIXED_PER_ROOM">Khoán phòng</option>
             </select>
-          )}
+          </div>
 
-          {/* Advanced Water Method Filter */}
-          <select
-            aria-label="Phương thức tính nước"
-            data-testid="select-settlement-water-filter"
-            value={waterModeFilter}
-            onChange={(e) => {
-              setWaterModeFilter(e.target.value);
-              setCurrentPage(1);
-            }}
-            className="h-10 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 text-xs font-semibold text-slate-800 dark:text-slate-200"
-          >
-            <option value="ALL">Mọi phương thức nước</option>
-            <option value="PER_M3">Nước theo khối (m³)</option>
-            <option value="PER_PERSON">Nước theo đầu người</option>
-            <option value="FIXED_PER_ROOM">Nước khoán phòng</option>
-          </select>
-
-          {/* Search Input */}
-          <div className="relative flex-1 min-w-[200px]">
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input
-              type="search"
-              data-testid="input-settlement-search"
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setCurrentPage(1);
-              }}
-              placeholder="Tìm mã phòng, tên khách, SĐT, mã hợp đồng, mã HĐ..."
-              className="h-10 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-8 pr-3 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:border-blue-500 focus:bg-white dark:focus:bg-slate-900 focus:outline-none"
-            />
+          {/* Compact Mode + Quick Status Line */}
+          <div className="flex items-center justify-between gap-2 px-0.5 text-[11px]">
+            <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800 px-2 py-0.5 text-[10.5px] font-bold text-blue-700 dark:text-blue-300 truncate">
+              <Sparkles className="w-3 h-3 shrink-0" />
+              {automationPolicy.mode === 'AUTO_FULL'
+                ? 'Chế độ B: Tự động hoàn toàn'
+                : automationPolicy.mode === 'MANUAL'
+                ? 'Chế độ C: Thủ công'
+                : 'Chế độ A: Tự động nháp'}
+            </span>
+            {availableBuildings.length > 1 ? (
+              <select
+                aria-label="Lọc nhanh tòa có phát sinh"
+                value={buildingFilter}
+                onChange={(e) => {
+                  setBuildingFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="h-6 max-w-[140px] rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-1.5 text-[10.5px] font-semibold text-slate-700 dark:text-slate-200"
+              >
+                <option value="ALL">Mọi tòa ({availableBuildings.length})</option>
+                {availableBuildings.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.code}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span className="text-[10.5px] font-medium text-slate-400 shrink-0">
+                {roomGroups.length} phòng kỳ {formatPeriodDisplay(selectedPeriod)}
+              </span>
+            )}
           </div>
         </div>
 
@@ -1075,7 +1242,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
           PART B — 6 KPI TÀI CHÍNH VÀ TIẾN ĐỘ (Section 3.2 - Compact Flat Strip)
          ===================================================================== */}
       <div
-        className="rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#111827] shadow-2xs grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-y sm:divide-y-0 sm:divide-x divide-slate-100 dark:divide-slate-800/80 overflow-hidden"
+        className="rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/80 shadow-2xs grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-px overflow-hidden [&>div]:bg-white dark:[&>div]:bg-[#111827] [&>div]:px-3 [&>div]:py-2 sm:[&>div]:px-3.5 sm:[&>div]:py-2.5"
         data-testid="settlement-kpi-grid"
       >
         {/* KPI 1: Tổng dự kiến kỳ */}
@@ -1179,17 +1346,21 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
           PART C — THANH TIẾN ĐỘ QUYẾT TOÁN KỲ (Section 3.3)
          ===================================================================== */}
       <div
-        className="rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#111827] p-3.5 sm:p-4 shadow-2xs space-y-3"
+        className="rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#111827] p-3 sm:p-4 shadow-2xs space-y-2.5"
         data-testid="settlement-progress-bar-section"
       >
-        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-          <div className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
-            <span>Tiến độ hoàn thiện dữ liệu &amp; quyết toán kỳ {selectedPeriod}</span>
-            <span className="font-mono text-[11px] text-blue-600 dark:text-blue-400">
+        <div className="flex items-center justify-between gap-2 text-xs">
+          <div className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2 min-w-0">
+            <span className="sm:hidden truncate">Tiến độ kỳ {formatPeriodDisplay(selectedPeriod)}</span>
+            <span className="hidden sm:inline truncate">Tiến độ hoàn thiện dữ liệu &amp; quyết toán kỳ {selectedPeriod}</span>
+            <span className="hidden sm:inline font-mono text-[11px] text-blue-600 dark:text-blue-400 shrink-0">
               ({completionPercent}% đủ dữ liệu)
             </span>
           </div>
-          <span className="text-[11px] text-slate-500">
+          <span className="sm:hidden font-mono text-[11px] font-bold text-blue-600 dark:text-blue-400 shrink-0 whitespace-nowrap">
+            {completionPercent}% đủ dữ liệu
+          </span>
+          <span className="hidden sm:inline text-[11px] text-slate-500 shrink-0">
             Nhấn vào từng chỉ số để lọc nhanh danh sách phòng bên dưới
           </span>
         </div>
@@ -1203,7 +1374,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
         />
 
         {/* 8 Interactive Status Pills (Independent dimensions, never falsely summed) */}
-        <div className="flex items-center sm:flex-wrap gap-1.5 overflow-x-auto pb-0.5">
+        <div className="flex items-center sm:flex-wrap gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {[
             { id: 'ALL' as QuickFilterTabId, label: 'Tổng phòng có nghĩa vụ', count: dynamicProgress.totalObligations },
             { id: 'COMPLETE_DATA' as QuickFilterTabId, label: 'Đủ dữ liệu', count: dynamicProgress.completeDataCount },
@@ -1247,83 +1418,13 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
       </div>
 
       {/* =====================================================================
-          PART D — TRUNG TÂM CẢNH BÁO VÀ XỬ LÝ NGOẠI LỆ (Section 3.4)
-         ===================================================================== */}
-      {scopedAlerts.length > 0 && (
-        <div
-          className="rounded-2xl border border-amber-200/90 dark:border-amber-900/70 bg-amber-50/60 dark:bg-amber-950/20 p-3.5 sm:p-4 space-y-2.5"
-          data-testid="settlement-exception-center"
-        >
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 text-xs font-bold text-amber-900 dark:text-amber-200">
-              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-              <span>
-                Trung tâm cảnh báo &amp; xử lý ngoại lệ ({scopedAlerts.length} mục cần kiểm tra trước khi phát hành)
-              </span>
-            </div>
-            {scopedAlerts.length > 4 && (
-              <button
-                type="button"
-                onClick={() => setQuickTab('MISSING_DATA')}
-                className="text-[11px] font-bold text-amber-800 dark:text-amber-300 hover:underline"
-              >
-                Lọc tất cả phòng cần bổ sung →
-              </button>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
-            {scopedAlerts.slice(0, 6).map((alert) => {
-              const targetRow = rawRows.find((r) => r.obligationKey === alert.obligationKey);
-              return (
-                <div
-                  key={alert.id}
-                  data-testid={`settlement-alert-${alert.roomCode}`}
-                  className="flex items-center justify-between gap-2.5 rounded-xl border border-amber-200/80 dark:border-amber-800/60 bg-white dark:bg-slate-900 p-2.5 text-xs shadow-2xs"
-                >
-                  <div className="min-w-0">
-                    <div className="font-bold text-slate-900 dark:text-white truncate">
-                      {alert.title}
-                    </div>
-                    <div className="text-[11px] text-slate-500 truncate">
-                      {alert.description}
-                    </div>
-                  </div>
-                  {targetRow && (
-                    <button
-                      type="button"
-                      data-testid={`alert-action-${alert.roomCode}`}
-                      onClick={() => {
-                        if (alert.actionType === 'INPUT_WATER') {
-                          openQuickInput(targetRow, 'WATER');
-                        } else if (alert.actionType === 'INPUT_ELECTRIC') {
-                          openQuickInput(targetRow, 'ELECTRIC');
-                        } else if (alert.actionType === 'OPEN_DELIVERY_TAB') {
-                          openDrawerForRow(targetRow, 'DELIVERY');
-                        } else {
-                          openDrawerForRow(targetRow, 'FEES');
-                        }
-                      }}
-                      className="shrink-0 rounded-lg bg-amber-600 hover:bg-amber-700 px-2.5 py-1.5 text-[11px] font-bold text-white transition-colors"
-                    >
-                      {alert.actionLabel}
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* =====================================================================
           SECTION 4 — BẢNG QUYẾT TOÁN PHÒNG TRUNG TÂM (DESKTOP) & CARDS (MOBILE)
          ===================================================================== */}
       <div className="rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#111827] shadow-xs overflow-hidden">
         {/* Table Toolbar: Quick Filter Tabs + Sort + Column Selector */}
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 px-3.5 sm:px-4 py-3">
+        <div className="flex flex-wrap lg:flex-nowrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 px-3 sm:px-4 py-2.5">
           {/* Quick Filter Tabs (Section 4.3) */}
-          <div className="flex items-center gap-1 overflow-x-auto pb-0.5" role="tablist">
+          <div className="flex items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden min-w-0" role="tablist">
             {[
               { id: 'ALL' as QuickFilterTabId, label: 'Tất cả', count: dynamicProgress.totalObligations },
               { id: 'MISSING_DATA' as QuickFilterTabId, label: 'Cần bổ sung', count: dynamicProgress.missingDataCount },
@@ -1345,7 +1446,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                     setQuickTab(tab.id);
                     setCurrentPage(1);
                   }}
-                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-colors min-h-9 ${
+                  className={`inline-flex shrink-0 items-center gap-1 rounded-xl px-2.5 py-1 text-[11.5px] font-bold transition-colors min-h-8 ${
                     active
                       ? 'bg-slate-900 text-white dark:bg-blue-600'
                       : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -1353,7 +1454,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                 >
                   <span>{tab.label}</span>
                   <span
-                    className={`rounded-full px-1.5 py-0.2 font-mono text-[10.5px] ${
+                    className={`rounded-full px-1.5 py-0.2 font-mono text-[10px] ${
                       active
                         ? 'bg-white/20 text-white'
                         : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
@@ -1367,11 +1468,11 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
           </div>
 
           {/* Sort & Column Visibility Controls (Desktop) */}
-          <div className="hidden md:flex items-center gap-2 relative">
+          <div className="hidden md:flex items-center gap-1.5 relative shrink-0">
             <button
               type="button"
               onClick={() => toggleSort('TOTAL_PAYABLE')}
-              className="inline-flex h-9 items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100"
+              className="inline-flex h-8 items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 text-[11.5px] font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 whitespace-nowrap"
             >
               <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
               <span>Sắp xếp: {sortField === 'TOTAL_PAYABLE' ? 'Tổng tiền' : sortField === 'STATUS' ? 'Trạng thái' : 'Mã phòng'}</span>
@@ -1381,7 +1482,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
               type="button"
               data-testid="btn-settlement-column-selector"
               onClick={() => setShowColMenu((v) => !v)}
-              className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100"
+              className="inline-flex h-8 items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 text-[11.5px] font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 whitespace-nowrap"
             >
               <Columns3 className="w-3.5 h-3.5 text-slate-400" />
               <span>Bộ chọn cột</span>

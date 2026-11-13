@@ -17,6 +17,7 @@ import {
 import { usePortfolio } from '@/app/providers/PortfolioContext';
 import { useAuth } from '@/app/providers/AuthContext';
 import { useTheme } from '@/app/providers/ThemeContext';
+import { BuildingScopeSelector } from '@/shared/ui/BuildingScopeSelector';
 import { useSidebar } from '@/shared/ui/animate-sidebar';
 import {
   Tooltip,
@@ -26,7 +27,6 @@ import {
 
 export const DesktopHeader: React.FC = () => {
   const {
-    activeModule,
     setActiveModule,
     currentNavConfig,
     activeSubBreadcrumb,
@@ -98,7 +98,7 @@ export const DesktopHeader: React.FC = () => {
       data-testid="console-desktop-header"
       className="sticky top-0 z-20 flex h-16 w-full shrink-0 items-center justify-between bg-white dark:bg-[#111827] px-4 lg:px-6 backdrop-blur-md select-none transition-colors"
     >
-      {/* ZONE 1 (LEFT): Sidebar Toggle */}
+      {/* ZONE 1 (LEFT): Sidebar Toggle + Active Tab Title */}
       <div className="flex items-center gap-3 flex-1 justify-start min-w-0">
         {/* Sidebar Toggle Button (44x44px minimum target) */}
         <Tooltip side="bottom" sideOffset={6} align="start">
@@ -112,7 +112,7 @@ export const DesktopHeader: React.FC = () => {
               aria-controls="console-desktop-sidebar-panel"
               aria-label={`${isExpanded ? 'Thu gọn' : 'Mở rộng'} thanh điều hướng (Ctrl+B)`}
               onClick={toggleSidebar}
-              className="inline-flex h-11 w-11 min-w-[44px] min-h-[44px] items-center justify-center rounded-xl border border-slate-200/90 dark:border-slate-700/80 bg-white dark:bg-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 shadow-2xs transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/50"
+              className="inline-flex h-11 w-11 min-w-[44px] min-h-[44px] shrink-0 items-center justify-center rounded-xl border border-slate-200/90 dark:border-slate-700/80 bg-white dark:bg-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 shadow-2xs transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/50"
             >
               <span data-testid="console-sidebar-trigger" className="sr-only">
                 {isExpanded ? 'Thu gọn' : 'Mở rộng'} thanh điều hướng
@@ -126,21 +126,24 @@ export const DesktopHeader: React.FC = () => {
           </TooltipContent>
         </Tooltip>
 
-        {/* Header Title & Breadcrumb for screen readers & test query */}
-        <span data-testid="console-header-title" className="sr-only">
+        {/* Visible Active Tab Title beside the 3-bar sidebar button */}
+        <h1
+          data-testid="console-header-title"
+          className="text-[15px] font-extrabold tracking-tight text-slate-900 dark:text-white truncate"
+        >
           {activeSubBreadcrumb
             ? `${currentNavConfig.label} - ${activeSubBreadcrumb}`
             : currentNavConfig.label}
-        </span>
+        </h1>
       </div>
 
       {/* ZONE 2 (CENTER): Global Command Search Bar (Ctrl+K) */}
-      <div className="flex-1 flex items-center justify-center max-w-xl mx-auto px-2">
+      <div className="flex-1 flex items-center justify-center max-w-md mx-auto px-2">
         <button
           type="button"
           data-testid="console-global-search-trigger"
           onClick={() => setIsSearchOpen(true)}
-          className="inline-flex h-10 w-full max-w-[440px] items-center gap-2.5 rounded-full border border-slate-200/90 dark:border-slate-700/80 bg-slate-50/90 dark:bg-slate-800/60 px-4 text-xs text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-800 dark:hover:text-slate-200 transition-all shadow-2xs text-left cursor-pointer"
+          className="inline-flex h-10 w-full max-w-[360px] items-center gap-2.5 rounded-full border border-slate-200/90 dark:border-slate-700/80 bg-slate-50/90 dark:bg-slate-800/60 px-4 text-xs text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-800 dark:hover:text-slate-200 transition-all shadow-2xs text-left cursor-pointer"
           title="Tìm kiếm nhanh toàn hệ thống (Ctrl + K)"
         >
           <Search className="h-4 w-4 shrink-0 text-slate-400" />
@@ -151,8 +154,10 @@ export const DesktopHeader: React.FC = () => {
         </button>
       </div>
 
-      {/* ZONE 3 (RIGHT): Notifications + Profile Admin */}
+      {/* ZONE 3 (RIGHT): Building Scope + Notifications + Profile Admin */}
       <div className="flex flex-1 items-center justify-end gap-2.5 shrink-0">
+        {currentNavConfig.supportsBuildingScope && <BuildingScopeSelector />}
+
         {/* Notifications Bell */}
         <div ref={notifRef} className="relative">
           <Tooltip side="bottom" sideOffset={6} align="end">

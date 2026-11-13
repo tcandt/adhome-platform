@@ -9,7 +9,6 @@ import type {
 } from "@/shared/types/portfolio";
 import { BuildingDirectory } from "./BuildingDirectory";
 import { TenantsDirectoryView } from "./TenantsDirectoryView";
-import { BuildingScopeSelector } from "@/shared/ui/BuildingScopeSelector";
 import { CreateFloorModal } from "./modals/CreateFloorModal";
 import { CreateRoomModal } from "./modals/CreateRoomModal";
 import { EditBuildingModal } from "./modals/EditBuildingModal";
@@ -85,9 +84,6 @@ export const BuildingWorkspace: React.FC = () => {
       className="flex flex-col gap-2 md:gap-3"
       data-testid="console-buildings-workspace"
     >
-      <div className="hidden justify-end md:flex">
-        <BuildingScopeSelector />
-      </div>
       {/* Building operations and tenant directory */}
       <div className="relative flex items-center justify-center">
         <div

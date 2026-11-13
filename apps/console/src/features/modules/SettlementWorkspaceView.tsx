@@ -2682,10 +2682,12 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
       >
         <Dialog.Portal>
           <Dialog.Backdrop className="fixed inset-0 z-50 bg-slate-950/50 backdrop-blur-[2px]" />
-          <Dialog.Popup
-            data-testid="settlement-quick-input-modal"
-            className="fixed left-1/2 top-1/2 z-50 w-[min(92vw,440px)] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0F172A] p-5 shadow-2xl space-y-4"
-          >
+          <Dialog.Viewport className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+            <Dialog.Popup
+              from="bottom"
+              data-testid="settlement-quick-input-modal"
+              className="relative max-h-[calc(100dvh-1.5rem)] w-full max-w-[440px] overflow-y-auto rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0F172A] p-5 shadow-2xl outline-none space-y-4"
+            >
             {quickInputModal.row && (
               <>
                 <div className="flex items-center justify-between">
@@ -2843,7 +2845,8 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                 </div>
               </>
             )}
-          </Dialog.Popup>
+            </Dialog.Popup>
+          </Dialog.Viewport>
         </Dialog.Portal>
       </Dialog.Root>
 
@@ -2853,10 +2856,12 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
       <Dialog.Root open={lockModalOpen} onOpenChange={setLockModalOpen}>
         <Dialog.Portal>
           <Dialog.Backdrop className="fixed inset-0 z-50 bg-slate-950/50 backdrop-blur-[2px]" />
-          <Dialog.Popup
-            data-testid="settlement-lock-period-modal"
-            className="fixed left-1/2 top-1/2 z-50 w-[min(94vw,540px)] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0F172A] p-5 shadow-2xl space-y-4"
-          >
+          <Dialog.Viewport className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+            <Dialog.Popup
+              from="bottom"
+              data-testid="settlement-lock-period-modal"
+              className="relative max-h-[calc(100dvh-1.5rem)] w-full max-w-[540px] overflow-y-auto rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0F172A] p-5 shadow-2xl outline-none space-y-4"
+            >
             <div className="flex items-center justify-between">
               <Dialog.Title className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <Lock className="w-4 h-4 text-amber-500" />
@@ -2940,7 +2945,8 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                 />
               </div>
             )}
-          </Dialog.Popup>
+            </Dialog.Popup>
+          </Dialog.Viewport>
         </Dialog.Portal>
       </Dialog.Root>
 

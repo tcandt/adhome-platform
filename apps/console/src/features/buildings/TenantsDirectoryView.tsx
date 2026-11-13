@@ -4,9 +4,7 @@ import {
   AlertCircle,
   Building2,
   Calendar,
-  Check,
   CheckCircle2,
-  Copy,
   Edit3,
   FileSignature,
   Home,
@@ -27,12 +25,6 @@ import { usePortfolio } from '@/app/providers/PortfolioContext';
 import type { ConsoleTenantDto } from '@/shared/types/portfolio';
 import { tenantDirectory } from '@/shared/data/tenantDirectory';
 import { Button } from '@animate-ui/react/primitives/buttons/button';
-
-export function formatTenantProfileId(tenant: Pick<ConsoleTenantDto, 'id'>): string {
-  const clean = tenant.id.replace(/^occupant:/, '').replace(/[^a-zA-Z0-9]/g, '');
-  const code = clean.slice(0, 6).toUpperCase() || '000000';
-  return `KH-${code}`;
-}
 
 export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void }> = ({ onOpenRoom }) => {
   const { hasCapability } = useAuth();
@@ -57,7 +49,6 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
 
   // Profile detail modal state
   const [detailTenant, setDetailTenant] = useState<ConsoleTenantDto | null>(null);
-  const [copiedId, setCopiedId] = useState(false);
 
   // Edit modal state
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -104,15 +95,12 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
       }
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
-        const profileCode = formatTenantProfileId(t).toLowerCase();
-        const matchProfileCode = profileCode.includes(q) || t.id.toLowerCase().includes(q);
         const matchName = t.fullName.toLowerCase().includes(q);
         const matchPhone = t.phone.toLowerCase().includes(q);
         const matchId = (t.idNumber || '').toLowerCase().includes(q);
         const matchRoom = (t.currentRoomCode || '').toLowerCase().includes(q);
         const matchBuilding = (t.buildingCode || '').toLowerCase().includes(q);
         if (
-          !matchProfileCode &&
           !matchName &&
           !matchPhone &&
           !matchId &&
@@ -127,7 +115,6 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
   }, [tenants, regFilter, searchQuery]);
 
   const openDetailModal = (tenant: ConsoleTenantDto) => {
-    setCopiedId(false);
     setDetailTenant(tenant);
   };
 
@@ -206,21 +193,21 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
   const renderRegBadge = (status: string) => {
     if (status === 'REGISTERED') {
       return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 text-[10.5px] font-semibold text-emerald-700 dark:text-emerald-300">
-          <CheckCircle2 className="h-3 w-3" /> Đã khai báo tạm trú
+        <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-0.5 text-[10.5px] font-semibold text-emerald-700 dark:text-emerald-300">
+          <CheckCircle2 className="h-3 w-3 shrink-0" /> Đã khai báo tạm trú
         </span>
       );
     }
     if (status === 'EXPIRED') {
       return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 dark:bg-rose-950/60 px-2 py-0.5 text-[10.5px] font-semibold text-rose-700 dark:text-rose-300">
-          <AlertCircle className="h-3 w-3" /> Tạm trú hết hạn
+        <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-rose-50 dark:bg-rose-950/60 px-2.5 py-0.5 text-[10.5px] font-semibold text-rose-700 dark:text-rose-300">
+          <AlertCircle className="h-3 w-3 shrink-0" /> Tạm trú hết hạn
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 text-[10.5px] font-semibold text-amber-700 dark:text-amber-300">
-        <UserCheck className="h-3 w-3" /> Chờ khai báo
+      <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-amber-50 dark:bg-amber-950/60 px-2.5 py-0.5 text-[10.5px] font-semibold text-amber-700 dark:text-amber-300">
+        <UserCheck className="h-3 w-3 shrink-0" /> Chờ khai báo
       </span>
     );
   };
@@ -242,7 +229,7 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Tìm ID, tên khách, SĐT, CCCD, mã phòng..."
+              placeholder="Tìm tên khách, SĐT, CCCD, mã phòng..."
               className="h-9 w-full text-xs pl-8 pr-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary"
             />
           </div>
@@ -338,7 +325,6 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
         >
           {filteredTenants.map((t) => {
             const isFocused = focusedTenantId === t.id;
-            const profileCode = formatTenantProfileId(t);
             return (
               <div
                 key={t.id}
@@ -350,19 +336,18 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
                 }`}
               >
                 <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <button
                         type="button"
-                        data-testid={`btn-tenant-id-${t.phone}`}
+                        data-testid={`btn-tenant-name-${t.phone}`}
                         onClick={() => openDetailModal(t)}
-                        className="inline-flex items-center rounded bg-slate-100 hover:bg-blue-50 dark:bg-slate-800 dark:hover:bg-blue-950/60 px-1.5 py-0.5 font-mono text-[10.5px] font-bold text-slate-600 hover:text-brand-primary dark:text-slate-300 transition-colors"
-                        title="Xem chi tiết hồ sơ khách thuê"
+                        className="text-left text-sm font-bold text-slate-900 dark:text-white hover:text-brand-primary dark:hover:text-blue-300 hover:underline underline-offset-2 transition-colors truncate max-w-full"
                       >
-                        {profileCode}
+                        {t.fullName}
                       </button>
                       {t.relationToPrimary && (
-                        <span className="text-[11px] text-slate-500">
+                        <span className="whitespace-nowrap rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">
                           {t.relationToPrimary === 'PRIMARY'
                             ? 'HĐ Chính'
                             : t.relationToPrimary === 'OTHER'
@@ -371,14 +356,6 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
                         </span>
                       )}
                     </div>
-                    <button
-                      type="button"
-                      data-testid={`btn-tenant-name-${t.phone}`}
-                      onClick={() => openDetailModal(t)}
-                      className="text-left text-sm font-bold text-slate-900 dark:text-white hover:text-brand-primary dark:hover:text-blue-300 hover:underline underline-offset-2 transition-colors truncate block max-w-full"
-                    >
-                      {t.fullName}
-                    </button>
                     <div className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500 font-mono">
                       <Phone className="w-3 h-3 shrink-0" /> {t.phone || '—'}
                     </div>
@@ -387,21 +364,21 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 text-xs">
-                  <div>
+                  <div className="min-w-0">
                     <span className="text-[10.5px] text-slate-400 block">
                       Phòng đang ở
                     </span>
-                    <span className="font-bold text-slate-800 dark:text-slate-100">
+                    <span className="font-bold text-slate-800 dark:text-slate-100 truncate block">
                       {t.currentRoomCode
                         ? `${t.buildingCode} · ${t.currentRoomCode}`
                         : t.buildingCode || 'Chưa xếp phòng'}
                     </span>
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <span className="text-[10.5px] text-slate-400 block">
                       Hợp đồng
                     </span>
-                    <span className="font-semibold text-slate-700 dark:text-slate-200">
+                    <span className="font-semibold text-slate-700 dark:text-slate-200 truncate block">
                       {t.activeContractCode || 'Chưa lập HĐ'}
                     </span>
                   </div>
@@ -411,7 +388,7 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
                   <div className="flex justify-end border-t border-slate-100 dark:border-slate-800 pt-2">
                     <Button
                       type="button"
-                      className="inline-flex h-8 items-center gap-1 text-xs font-semibold text-blue-600"
+                      className="inline-flex h-8 items-center gap-1 whitespace-nowrap text-xs font-semibold text-blue-600"
                       onClick={() => t.currentRoomId && onOpenRoom?.(t.currentRoomId)}
                     >
                       <Home size={13} /> Hồ sơ lưu trú
@@ -422,7 +399,7 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
                     <button
                       type="button"
                       onClick={() => openEditModal(t)}
-                      className="h-8 px-2.5 rounded-lg text-[11.5px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 inline-flex items-center gap-1 transition-colors"
+                      className="h-8 px-2.5 rounded-lg text-[11.5px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 inline-flex items-center gap-1 whitespace-nowrap transition-colors"
                     >
                       <Edit3 className="w-3 h-3" /> Sửa hồ sơ
                     </button>
@@ -432,7 +409,7 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
                         setDeleteError(null);
                         setDeletingTenant(t);
                       }}
-                      className="h-8 px-2.5 rounded-lg text-[11.5px] font-semibold bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 text-rose-600 dark:text-rose-300 inline-flex items-center gap-1 transition-colors"
+                      className="h-8 px-2.5 rounded-lg text-[11.5px] font-semibold bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 text-rose-600 dark:text-rose-300 inline-flex items-center gap-1 whitespace-nowrap transition-colors"
                     >
                       <Trash2 className="w-3 h-3" /> Xóa
                     </button>
@@ -450,11 +427,10 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
           <div className="overflow-x-auto">
             <table
               data-testid="tenants-desktop-table"
-              className="w-full text-left text-xs min-w-[780px]"
+              className="w-full text-left text-xs min-w-[920px]"
             >
               <thead>
-                <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50 text-slate-500 font-semibold">
-                  <th className="px-4 py-3">ID Hồ sơ</th>
+                <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50 text-slate-500 font-semibold whitespace-nowrap">
                   <th className="px-4 py-3">Khách thuê &amp; Liên hệ</th>
                   <th className="px-4 py-3">CCCD / Định danh</th>
                   <th className="px-4 py-3">Tòa nhà &amp; Phòng</th>
@@ -466,7 +442,6 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {filteredTenants.map((t) => {
                   const isFocused = focusedTenantId === t.id;
-                  const profileCode = formatTenantProfileId(t);
                   return (
                     <tr
                       key={t.id}
@@ -477,99 +452,97 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
                           : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
                       }`}
                     >
-                      <td className="px-4 py-3.5 align-top whitespace-nowrap">
-                        <button
-                          type="button"
-                          data-testid={`btn-table-tenant-id-${t.phone}`}
-                          onClick={() => openDetailModal(t)}
-                          className="inline-flex items-center rounded-md bg-slate-100 hover:bg-blue-50 dark:bg-slate-800 dark:hover:bg-blue-950/60 px-2 py-0.5 font-mono text-[11px] font-bold text-slate-700 hover:text-brand-primary dark:text-slate-200 transition-colors"
-                          title="Xem chi tiết hồ sơ khách thuê"
-                        >
-                          {profileCode}
-                        </button>
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <button
-                          type="button"
-                          data-testid={`btn-table-tenant-name-${t.phone}`}
-                          onClick={() => openDetailModal(t)}
-                          className="text-left font-bold text-slate-900 dark:text-white hover:text-brand-primary dark:hover:text-blue-300 hover:underline underline-offset-2 transition-colors"
-                        >
-                          {t.fullName}
-                        </button>
-                        {t.relationToPrimary && (
-                          <span className="ml-1.5 text-[11px] text-slate-500">
-                            · {t.relationToPrimary === 'PRIMARY' ? 'HĐ Chính' : t.relationToPrimary === 'OTHER' ? 'Đại diện HĐ' : 'Người cùng hộ'}
-                          </span>
-                        )}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            data-testid={`btn-table-tenant-name-${t.phone}`}
+                            onClick={() => openDetailModal(t)}
+                            className="text-left font-bold text-slate-900 dark:text-white hover:text-brand-primary dark:hover:text-blue-300 hover:underline underline-offset-2 transition-colors"
+                          >
+                            {t.fullName}
+                          </button>
+                          {t.relationToPrimary && (
+                            <span className="rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">
+                              {t.relationToPrimary === 'PRIMARY'
+                                ? 'HĐ Chính'
+                                : t.relationToPrimary === 'OTHER'
+                                ? 'Đại diện HĐ'
+                                : 'Người cùng hộ'}
+                            </span>
+                          )}
+                        </div>
                         <div className="mt-0.5 text-[11px] text-slate-500 font-mono">
                           {t.phone || '—'}
-                          {t.email ? ` · ${t.email}` : ''}
+                          {t.email ? (
+                            <span className="text-slate-400"> · {t.email}</span>
+                          ) : null}
                         </div>
                       </td>
-                      <td className="px-4 py-3.5 font-mono text-slate-600 dark:text-slate-300">
+                      <td className="px-4 py-3 font-mono text-slate-600 dark:text-slate-300 whitespace-nowrap">
                         {t.idNumber || '—'}
                       </td>
-                      <td className="px-4 py-3.5">
+                      <td className="px-4 py-3 whitespace-nowrap">
                         {t.currentRoomCode ? (
-                          <span className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/50 px-2.5 py-1 font-semibold text-brand-primary dark:text-blue-300">
-                            <Home className="w-3.5 h-3.5" />
-                            {t.buildingCode} · {t.currentRoomCode}
+                          <span className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/50 px-2.5 py-1 font-semibold text-brand-primary dark:text-blue-300 whitespace-nowrap">
+                            <Home className="w-3.5 h-3.5 shrink-0" />
+                            <span>
+                              {t.buildingCode} · {t.currentRoomCode}
+                            </span>
                           </span>
                         ) : t.buildingCode ? (
-                          <span className="inline-flex items-center gap-1 text-slate-500">
-                            <Building2 className="w-3.5 h-3.5" />{' '}
+                          <span className="inline-flex items-center gap-1 text-slate-500 whitespace-nowrap">
+                            <Building2 className="w-3.5 h-3.5 shrink-0" />{' '}
                             {t.buildingCode} (chưa xếp phòng)
                           </span>
                         ) : (
-                          <span className="text-slate-400">
+                          <span className="text-slate-400 whitespace-nowrap">
                             Chưa gán phòng
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3.5">
+                      <td className="px-4 py-3 whitespace-nowrap">
                         {t.activeContractCode ? (
                           <div>
                             <button
                               type="button"
                               onClick={() => setActiveModule('contracts')}
-                              className="inline-flex items-center gap-1 font-mono font-bold text-slate-800 dark:text-slate-100 hover:text-brand-primary"
+                              className="inline-flex items-center gap-1 font-mono font-bold text-slate-800 dark:text-slate-100 hover:text-brand-primary whitespace-nowrap"
                             >
-                              <FileSignature className="w-3.5 h-3.5 text-brand-primary" />
-                              {t.activeContractCode}
+                              <FileSignature className="w-3.5 h-3.5 text-brand-primary shrink-0" />
+                              <span>{t.activeContractCode}</span>
                             </button>
                             {t.monthlyRentVnd !== null && (
-                              <div className="text-[11px] text-slate-500">
-                                {t.monthlyRentVnd.toLocaleString('vi-VN')}{' '}
-                                đ/tháng
+                              <div className="text-[11px] text-slate-500 whitespace-nowrap">
+                                {t.monthlyRentVnd.toLocaleString('vi-VN')} đ/tháng
                               </div>
                             )}
                           </div>
                         ) : (
-                          <span className="text-slate-400">
+                          <span className="text-slate-400 whitespace-nowrap">
                             Chưa có HĐ hiệu lực
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3.5">
+                      <td className="px-4 py-3 whitespace-nowrap">
                         {renderRegBadge(t.residenceRegStatus)}
                       </td>
-                      <td className="px-4 py-3.5 text-right">
+                      <td className="px-4 py-3 text-right whitespace-nowrap">
                         {canManageTenants && (isOccupantOnly(t) ? (
                           <Button
                             type="button"
-                            className="inline-flex h-8 items-center gap-1 text-xs font-semibold text-blue-600"
+                            className="inline-flex h-8 items-center gap-1 whitespace-nowrap text-xs font-semibold text-blue-600"
                             onClick={() => t.currentRoomId && onOpenRoom?.(t.currentRoomId)}
                           >
                             <Home size={13} /> Hồ sơ lưu trú
                           </Button>
                         ) : (
-                          <div className="inline-flex items-center gap-1.5">
+                          <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
                             <button
                               type="button"
                               data-testid={`btn-edit-tenant-${t.phone}`}
                               onClick={() => openEditModal(t)}
-                              className="h-8 px-2.5 rounded-lg text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 inline-flex items-center gap-1"
+                              className="h-8 px-2.5 rounded-lg text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 inline-flex items-center gap-1 whitespace-nowrap"
                             >
                               <Edit3 className="w-3 h-3" /> Sửa
                             </button>
@@ -580,7 +553,7 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
                                 setDeleteError(null);
                                 setDeletingTenant(t);
                               }}
-                              className="h-8 px-2.5 rounded-lg text-[11px] font-semibold bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 text-rose-600 dark:text-rose-300 inline-flex items-center gap-1"
+                              className="h-8 px-2.5 rounded-lg text-[11px] font-semibold bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 text-rose-600 dark:text-rose-300 inline-flex items-center gap-1 whitespace-nowrap"
                             >
                               <Trash2 className="w-3 h-3" /> Xóa
                             </button>
@@ -873,26 +846,9 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
                   <div className="flex items-start justify-between gap-3 border-b border-slate-100 dark:border-slate-800 px-4 py-3.5 bg-slate-50/70 dark:bg-slate-900/50 shrink-0">
                     <div className="min-w-0 space-y-1">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const code = formatTenantProfileId(detailTenant);
-                            void navigator.clipboard?.writeText(code).catch(() => {});
-                            setCopiedId(true);
-                            setTimeout(() => setCopiedId(false), 1800);
-                          }}
-                          className="inline-flex items-center gap-1 rounded-md bg-slate-200/80 hover:bg-blue-100 dark:bg-slate-800 dark:hover:bg-blue-950 px-2 py-0.5 font-mono text-[11px] font-bold text-slate-700 dark:text-slate-200 transition-colors"
-                          title="Sao chép mã hồ sơ khách thuê"
-                        >
-                          <span>{formatTenantProfileId(detailTenant)}</span>
-                          {copiedId ? (
-                            <Check className="w-3 h-3 text-emerald-600" />
-                          ) : (
-                            <Copy className="w-3 h-3 text-slate-400" />
-                          )}
-                        </button>
+                        {renderRegBadge(detailTenant.residenceRegStatus)}
                         {detailTenant.relationToPrimary && (
-                          <span className="text-[11px] font-medium text-slate-500">
+                          <span className="rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[10.5px] font-medium text-slate-600 dark:text-slate-300">
                             {detailTenant.relationToPrimary === 'PRIMARY'
                               ? 'HĐ Chính'
                               : detailTenant.relationToPrimary === 'OTHER'
@@ -900,7 +856,6 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
                               : 'Người cùng hộ'}
                           </span>
                         )}
-                        {renderRegBadge(detailTenant.residenceRegStatus)}
                       </div>
                       <Dialog.Title className="text-base font-bold text-slate-900 dark:text-white truncate">
                         {detailTenant.fullName}

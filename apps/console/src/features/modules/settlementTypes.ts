@@ -418,187 +418,237 @@ export function formatVnd(amount: number | null | undefined): string {
   return `${Math.round(num).toLocaleString('vi-VN')} ₫`;
 }
 
-export function getDataStatusBadge(status: DataStatus): { label: string; className: string } {
+export interface StatusBadgeStyle {
+  label: string;
+  className: string;
+  textClassName: string;
+  dotClassName: string;
+}
+
+export function getDataStatusBadge(status: DataStatus): StatusBadgeStyle {
   switch (status) {
     case 'COMPLETE':
       return {
         label: 'Đủ dữ liệu',
         className:
           'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800/80',
+        textClassName: 'text-emerald-700 dark:text-emerald-400',
+        dotClassName: 'bg-emerald-500',
       };
     case 'MISSING_DATA':
       return {
         label: 'Thiếu dữ liệu',
         className:
           'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800/80',
+        textClassName: 'text-amber-700 dark:text-amber-400',
+        dotClassName: 'bg-amber-500',
       };
     case 'ANOMALY':
       return {
         label: 'Bất thường',
         className:
           'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800/80',
+        textClassName: 'text-rose-700 dark:text-rose-400',
+        dotClassName: 'bg-rose-500',
       };
     case 'CALCULATING':
       return {
         label: 'Đang tính',
         className:
           'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800/80',
+        textClassName: 'text-blue-700 dark:text-blue-400',
+        dotClassName: 'bg-blue-500',
       };
     default:
       return {
         label: 'Lỗi dữ liệu',
         className:
           'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800/80',
+        textClassName: 'text-rose-700 dark:text-rose-400',
+        dotClassName: 'bg-rose-500',
       };
   }
 }
 
-export function getInvoiceStatusBadge(status: InvoiceWorkflowStatus): {
-  label: string;
-  className: string;
-} {
+export function getInvoiceStatusBadge(status: InvoiceWorkflowStatus): StatusBadgeStyle {
   switch (status) {
     case 'NOT_CREATED':
       return {
         label: 'Chưa tạo',
         className:
           'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700',
+        textClassName: 'text-slate-500 dark:text-slate-400',
+        dotClassName: 'bg-slate-400',
       };
     case 'DRAFT':
       return {
         label: 'Hóa đơn nháp',
         className:
           'bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700',
+        textClassName: 'text-slate-600 dark:text-slate-300',
+        dotClassName: 'bg-slate-500',
       };
     case 'PENDING_APPROVAL':
       return {
         label: 'Chờ phê duyệt',
         className:
           'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800/80',
+        textClassName: 'text-amber-700 dark:text-amber-400',
+        dotClassName: 'bg-amber-500',
       };
     case 'NEEDS_ADJUSTMENT':
       return {
         label: 'Cần điều chỉnh',
         className:
           'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/60 dark:text-orange-300 dark:border-orange-800/80',
+        textClassName: 'text-orange-700 dark:text-orange-400',
+        dotClassName: 'bg-orange-500',
       };
     case 'APPROVED':
       return {
         label: 'Đã phê duyệt',
         className:
           'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-800/80',
+        textClassName: 'text-indigo-700 dark:text-indigo-400',
+        dotClassName: 'bg-indigo-500',
       };
     case 'ISSUED':
       return {
         label: 'Đã phát hành',
         className:
           'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800/80',
+        textClassName: 'text-blue-700 dark:text-blue-400',
+        dotClassName: 'bg-blue-500',
       };
     case 'VOID':
       return {
         label: 'Đã hủy',
         className:
           'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800/80',
+        textClassName: 'text-rose-700 dark:text-rose-400',
+        dotClassName: 'bg-rose-500',
       };
     default:
       return {
         label: 'Đã thay thế',
         className:
           'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700',
+        textClassName: 'text-slate-500 dark:text-slate-400',
+        dotClassName: 'bg-slate-400',
       };
   }
 }
 
-export function getDeliveryStatusBadge(status: DeliveryWorkflowStatus): {
-  label: string;
-  className: string;
-} {
+export function getDeliveryStatusBadge(status: DeliveryWorkflowStatus): StatusBadgeStyle {
   switch (status) {
     case 'SENT':
       return {
         label: 'Đã gửi',
         className:
           'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800/80',
+        textClassName: 'text-blue-700 dark:text-blue-400',
+        dotClassName: 'bg-blue-500',
       };
     case 'DELIVERED':
       return {
         label: 'Đã nhận',
         className:
           'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800/80',
+        textClassName: 'text-emerald-700 dark:text-emerald-400',
+        dotClassName: 'bg-emerald-500',
       };
     case 'QUEUED':
       return {
         label: 'Chờ gửi',
         className:
           'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800/80',
+        textClassName: 'text-amber-700 dark:text-amber-400',
+        dotClassName: 'bg-amber-500',
       };
     case 'SENDING':
       return {
         label: 'Đang gửi',
         className:
           'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800/80',
+        textClassName: 'text-blue-700 dark:text-blue-400',
+        dotClassName: 'bg-blue-500',
       };
     case 'FAILED':
       return {
         label: 'Gửi lỗi',
         className:
           'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800/80',
+        textClassName: 'text-rose-700 dark:text-rose-400',
+        dotClassName: 'bg-rose-500',
       };
     case 'RETRY_NEEDED':
       return {
         label: 'Cần gửi lại',
         className:
           'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/60 dark:text-orange-300 dark:border-orange-800/80',
+        textClassName: 'text-orange-700 dark:text-orange-400',
+        dotClassName: 'bg-orange-500',
       };
     default:
       return {
         label: 'Chưa gửi',
         className:
           'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700',
+        textClassName: 'text-slate-500 dark:text-slate-400',
+        dotClassName: 'bg-slate-400',
       };
   }
 }
 
-export function getPaymentStatusBadge(status: PaymentWorkflowStatus): {
-  label: string;
-  className: string;
-} {
+export function getPaymentStatusBadge(status: PaymentWorkflowStatus): StatusBadgeStyle {
   switch (status) {
     case 'PAID':
       return {
         label: 'Đã thanh toán',
         className:
           'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800/80',
+        textClassName: 'text-emerald-700 dark:text-emerald-400',
+        dotClassName: 'bg-emerald-500',
       };
     case 'PARTIAL':
       return {
         label: 'Thanh toán một phần',
         className:
           'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800/80',
+        textClassName: 'text-amber-700 dark:text-amber-400',
+        dotClassName: 'bg-amber-500',
       };
     case 'OVERDUE':
       return {
         label: 'Quá hạn',
         className:
           'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800/80',
+        textClassName: 'text-rose-600 dark:text-rose-400',
+        dotClassName: 'bg-rose-500',
       };
     case 'PENDING_RECONCILE':
       return {
         label: 'Chờ đối soát',
         className:
           'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-800/80',
+        textClassName: 'text-purple-700 dark:text-purple-400',
+        dotClassName: 'bg-purple-500',
       };
     case 'OVERPAID':
       return {
         label: 'Thu dư',
         className:
           'bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-950/60 dark:text-cyan-300 dark:border-cyan-800/80',
+        textClassName: 'text-cyan-700 dark:text-cyan-400',
+        dotClassName: 'bg-cyan-500',
       };
     default:
       return {
         label: 'Chưa thanh toán',
         className:
           'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700',
+        textClassName: 'text-slate-600 dark:text-slate-400',
+        dotClassName: 'bg-slate-400',
       };
   }
 }

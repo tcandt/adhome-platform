@@ -1072,104 +1072,104 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
       </div>
 
       {/* =====================================================================
-          PART B — 6 KPI TÀI CHÍNH VÀ TIẾN ĐỘ (Section 3.2)
+          PART B — 6 KPI TÀI CHÍNH VÀ TIẾN ĐỘ (Section 3.2 - Compact Flat Strip)
          ===================================================================== */}
       <div
-        className="grid grid-cols-2 lg:grid-cols-6 gap-2.5 sm:gap-3"
+        className="rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#111827] shadow-2xs grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-y sm:divide-y-0 sm:divide-x divide-slate-100 dark:divide-slate-800/80 overflow-hidden"
         data-testid="settlement-kpi-grid"
       >
         {/* KPI 1: Tổng dự kiến kỳ */}
-        <div className="rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#111827] p-3.5 shadow-2xs">
-          <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+        <div className="px-3.5 py-2.5">
+          <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
             1. Tổng dự kiến kỳ
           </div>
           <div
-            className="mt-1 font-mono text-sm sm:text-base font-extrabold text-slate-900 dark:text-white tabular-nums truncate"
+            className="mt-0.5 font-mono text-sm font-extrabold text-slate-900 dark:text-white tabular-nums truncate"
             data-testid="kpi-total-expected"
           >
             {formatVnd(dynamicKpis.totalExpectedPeriodVnd)}
           </div>
-          <div className="mt-1 text-[10.5px] text-slate-500 truncate">
+          <div className="mt-0.5 text-[10px] text-slate-400 truncate">
             Phát sinh kỳ: {formatVnd(dynamicKpis.currentPeriodChargesVnd)}
           </div>
         </div>
 
         {/* KPI 2: Tiền phòng */}
-        <div className="rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#111827] p-3.5 shadow-2xs">
-          <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+        <div className="px-3.5 py-2.5">
+          <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
             2. Tiền phòng
           </div>
           <div
-            className="mt-1 font-mono text-sm sm:text-base font-extrabold text-blue-600 dark:text-blue-400 tabular-nums truncate"
+            className="mt-0.5 font-mono text-sm font-extrabold text-blue-600 dark:text-blue-400 tabular-nums truncate"
             data-testid="kpi-room-rent"
           >
             {formatVnd(dynamicKpis.totalRoomRentVnd)}
           </div>
-          <div className="mt-1 text-[10.5px] text-slate-500 truncate">
+          <div className="mt-0.5 text-[10px] text-slate-400 truncate">
             {dynamicKpis.totalObligationsCount} hợp đồng trong kỳ
           </div>
         </div>
 
         {/* KPI 3: Điện + Nước + Dịch vụ */}
-        <div className="rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#111827] p-3.5 shadow-2xs">
-          <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-            3. Điện + Nước + Dịch vụ
+        <div className="px-3.5 py-2.5">
+          <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+            3. Điện + Nước + DV
           </div>
           <div
-            className="mt-1 font-mono text-sm sm:text-base font-extrabold text-amber-600 dark:text-amber-400 tabular-nums truncate"
+            className="mt-0.5 font-mono text-sm font-extrabold text-amber-600 dark:text-amber-400 tabular-nums truncate"
             data-testid="kpi-utilities-services"
           >
             {formatVnd(dynamicKpis.totalUtilitiesAndServicesVnd)}
           </div>
-          <div className="mt-1 text-[10.5px] text-slate-500 truncate">
+          <div className="mt-0.5 text-[10px] text-slate-400 truncate">
             Đ: {formatVnd(dynamicKpis.totalElectricVnd)} · N: {formatVnd(dynamicKpis.totalWaterVnd)}
           </div>
         </div>
 
         {/* KPI 4: Hóa đơn sẵn sàng */}
-        <div className="rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#111827] p-3.5 shadow-2xs">
-          <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+        <div className="px-3.5 py-2.5">
+          <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
             4. Hóa đơn sẵn sàng
           </div>
           <div
-            className="mt-1 font-mono text-sm sm:text-base font-extrabold text-indigo-600 dark:text-indigo-400 tabular-nums"
+            className="mt-0.5 font-mono text-sm font-extrabold text-indigo-600 dark:text-indigo-400 tabular-nums"
             data-testid="kpi-ready-invoices"
           >
             {dynamicKpis.readyInvoicesCount}/{dynamicKpis.totalObligationsCount}
           </div>
-          <div className="mt-1 text-[10.5px] text-slate-500 truncate">
+          <div className="mt-0.5 text-[10px] text-slate-400 truncate">
             Đủ dữ liệu ({completionPercent}%)
           </div>
         </div>
 
         {/* KPI 5: Đã gửi khách */}
-        <div className="rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#111827] p-3.5 shadow-2xs">
-          <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+        <div className="px-3.5 py-2.5">
+          <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
             5. Đã gửi khách
           </div>
           <div
-            className="mt-1 font-mono text-sm sm:text-base font-extrabold text-cyan-600 dark:text-cyan-400 tabular-nums"
+            className="mt-0.5 font-mono text-sm font-extrabold text-cyan-600 dark:text-cyan-400 tabular-nums"
             data-testid="kpi-sent-invoices"
           >
             {dynamicKpis.sentInvoicesCount}/{dynamicKpis.needSendInvoicesCount}
           </div>
-          <div className="mt-1 text-[10.5px] text-slate-500 truncate">
+          <div className="mt-0.5 text-[10px] text-slate-400 truncate">
             Qua {formatChannelLabel(automationPolicy.defaultChannel)}
           </div>
         </div>
 
         {/* KPI 6: Đã thu / Còn phải thu */}
-        <div className="rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#111827] p-3.5 shadow-2xs">
-          <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+        <div className="px-3.5 py-2.5">
+          <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
             6. Đã thu / Còn phải thu
           </div>
           <div
-            className="mt-1 font-mono text-sm sm:text-base font-extrabold text-emerald-600 dark:text-emerald-400 tabular-nums truncate"
+            className="mt-0.5 font-mono text-sm font-extrabold text-emerald-600 dark:text-emerald-400 tabular-nums truncate"
             data-testid="kpi-collected-amount"
           >
             {formatVnd(dynamicKpis.totalCollectedVnd)}
           </div>
-          <div className="mt-1 font-mono text-[10.5px] font-bold text-rose-600 dark:text-rose-400 truncate">
+          <div className="mt-0.5 font-mono text-[10px] font-bold text-rose-600 dark:text-rose-400 truncate">
             Còn: {formatVnd(dynamicKpis.totalRemainingReceivableVnd)}
           </div>
         </div>
@@ -1224,10 +1224,10 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                   setQuickTab(pill.id);
                   setCurrentPage(1);
                 }}
-                className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors ${
                   active
-                    ? 'border-blue-600 bg-blue-600 text-white shadow-2xs'
-                    : 'border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                    ? 'bg-blue-600 text-white shadow-2xs'
+                    : 'bg-slate-100/80 dark:bg-slate-900/60 text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-800'
                 }`}
               >
                 <span>{pill.label}</span>
@@ -1468,9 +1468,10 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                 </th>
                 <th className="py-3 px-1.5 whitespace-nowrap">Gửi / Thu</th>
                 {visibleCols.deliveryChannel && <th className="py-3 px-1.5">Kênh</th>}
-                <th className="sticky right-0 z-20 bg-slate-50 dark:bg-slate-900 py-3 pl-1.5 pr-3 text-right">
-                  Hành động
-                </th>
+                <th
+                  className="sticky right-0 z-20 bg-slate-50 dark:bg-slate-900 py-3 pl-1 pr-3 w-10 text-right"
+                  aria-label="Thao tác"
+                />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
@@ -1634,7 +1635,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                         )}
 
                         {/* 13. Total Payable */}
-                        <td className="py-2.5 px-1.5 text-right font-mono font-extrabold text-slate-900 dark:text-white tabular-nums whitespace-nowrap">
+                        <td className="py-2.5 pl-1.5 pr-3 text-right font-mono font-extrabold text-slate-900 dark:text-white tabular-nums whitespace-nowrap">
                           {formatVnd(row.totals.totalPayableVnd)}
                         </td>
 
@@ -1645,33 +1646,37 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                           </td>
                         )}
 
-                        {/* 15. Data & Invoice Status */}
+                        {/* 15. Data & Invoice Status (Borderless Status Dots) */}
                         <td className="py-2.5 px-1.5 whitespace-nowrap">
-                          <div className="flex flex-col items-start gap-1">
+                          <div className="flex flex-col items-start gap-0.5 leading-tight">
                             <span
-                              className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-bold ${dataBadge.className}`}
+                              className={`inline-flex items-center gap-1.5 text-[11px] font-semibold ${dataBadge.textClassName}`}
                             >
+                              <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${dataBadge.dotClassName}`} />
                               {dataBadge.label}
                             </span>
                             <span
-                              className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-bold ${invBadge.className}`}
+                              className={`inline-flex items-center gap-1.5 text-[11px] font-medium ${invBadge.textClassName}`}
                             >
+                              <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${invBadge.dotClassName}`} />
                               {invBadge.label}
                             </span>
                           </div>
                         </td>
 
-                        {/* 16. Delivery & Payment Status */}
+                        {/* 16. Delivery & Payment Status (Borderless Status Dots) */}
                         <td className="py-2.5 px-1.5 whitespace-nowrap">
-                          <div className="flex flex-col items-start gap-1">
+                          <div className="flex flex-col items-start gap-0.5 leading-tight">
                             <span
-                              className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-bold ${delivBadge.className}`}
+                              className={`inline-flex items-center gap-1.5 text-[11px] font-medium ${delivBadge.textClassName}`}
                             >
+                              <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${delivBadge.dotClassName}`} />
                               {delivBadge.label}
                             </span>
                             <span
-                              className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-bold ${payBadge.className}`}
+                              className={`inline-flex items-center gap-1.5 text-[11px] font-semibold ${payBadge.textClassName}`}
                             >
+                              <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${payBadge.dotClassName}`} />
                               {payBadge.label}
                             </span>
                           </div>
@@ -1684,16 +1689,9 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                           </td>
                         )}
 
-                        {/* 18. Actions (Sticky Right) */}
-                        <td className="sticky right-0 z-10 bg-white dark:bg-[#111827] group-hover:bg-blue-50 dark:group-hover:bg-slate-800 py-2.5 pl-2 pr-3.5 text-right whitespace-nowrap shadow-[-4px_0_8px_-4px_rgba(15,23,42,0.06)]">
-                          <div className="inline-flex items-center justify-end gap-1">
-                            <button
-                              type="button"
-                              onClick={() => openDrawerForRow(row, 'OVERVIEW')}
-                              className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 px-2 py-1 text-[11px] font-semibold text-slate-700 dark:text-slate-200"
-                            >
-                              Chi tiết
-                            </button>
+                        {/* 18. Actions (Only 3-Dot Button, Sticky Right) */}
+                        <td className="sticky right-0 z-10 bg-white dark:bg-[#111827] group-hover:bg-blue-50 dark:group-hover:bg-slate-800 py-2.5 pl-1 pr-3 text-right whitespace-nowrap">
+                          <div className="inline-flex items-center justify-end">
                             <ActionMenu
                               items={[
                                 {
@@ -1946,7 +1944,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                         )}
 
                         {/* 13. Room Total Payable */}
-                        <td className="py-2.5 px-1.5 text-right font-mono font-extrabold text-slate-900 dark:text-white tabular-nums whitespace-nowrap">
+                        <td className="py-2.5 pl-1.5 pr-3 text-right font-mono font-extrabold text-slate-900 dark:text-white tabular-nums whitespace-nowrap">
                           {formatVnd(group.aggregatedTotals.totalPayableVnd)}
                         </td>
 
@@ -1957,33 +1955,43 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                           </td>
                         )}
 
-                        {/* 15. Data & Invoice Status Summary */}
+                        {/* 15. Data & Invoice Status Summary (Borderless Status Dots) */}
                         <td className="py-2.5 px-1.5 whitespace-nowrap">
-                          <div className="flex flex-col items-start gap-1">
+                          <div className="flex flex-col items-start gap-0.5 leading-tight">
                             <span
-                              className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-bold ${roomDataBadge.className}`}
+                              className={`inline-flex items-center gap-1.5 text-[11px] font-semibold ${roomDataBadge.textClassName}`}
                             >
+                              <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${roomDataBadge.dotClassName}`} />
                               {roomDataBadge.label}
                             </span>
-                            <span className="inline-flex items-center rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-1.5 py-0.5 text-[10px] font-bold text-slate-700 dark:text-slate-200">
+                            <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-600 dark:text-slate-300">
+                              <span className="h-1.5 w-1.5 rounded-full shrink-0 bg-violet-500" />
                               {roomInvSummaryLabel}
                             </span>
                           </div>
                         </td>
 
-                        {/* 16. Delivery & Payment Status Summary */}
+                        {/* 16. Delivery & Payment Status Summary (Borderless Status Dots) */}
                         <td className="py-2.5 px-1.5 whitespace-nowrap">
-                          <div className="flex flex-col items-start gap-1">
-                            <span className="inline-flex items-center rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-1.5 py-0.5 text-[10px] font-bold text-slate-700 dark:text-slate-200">
+                          <div className="flex flex-col items-start gap-0.5 leading-tight">
+                            <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                              <span className="h-1.5 w-1.5 rounded-full shrink-0 bg-slate-400" />
                               {roomDelivSummaryLabel}
                             </span>
                             <span
-                              className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-bold ${
+                              className={`inline-flex items-center gap-1.5 text-[11px] font-semibold ${
                                 group.aggregatedCounts.paidCount === group.totalMembersCount
-                                  ? getPaymentStatusBadge('PAID').className
-                                  : getPaymentStatusBadge('UNPAID').className
+                                  ? getPaymentStatusBadge('PAID').textClassName
+                                  : getPaymentStatusBadge('UNPAID').textClassName
                               }`}
                             >
+                              <span
+                                className={`h-1.5 w-1.5 rounded-full shrink-0 ${
+                                  group.aggregatedCounts.paidCount === group.totalMembersCount
+                                    ? getPaymentStatusBadge('PAID').dotClassName
+                                    : getPaymentStatusBadge('UNPAID').dotClassName
+                                }`}
+                              />
                               {roomPaySummaryLabel}
                             </span>
                           </div>
@@ -1996,28 +2004,15 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                           </td>
                         )}
 
-                        {/* 18. Actions (Sticky Right) */}
+                        {/* 18. Actions (Only 3-Dot Button, Sticky Right) */}
                         <td
-                          className={`sticky right-0 z-10 py-2.5 pl-2 pr-3.5 text-right whitespace-nowrap shadow-[-4px_0_8px_-4px_rgba(15,23,42,0.06)] ${
+                          className={`sticky right-0 z-10 py-2.5 pl-1 pr-3 text-right whitespace-nowrap ${
                             isExpanded
                               ? 'bg-violet-50 dark:bg-slate-900'
                               : 'bg-white dark:bg-[#111827]'
                           } group-hover:bg-violet-50 dark:group-hover:bg-slate-900`}
                         >
-                          <div className="inline-flex items-center justify-end gap-1">
-                            <button
-                              type="button"
-                              data-testid={`btn-expand-shared-action-${group.room.code}`}
-                              onClick={() => toggleRoomExpand(group.roomId)}
-                              className="inline-flex items-center gap-1 rounded-lg border border-violet-200 dark:border-violet-800 bg-violet-50 hover:bg-violet-100 dark:bg-violet-950/60 px-2 py-1 text-[10.5px] font-bold text-violet-700 dark:text-violet-300"
-                            >
-                              <span>{isExpanded ? 'Thu gọn' : `Mở rộng`}</span>
-                              <ChevronDown
-                                className={`w-3 h-3 transition-transform duration-200 ${
-                                  isExpanded ? 'rotate-180' : ''
-                                }`}
-                              />
-                            </button>
+                          <div className="inline-flex items-center justify-end">
                             <ActionMenu
                               items={[
                                 {
@@ -2150,11 +2145,13 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                                                 {member.invoice?.code || 'Chưa tạo mã'}
                                               </td>
                                               <td className="py-2 px-1.5 whitespace-nowrap">
-                                                <div className="flex flex-col items-start gap-0.5">
-                                                  <span className={`inline-flex rounded border px-1.5 py-0.5 text-[9.5px] font-bold ${mInvBadge.className}`}>
+                                                <div className="flex flex-col items-start gap-0.5 leading-tight">
+                                                  <span className={`inline-flex items-center gap-1.5 text-[10.5px] font-semibold ${mInvBadge.textClassName}`}>
+                                                    <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${mInvBadge.dotClassName}`} />
                                                     {mInvBadge.label}
                                                   </span>
-                                                  <span className={`inline-flex rounded border px-1.5 py-0.5 text-[9.5px] font-bold ${mPayBadge.className}`}>
+                                                  <span className={`inline-flex items-center gap-1.5 text-[10.5px] font-medium ${mPayBadge.textClassName}`}>
+                                                    <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${mPayBadge.dotClassName}`} />
                                                     {mPayBadge.label}
                                                   </span>
                                                 </div>
@@ -2236,7 +2233,8 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                           <span className="rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[10.5px] font-bold text-slate-600 dark:text-slate-300">
                             {row.building.code}
                           </span>
-                          <span className={`rounded border px-1.5 py-0.5 text-[10px] font-bold ${dataBadge.className}`}>
+                          <span className={`inline-flex items-center gap-1 text-[10.5px] font-semibold ${dataBadge.textClassName}`}>
+                            <span className={`h-1.5 w-1.5 rounded-full ${dataBadge.dotClassName}`} />
                             {dataBadge.label}
                           </span>
                         </div>
@@ -2248,11 +2246,13 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                         <div className="font-mono text-sm font-extrabold text-slate-900 dark:text-white">
                           {formatVnd(row.totals.totalPayableVnd)}
                         </div>
-                        <div className="mt-0.5 flex items-center justify-end gap-1 flex-wrap">
-                          <span className={`rounded border px-1.5 py-0.5 text-[10px] font-bold ${invBadge.className}`}>
+                        <div className="mt-0.5 flex items-center justify-end gap-2 flex-wrap">
+                          <span className={`inline-flex items-center gap-1 text-[10.5px] font-semibold ${invBadge.textClassName}`}>
+                            <span className={`h-1.5 w-1.5 rounded-full ${invBadge.dotClassName}`} />
                             {invBadge.label}
                           </span>
-                          <span className={`rounded border px-1.5 py-0.5 text-[10px] font-bold ${payBadge.className}`}>
+                          <span className={`inline-flex items-center gap-1 text-[10.5px] font-semibold ${payBadge.textClassName}`}>
+                            <span className={`h-1.5 w-1.5 rounded-full ${payBadge.dotClassName}`} />
                             {payBadge.label}
                           </span>
                         </div>
@@ -2379,7 +2379,8 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                       <div className="font-mono text-sm font-extrabold text-slate-900 dark:text-white">
                         {formatVnd(group.aggregatedTotals.totalPayableVnd)}
                       </div>
-                      <span className={`mt-0.5 inline-flex rounded border px-1.5 py-0.5 text-[10px] font-bold ${sharedDataBadge.className}`}>
+                      <span className={`mt-0.5 inline-flex items-center gap-1 text-[10.5px] font-semibold ${sharedDataBadge.textClassName}`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${sharedDataBadge.dotClassName}`} />
                         {sharedDataBadge.label}
                       </span>
                     </div>
@@ -2482,11 +2483,13 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                                 <div className="font-mono text-xs font-extrabold text-blue-700 dark:text-blue-400">
                                   {formatVnd(member.totals.totalPayableVnd)}
                                 </div>
-                                <div className="flex items-center justify-end gap-1 mt-0.5">
-                                  <span className={`rounded border px-1 py-0.5 text-[9.5px] font-bold ${mInvBadge.className}`}>
+                                <div className="flex items-center justify-end gap-2 mt-0.5">
+                                  <span className={`inline-flex items-center gap-1 text-[10px] font-semibold ${mInvBadge.textClassName}`}>
+                                    <span className={`h-1.5 w-1.5 rounded-full ${mInvBadge.dotClassName}`} />
                                     {mInvBadge.label}
                                   </span>
-                                  <span className={`rounded border px-1 py-0.5 text-[9.5px] font-bold ${mPayBadge.className}`}>
+                                  <span className={`inline-flex items-center gap-1 text-[10px] font-semibold ${mPayBadge.textClassName}`}>
+                                    <span className={`h-1.5 w-1.5 rounded-full ${mPayBadge.dotClassName}`} />
                                     {mPayBadge.label}
                                   </span>
                                 </div>

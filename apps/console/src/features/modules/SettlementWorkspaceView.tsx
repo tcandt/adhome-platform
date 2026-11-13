@@ -37,7 +37,6 @@ import { CONSOLE_CSRF_HEADER, useAuth } from '@/app/providers/AuthContext';
 import { ActionMenu } from '@/shared/ui/ActionMenu';
 import { notifySave } from '@/shared/ui/SaveToast';
 import {
-  SettlementProgressBar,
   SettlementShimmerButton,
 } from '@/shared/ui/SettlementAnimatePrimitives';
 import { SettlementDetailDrawer } from './SettlementDetailDrawer';
@@ -94,6 +93,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
   const [sortField, setSortField] = useState<SortField>('ROOM_CODE');
   const [sortDirection, setSortDirection] = useState<SortDirection>('ASC');
   const [currentPage, setCurrentPage] = useState<number>(1);
+  const [kpiSummaryOpen, setKpiSummaryOpen] = useState<boolean>(false);
   const pageSize = 15;
 
   // Column visibility toggles (Group 2 & Group 3 optional columns)
@@ -1238,184 +1238,95 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
         )}
       </div>
 
-      {/* =====================================================================
-          PART B — 6 KPI TÀI CHÍNH VÀ TIẾN ĐỘ (Section 3.2 - Compact Flat Strip)
-         ===================================================================== */}
-      <div
-        className="rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/80 shadow-2xs grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-px overflow-hidden [&>div]:bg-white dark:[&>div]:bg-[#111827] [&>div]:px-3 [&>div]:py-2 sm:[&>div]:px-3.5 sm:[&>div]:py-2.5"
-        data-testid="settlement-kpi-grid"
-      >
-        {/* KPI 1: Tổng dự kiến kỳ */}
-        <div className="px-3.5 py-2.5">
-          <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-            1. Tổng dự kiến kỳ
-          </div>
-          <div
-            className="mt-0.5 font-mono text-sm font-extrabold text-slate-900 dark:text-white tabular-nums truncate"
-            data-testid="kpi-total-expected"
+      {/* Compact financial summary — collapsed by default on every viewport. */}
+      <Collapsible.Root open={kpiSummaryOpen} onOpenChange={setKpiSummaryOpen}>
+        <div
+          className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-2xs dark:border-slate-800 dark:bg-[#111827]"
+          data-testid="settlement-kpi-summary"
+        >
+          <Collapsible.Trigger
+            className="group flex min-h-16 w-full items-center gap-3 px-4 py-3 text-left outline-none transition-colors hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 dark:hover:bg-slate-900/60"
+            data-testid="settlement-kpi-summary-trigger"
           >
-            {formatVnd(dynamicKpis.totalExpectedPeriodVnd)}
-          </div>
-          <div className="mt-0.5 text-[10px] text-slate-400 truncate">
-            Phát sinh kỳ: {formatVnd(dynamicKpis.currentPeriodChargesVnd)}
-          </div>
-        </div>
-
-        {/* KPI 2: Tiền phòng */}
-        <div className="px-3.5 py-2.5">
-          <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-            2. Tiền phòng
-          </div>
-          <div
-            className="mt-0.5 font-mono text-sm font-extrabold text-blue-600 dark:text-blue-400 tabular-nums truncate"
-            data-testid="kpi-room-rent"
-          >
-            {formatVnd(dynamicKpis.totalRoomRentVnd)}
-          </div>
-          <div className="mt-0.5 text-[10px] text-slate-400 truncate">
-            {dynamicKpis.totalObligationsCount} hợp đồng trong kỳ
-          </div>
-        </div>
-
-        {/* KPI 3: Điện + Nước + Dịch vụ */}
-        <div className="px-3.5 py-2.5">
-          <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-            3. Điện + Nước + DV
-          </div>
-          <div
-            className="mt-0.5 font-mono text-sm font-extrabold text-amber-600 dark:text-amber-400 tabular-nums truncate"
-            data-testid="kpi-utilities-services"
-          >
-            {formatVnd(dynamicKpis.totalUtilitiesAndServicesVnd)}
-          </div>
-          <div className="mt-0.5 text-[10px] text-slate-400 truncate">
-            Đ: {formatVnd(dynamicKpis.totalElectricVnd)} · N: {formatVnd(dynamicKpis.totalWaterVnd)}
-          </div>
-        </div>
-
-        {/* KPI 4: Hóa đơn sẵn sàng */}
-        <div className="px-3.5 py-2.5">
-          <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-            4. Hóa đơn sẵn sàng
-          </div>
-          <div
-            className="mt-0.5 font-mono text-sm font-extrabold text-indigo-600 dark:text-indigo-400 tabular-nums"
-            data-testid="kpi-ready-invoices"
-          >
-            {dynamicKpis.readyInvoicesCount}/{dynamicKpis.totalObligationsCount}
-          </div>
-          <div className="mt-0.5 text-[10px] text-slate-400 truncate">
-            Đủ dữ liệu ({completionPercent}%)
-          </div>
-        </div>
-
-        {/* KPI 5: Đã gửi khách */}
-        <div className="px-3.5 py-2.5">
-          <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-            5. Đã gửi khách
-          </div>
-          <div
-            className="mt-0.5 font-mono text-sm font-extrabold text-cyan-600 dark:text-cyan-400 tabular-nums"
-            data-testid="kpi-sent-invoices"
-          >
-            {dynamicKpis.sentInvoicesCount}/{dynamicKpis.needSendInvoicesCount}
-          </div>
-          <div className="mt-0.5 text-[10px] text-slate-400 truncate">
-            Qua {formatChannelLabel(automationPolicy.defaultChannel)}
-          </div>
-        </div>
-
-        {/* KPI 6: Đã thu / Còn phải thu */}
-        <div className="px-3.5 py-2.5">
-          <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-            6. Đã thu / Còn phải thu
-          </div>
-          <div
-            className="mt-0.5 font-mono text-sm font-extrabold text-emerald-600 dark:text-emerald-400 tabular-nums truncate"
-            data-testid="kpi-collected-amount"
-          >
-            {formatVnd(dynamicKpis.totalCollectedVnd)}
-          </div>
-          <div className="mt-0.5 font-mono text-[10px] font-bold text-rose-600 dark:text-rose-400 truncate">
-            Còn: {formatVnd(dynamicKpis.totalRemainingReceivableVnd)}
-          </div>
-        </div>
-      </div>
-
-      {/* =====================================================================
-          PART C — THANH TIẾN ĐỘ QUYẾT TOÁN KỲ (Section 3.3)
-         ===================================================================== */}
-      <div
-        className="rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#111827] p-3 sm:p-4 shadow-2xs space-y-2.5"
-        data-testid="settlement-progress-bar-section"
-      >
-        <div className="flex items-center justify-between gap-2 text-xs">
-          <div className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2 min-w-0">
-            <span className="sm:hidden truncate">Tiến độ kỳ {formatPeriodDisplay(selectedPeriod)}</span>
-            <span className="hidden sm:inline truncate">Tiến độ hoàn thiện dữ liệu &amp; quyết toán kỳ {selectedPeriod}</span>
-            <span className="hidden sm:inline font-mono text-[11px] text-blue-600 dark:text-blue-400 shrink-0">
-              ({completionPercent}% đủ dữ liệu)
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400">
+              <Banknote className="h-4.5 w-4.5" />
             </span>
-          </div>
-          <span className="sm:hidden font-mono text-[11px] font-bold text-blue-600 dark:text-blue-400 shrink-0 whitespace-nowrap">
-            {completionPercent}% đủ dữ liệu
-          </span>
-          <span className="hidden sm:inline text-[11px] text-slate-500 shrink-0">
-            Nhấn vào từng chỉ số để lọc nhanh danh sách phòng bên dưới
-          </span>
-        </div>
-
-        {/* Visual Progress Track (@animate-ui/react Progress) */}
-        <SettlementProgressBar
-          value={completionPercent}
-          max={100}
-          ariaLabel="Tiến độ hoàn thành quyết toán kỳ"
-          indicatorClassName="bg-emerald-500"
-        />
-
-        {/* 8 Interactive Status Pills (Independent dimensions, never falsely summed) */}
-        <div className="flex items-center sm:flex-wrap gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {[
-            { id: 'ALL' as QuickFilterTabId, label: 'Tổng phòng có nghĩa vụ', count: dynamicProgress.totalObligations },
-            { id: 'COMPLETE_DATA' as QuickFilterTabId, label: 'Đủ dữ liệu', count: dynamicProgress.completeDataCount },
-            { id: 'MISSING_DATA' as QuickFilterTabId, label: 'Thiếu dữ liệu', count: dynamicProgress.missingDataCount },
-            { id: 'DRAFT_CREATED' as QuickFilterTabId, label: 'Đã tạo nháp', count: dynamicProgress.draftCreatedCount },
-            { id: 'PENDING_APPROVAL' as QuickFilterTabId, label: 'Chờ phê duyệt', count: dynamicProgress.pendingApprovalCount },
-            { id: 'ISSUED' as QuickFilterTabId, label: 'Đã phát hành', count: dynamicProgress.issuedCount },
-            { id: 'SENT' as QuickFilterTabId, label: 'Đã gửi', count: dynamicProgress.sentCount },
-            { id: 'PAID' as QuickFilterTabId, label: 'Đã thanh toán', count: dynamicProgress.paidCount },
-          ].map((pill) => {
-            const active = quickTab === pill.id;
-            return (
-              <button
-                key={pill.id}
-                type="button"
-                data-testid={`progress-pill-${pill.id.toLowerCase()}`}
-                onClick={() => {
-                  setQuickTab(pill.id);
-                  setCurrentPage(1);
-                }}
-                className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors ${
-                  active
-                    ? 'bg-blue-600 text-white shadow-2xs'
-                    : 'bg-slate-100/80 dark:bg-slate-900/60 text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-800'
-                }`}
+            <span className="min-w-0 flex-1">
+              <span className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                Tổng dự kiến kỳ {formatPeriodDisplay(selectedPeriod)}
+              </span>
+              <span
+                className="mt-0.5 block truncate font-mono text-base font-extrabold tabular-nums text-slate-950 dark:text-white"
+                data-testid="kpi-total-expected"
               >
-                <span>{pill.label}</span>
-                <span
-                  className={`rounded-md px-1.5 py-0.5 font-mono text-[11px] font-bold ${
-                    active
-                      ? 'bg-white/20 text-white'
-                      : 'bg-slate-200/70 dark:bg-slate-800 text-slate-800 dark:text-slate-200'
-                  }`}
-                >
-                  {pill.count}
-                </span>
-              </button>
-            );
-          })}
+                {formatVnd(dynamicKpis.totalExpectedPeriodVnd)}
+              </span>
+            </span>
+            <span className="hidden shrink-0 text-[11px] font-medium text-slate-400 sm:block">
+              {kpiSummaryOpen ? 'Thu gọn' : 'Xem chi tiết'}
+            </span>
+            <ChevronDown
+              aria-hidden="true"
+              className={`h-4.5 w-4.5 shrink-0 text-slate-400 transition-transform duration-200 motion-reduce:transition-none ${
+                kpiSummaryOpen ? 'rotate-180' : ''
+              }`}
+            />
+          </Collapsible.Trigger>
+
+          <Collapsible.Panel className="overflow-hidden">
+            <div className="border-t border-slate-100 px-4 pb-4 pt-3 dark:border-slate-800">
+              <div className="mb-3 flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2 dark:bg-slate-900/60">
+                <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Phát sinh kỳ</span>
+                <strong className="truncate font-mono text-xs tabular-nums text-slate-800 dark:text-slate-200">
+                  {formatVnd(dynamicKpis.currentPeriodChargesVnd)}
+                </strong>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5" data-testid="settlement-kpi-grid">
+                <div className="min-w-0 rounded-xl border border-blue-100 bg-blue-50/60 p-3 dark:border-blue-900/50 dark:bg-blue-950/20">
+                  <div className="text-[10.5px] font-semibold text-blue-700 dark:text-blue-300">Tiền phòng</div>
+                  <div className="mt-1 truncate font-mono text-sm font-extrabold tabular-nums text-blue-700 dark:text-blue-300" data-testid="kpi-room-rent">
+                    {formatVnd(dynamicKpis.totalRoomRentVnd)}
+                  </div>
+                  <div className="mt-1 truncate text-[10px] text-slate-500 dark:text-slate-400">{dynamicKpis.totalObligationsCount} hợp đồng</div>
+                </div>
+
+                <div className="min-w-0 rounded-xl border border-amber-100 bg-amber-50/60 p-3 dark:border-amber-900/50 dark:bg-amber-950/20">
+                  <div className="text-[10.5px] font-semibold text-amber-700 dark:text-amber-300">Điện + Nước + DV</div>
+                  <div className="mt-1 truncate font-mono text-sm font-extrabold tabular-nums text-amber-700 dark:text-amber-300" data-testid="kpi-utilities-services">
+                    {formatVnd(dynamicKpis.totalUtilitiesAndServicesVnd)}
+                  </div>
+                  <div className="mt-1 truncate text-[10px] text-slate-500 dark:text-slate-400">Đ: {formatVnd(dynamicKpis.totalElectricVnd)} · N: {formatVnd(dynamicKpis.totalWaterVnd)}</div>
+                </div>
+
+                <div className="min-w-0 rounded-xl border border-indigo-100 bg-indigo-50/60 p-3 dark:border-indigo-900/50 dark:bg-indigo-950/20">
+                  <div className="text-[10.5px] font-semibold text-indigo-700 dark:text-indigo-300">Hóa đơn sẵn sàng</div>
+                  <div className="mt-1 font-mono text-sm font-extrabold tabular-nums text-indigo-700 dark:text-indigo-300" data-testid="kpi-ready-invoices">
+                    {dynamicKpis.readyInvoicesCount}/{dynamicKpis.totalObligationsCount}
+                  </div>
+                  <div className="mt-1 truncate text-[10px] text-slate-500 dark:text-slate-400">Đủ dữ liệu {completionPercent}%</div>
+                </div>
+
+                <div className="min-w-0 rounded-xl border border-cyan-100 bg-cyan-50/60 p-3 dark:border-cyan-900/50 dark:bg-cyan-950/20">
+                  <div className="text-[10.5px] font-semibold text-cyan-700 dark:text-cyan-300">Đã gửi khách</div>
+                  <div className="mt-1 font-mono text-sm font-extrabold tabular-nums text-cyan-700 dark:text-cyan-300" data-testid="kpi-sent-invoices">
+                    {dynamicKpis.sentInvoicesCount}/{dynamicKpis.needSendInvoicesCount}
+                  </div>
+                  <div className="mt-1 truncate text-[10px] text-slate-500 dark:text-slate-400">Qua {formatChannelLabel(automationPolicy.defaultChannel)}</div>
+                </div>
+
+                <div className="col-span-2 min-w-0 rounded-xl border border-emerald-100 bg-emerald-50/60 p-3 sm:col-span-1 dark:border-emerald-900/50 dark:bg-emerald-950/20">
+                  <div className="text-[10.5px] font-semibold text-emerald-700 dark:text-emerald-300">Đã thu / Còn phải thu</div>
+                  <div className="mt-1 truncate font-mono text-sm font-extrabold tabular-nums text-emerald-700 dark:text-emerald-300" data-testid="kpi-collected-amount">
+                    {formatVnd(dynamicKpis.totalCollectedVnd)}
+                  </div>
+                  <div className="mt-1 truncate font-mono text-[10px] font-bold text-rose-600 dark:text-rose-400">Còn: {formatVnd(dynamicKpis.totalRemainingReceivableVnd)}</div>
+                </div>
+              </div>
+            </div>
+          </Collapsible.Panel>
         </div>
-      </div>
+      </Collapsible.Root>
 
       {/* =====================================================================
           SECTION 4 — BẢNG QUYẾT TOÁN PHÒNG TRUNG TÂM (DESKTOP) & CARDS (MOBILE)

@@ -113,6 +113,15 @@ async function internalBotApi(req: http.IncomingMessage, res: http.ServerRespons
         accountNumber, bank, accountName, paymentProviderId, transferContent, qrUrl } : null });
     return true;
   }
+  if (url.pathname === '/internal/zalo-bot/tenant-exists' && req.method === 'POST') {
+    const body = await readBody(req);
+    const orgId = String(body.orgId || '').trim();
+    const tenantId = String(body.tenantId || '').trim();
+    if (!orgId || !tenantId) { json(res, 422, { error: 'invalid_tenant_lookup' }); return true; }
+    const tenant = await prisma.tenant.findFirst({ where: { id: tenantId, orgId }, select: { id: true } });
+    json(res, 200, { exists: Boolean(tenant) });
+    return true;
+  }
   if (url.pathname === '/internal/zalo-bot/notification-candidates' && req.method === 'GET') {
     const orgId = url.searchParams.get('orgId') || '';
     if (!/^[A-Za-z0-9-]{1,80}$/.test(orgId)) { json(res, 400, { error: 'invalid_org' }); return true; }

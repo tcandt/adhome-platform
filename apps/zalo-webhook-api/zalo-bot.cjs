@@ -44,7 +44,18 @@ async function lookupContract(orgId, input) {
   return response.json();
 }
 
-async function register(client, botId, orgId, update, inboxId, lookup) {
+async function tenantExists(orgId, tenantId) {
+  const key = process.env.ZALO_BOT_ADMIN_API_KEY;
+  if (!key) throw new Error('internal_lookup_unconfigured');
+  const response = await fetch(`${process.env.ADHOME_CONSOLE_INTERNAL_ORIGIN || 'http://127.0.0.1:8082'}/internal/zalo-bot/tenant-exists`, {
+    method: 'POST', headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ orgId, tenantId }), signal: AbortSignal.timeout(10000),
+  });
+  if (!response.ok) throw new Error(`internal_tenant_lookup_failed_${response.status}`);
+  return Boolean((await response.json()).exists);
+}
+
+async function register(client, botId, orgId, update, inboxId, lookup, exists) {
   const input = parseRegistration(update.text);
   let status = input ? 'UNAVAILABLE' : 'INVALID_FORMAT';
   let tenantId = null;
@@ -58,17 +69,25 @@ async function register(client, botId, orgId, update, inboxId, lookup) {
       roomCode = match.roomCode;
       invoice = match.invoice;
       const linked = await client.query(
-        'SELECT tenant_id, chat_id, user_id FROM zalo_bot_resident_links WHERE bot_id = $1 AND (chat_id = $2 OR tenant_id = $3 OR user_id = $4) FOR UPDATE',
+        'SELECT id, tenant_id, chat_id, user_id FROM zalo_bot_resident_links WHERE bot_id = $1 AND (chat_id = $2 OR tenant_id = $3 OR user_id = $4) FOR UPDATE',
         [botId, update.chatId, tenantId, update.userId],
       );
-      if (linked.rows.some(row => row.chat_id === update.chatId && row.tenant_id === tenantId)) status = 'ALREADY_VERIFIED';
-      else if (linked.rowCount) status = 'CONFLICT';
+      const exact = linked.rows.some(row => row.chat_id === update.chatId && row.tenant_id === tenantId);
+      if (exact) status = 'ALREADY_VERIFIED';
       else {
-        const inserted = await client.query(
-          'INSERT INTO zalo_bot_resident_links (bot_id, chat_id, user_id, tenant_id) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING RETURNING id',
-          [botId, update.chatId, update.userId, tenantId],
-        );
-        status = inserted.rowCount ? 'VERIFIED' : 'CONFLICT';
+        const conflicts = [];
+        for (const row of linked.rows) {
+          if (await exists(orgId, row.tenant_id)) conflicts.push(row);
+          else await client.query('DELETE FROM zalo_bot_resident_links WHERE id = $1 AND bot_id = $2', [row.id, botId]);
+        }
+        if (conflicts.length) status = 'CONFLICT';
+        else {
+          const inserted = await client.query(
+            'INSERT INTO zalo_bot_resident_links (bot_id, chat_id, user_id, tenant_id) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING RETURNING id',
+            [botId, update.chatId, update.userId, tenantId],
+          );
+          status = inserted.rowCount ? 'VERIFIED' : 'CONFLICT';
+        }
       }
     }
   }
@@ -100,7 +119,7 @@ async function register(client, botId, orgId, update, inboxId, lookup) {
   return status;
 }
 
-async function receiveBotUpdate(pool, botId, body, orgId, lookup = lookupContract) {
+async function receiveBotUpdate(pool, botId, body, orgId, lookup = lookupContract, exists = tenantExists) {
   const update = normalizeUpdate(body);
   if (!update.updateId || !update.chatId || !update.userId || body?.event_name !== 'message.text.received') return { status: 'ignored' };
   const client = await pool.connect();
@@ -147,7 +166,7 @@ async function receiveBotUpdate(pool, botId, body, orgId, lookup = lookupContrac
         await client.query('UPDATE zalo_bot_configs SET setup_code_hash = NULL, setup_expires_at = NULL WHERE bot_id = $1', [botId]);
       }
     } else if (update.chatType === 'private' && /^DANGKY(?:\s|$)/i.test(update.text)) {
-      registration = await register(client, botId, orgId, update, inserted.rows[0].id, lookup);
+      registration = await register(client, botId, orgId, update, inserted.rows[0].id, lookup, exists);
     }
     await client.query('COMMIT');
     return { status: 'received', ...(registration ? { registration } : {}), ...(authorizedGroup ? { groupConnected: true } : {}) };

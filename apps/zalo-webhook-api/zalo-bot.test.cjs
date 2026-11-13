@@ -50,7 +50,7 @@ test('verified draft registration queues one initial invoice and sends only afte
   const client = { async query(sql, params) {
     calls.push({ sql, params });
     if (sql.includes('INSERT INTO zalo_bot_inbox')) return { rowCount: 1, rows: [{ id: 11 }] };
-    if (sql.includes('SELECT tenant_id, chat_id')) return { rowCount: 0, rows: [] };
+    if (sql.includes('SELECT id, tenant_id, chat_id')) return { rowCount: 0, rows: [] };
     if (sql.includes('INSERT INTO zalo_bot_resident_links')) return { rowCount: 1, rows: [{ id: 1 }] };
     if (sql.includes('SELECT message_templates')) return { rowCount: 1, rows: [{ message_templates: {} }] };
     return { rowCount: 1, rows: [] };
@@ -72,6 +72,55 @@ test('verified draft registration queues one initial invoice and sends only afte
   assert.equal(calls.filter(call => call.sql.includes("delivery_status = 'SENT'")).length, 0);
   const accepted = async (url, options) => { assert.match(url, /sendPhoto$/); const body = JSON.parse(options.body); assert.equal(body.photo, 'https://vietqr.app/qr.png'); assert.equal(body.caption, 'BIDV · 96247LK31\nNội dung: INV-1'); return { ok: true, status: 200, async json() { return { ok: true, result: { message_id: 9 } }; } }; };
   assert.equal(await sendPendingResidentMessages(outbox, 'bot:token', accepted), 1);
+});
+
+function registrationHarness(linkedRows) {
+  const calls = [];
+  const client = { async query(sql, params) {
+    calls.push({ sql, params });
+    if (sql.includes('INSERT INTO zalo_bot_inbox')) return { rowCount: 1, rows: [{ id: 21 }] };
+    if (sql.includes('SELECT id, tenant_id, chat_id')) return { rowCount: linkedRows.length, rows: linkedRows };
+    if (sql.includes('INSERT INTO zalo_bot_resident_links')) return { rowCount: 1, rows: [{ id: 22 }] };
+    if (sql.includes('SELECT message_templates')) return { rowCount: 1, rows: [{ message_templates: {} }] };
+    return { rowCount: 1, rows: [] };
+  }, release() {} };
+  return { calls, pool: { async connect() { return client; } } };
+}
+
+const registrationEvent = messageId => ({
+  event_name: 'message.text.received',
+  message: { message_id: messageId, chat: { id: 22, chat_type: 'PRIVATE' }, from: { id: 33 }, text: 'DANGKY P24.01 0567867889' },
+});
+const matchedTenant = async () => ({ status: 'MATCHED', tenantId: 'tenant-new', roomCode: 'P24.01', invoice: null });
+
+test('removes an orphaned resident link before registering the replacement tenant', async () => {
+  const { calls, pool } = registrationHarness([{ id: 9, tenant_id: 'tenant-deleted', chat_id: '22', user_id: '33' }]);
+  const exists = async (orgId, tenantId) => { assert.equal(orgId, 'org-one'); assert.equal(tenantId, 'tenant-deleted'); return false; };
+  const result = await receiveBotUpdate(pool, 'bot', registrationEvent('orphan-link'), 'org-one', matchedTenant, exists);
+  assert.equal(result.registration, 'VERIFIED');
+  assert.deepEqual(calls.find(call => call.sql.includes('DELETE FROM zalo_bot_resident_links')).params, [9, 'bot']);
+  assert.equal(calls.filter(call => call.sql.includes('INSERT INTO zalo_bot_resident_links')).length, 1);
+});
+
+test('keeps a resident link whose tenant still exists and reports a conflict', async () => {
+  const { calls, pool } = registrationHarness([{ id: 10, tenant_id: 'tenant-active', chat_id: '22', user_id: '33' }]);
+  const result = await receiveBotUpdate(pool, 'bot', registrationEvent('active-link'), 'org-one', matchedTenant, async () => true);
+  assert.equal(result.registration, 'CONFLICT');
+  assert.equal(calls.filter(call => call.sql.includes('DELETE FROM zalo_bot_resident_links')).length, 0);
+  assert.equal(calls.filter(call => call.sql.includes('INSERT INTO zalo_bot_resident_links')).length, 0);
+});
+
+test('accepts an exact resident link without checking or deleting other links', async () => {
+  const { calls, pool } = registrationHarness([
+    { id: 11, tenant_id: 'tenant-new', chat_id: '22', user_id: '33' },
+    { id: 12, tenant_id: 'tenant-other', chat_id: 'other-chat', user_id: '33' },
+  ]);
+  let existenceChecks = 0;
+  const result = await receiveBotUpdate(pool, 'bot', registrationEvent('exact-link'), 'org-one', matchedTenant, async () => { existenceChecks += 1; return false; });
+  assert.equal(result.registration, 'ALREADY_VERIFIED');
+  assert.equal(existenceChecks, 0);
+  assert.equal(calls.filter(call => call.sql.includes('DELETE FROM zalo_bot_resident_links')).length, 0);
+  assert.equal(calls.filter(call => call.sql.includes('INSERT INTO zalo_bot_resident_links')).length, 0);
 });
 
 test('business reminders are queued from issued invoices and expiring contracts', async () => {

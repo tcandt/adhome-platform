@@ -195,10 +195,17 @@ export const attachmentLabels: Record<string, string> = {
   ID_FRONT: 'CCCD mặt trước', ID_BACK: 'CCCD mặt sau', TITLE_FRONT: 'Sổ đỏ căn nhà mặt trước', TITLE_BACK: 'Sổ đỏ căn nhà mặt sau',
   BUSINESS_REGISTRATION: 'Giấy chứng nhận đăng ký hộ kinh doanh', SALE_CERTIFICATE: 'Giấy chứng nhận mua bán nhà ở',
 };
+export const requiredResidenceAttachmentKinds = [
+  ...identityDocumentKinds,
+  ...buildingDocumentKinds.filter(kind => kind !== 'SALE_CERTIFICATE'),
+];
+export function missingAttachmentLabels(presentKinds: Iterable<string>) {
+  const present = new Set(presentKinds);
+  return requiredResidenceAttachmentKinds.filter(kind => !present.has(kind)).map(kind => attachmentLabels[kind]);
+}
 export async function residenceAttachments(db: any, orgId: string, buildingId: string, contractId: string) {
   const [identity, building] = await Promise.all([listPrivateDocuments(db, orgId, contractId), listPrivateDocuments(db, orgId, buildingId)]);
-  const required = [...identityDocumentKinds, ...buildingDocumentKinds.filter(kind => kind !== 'SALE_CERTIFICATE')];
-  const missing = required.filter(kind => ![...identity, ...building].some(doc => doc.kind === kind)).map(kind => attachmentLabels[kind]);
+  const missing = missingAttachmentLabels([...identity, ...building].map(doc => doc.kind));
   return { identity, building, missing };
 }
 

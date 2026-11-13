@@ -21,6 +21,29 @@ export function contractDocumentMissing(profile: any) {
   return missing;
 }
 
+export function assembleContractDocumentProfile(
+  contract: any,
+  buildingLandlord: any = {},
+  savedMeta: any = {},
+  reusableMeta: any = {},
+) {
+  const room = contract.room || {};
+  const building = room.building || contract.building || {};
+  const primary = (contract.occupants || []).find((person: any) => person.relationToPrimary === 'PRIMARY');
+  const stored = savedMeta || {};
+  const buildingWithLandlord = { ...building, landlord: buildingLandlord || building.landlord || {} };
+  return mergeRentalOccupants({
+    members: [], purpose: 'Để ở', durationText: `${contract.startDate.split('-').reverse().join('/')} đến ${contract.endDate.split('-').reverse().join('/')}`,
+    rentalAddress: [building.streetAddress, building.ward, building.province].filter(Boolean).join(', '),
+    signedDate: contract.signedAt ? new Date(contract.signedAt).toISOString().slice(0, 10) : '',
+    managerContact: [building.managerName, building.managerPhone].filter(Boolean).join(' - '),
+    leaseTemplate: room.roomType === '2PN' ? 'LEASE_2PN' : 'LEASE_1PN', ...stored,
+    tenant: { fullName: contract.tenant?.fullName || primary?.fullName || '', phone: contract.tenant?.phone || primary?.phone || '',
+      idNumber: contract.tenant?.idNumber || primary?.idNumber || '', birthDate: primary?.dateOfBirth || '', gender: primary?.gender || '', address: '', ...stored.tenant },
+    landlord: resolveBuildingLandlord(buildingWithLandlord, reusableMeta?.landlord, stored.landlord),
+  }, contract.occupants || []);
+}
+
 export async function handleContractDocuments(req: any, res: any, pathname: string, prisma: any, actor: any, helpers: any): Promise<boolean> {
   const match = pathname.match(/^\/api\/v1\/console\/v2\/contracts\/([^/]+)\/document(?:\/(profile))?$/);
   if (!match) return false;
@@ -34,21 +57,10 @@ export async function handleContractDocuments(req: any, res: any, pathname: stri
     if (!contract || contract.orgId !== actor.orgId || !contract.room || contract.room.orgId !== actor.orgId) fail('Không tìm thấy hợp đồng.', 404);
     const room = contract.room;
     if (!isBuildingAllowedForActor(actor, contract.buildingId, room.building.code)) fail('Không có quyền xem hợp đồng tòa nhà này.', 403);
-    room.building.landlord = (await readBuildingLandlords(prisma, actor.orgId, [contract.buildingId])).get(contract.buildingId) || {};
+    const buildingLandlord = (await readBuildingLandlords(prisma, actor.orgId, [contract.buildingId])).get(contract.buildingId) || {};
     const saved = await prisma.consoleAuditLog.findFirst({ where: { orgId: actor.orgId, entityType: 'RENTAL_DOCUMENT', entityId: contract.id, action: 'SAVE_RENTAL_PROFILE' }, orderBy: { createdAt: 'desc' } });
     const reusable = await prisma.consoleAuditLog.findFirst({ where: { orgId: actor.orgId, buildingId: contract.buildingId, entityType: 'RENTAL_DOCUMENT', action: 'SAVE_RENTAL_PROFILE' }, orderBy: { createdAt: 'desc' } });
-    const primary = (contract.occupants || []).find((person: any) => person.relationToPrimary === 'PRIMARY');
-    const stored = saved?.metadata || {};
-    const profile = mergeRentalOccupants({
-      members: [], purpose: 'Để ở', durationText: `${contract.startDate.split('-').reverse().join('/')} đến ${contract.endDate.split('-').reverse().join('/')}`,
-      rentalAddress: [room.building.streetAddress, room.building.ward, room.building.province].filter(Boolean).join(', '),
-      signedDate: contract.signedAt ? new Date(contract.signedAt).toISOString().slice(0, 10) : '',
-      managerContact: [room.building.managerName, room.building.managerPhone].filter(Boolean).join(' - '),
-      leaseTemplate: room.roomType === '2PN' ? 'LEASE_2PN' : 'LEASE_1PN', ...stored,
-      tenant: { fullName: contract.tenant?.fullName || primary?.fullName || '', phone: contract.tenant?.phone || primary?.phone || '',
-        idNumber: contract.tenant?.idNumber || primary?.idNumber || '', birthDate: primary?.dateOfBirth || '', gender: primary?.gender || '', address: '', ...stored.tenant },
-      landlord: resolveBuildingLandlord(room.building, reusable?.metadata?.landlord, stored.landlord),
-    }, contract.occupants || []);
+    const profile = assembleContractDocumentProfile(contract, buildingLandlord, saved?.metadata, reusable?.metadata);
     const body = req.method === 'POST' ? await readJsonBody(req) : {};
     const params = new URL(req.url || '/', 'http://localhost').searchParams;
     const occupantId = String(body.occupantId || params.get('occupantId') || '');

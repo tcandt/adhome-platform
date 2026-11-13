@@ -1,9 +1,9 @@
 import { availableDeposit, allocateInitialReceipt, vnd } from './rentalFinance';
 import { handleRentalWorkflow, saveRentalProfile } from './rentalWorkflowApi';
 import { personOccupancy } from './rentalPeople';
-import { validateDocumentProfile } from './rentalDocuments';
+import { missingAttachmentLabels, validateDocumentProfile } from './rentalDocuments';
 import { handleDataManagement } from './dataManagementApi';
-import { handleContractDocuments } from './contractDocumentsApi';
+import { assembleContractDocumentProfile, contractDocumentMissing, handleContractDocuments } from './contractDocumentsApi';
 import { handlePrivateDocuments } from './privateDocuments';
 import { handlePaymentIntegrations } from './paymentIntegrationApi';
 import { handleZaloBotSettings } from './zaloBotSettings';
@@ -4582,11 +4582,66 @@ export async function handleConsoleV2Api(
     }
 
     if (moduleKey === 'contracts') {
-      const contracts = await prisma.contract.findMany({
-        where: { orgId: actor.orgId, buildingId: { in: bldIds } },
-        include: { room: true, building: true, tenant: true, occupants: true, deposits: true },
-        orderBy: { createdAt: 'desc' },
-      });
+      const [contracts, landlordMap] = await Promise.all([
+        prisma.contract.findMany({
+          where: { orgId: actor.orgId, buildingId: { in: bldIds } },
+          include: { room: true, building: true, tenant: true, occupants: true, deposits: true },
+          orderBy: { createdAt: 'desc' },
+        }),
+        readBuildingLandlords(prisma, actor.orgId, bldIds),
+      ]);
+      const contractIds = contracts.map((c) => c.id);
+      const docLogs =
+        bldIds.length > 0
+          ? await prisma.consoleAuditLog.findMany({
+              where: {
+                orgId: actor.orgId,
+                entityType: 'RENTAL_DOCUMENT',
+                action: {
+                  in: [
+                    'SAVE_RENTAL_PROFILE',
+                    'UPLOAD_PRIVATE_DOCUMENT',
+                    'REMOVE_PRIVATE_DOCUMENT',
+                  ],
+                },
+                OR: [
+                  ...(contractIds.length > 0 ? [{ entityId: { in: contractIds } }] : []),
+                  { buildingId: { in: bldIds } },
+                ],
+              },
+              orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+              select: { action: true, entityId: true, buildingId: true, metadata: true },
+            })
+          : [];
+      const savedByContractId = new Map<string, any>();
+      const reusableByBuildingId = new Map<string, any>();
+      const removedPrivateDocIds = new Set<string>();
+      for (const log of docLogs) {
+        if (log.action === 'REMOVE_PRIVATE_DOCUMENT' && (log.metadata as any)?.id) {
+          removedPrivateDocIds.add(String((log.metadata as any).id));
+        }
+      }
+      const uploadedKindsByEntityId = new Map<string, Set<string>>();
+      for (const log of docLogs) {
+        if (log.action === 'SAVE_RENTAL_PROFILE') {
+          if (log.entityId && !savedByContractId.has(log.entityId)) {
+            savedByContractId.set(log.entityId, log.metadata);
+          }
+          if (log.buildingId && !reusableByBuildingId.has(log.buildingId)) {
+            reusableByBuildingId.set(log.buildingId, log.metadata);
+          }
+        } else if (log.action === 'UPLOAD_PRIVATE_DOCUMENT' && log.entityId) {
+          const meta = log.metadata as any;
+          if (meta?.id && meta?.kind && !removedPrivateDocIds.has(String(meta.id))) {
+            let kinds = uploadedKindsByEntityId.get(log.entityId);
+            if (!kinds) {
+              kinds = new Set<string>();
+              uploadedKindsByEntityId.set(log.entityId, kinds);
+            }
+            kinds.add(String(meta.kind));
+          }
+        }
+      }
       return sendJson(res, 200, {
         ok: true,
         module: moduleKey,
@@ -4597,6 +4652,20 @@ export async function handleConsoleV2Api(
           }, 0);
           const reqDeposit = toSafeVndNumber(c.depositVnd);
           const remDeposit = Math.max(0, reqDeposit - collectedDepositVnd);
+          const buildingLandlord = landlordMap.get(c.buildingId) || {};
+          const savedMeta = savedByContractId.get(c.id);
+          const reusableMeta = reusableByBuildingId.get(c.buildingId);
+          const textMissing = c.room
+            ? contractDocumentMissing(
+                assembleContractDocumentProfile(c, buildingLandlord, savedMeta, reusableMeta)
+              )
+            : [];
+          const presentAttachmentKinds = [
+            ...(uploadedKindsByEntityId.get(c.id) || []),
+            ...(uploadedKindsByEntityId.get(c.buildingId) || []),
+          ];
+          const attachmentMissing = missingAttachmentLabels(presentAttachmentKinds);
+          const missingDocumentFields = [...textMissing, ...attachmentMissing];
           return {
             id: c.id,
             contractCode: c.contractCode,
@@ -4634,6 +4703,8 @@ export async function handleConsoleV2Api(
             status: c.status,
             notes: c.notes,
             createdAt: c.createdAt.toISOString(),
+            missingDocumentFields,
+            documentStatus: missingDocumentFields.length === 0 ? 'COMPLETE' : 'INCOMPLETE',
           };
         }),
       });

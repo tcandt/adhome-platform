@@ -12,9 +12,9 @@ type Profile = { tenant: Record<string, string>; landlord: Record<string, string
 const headers = { 'Content-Type': 'application/json', 'X-Requested-With': 'AdHome-Console' };
 class MissingContractDetails extends Error {}
 
-export function ContractDocumentLink({ contractId, children, draftProfile, personIndex, occupantId, onProfileSaved, className = '' }: { contractId: string; children: React.ReactNode; draftProfile?: Profile; personIndex?: number; occupantId?: string; onProfileSaved?: (profile: Profile) => void; className?: string }) {
+export function ContractDocumentLink({ contractId, children, draftProfile, personIndex, occupantId, onProfileSaved, className = '', testId, title }: { contractId: string; children: React.ReactNode; draftProfile?: Profile; personIndex?: number; occupantId?: string; onProfileSaved?: (profile: Profile) => void; className?: string; testId?: string; title?: string }) {
   const [open, setOpen] = useState(false);
-  return <><button type="button" className={`contract-document-link ${className}`} onClick={() => setOpen(true)} aria-label={`Xem hợp đồng ${typeof children === 'string' ? children : ''}`}>{children}</button>
+  return <><button type="button" data-testid={testId} title={title} className={`contract-document-link ${className}`} onClick={() => setOpen(true)} aria-label={`Xem hợp đồng ${typeof children === 'string' ? children : ''}`}>{children}</button>
     {open && <ContractDocumentDialog contractId={contractId} personIndex={personIndex} occupantId={occupantId} draftProfile={draftProfile} onProfileSaved={onProfileSaved} onClose={() => setOpen(false)} />}</>;
 }
 
@@ -119,7 +119,7 @@ export function ContractDocumentDialog({ contractId, draftProfile, personIndex =
     {printError && <p role="alert" className="contract-document-error">{printError}</p>}
     <div className="contract-document-body" aria-busy={!!busy}>
       {busy ? <div role="status" className="contract-document-loading"><FileText size={28} strokeWidth={1.5} /><span className="sr-only">{busy}</span><span aria-hidden="true"><ShimmeringText text={busy} /></span></div> : editing && profile ? <form id="contract-document-form" className="contract-document-form" onSubmit={e => { e.preventDefault(); preview(true); }}>
-        {missing.length > 0 && <details className="contract-missing"><summary><AlertCircle size={16} /><span role="status">Cần bổ sung {missing.length} thông tin</span><ChevronDown size={15} /></summary><ul>{missing.map(label => <li key={label}>{label}</li>)}</ul></details>}
+        {missing.length > 0 && <details open className="contract-missing"><summary><AlertCircle size={16} /><span role="status">Cần bổ sung {missing.length} thông tin</span><ChevronDown size={15} /></summary><ul>{missing.map(label => <li key={label}>{label}</li>)}</ul></details>}
         <section><h3>Khách thuê</h3><div className="contract-document-fields">{input('tenant', 'fullName', 'Họ và tên')}{input('tenant', 'idNumber', 'Số căn cước / giấy tờ')}{input('tenant', 'birthDate', 'Ngày sinh', 'date')}{input('tenant', 'gender', 'Giới tính')}{input('tenant', 'phone', 'Số điện thoại', 'tel')}{input('tenant', 'address', 'Địa chỉ thường trú', 'text', true)}<label className="contract-field-wide">Cơ quan tiếp nhận CT01<input value={profile.authority || ''} onChange={e => edit('authority', e.target.value)} /></label></div></section>
         <ContractIdentityDocuments contractId={contractId} onBusyChange={setAttachmentsBusy} onPendingChange={setAttachmentsPending} onChanged={() => { setPdfUrl(''); setPdfBlob(null); setPrintReady(false); }} />
         <section><h3>Bên cho thuê</h3><div className="contract-document-fields">{input('landlord', 'fullName', 'Họ và tên bên cho thuê')}{input('landlord', 'idNumber', 'Giấy tờ bên cho thuê')}{input('landlord', 'birthDate', 'Ngày sinh bên cho thuê', 'date')}{input('landlord', 'phone', 'Điện thoại bên cho thuê', 'tel')}{input('landlord', 'address', 'Địa chỉ bên cho thuê', 'text', true)}{input('landlord', 'accountName', 'Chủ tài khoản')}{input('landlord', 'accountNumber', 'Số tài khoản')}{input('landlord', 'bank', 'Ngân hàng', 'text', true)}</div></section>

@@ -32,7 +32,7 @@ export const MobileShell: React.FC = () => {
 
       <MobileDrawer isOpen={drawerOpen} onClose={() => setDrawerOpen(false)} moreOnly={moreOnly} />
 
-      <main className={`${activeModule === 'buildings' ? 'pt-2' : activeModule === 'invoices' || activeModule === 'payments' || activeModule === 'settlements' ? 'pt-1' : 'pt-4'} min-w-0 overflow-x-clip px-4`} style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom, 0px))' }}>
+      <main className={`${activeModule === 'buildings' ? 'pt-2' : activeModule === 'invoices' || activeModule === 'payments' || activeModule === 'settlements' || activeModule === 'contracts' ? 'pt-1' : 'pt-4'} min-w-0 overflow-x-clip px-4`} style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom, 0px))' }}>
         {!isModuleAllowed ? (
           <div
             data-testid="console-module-forbidden"

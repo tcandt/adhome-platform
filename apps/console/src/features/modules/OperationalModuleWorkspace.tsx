@@ -391,57 +391,12 @@ export const OperationalModuleWorkspace: React.FC<
   const [waterCalcMode, setWaterCalcMode] = useState<'PER_PERSON' | 'PER_M3' | 'FIXED_ROOM'>('PER_PERSON');
   const [isTriggeringSyncJob, setIsTriggeringSyncJob] = useState(false);
 
-  // Contracts vs Occupancy View Sub-Toggle (C4-OCC-01)
-  const [contractsSubView, setContractsSubView] = useState<'contracts' | 'occupancy'>('contracts');
-  const [occupancyData, setOccupancyData] = useState<{
-    summary: {
-      totalRooms: number;
-      occupiedRooms: number;
-      availableRooms: number;
-      reservedRooms: number;
-      maintenanceRooms: number;
-      occupancyRatePercent: number;
-      totalOccupants: number;
-    };
-    rooms: any[];
-  } | null>(null);
-  const [isLoadingOccupancy, setIsLoadingOccupancy] = useState(false);
-
-  const fetchOccupancyData = useCallback(async () => {
-    setIsLoadingOccupancy(true);
-    try {
-      const res = await fetch('/api/v1/console/v2/occupancy', {
-        credentials: 'include',
-        headers: { 'X-Requested-With': CONSOLE_CSRF_HEADER },
-      });
-      const data = await res.json();
-      if (res.ok && data.ok) {
-        setOccupancyData(data);
-      }
-    } catch {
-      // ignore
-    } finally {
-      setIsLoadingOccupancy(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (moduleId === 'contracts' && contractsSubView === 'occupancy') {
-      void fetchOccupancyData();
-    }
-  }, [moduleId, contractsSubView, fetchOccupancyData]);
-
   useEffect(() => {
     (window as any).__adhome_openLegacyImportModal = () => setIsImportModalOpen(true);
-    (window as any).__adhome_setContractsSubView = (view: 'contracts' | 'occupancy') => {
-      setContractsSubView(view);
-      if (view === 'occupancy') void fetchOccupancyData();
-    };
     return () => {
       delete (window as any).__adhome_openLegacyImportModal;
-      delete (window as any).__adhome_setContractsSubView;
     };
-  }, [fetchOccupancyData]);
+  }, []);
 
   // Contract Lifecycle Modals (Extend / Transfer / Terminate)
   const [selectedContract, setSelectedContract] = useState<{
@@ -1858,22 +1813,12 @@ export const OperationalModuleWorkspace: React.FC<
             </div>
           )}
 
-          {/* 2. CONTRACTS & OCCUPANCY SOURCE OF TRUTH */}
+          {/* 2. CONTRACTS SOURCE OF TRUTH */}
           {moduleId === 'contracts' && (
             <ContractsWorkspaceView
-              selectedPeriod={selectedPeriod}
-              onChangePeriod={setSelectedPeriod}
-              shiftPeriodKey={shiftPeriodKey}
               contracts={contracts}
-              roomsCount={rooms.length}
-              isLoading={isLoading || isLoadingOccupancy}
+              isLoading={isLoading}
               onRefresh={loadModuleData}
-              contractsSubView={contractsSubView}
-              onChangeSubView={(nextView) => {
-                setContractsSubView(nextView);
-                if (nextView === 'occupancy') void fetchOccupancyData();
-              }}
-              occupancyData={occupancyData}
               onOpenHandover={(c) => openHandoverModal(c)}
               onOpenExtend={(c) => {
                 setSelectedContract(c);
@@ -4213,7 +4158,6 @@ export const OperationalModuleWorkspace: React.FC<
         onClose={() => setIsImportModalOpen(false)}
         onSuccess={async () => {
           await loadModuleData();
-          if (fetchOccupancyData) await fetchOccupancyData();
         }}
       />
 

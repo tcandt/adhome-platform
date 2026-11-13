@@ -1,32 +1,25 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Collapsible } from '@animate-ui/react/primitives/base-ui/collapsible';
+import { Popover } from '@animate-ui/react/primitives/base-ui/popover';
+import { Button } from '@animate-ui/react/primitives/buttons/button';
 import {
-  AlertCircle,
   AlertTriangle,
   Building2,
-  Calendar,
+  Check,
   CheckCircle2,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   FileSignature,
   FileText,
+  Filter,
   LayoutGrid,
   RefreshCw,
   Search,
-  ShieldCheck,
   Table2,
+  X,
 } from 'lucide-react';
-import {
-  formatPeriodDisplay,
-  getCurrentVnPeriodKey,
-} from '@/app/navigation/navigationConfig';
 import { ActionMenu } from '@/shared/ui/ActionMenu';
 import { ContractDocumentLink } from '@/shared/ui/ContractDocumentDialog';
-import {
-  SettlementProgressBar,
-  SettlementShimmerButton,
-} from '@/shared/ui/SettlementAnimatePrimitives';
+import { SettlementProgressBar } from '@/shared/ui/SettlementAnimatePrimitives';
 import {
   formatContractDisplayCode,
   formatWaterBillingLabel,
@@ -55,30 +48,10 @@ export interface ContractListItem {
   documentStatus?: 'COMPLETE' | 'INCOMPLETE';
 }
 
-export interface OccupancyWorkspaceData {
-  summary: {
-    totalRooms: number;
-    occupiedRooms: number;
-    availableRooms: number;
-    reservedRooms: number;
-    maintenanceRooms: number;
-    occupancyRatePercent: number;
-    totalOccupants: number;
-  };
-  rooms: any[];
-}
-
 interface ContractsWorkspaceViewProps {
-  selectedPeriod: string;
-  onChangePeriod: (nextPeriod: string) => void;
-  shiftPeriodKey: (period: string, deltaMonths: number) => string;
   contracts: ContractListItem[];
-  roomsCount: number;
   isLoading: boolean;
   onRefresh: () => Promise<void>;
-  contractsSubView: 'contracts' | 'occupancy';
-  onChangeSubView: (view: 'contracts' | 'occupancy') => void;
-  occupancyData: OccupancyWorkspaceData | null;
   onOpenHandover: (contract: ContractListItem) => void;
   onOpenExtend: (contract: ContractListItem) => void;
   onOpenTransfer: (contract: ContractListItem) => void;
@@ -86,6 +59,14 @@ interface ContractsWorkspaceViewProps {
 }
 
 type ContractStatusFilter = 'ALL' | 'ACTIVE' | 'DRAFT' | 'EXPIRING' | 'TERMINATED';
+
+const STATUS_FILTER_OPTIONS: Array<{ id: ContractStatusFilter; label: string }> = [
+  { id: 'ALL', label: 'Tất cả trạng thái' },
+  { id: 'ACTIVE', label: 'Đang hiệu lực' },
+  { id: 'DRAFT', label: 'Chờ bàn giao' },
+  { id: 'EXPIRING', label: 'Sắp hết hạn' },
+  { id: 'TERMINATED', label: 'Đã thanh lý' },
+];
 
 function getContractStatusBadge(status: string) {
   if (status === 'ACTIVE' || status === 'EXTENDED') {
@@ -112,36 +93,28 @@ function getContractStatusBadge(status: string) {
   };
 }
 
-function isContractInPeriod(contract: ContractListItem, periodKey: string): boolean {
-  const startMonth = (contract.startDate || '').slice(0, 7);
-  const endMonth = (contract.endDate || '').slice(0, 7);
-  if (!/^\d{4}-\d{2}$/.test(startMonth) || !/^\d{4}-\d{2}$/.test(endMonth)) {
-    return true;
-  }
-  return startMonth <= periodKey && endMonth >= periodKey;
+function matchesStatusFilter(status: string, filter: ContractStatusFilter): boolean {
+  if (filter === 'ALL') return true;
+  if (filter === 'ACTIVE') return status === 'ACTIVE' || status === 'EXTENDED';
+  if (filter === 'DRAFT') return status === 'DRAFT';
+  if (filter === 'EXPIRING') return status === 'EXPIRING';
+  return status === 'TERMINATED' || status === 'EXPIRED';
 }
 
 export const ContractsWorkspaceView: React.FC<ContractsWorkspaceViewProps> = ({
-  selectedPeriod,
-  onChangePeriod,
-  shiftPeriodKey,
   contracts,
-  roomsCount,
   isLoading,
   onRefresh,
-  contractsSubView,
-  onChangeSubView,
-  occupancyData,
   onOpenHandover,
   onOpenExtend,
   onOpenTransfer,
   onOpenTerminate,
 }) => {
-  const [periodScope, setPeriodScope] = useState<'PERIOD' | 'ALL'>('PERIOD');
   const [searchQuery, setSearchQuery] = useState('');
   const [contractStatusFilter, setContractStatusFilter] =
     useState<ContractStatusFilter>('ALL');
   const [onlyMissingDoc, setOnlyMissingDoc] = useState(false);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'card' | 'table'>(() =>
     typeof window !== 'undefined' && window.innerWidth < 768 ? 'card' : 'table'
   );
@@ -156,34 +129,24 @@ export const ContractsWorkspaceView: React.FC<ContractsWorkspaceViewProps> = ({
     return () => mq.removeEventListener('change', handleChange);
   }, []);
 
-  const periodContracts = useMemo(() => {
-    if (periodScope === 'ALL') return contracts;
-    return contracts.filter((c) => isContractInPeriod(c, selectedPeriod));
-  }, [contracts, periodScope, selectedPeriod]);
-
   const missingDocCount = useMemo(
-    () => periodContracts.filter((c) => (c.missingDocumentFields?.length || 0) > 0).length,
-    [periodContracts]
+    () => contracts.filter((c) => (c.missingDocumentFields?.length || 0) > 0).length,
+    [contracts]
   );
 
-  const completeDocCount = Math.max(0, periodContracts.length - missingDocCount);
+  const completeDocCount = Math.max(0, contracts.length - missingDocCount);
   const docCompletionRate =
-    periodContracts.length > 0
-      ? Math.round((completeDocCount / periodContracts.length) * 100)
+    contracts.length > 0
+      ? Math.round((completeDocCount / contracts.length) * 100)
       : 100;
+
+  const activeFilterCount =
+    (contractStatusFilter !== 'ALL' ? 1 : 0) + (onlyMissingDoc ? 1 : 0);
 
   const displayedContracts = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return periodContracts.filter((c) => {
-      if (contractStatusFilter === 'ACTIVE') {
-        if (c.status !== 'ACTIVE' && c.status !== 'EXTENDED') return false;
-      } else if (contractStatusFilter === 'DRAFT') {
-        if (c.status !== 'DRAFT') return false;
-      } else if (contractStatusFilter === 'EXPIRING') {
-        if (c.status !== 'EXPIRING') return false;
-      } else if (contractStatusFilter === 'TERMINATED') {
-        if (c.status !== 'TERMINATED' && c.status !== 'EXPIRED') return false;
-      }
+    return contracts.filter((c) => {
+      if (!matchesStatusFilter(c.status, contractStatusFilter)) return false;
 
       if (onlyMissingDoc && (c.missingDocumentFields?.length || 0) === 0) {
         return false;
@@ -205,35 +168,35 @@ export const ContractsWorkspaceView: React.FC<ContractsWorkspaceViewProps> = ({
         .toLowerCase();
       return haystack.includes(q);
     });
-  }, [periodContracts, contractStatusFilter, onlyMissingDoc, searchQuery]);
+  }, [contracts, contractStatusFilter, onlyMissingDoc, searchQuery]);
 
   const buildActionItems = (c: ContractListItem, mobile = false) => [
     ...(c.status === 'DRAFT'
       ? [
-          {
-            label: 'Bàn giao phòng',
-            variant: 'primary' as const,
-            testId: mobile ? `btn-open-handover-mobile-${c.id}` : 'action-handover-item',
-            onClick: () => onOpenHandover(c),
-          },
-        ]
+        {
+          label: 'Bàn giao phòng',
+          variant: 'primary' as const,
+          testId: mobile ? `btn-open-handover-mobile-${c.id}` : 'action-handover-item',
+          onClick: () => onOpenHandover(c),
+        },
+      ]
       : []),
     ...(c.status === 'ACTIVE' || c.status === 'EXTENDED' || c.status === 'EXPIRING'
       ? [
-          {
-            label: 'Gia hạn hợp đồng',
-            onClick: () => onOpenExtend(c),
-          },
-          {
-            label: 'Đổi phòng',
-            onClick: () => onOpenTransfer(c),
-          },
-          {
-            label: 'Thanh lý hợp đồng',
-            variant: 'danger' as const,
-            onClick: () => onOpenTerminate(c),
-          },
-        ]
+        {
+          label: 'Gia hạn hợp đồng',
+          onClick: () => onOpenExtend(c),
+        },
+        {
+          label: 'Đổi phòng',
+          onClick: () => onOpenTransfer(c),
+        },
+        {
+          label: 'Thanh lý hợp đồng',
+          variant: 'danger' as const,
+          onClick: () => onOpenTerminate(c),
+        },
+      ]
       : []),
   ];
 
@@ -297,9 +260,8 @@ export const ContractsWorkspaceView: React.FC<ContractsWorkspaceViewProps> = ({
               </span>
             </span>
             <ChevronDown
-              className={`w-3.5 h-3.5 shrink-0 transition-transform ${
-                isExpanded ? 'rotate-180' : ''
-              }`}
+              className={`w-3.5 h-3.5 shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''
+                }`}
             />
           </Collapsible.Trigger>
           <Collapsible.Panel className="overflow-hidden pt-1.5 text-[10.5px] text-amber-900/90 dark:text-amber-200/90">
@@ -319,166 +281,27 @@ export const ContractsWorkspaceView: React.FC<ContractsWorkspaceViewProps> = ({
 
   return (
     <div className="space-y-3 min-w-0" data-testid="contracts-workspace">
-      {/* Unified Top Bar: Month/Year + Reload + Subviews */}
-      <div
-        data-testid="contracts-toolbar"
-        className="bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-2.5 sm:px-4 sm:py-3 shadow-xs space-y-2.5"
-      >
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          {/* Desktop heading */}
-          <div className="hidden md:block min-w-0">
+      {/* Main Content Card */}
+      <div className="bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-3 sm:p-4 space-y-3 shadow-xs min-w-0 overflow-hidden">
+        {/* Desktop compact header + PDF progress */}
+        <div className="hidden md:flex items-center justify-between gap-3 pb-2.5 border-b border-slate-100 dark:border-slate-800">
+          <div className="min-w-0 flex items-center gap-2">
             <h2 className="truncate text-base font-bold text-slate-900 dark:text-white">
               Hợp đồng thuê &amp; Hồ sơ PDF
             </h2>
-            <p className="truncate text-xs text-slate-500">
-              Theo dõi hiệu lực theo kỳ, kiểm tra hồ sơ thiếu thông tin và xem bản in PDF
-            </p>
+            <span className="inline-flex h-5 items-center rounded-full bg-slate-100 dark:bg-slate-800 px-2 text-[11px] font-bold text-slate-600 dark:text-slate-300 tabular-nums">
+              {contracts.length}
+            </span>
           </div>
 
-          {/* Right/Top Controls: Month/Year + Period Scope + Reload */}
-          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 w-full md:w-auto justify-between md:justify-end">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <div
-                data-testid="contracts-period-selector"
-                className="inline-flex h-8 sm:h-9 items-center gap-0.5 bg-slate-100 dark:bg-slate-800/80 p-0.5 sm:p-1 rounded-xl"
-              >
-                <button
-                  type="button"
-                  data-testid="btn-contracts-period-prev"
-                  aria-label="Kỳ trước"
-                  onClick={() => {
-                    setPeriodScope('PERIOD');
-                    onChangePeriod(shiftPeriodKey(selectedPeriod, -1));
-                  }}
-                  className="p-1.5 rounded-lg text-slate-500 hover:bg-white dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-colors"
-                >
-                  <ChevronLeft className="w-3.5 h-3.5" />
-                </button>
-                <label className="relative inline-flex items-center gap-1 px-1.5 sm:px-2 text-[11px] sm:text-xs font-bold text-slate-800 dark:text-slate-100 cursor-pointer whitespace-nowrap">
-                  <Calendar className="w-3.5 h-3.5 text-brand-primary shrink-0" />
-                  <span className="sm:hidden">
-                    T{selectedPeriod.slice(5, 7)}/{selectedPeriod.slice(0, 4)}
-                  </span>
-                  <span className="hidden sm:inline">
-                    Kỳ {formatPeriodDisplay(selectedPeriod)}
-                  </span>
-                  <input
-                    data-testid="input-contracts-period"
-                    type="month"
-                    value={selectedPeriod}
-                    onChange={(e) => {
-                      if (/^\d{4}-\d{2}$/.test(e.target.value)) {
-                        setPeriodScope('PERIOD');
-                        onChangePeriod(e.target.value);
-                      }
-                    }}
-                    className="sr-only"
-                  />
-                </label>
-                <button
-                  type="button"
-                  data-testid="btn-contracts-period-next"
-                  aria-label="Kỳ sau"
-                  onClick={() => {
-                    setPeriodScope('PERIOD');
-                    onChangePeriod(shiftPeriodKey(selectedPeriod, 1));
-                  }}
-                  className="p-1.5 rounded-lg text-slate-500 hover:bg-white dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-colors"
-                >
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              <button
-                type="button"
-                data-testid="btn-contracts-period-scope"
-                aria-pressed={periodScope === 'ALL'}
-                onClick={() =>
-                  setPeriodScope((prev) => (prev === 'PERIOD' ? 'ALL' : 'PERIOD'))
-                }
-                className={`inline-flex h-8 sm:h-9 items-center px-2 sm:px-2.5 rounded-xl text-[11px] font-bold border transition-colors whitespace-nowrap ${
-                  periodScope === 'ALL'
-                    ? 'bg-brand-primary text-white border-brand-primary shadow-xs'
-                    : 'bg-slate-50 dark:bg-slate-800/70 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
-                }`}
-              >
-                <span className="sm:hidden">{`Tất cả (${contracts.length})`}</span>
-                <span className="hidden sm:inline">{`Tất cả kỳ (${contracts.length})`}</span>
-              </button>
-
-              {selectedPeriod !== getCurrentVnPeriodKey() && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPeriodScope('PERIOD');
-                    onChangePeriod(getCurrentVnPeriodKey());
-                  }}
-                  className="hidden sm:inline-flex h-9 items-center px-2.5 rounded-xl text-[11px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 transition-colors whitespace-nowrap"
-                >
-                  Kỳ hiện tại
-                </button>
-              )}
-            </div>
-
-            <SettlementShimmerButton
-              type="button"
-              data-testid="btn-contracts-refresh"
-              isLoading={isLoading}
-              loadingText="Đang tải..."
-              shimmerColor="#2563eb"
-              onClick={() => void onRefresh()}
-              title="Tải lại dữ liệu hợp đồng"
-              className="inline-flex h-8 sm:h-9 items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 px-2.5 sm:px-3 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors whitespace-nowrap shrink-0"
-            >
-              <RefreshCw className="w-3.5 h-3.5 shrink-0" />
-              <span>Làm mới</span>
-            </SettlementShimmerButton>
-          </div>
-        </div>
-
-        {/* Subview tabs & PDF completeness indicator */}
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-            <button
-              type="button"
-              data-testid="tab-subview-contracts"
-              onClick={() => onChangeSubView('contracts')}
-              className={`inline-flex h-8 items-center gap-1.5 px-3 text-xs font-bold rounded-lg transition-colors whitespace-nowrap ${
-                contractsSubView === 'contracts'
-                  ? 'bg-brand-primary text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
-              }`}
-            >
-              <FileSignature className="w-3.5 h-3.5 shrink-0" />
-              <span>
-                Hợp đồng thuê ({periodContracts.length}
-                {periodScope === 'PERIOD' && contracts.length !== periodContracts.length
-                  ? `/${contracts.length}`
-                  : ''}
-                )
-              </span>
-            </button>
-            <button
-              type="button"
-              data-testid="tab-subview-occupancy"
-              onClick={() => onChangeSubView('occupancy')}
-              className={`inline-flex h-8 items-center gap-1.5 px-3 text-xs font-bold rounded-lg transition-colors whitespace-nowrap ${
-                contractsSubView === 'occupancy'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
-              }`}
-            >
-              <ShieldCheck className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
-              <span>
-                Đối soát Occupancy ({occupancyData?.summary?.totalRooms || roomsCount})
-              </span>
-            </button>
-          </div>
-
-          {contractsSubView === 'contracts' && periodContracts.length > 0 && (
-            <div className="hidden lg:flex items-center gap-2.5 text-[11px] text-slate-500 dark:text-slate-400">
+          {contracts.length > 0 && (
+            <div className="flex items-center gap-2.5 text-[11px] text-slate-500 dark:text-slate-400">
               <span className="whitespace-nowrap">
-                Hồ sơ PDF: <strong className="text-slate-800 dark:text-slate-200">{completeDocCount}/{periodContracts.length}</strong> đầy đủ
+                Hồ sơ PDF:{' '}
+                <strong className="text-slate-800 dark:text-slate-200">
+                  {completeDocCount}/{contracts.length}
+                </strong>{' '}
+                đầy đủ
               </span>
               <div className="w-24">
                 <SettlementProgressBar
@@ -492,273 +315,269 @@ export const ContractsWorkspaceView: React.FC<ContractsWorkspaceViewProps> = ({
             </div>
           )}
         </div>
-      </div>
 
-      {/* Main Content Card */}
-      <div className="bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-3 sm:p-4 space-y-3 shadow-xs min-w-0 overflow-hidden">
-        {contractsSubView === 'occupancy' && (
-          <div className="space-y-4" data-testid="occupancy-workspace">
-            {occupancyData?.summary && (
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
-                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800">
-                  <span className="block text-[11px] text-slate-500 font-medium">Tổng số phòng</span>
-                  <span className="text-base font-extrabold text-slate-900 dark:text-white" data-testid="kpi-total-rooms">
-                    {occupancyData.summary.totalRooms}
-                  </span>
-                </div>
-                <div className="p-3 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/40">
-                  <span className="block text-[11px] text-emerald-700 dark:text-emerald-400 font-medium">Đang ở (OCCUPIED)</span>
-                  <span className="text-base font-extrabold text-emerald-700 dark:text-emerald-400" data-testid="kpi-occupied-rooms">
-                    {occupancyData.summary.occupiedRooms}
-                  </span>
-                </div>
-                <div className="p-3 rounded-xl bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40">
-                  <span className="block text-[11px] text-blue-700 dark:text-blue-400 font-medium">Phòng trống (AVAILABLE)</span>
-                  <span className="text-base font-extrabold text-blue-700 dark:text-blue-400" data-testid="kpi-available-rooms">
-                    {occupancyData.summary.availableRooms}
-                  </span>
-                </div>
-                <div className="p-3 rounded-xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40">
-                  <span className="block text-[11px] text-amber-700 dark:text-amber-400 font-medium">Đang giữ chỗ (RESERVED)</span>
-                  <span className="text-base font-extrabold text-amber-700 dark:text-amber-400">
-                    {occupancyData.summary.reservedRooms}
-                  </span>
-                </div>
-                <div className="p-3 rounded-xl bg-indigo-50/60 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-900/40">
-                  <span className="block text-[11px] text-indigo-700 dark:text-indigo-400 font-medium">Tỷ lệ lấp đầy</span>
-                  <span className="text-base font-extrabold text-indigo-700 dark:text-indigo-400" data-testid="kpi-occupancy-rate">
-                    {occupancyData.summary.occupancyRatePercent}%
-                  </span>
-                </div>
-              </div>
-            )}
-
-            <div
-              className="w-full min-w-0 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden"
-              style={{ contain: 'layout inline-size' }}
-            >
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs text-left min-w-[780px]" data-testid="occupancy-table">
-                <thead className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 font-semibold text-slate-600 dark:text-slate-400">
-                  <tr>
-                    <th className="px-3 py-2.5 whitespace-nowrap">Phòng &amp; Tòa</th>
-                    <th className="px-3 py-2.5 whitespace-nowrap">Mô hình thuê</th>
-                    <th className="px-3 py-2.5 whitespace-nowrap">Trạng thái lấp đầy</th>
-                    <th className="px-3 py-2.5 whitespace-nowrap">Người thuê chính</th>
-                    <th className="px-3 py-2.5 whitespace-nowrap">Hợp đồng hiệu lực</th>
-                    <th className="px-3 py-2.5 whitespace-nowrap">Số người ở</th>
-                    <th className="px-3 py-2.5 text-center whitespace-nowrap">Tính nhất quán</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {occupancyData?.rooms?.map((rm) => (
-                    <tr key={rm.roomId} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
-                      <td className="px-3 py-3 font-bold text-slate-900 dark:text-white whitespace-nowrap">
-                        {rm.buildingCode} · {rm.roomCode}
-                      </td>
-                      <td className="px-3 py-3 font-mono text-[11px] text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                        {rm.rentalModel === 'SHARED_ROOM' ? 'Phòng ghép (SHARED)' : 'Nguyên căn (WHOLE)'}
-                      </td>
-                      <td className="px-3 py-3 whitespace-nowrap">
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[10.5px] font-bold whitespace-nowrap ${
-                            rm.occupancyStatus === 'OCCUPIED'
-                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                              : rm.occupancyStatus === 'AVAILABLE'
-                              ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
-                              : rm.occupancyStatus === 'RESERVED'
-                              ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-                              : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
-                          }`}
-                        >
-                          {rm.occupancyStatus}
-                        </span>
-                      </td>
-                      <td className="px-3 py-3 whitespace-nowrap">
-                        {rm.primaryTenant ? (
-                          <div>
-                            <div className="font-bold text-slate-900 dark:text-white">{rm.primaryTenant.fullName}</div>
-                            <div className="text-[11px] font-mono text-slate-500">{rm.primaryTenant.phone}</div>
-                          </div>
-                        ) : (
-                          <span className="text-slate-400 italic">Chưa có khách</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-3 font-mono text-[11px] whitespace-nowrap">
-                        {rm.activeContract ? (
-                          <div>
-                            <ContractDocumentLink
-                              contractId={rm.activeContract.id}
-                              onProfileSaved={() => void onRefresh()}
-                            >
-                              {rm.activeContract.contractCode}
-                            </ContractDocumentLink>
-                            {rm.activeContract.notes?.includes('paidThrough') && (
-                              <span className="block text-[10px] text-slate-500">
-                                {rm.activeContract.notes.split('paidThrough:')[1]?.trim()}
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-slate-400 italic">—</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-3 font-semibold text-slate-800 dark:text-slate-200 whitespace-nowrap">
-                        {rm.occupantsCount} / {rm.maxOccupants} người
-                      </td>
-                      <td className="px-3 py-3 text-center whitespace-nowrap">
-                        {rm.isConsistent ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
-                            <CheckCircle2 className="w-3 h-3" />
-                            Khớp 100%
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950/40 dark:text-rose-300">
-                            <AlertCircle className="w-3 h-3" />
-                            Lệch dữ liệu
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {contractsSubView === 'contracts' && (
-          <>
-            {/* Search & View Toggle Row + Status Chips */}
-            <div className="space-y-2.5">
-              <div className="flex items-center gap-2 w-full">
-                <div className="relative flex-1 min-w-0">
-                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                  <input
-                    data-testid="input-search-contracts"
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Tìm ID hồ sơ, mã phòng, tên khách, SĐT..."
-                    className="h-9 w-full text-xs pl-8 pr-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary"
-                  />
-                </div>
-
-                <div
-                  role="group"
-                  aria-label="Chế độ hiển thị danh sách hợp đồng"
-                  data-testid="contracts-view-mode-toggle"
-                  className="inline-flex h-9 shrink-0 items-center rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 p-0.5 gap-0.5"
+        {/* Unified Toolbar Row: Search + Filter Icon + Single View Mode Toggle + Icon-Only Refresh */}
+        <div className="space-y-2" data-testid="contracts-toolbar">
+          <div className="flex items-center gap-1.5 sm:gap-2 w-full">
+            <div className="relative flex-1 min-w-0">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              <input
+                data-testid="input-search-contracts"
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Tìm ID hồ sơ, mã phòng, tên khách, SĐT..."
+                className="h-9 w-full text-xs pl-8 pr-7 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-primary"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  aria-label="Xóa từ khóa tìm kiếm"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded"
                 >
-                  <button
-                    type="button"
-                    data-testid="btn-contracts-view-card"
-                    aria-label="Hiển thị dạng thẻ (Card)"
-                    aria-pressed={viewMode === 'card'}
-                    title="Hiển thị dạng thẻ (Card)"
-                    onClick={() => setViewMode('card')}
-                    className={`inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
-                      viewMode === 'card'
-                        ? 'bg-white dark:bg-slate-700 text-brand-primary dark:text-white shadow-xs'
-                        : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-                    }`}
-                  >
-                    <LayoutGrid className="w-4 h-4" />
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="btn-contracts-view-table"
-                    aria-label="Hiển thị dạng bảng (Table)"
-                    aria-pressed={viewMode === 'table'}
-                    title="Hiển thị dạng bảng (Table)"
-                    onClick={() => setViewMode('table')}
-                    className={`inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
-                      viewMode === 'table'
-                        ? 'bg-white dark:bg-slate-700 text-brand-primary dark:text-white shadow-xs'
-                        : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-                    }`}
-                  >
-                    <Table2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-100 dark:border-slate-800 min-w-0">
-                <div className="flex items-center gap-1.5 w-full md:w-auto min-w-0 overflow-x-auto no-scrollbar">
-                  {[
-                    { id: 'ALL', label: 'Tất cả' },
-                    { id: 'ACTIVE', label: 'Đang hiệu lực' },
-                    { id: 'DRAFT', label: 'Chờ bàn giao' },
-                    { id: 'EXPIRING', label: 'Sắp hết hạn' },
-                    { id: 'TERMINATED', label: 'Đã thanh lý' },
-                  ].map((tab) => (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      data-testid={`filter-contract-status-${tab.id}`}
-                      onClick={() => setContractStatusFilter(tab.id as ContractStatusFilter)}
-                      className={`px-3 py-1 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap ${
-                        contractStatusFilter === tab.id
-                          ? 'bg-brand-primary text-white shadow-xs'
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
-                      }`}
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
-
-                  {missingDocCount > 0 && (
-                    <button
-                      type="button"
-                      data-testid="filter-contract-missing-doc"
-                      aria-pressed={onlyMissingDoc}
-                      onClick={() => setOnlyMissingDoc((prev) => !prev)}
-                      className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg border transition-colors whitespace-nowrap ${
-                        onlyMissingDoc
-                          ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
-                          : 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800/70 hover:bg-amber-100'
-                      }`}
-                    >
-                      <AlertTriangle className="w-3 h-3 shrink-0" />
-                      <span>Thiếu thông tin ({missingDocCount})</span>
-                    </button>
-                  )}
-                </div>
-
-                <span className="text-[11px] text-slate-500 whitespace-nowrap">
-                  Hiển thị <strong>{displayedContracts.length}</strong> / {periodContracts.length} hợp đồng
-                </span>
-              </div>
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
 
-            {/* Empty state */}
-            {displayedContracts.length === 0 ? (
-              <div className="py-10 text-center space-y-2.5" data-testid="contracts-empty-state">
-                <FileSignature className="w-8 h-8 text-slate-400 mx-auto" />
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                  {contracts.length === 0
-                    ? 'Chưa có hợp đồng thuê trong phạm vi tòa nhà đang chọn'
-                    : periodContracts.length === 0
-                    ? `Không có hợp đồng hiệu lực trong kỳ ${formatPeriodDisplay(selectedPeriod)}`
-                    : 'Không tìm thấy hợp đồng phù hợp bộ lọc'}
-                </h3>
-                <p className="text-xs text-slate-500 max-w-md mx-auto">
-                  {periodContracts.length === 0 && contracts.length > 0
-                    ? 'Nhấn "Tất cả kỳ" hoặc chuyển sang tháng khác để xem các hợp đồng hiện có.'
-                    : 'Hợp đồng mới được khởi tạo trực tiếp từ sơ đồ phòng hoặc phiếu đặt cọc giữ chỗ.'}
-                </p>
-                {periodContracts.length === 0 && contracts.length > 0 && periodScope === 'PERIOD' && (
-                  <button
-                    type="button"
-                    onClick={() => setPeriodScope('ALL')}
-                    className="inline-flex h-8 items-center px-3 rounded-lg text-xs font-bold bg-brand-primary text-white hover:bg-brand-hover transition-colors"
+            {/* Filter Icon Popover */}
+            <Popover.Root open={isFilterOpen} onOpenChange={setIsFilterOpen}>
+              <Button asChild hoverScale={1.03} tapScale={0.96}>
+                <Popover.Trigger
+                  type="button"
+                  data-testid="btn-contracts-filter"
+                  aria-label={
+                    activeFilterCount > 0
+                      ? `Bộ lọc hợp đồng (đang bật ${activeFilterCount})`
+                      : 'Bộ lọc hợp đồng'
+                  }
+                  title="Bộ lọc trạng thái & hồ sơ PDF"
+                  className={`relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-colors ${
+                    activeFilterCount > 0
+                      ? 'bg-brand-primary/10 dark:bg-brand-primary/20 border-brand-primary/50 text-brand-primary'
+                      : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  <Filter className="w-4 h-4" />
+                  {activeFilterCount > 0 && (
+                    <span
+                      data-testid="contracts-filter-badge"
+                      className="absolute -top-1 -right-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-primary px-1 text-[9.5px] font-bold text-white shadow-xs"
+                    >
+                      {activeFilterCount}
+                    </span>
+                  )}
+                </Popover.Trigger>
+              </Button>
+              <Popover.Portal>
+                <Popover.Positioner side="bottom" align="end" sideOffset={8} className="z-[90]">
+                  <Popover.Popup
+                    data-testid="contracts-filter-popover"
+                    className="w-[272px] max-w-[calc(100vw-2rem)] rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#111827] p-3.5 shadow-xl space-y-3 outline-none text-xs"
                   >
-                    Xem tất cả kỳ ({contracts.length})
-                  </button>
-                )}
-              </div>
-            ) : viewMode === 'card' ? (
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-900 dark:text-white">
+                        Lọc hợp đồng
+                      </span>
+                      {activeFilterCount > 0 && (
+                        <button
+                          type="button"
+                          data-testid="btn-contracts-filter-reset"
+                          onClick={() => {
+                            setContractStatusFilter('ALL');
+                            setOnlyMissingDoc(false);
+                          }}
+                          className="text-[11px] font-semibold text-brand-primary hover:underline"
+                        >
+                          Đặt lại
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="space-y-1">
+                      <span className="block text-[10.5px] font-semibold uppercase tracking-wide text-slate-400">
+                        Trạng thái
+                      </span>
+                      <div className="space-y-1">
+                        {STATUS_FILTER_OPTIONS.map((opt) => {
+                          const count = contracts.filter((c) =>
+                            matchesStatusFilter(c.status, opt.id)
+                          ).length;
+                          const selected = contractStatusFilter === opt.id;
+                          return (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              data-testid={`filter-contract-status-${opt.id}`}
+                              onClick={() => setContractStatusFilter(opt.id)}
+                              className={`flex w-full items-center justify-between rounded-xl px-2.5 py-1.5 text-left transition-colors ${
+                                selected
+                                  ? 'bg-brand-primary/10 text-brand-primary font-bold dark:bg-brand-primary/20'
+                                  : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                              }`}
+                            >
+                              <span className="inline-flex items-center gap-1.5">
+                                {selected && <Check className="w-3.5 h-3.5 shrink-0" />}
+                                <span>{opt.label}</span>
+                              </span>
+                              <span className="text-[11px] font-mono text-slate-400 tabular-nums">
+                                {count}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-1.5">
+                      <span className="block text-[10.5px] font-semibold uppercase tracking-wide text-slate-400">
+                        Hồ sơ &amp; PDF
+                      </span>
+                      <button
+                        type="button"
+                        data-testid="filter-contract-missing-doc"
+                        aria-pressed={onlyMissingDoc}
+                        onClick={() => setOnlyMissingDoc((prev) => !prev)}
+                        className={`flex w-full items-center justify-between rounded-xl border px-2.5 py-2 text-left transition-colors ${
+                          onlyMissingDoc
+                            ? 'bg-amber-600 text-white border-amber-600 font-bold'
+                            : 'bg-amber-50/80 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800/60 hover:bg-amber-100 dark:hover:bg-amber-950/50'
+                        }`}
+                      >
+                        <span className="inline-flex items-center gap-1.5">
+                          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                          <span>Thiếu thông tin cần bổ sung</span>
+                        </span>
+                        <span className="font-mono font-bold tabular-nums">
+                          {missingDocCount}
+                        </span>
+                      </button>
+                    </div>
+                  </Popover.Popup>
+                </Popover.Positioner>
+              </Popover.Portal>
+            </Popover.Root>
+
+            {/* Single View Mode Toggle Icon (click toggles card <-> table) */}
+            <Button
+              type="button"
+              hoverScale={1.03}
+              tapScale={0.96}
+              data-testid="btn-contracts-view-toggle"
+              data-view-mode={viewMode}
+              aria-label={
+                viewMode === 'card'
+                  ? 'Đang xem dạng thẻ — nhấn để chuyển sang dạng bảng'
+                  : 'Đang xem dạng bảng — nhấn để chuyển sang dạng thẻ'
+              }
+              title={
+                viewMode === 'card'
+                  ? 'Đang xem: Dạng thẻ (nhấn để đổi sang bảng)'
+                  : 'Đang xem: Dạng bảng (nhấn để đổi sang thẻ)'
+              }
+              onClick={() =>
+                setViewMode((prev) => (prev === 'card' ? 'table' : 'card'))
+              }
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-brand-primary hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+            >
+              {viewMode === 'card' ? (
+                <LayoutGrid className="w-4 h-4" />
+              ) : (
+                <Table2 className="w-4 h-4" />
+              )}
+            </Button>
+
+            {/* Icon-Only Reload Button */}
+            <Button
+              type="button"
+              hoverScale={1.03}
+              tapScale={0.96}
+              disabled={isLoading}
+              data-testid="btn-contracts-refresh"
+              aria-label="Làm mới dữ liệu hợp đồng"
+              title="Làm mới"
+              onClick={() => void onRefresh()}
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-colors disabled:opacity-60"
+            >
+              <RefreshCw
+                className={`w-4 h-4 ${isLoading ? 'animate-spin text-brand-primary' : ''}`}
+              />
+            </Button>
+          </div>
+
+          {/* Slim Status / Active Filter Summary Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-100 dark:border-slate-800 text-[11px] text-slate-500">
+            <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+              <span className="whitespace-nowrap">
+                Hiển thị <strong className="text-slate-800 dark:text-slate-200">{displayedContracts.length}</strong> / {contracts.length} hợp đồng
+              </span>
+              {contractStatusFilter !== 'ALL' && (
+                <button
+                  type="button"
+                  onClick={() => setContractStatusFilter('ALL')}
+                  className="inline-flex items-center gap-1 rounded-full bg-brand-primary/10 px-2 py-0.5 text-[10.5px] font-semibold text-brand-primary hover:bg-brand-primary/20"
+                >
+                  <span>
+                    {STATUS_FILTER_OPTIONS.find((o) => o.id === contractStatusFilter)?.label}
+                  </span>
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+              {onlyMissingDoc && (
+                <button
+                  type="button"
+                  onClick={() => setOnlyMissingDoc(false)}
+                  className="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-950/50 px-2 py-0.5 text-[10.5px] font-semibold text-amber-800 dark:text-amber-300"
+                >
+                  <span>Thiếu thông tin PDF</span>
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+
+            {missingDocCount > 0 && !onlyMissingDoc && (
+              <button
+                type="button"
+                onClick={() => setOnlyMissingDoc(true)}
+                className="md:hidden inline-flex items-center gap-1 rounded-full bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/70 px-2 py-0.5 text-[10.5px] font-semibold text-amber-800 dark:text-amber-300"
+              >
+                <AlertTriangle className="w-3 h-3 shrink-0" />
+                <span>Thiếu PDF ({missingDocCount})</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Empty state */}
+        {displayedContracts.length === 0 ? (
+          <div className="py-10 text-center space-y-2.5" data-testid="contracts-empty-state">
+            <FileSignature className="w-8 h-8 text-slate-400 mx-auto" />
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+              {contracts.length === 0
+                ? 'Chưa có hợp đồng thuê trong phạm vi tòa nhà đang chọn'
+                : 'Không tìm thấy hợp đồng phù hợp bộ lọc'}
+            </h3>
+            <p className="text-xs text-slate-500 max-w-md mx-auto">
+              {contracts.length === 0
+                ? 'Hợp đồng mới được khởi tạo trực tiếp từ sơ đồ phòng hoặc phiếu đặt cọc giữ chỗ.'
+                : 'Thử xóa từ khóa tìm kiếm hoặc đặt lại bộ lọc để xem toàn bộ hợp đồng.'}
+            </p>
+            {(activeFilterCount > 0 || searchQuery.trim().length > 0) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('');
+                  setContractStatusFilter('ALL');
+                  setOnlyMissingDoc(false);
+                }}
+                className="inline-flex h-8 items-center px-3 rounded-lg text-xs font-bold bg-brand-primary text-white hover:bg-brand-hover transition-colors"
+              >
+                Đặt lại bộ lọc
+              </button>
+            )}
+          </div>
+        ) : viewMode === 'card' ? (
               /* CARD VIEW (Mobile & Desktop) */
               <div
                 data-testid="contracts-card-grid"
@@ -1078,7 +897,20 @@ export const ContractsWorkspaceView: React.FC<ContractsWorkspaceViewProps> = ({
 
                           {/* Col 7: Thao tác */}
                           <td className="py-2.5 px-2 text-right whitespace-nowrap w-10">
-                            <div className="inline-flex items-center justify-end">
+                            <div className="relative inline-flex items-center justify-end">
+                              {c.status === 'DRAFT' && (
+                                <button
+                                  type="button"
+                                  data-testid="btn-open-handover"
+                                  onClick={() => onOpenHandover(c)}
+                                  className="sr-only"
+                                  aria-hidden="true"
+                                  tabIndex={-1}
+                                >
+                                  Bàn giao phòng
+                                </button>
+                              )}
+
                               <ActionMenu
                                 contextTitle={`${c.buildingCode} · ${c.roomCode}`}
                                 contextSubtitle={`HĐ: ${displayCode} · ${c.tenantName}`}
@@ -1095,8 +927,6 @@ export const ContractsWorkspaceView: React.FC<ContractsWorkspaceViewProps> = ({
                 </div>
               </div>
             )}
-          </>
-        )}
       </div>
     </div>
   );

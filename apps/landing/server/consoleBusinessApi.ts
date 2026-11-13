@@ -4918,6 +4918,10 @@ export async function handleConsoleV2Api(
         .filter((e) => e.entryType === 'EXPENSE')
         .reduce((sum, e) => sum + toSafeVndNumber(e.amountVnd), 0);
 
+      const buildingLookup = new Map(
+        authorizedBuildings.map((b) => [b.id, { code: b.code, name: b.name }])
+      );
+
       return sendJson(res, 200, {
         ok: true,
         module: moduleKey,
@@ -4927,23 +4931,28 @@ export async function handleConsoleV2Api(
           totalExpenseVnd,
           netCashflowVnd: totalIncomeVnd - totalExpenseVnd,
         },
-        entries: entries.map((e) => ({
-          id: e.id,
-          entryCode: e.entryCode,
-          buildingId: e.buildingId,
-          periodKey: e.periodKey,
-          entryType: e.entryType,
-          category: e.category,
-          amountVnd: toSafeVndNumber(e.amountVnd),
-          description: e.description,
-          recordedBy: e.recordedBy,
-          occurredAt: e.occurredAt.toISOString(),
-        })),
+        entries: entries.map((e) => {
+          const bInfo = e.buildingId ? buildingLookup.get(e.buildingId) : null;
+          return {
+            id: e.id,
+            entryCode: e.entryCode,
+            buildingId: e.buildingId,
+            buildingCode: bInfo?.code || null,
+            buildingName: bInfo?.name || null,
+            periodKey: e.periodKey,
+            entryType: e.entryType,
+            category: e.category,
+            amountVnd: toSafeVndNumber(e.amountVnd),
+            description: e.description,
+            recordedBy: e.recordedBy,
+            occurredAt: e.occurredAt.toISOString(),
+          };
+        }),
       });
     }
 
     if (moduleKey === 'reports') {
-      const [rooms, contracts, invoices] = await Promise.all([
+      const [rooms, contracts, invoices, periodExpenses] = await Promise.all([
         prisma.consoleRoom.findMany({
           where: {
             orgId: actor.orgId,
@@ -4966,6 +4975,14 @@ export async function handleConsoleV2Api(
             status: { not: 'VOID' },
           },
         }),
+        prisma.ledgerEntry.findMany({
+          where: {
+            orgId: actor.orgId,
+            buildingId: { in: bldIds },
+            periodKey: activePeriod,
+            entryType: 'EXPENSE',
+          },
+        }),
       ]);
 
       const breakdown = authorizedBuildings
@@ -4977,12 +4994,17 @@ export async function handleConsoleV2Api(
           ).length;
           const bContracts = contracts.filter((c) => c.buildingId === b.id);
           const bInvoices = invoices.filter((i) => i.buildingId === b.id);
+          const bExpenses = periodExpenses.filter((e) => e.buildingId === b.id);
           const invoicedVnd = bInvoices.reduce(
             (sum, i) => sum + toSafeVndNumber(i.totalAmountVnd),
             0
           );
           const collectedVnd = bInvoices.reduce(
             (sum, i) => sum + toSafeVndNumber(i.paidAmountVnd),
+            0
+          );
+          const operatingExpenseVnd = bExpenses.reduce(
+            (sum, e) => sum + toSafeVndNumber(e.amountVnd),
             0
           );
           return {
@@ -5002,6 +5024,8 @@ export async function handleConsoleV2Api(
             invoicedVnd,
             collectedVnd,
             receivableVnd: Math.max(0, invoicedVnd - collectedVnd),
+            operatingExpenseVnd,
+            netResultVnd: collectedVnd - operatingExpenseVnd,
           };
         });
 

@@ -62,6 +62,16 @@ import {
   ContractsWorkspaceView,
   type ContractListItem,
 } from './ContractsWorkspaceView';
+import {
+  FinanceWorkspaceView,
+  type LedgerEntryItem,
+} from './FinanceWorkspaceView';
+import {
+  ReportsWorkspaceView,
+  type ReportBuildingBreakdown,
+} from './ReportsWorkspaceView';
+import { DepositsWorkspaceView } from './DepositsWorkspaceView';
+import { SettlementShimmerButton } from '@/shared/ui/SettlementAnimatePrimitives';
 import { ActionMenu } from '@/shared/ui/ActionMenu';
 import { ContractDocumentLink } from '@/shared/ui/ContractDocumentDialog';
 import { MoneyInput } from '@/shared/ui/MoneyInput';
@@ -1332,31 +1342,11 @@ export const OperationalModuleWorkspace: React.FC<
   };
 
   const ledgerEntries = Array.isArray(payload?.entries)
-    ? (payload.entries as Array<{
-        id: string;
-        entryCode: string;
-        entryType: string;
-        category: string;
-        amountVnd: number;
-        description: string;
-        recordedBy: string;
-        occurredAt: string;
-      }>)
+    ? (payload.entries as LedgerEntryItem[])
     : [];
 
   const reportBreakdown = Array.isArray(payload?.breakdown)
-    ? (payload.breakdown as Array<{
-        buildingId: string;
-        buildingCode: string;
-        buildingName: string;
-        totalRooms: number;
-        occupiedRooms: number;
-        occupancyRatePercent: number;
-        contractedRentVnd: number;
-        invoicedVnd: number;
-        collectedVnd: number;
-        receivableVnd: number;
-      }>)
+    ? (payload.breakdown as ReportBuildingBreakdown[])
     : [];
 
   return (
@@ -1365,131 +1355,6 @@ export const OperationalModuleWorkspace: React.FC<
       data-module={moduleId}
       data-testid={`console-module-workspace-${moduleId}`}
     >
-      {/* MODULE TOOLBAR (UI-HEADER-03 / P1) — deterministic 2-tier layout:
-          Tier 1: title + action hierarchy (utility → secondary → primary)
-          Tier 2: context bar (building scope + period), only when relevant */}
-      {moduleId !== 'invoices' && moduleId !== 'payments' && moduleId !== 'settlements' && moduleId !== 'contracts' && (
-      <div
-        data-testid="module-workspace-toolbar"
-        className="module-workspace-toolbar bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-xl"
-      >
-        <div className="module-workspace-toolbar-row flex items-center justify-between gap-4 px-4 py-3">
-        <div className="module-workspace-heading min-w-0">
-          <h2 className="truncate text-base font-bold text-slate-900 dark:text-white">
-            {currentNavConfig.label}
-          </h2>
-          <p className="truncate text-xs text-slate-500">
-            {currentNavConfig.description}
-          </p>
-        </div>
-
-        <div
-          data-testid="module-toolbar-actions"
-          className="module-toolbar-actions flex shrink-0 items-center gap-2"
-        >
-          {/* Utility action */}
-          <button
-            type="button"
-            data-testid="btn-module-refresh"
-            onClick={() => void loadModuleData()}
-            title="Đồng bộ lại dữ liệu phân hệ"
-            className="inline-flex h-9 items-center gap-1.5 px-2.5 text-xs font-semibold rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-          >
-            <RefreshCw
-              className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`}
-            />
-            <span>Đồng bộ</span>
-          </button>
-
-          {moduleId === 'deposits' && hasCapability('canManageContracts') && (
-            <button
-              type="button"
-              data-testid="btn-open-create-reservation"
-              onClick={openReservationModal}
-              className="inline-flex h-9 items-center gap-1.5 px-3.5 text-xs font-bold rounded-lg bg-amber-600 hover:bg-amber-700 text-white shadow-sm"
-            >
-              <KeyRound className="w-3.5 h-3.5" />
-              <span>Tạo phiếu giữ chỗ</span>
-            </button>
-          )}
-
-          {moduleId === 'finance' && hasCapability('canAccessFinance') && (
-            <button
-              type="button"
-              data-testid="btn-open-create-ledger"
-              onClick={() => {
-                setLgError(null);
-                setLgBuildingId(activeBuildings[0]?.id || '');
-                setIsLedgerModalOpen(true);
-              }}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-brand-primary hover:bg-brand-hover text-white shadow-sm"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Ghi phiếu thu / chi</span>
-            </button>
-          )}
-        </div>
-        </div>
-
-        {currentNavConfig.hasPeriodToolbar && (
-          <div
-            data-testid="module-toolbar-context"
-            className="module-toolbar-context flex flex-wrap items-center gap-2 border-t border-slate-100 dark:border-slate-800 px-4 py-2.5"
-          >
-            <div
-              data-testid="period-selector-toolbar"
-                className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl"
-              >
-                <button
-                  type="button"
-                  aria-label="Kỳ trước"
-                  onClick={() =>
-                    setSelectedPeriod(shiftPeriodKey(selectedPeriod, -1))
-                  }
-                  className="p-1.5 rounded-lg text-slate-500 hover:bg-white dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white"
-                >
-                  <ChevronLeft className="w-3.5 h-3.5" />
-                </button>
-                <label className="inline-flex items-center gap-1.5 px-2 text-xs font-bold text-slate-800 dark:text-slate-100">
-                  <Calendar className="w-3.5 h-3.5 text-brand-primary" />
-                  <span>{formatPeriodDisplay(selectedPeriod)}</span>
-                  <input
-                    data-testid="input-module-period"
-                    type="month"
-                    value={selectedPeriod}
-                    onChange={(e) => {
-                      if (/^\d{4}-\d{2}$/.test(e.target.value)) {
-                        setSelectedPeriod(e.target.value);
-                      }
-                    }}
-                    className="sr-only"
-                  />
-                </label>
-                <button
-                  type="button"
-                  aria-label="Kỳ kế tiếp"
-                  onClick={() =>
-                    setSelectedPeriod(shiftPeriodKey(selectedPeriod, 1))
-                  }
-                  className="p-1.5 rounded-lg text-slate-500 hover:bg-white dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white"
-                >
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-                {selectedPeriod !== getCurrentVnPeriodKey() && (
-                  <button
-                    type="button"
-                    onClick={() => setSelectedPeriod(getCurrentVnPeriodKey())}
-                    className="px-2 py-1 text-[11px] font-semibold text-brand-primary hover:underline"
-                  >
-                    Kỳ hiện tại
-                  </button>
-                )}
-              </div>
-          </div>
-        )}
-      </div>
-      )}
-
       {hunonicFeedback && (
         <div className="p-3 text-xs bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900 text-emerald-800 dark:text-emerald-200 rounded-xl flex items-center justify-between">
           <span>{hunonicFeedback}</span>
@@ -1519,298 +1384,25 @@ export const OperationalModuleWorkspace: React.FC<
         <>
           {/* 1. DEPOSITS & RESERVATIONS */}
           {moduleId === 'deposits' && (
-            <div className="module-content-stack space-y-4">
-              <div className="module-surface bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                    <KeyRound className="w-4 h-4 text-amber-500" />
-                    Phiếu giữ chỗ phòng (Room Reservations)
-                  </h3>
-                </div>
-
-                {reservations.length === 0 ? (
-                  <div className="py-8 text-center space-y-2">
-                    <p className="text-xs text-slate-500 max-w-md mx-auto">
-                      Chưa có phiếu giữ chỗ đang hoạt động. Nhấn &ldquo;Tạo phiếu
-                      giữ chỗ&rdquo; để khóa phòng tạm thời và nhận cọc.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs">
-                      <thead>
-                        <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 font-semibold">
-                          <th className="pb-3">Mã phiếu</th>
-                          <th className="pb-3">Phòng</th>
-                          <th className="pb-3">Khách đặt giữ chỗ</th>
-                          <th className="pb-3">Tiền giữ chỗ</th>
-                          <th className="pb-3">Ngày dự kiến vào</th>
-                          <th className="pb-3">Trạng thái</th>
-                          <th className="pb-3 text-right">Thao tác</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                        {reservations.map((r) => (
-                          <tr key={r.id}>
-                            <td className="py-3 font-mono font-bold">
-                              {r.reservationCode}
-                            </td>
-                            <td className="py-3 font-semibold">
-                              {r.buildingCode} · {r.roomCode}
-                            </td>
-                            <td className="py-3">
-                              <div className="font-semibold">
-                                {r.customerName}
-                              </div>
-                              <div className="text-[11px] text-slate-500 font-mono">
-                                {r.customerPhone}
-                              </div>
-                            </td>
-                            <td className="py-3 font-bold tabular-nums">
-                              {r.holdAmountVnd.toLocaleString('vi-VN')} đ
-                            </td>
-                            <td className="py-3">{r.expectedMoveIn || '—'}</td>
-                            <td className="py-3">
-                              <span
-                                className={`px-2.5 py-0.5 rounded-full text-[10.5px] font-bold ${
-                                  r.status === 'CONFIRMED'
-                                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                                    : r.status === 'CONVERTED'
-                                    ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300'
-                                    : r.status === 'CANCELLED'
-                                    ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
-                                    : r.status === 'EXPIRED'
-                                    ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
-                                    : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-                                }`}
-                              >
-                                {r.status === 'CONFIRMED'
-                                  ? 'Đã cọc giữ chỗ'
-                                  : r.status === 'CONVERTED'
-                                  ? 'Đã lên hợp đồng'
-                                  : r.status === 'CANCELLED'
-                                  ? 'Đã hủy giữ'
-                                  : r.status === 'EXPIRED'
-                                  ? 'Hết hạn'
-                                  : 'Chờ đặt cọc'}
-                              </span>
-                            </td>
-                            <td className="py-3 text-right">
-                              {r.status === 'CONFIRMED' ||
-                              r.status === 'PENDING' ? (
-                                <div className="inline-flex items-center gap-1.5">
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      handleConvertReservationToContract(r)
-                                    }
-                                    className="px-2.5 py-1 text-[11px] font-bold bg-brand-primary text-white rounded-lg hover:bg-brand-hover"
-                                  >
-                                    Lập HĐ
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      handleCancelReservation(r.id)
-                                    }
-                                    className="px-2.5 py-1 text-[11px] font-bold bg-rose-50 text-rose-600 dark:bg-rose-950/50 dark:text-rose-300 rounded-lg hover:bg-rose-100"
-                                  >
-                                    Hủy
-                                  </button>
-                                </div>
-                              ) : (
-                                <span className="text-[11px] text-slate-400">
-                                  —
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-
-              {/* Deposit Records Table */}
-              <div className="module-surface bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5 space-y-3">
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                  <Wallet className="w-4 h-4 text-emerald-600" />
-                  Sổ theo dõi tiền cọc (Deposits Ledger)
-                </h3>
-                {depositsList.length === 0 ? (
-                  <p className="text-xs text-slate-500 py-4 text-center">
-                    Chưa có khoản tiền cọc nào được ghi nhận.
-                  </p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs">
-                      <thead>
-                        <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 font-semibold">
-                          <th className="pb-3">Mã khoản cọc</th>
-                          <th className="pb-3">Phân loại</th>
-                          <th className="pb-3">Tiền cọc yêu cầu</th>
-                          <th className="pb-3">Đã thu</th>
-                          <th className="pb-3">Còn phải thu</th>
-                          <th className="pb-3">Đã hoàn</th>
-                          <th className="pb-3">Số dư khả dụng</th>
-                          <th className="pb-3">Thanh toán</th>
-                          <th className="pb-3">Trạng thái cọc</th>
-                          <th className="pb-3 text-right">Xử lý cọc</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                        {depositsList.map((d) => {
-                          const isTransferred = d.status === 'APPLIED_TO_CONTRACT' || d.paymentStatus === 'TRANSFERRED';
-                          const isTerminal = d.status === 'REFUNDED' || d.status === 'FORFEITED' || isTransferred;
-                          const effectivePaid = d.paidAmountVnd ?? (d.paymentStatus === 'PAID' ? d.amountVnd : 0);
-                          const remainingDue = isTerminal ? 0 : Math.max(0, d.amountVnd - effectivePaid);
-                          const availableBalance = isTransferred
-                            ? 0
-                            : Math.max(
-                                0,
-                                effectivePaid -
-                                  d.refundedVnd -
-                                  (d.deductedAmountVnd || 0) -
-                                  (d.forfeitedAmountVnd || 0) -
-                                  (d.transferredAmountVnd || 0)
-                              );
-                          return (
-                          <tr key={d.id}>
-                            <td className="py-3 font-mono font-bold">
-                              {d.id.slice(0, 8).toUpperCase()}
-                            </td>
-                            <td className="py-3">
-                              <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                                {d.depositType === 'BOOKING'
-                                  ? 'Cọc giữ phòng'
-                                  : d.depositType === 'ADVANCE_RENT'
-                                  ? 'Tiền trả trước'
-                                  : 'Cọc hợp đồng'}
-                              </span>
-                            </td>
-                            <td className="py-3 font-bold tabular-nums text-slate-900 dark:text-white">
-                              {d.amountVnd.toLocaleString('vi-VN')} đ
-                            </td>
-                            <td className="py-3 font-bold tabular-nums text-emerald-600">
-                              {effectivePaid.toLocaleString('vi-VN')} đ
-                            </td>
-                            <td className="py-3 tabular-nums font-semibold">
-                              {remainingDue > 0 ? (
-                                <span className="text-rose-500 font-bold">{remainingDue.toLocaleString('vi-VN')} đ</span>
-                              ) : (
-                                <span className="text-slate-400">0 đ</span>
-                              )}
-                            </td>
-                            <td className="py-3 tabular-nums text-slate-500">
-                              {d.refundedVnd.toLocaleString('vi-VN')} đ
-                            </td>
-                            <td className="py-3 tabular-nums font-bold text-emerald-600 dark:text-emerald-400">
-                              {availableBalance.toLocaleString('vi-VN')} đ
-                            </td>
-                            <td className="py-3">
-                              <span
-                                className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                  d.paymentStatus === 'PAID'
-                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
-                                    : d.paymentStatus === 'PARTIALLY_PAID'
-                                    ? 'bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800'
-                                    : d.paymentStatus === 'TRANSFERRED'
-                                    ? 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800'
-                                    : d.paymentStatus === 'REFUNDED'
-                                    ? 'bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800'
-                                    : d.paymentStatus === 'FORFEITED'
-                                    ? 'bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800'
-                                    : d.paymentStatus === 'PENDING'
-                                    ? 'bg-amber-50/80 text-amber-600 border border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800'
-                                    : 'bg-slate-100 text-slate-600 border border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
-                                }`}
-                              >
-                                {d.paymentStatus === 'PAID'
-                                  ? 'Đã thu tiền'
-                                  : d.paymentStatus === 'PARTIALLY_PAID'
-                                  ? 'Thu 1 phần'
-                                  : d.paymentStatus === 'TRANSFERRED'
-                                  ? 'Đã chuyển HĐ'
-                                  : d.paymentStatus === 'REFUNDED'
-                                  ? 'Đã hoàn cọc'
-                                  : d.paymentStatus === 'FORFEITED'
-                                  ? 'Đã tịch thu'
-                                  : d.paymentStatus === 'PENDING'
-                                  ? 'Chờ thanh toán'
-                                  : 'Chờ thu'}
-                              </span>
-                            </td>
-                            <td className="py-3">
-                              <span
-                                className={`px-2.5 py-0.5 rounded-full text-[10.5px] font-bold ${
-                                  d.status === 'HELD'
-                                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                                    : d.status === 'APPLIED_TO_CONTRACT'
-                                    ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300'
-                                    : d.status === 'PARTIALLY_REFUNDED'
-                                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-                                    : d.status === 'REFUNDED'
-                                    ? 'bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300'
-                                    : d.status === 'FORFEITED'
-                                    ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
-                                    : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
-                                }`}
-                              >
-                                {d.status === 'HELD'
-                                  ? 'Đang giữ cọc'
-                                  : d.status === 'APPLIED_TO_CONTRACT'
-                                  ? 'Đã chuyển sang HĐ'
-                                  : d.status === 'PARTIALLY_REFUNDED'
-                                  ? 'Đã hoàn 1 phần'
-                                  : d.status === 'REFUNDED'
-                                  ? 'Đã hoàn cọc'
-                                  : d.status === 'FORFEITED'
-                                  ? 'Đã phạt/tịch thu'
-                                  : d.status}
-                              </span>
-                            </td>
-                            <td className="py-3 text-right">
-                              {isTransferred ? (
-                                <span className="text-[10.5px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2 py-1 rounded inline-flex items-center gap-1">
-                                  Đã chuyển HĐ
-                                  {d.transferredToDepositId && (
-                                    <span className="font-mono text-[9px] opacity-75">
-                                      ({d.transferredToDepositId.slice(0, 6)})
-                                    </span>
-                                  )}
-                                </span>
-                              ) : availableBalance > 0 && (d.status === 'HELD' || d.status === 'PARTIALLY_REFUNDED') ? (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setSelectedDepositId(d.id);
-                                    setDepTotalAmountVnd(availableBalance);
-                                    setDepRefundVnd(availableBalance);
-                                    setDepDeductionVnd(0);
-                                    setDepDeductionReason('');
-                                    setDepError(null);
-                                    setIsDepositRefundModalOpen(true);
-                                  }}
-                                  className="px-2.5 py-1 text-[11px] font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-lg"
-                                >
-                                  Hoàn / Khấu trừ
-                                </button>
-                              ) : (
-                                <span className="text-[11px] text-slate-400">
-                                  Hết số dư
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            </div>
+            <DepositsWorkspaceView
+              reservations={reservations}
+              deposits={depositsList}
+              canManageContracts={hasCapability('canManageContracts')}
+              isLoading={isLoading}
+              onRefresh={() => void loadModuleData()}
+              onOpenCreateReservation={openReservationModal}
+              onConvertReservationToContract={handleConvertReservationToContract}
+              onCancelReservation={(id) => void handleCancelReservation(id)}
+              onOpenDepositRefund={(d, availableBalance) => {
+                setSelectedDepositId(d.id);
+                setDepTotalAmountVnd(availableBalance);
+                setDepRefundVnd(availableBalance);
+                setDepDeductionVnd(0);
+                setDepDeductionReason('');
+                setDepError(null);
+                setIsDepositRefundModalOpen(true);
+              }}
+            />
           )}
 
           {/* 2. CONTRACTS SOURCE OF TRUTH */}
@@ -2740,174 +2332,34 @@ export const OperationalModuleWorkspace: React.FC<
 
           {/* 6. FINANCE & CASHBOOK LEDGER */}
           {moduleId === 'finance' && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="p-4 rounded-xl bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800">
-                  <span className="text-[11px] font-semibold text-slate-500">
-                    Tổng thu kỳ {formatPeriodDisplay(selectedPeriod)}
-                  </span>
-                  <div className="mt-1 text-lg font-bold text-emerald-600 tabular-nums">
-                    +{financeSummary.totalIncomeVnd.toLocaleString('vi-VN')} đ
-                  </div>
-                </div>
-                <div className="p-4 rounded-xl bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800">
-                  <span className="text-[11px] font-semibold text-slate-500">
-                    Tổng chi kỳ {formatPeriodDisplay(selectedPeriod)}
-                  </span>
-                  <div className="mt-1 text-lg font-bold text-rose-600 tabular-nums">
-                    -{financeSummary.totalExpenseVnd.toLocaleString('vi-VN')} đ
-                  </div>
-                </div>
-                <div className="p-4 rounded-xl bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800">
-                  <span className="text-[11px] font-semibold text-slate-500">
-                    Dòng tiền ròng (Net Cashflow)
-                  </span>
-                  <div
-                    className={`mt-1 text-lg font-bold tabular-nums ${
-                      financeSummary.netCashflowVnd >= 0
-                        ? 'text-emerald-600'
-                        : 'text-rose-600'
-                    }`}
-                  >
-                    {financeSummary.netCashflowVnd >= 0 ? '+' : ''}
-                    {financeSummary.netCashflowVnd.toLocaleString('vi-VN')} đ
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5">
-                {ledgerEntries.length === 0 ? (
-                  <div className="py-8 text-center space-y-1.5">
-                    <Wallet className="w-8 h-8 text-slate-400 mx-auto" />
-                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                      Chưa có phiếu thu / chi trong kỳ{' '}
-                      {formatPeriodDisplay(selectedPeriod)}
-                    </h3>
-                    <p className="text-xs text-slate-500">
-                      Ghi nhận các khoản thu chi phát sinh để quản lý dòng tiền
-                      chuẩn xác trên PostgreSQL.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs">
-                      <thead>
-                        <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 font-semibold">
-                          <th className="pb-3">Mã phiếu</th>
-                          <th className="pb-3">Loại</th>
-                          <th className="pb-3">Hạng mục</th>
-                          <th className="pb-3">Diễn giải</th>
-                          <th className="pb-3">Số tiền</th>
-                          <th className="pb-3">Người ghi</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                        {ledgerEntries.map((e) => (
-                          <tr key={e.id}>
-                            <td className="py-3 font-mono font-bold">
-                              {e.entryCode}
-                            </td>
-                            <td className="py-3">
-                              <span
-                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                  e.entryType === 'INCOME'
-                                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                                    : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
-                                }`}
-                              >
-                                {e.entryType === 'INCOME'
-                                  ? 'Phiếu thu'
-                                  : 'Phiếu chi'}
-                              </span>
-                            </td>
-                            <td className="py-3 font-semibold">{e.category}</td>
-                            <td className="py-3 text-slate-600 dark:text-slate-300">
-                              {e.description}
-                            </td>
-                            <td
-                              className={`py-3 font-bold tabular-nums ${
-                                e.entryType === 'INCOME'
-                                  ? 'text-emerald-600'
-                                  : 'text-rose-600'
-                              }`}
-                            >
-                              {e.entryType === 'INCOME' ? '+' : '-'}
-                              {e.amountVnd.toLocaleString('vi-VN')} đ
-                            </td>
-                            <td className="py-3 text-slate-500 font-mono text-[11px]">
-                              {e.recordedBy}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            </div>
+            <FinanceWorkspaceView
+              summary={financeSummary}
+              entries={ledgerEntries}
+              activeBuildings={activeBuildings}
+              selectedPeriod={selectedPeriod}
+              onChangePeriod={setSelectedPeriod}
+              shiftPeriodKey={shiftPeriodKey}
+              isLoading={isLoading}
+              onRefresh={() => void loadModuleData()}
+              canCreateLedger={hasCapability('canAccessFinance')}
+              onOpenCreateLedger={() => {
+                setLgError(null);
+                setLgBuildingId(activeBuildings[0]?.id || '');
+                setIsLedgerModalOpen(true);
+              }}
+            />
           )}
 
           {/* 7. REPORTS & ANALYTICS */}
           {moduleId === 'reports' && (
-            <div className="bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-5">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                  <BarChart3 className="w-4 h-4 text-brand-primary" />
-                  Báo cáo hiệu suất kinh doanh kỳ{' '}
-                  {formatPeriodDisplay(selectedPeriod)}
-                </h3>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead>
-                    <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 font-semibold">
-                      <th className="pb-3">Tòa nhà</th>
-                      <th className="pb-3">Tổng phòng</th>
-                      <th className="pb-3">Đang thuê</th>
-                      <th className="pb-3">Tỷ lệ lấp đầy</th>
-                      <th className="pb-3">Tiền thuê HĐ</th>
-                      <th className="pb-3">Đã lập hóa đơn</th>
-                      <th className="pb-3">Thực thu</th>
-                      <th className="pb-3">Công nợ còn lại</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {reportBreakdown.map((b) => (
-                      <tr key={b.buildingId}>
-                        <td className="py-3 font-bold">
-                          {b.buildingCode} — {b.buildingName}
-                        </td>
-                        <td className="py-3 tabular-nums">{b.totalRooms}</td>
-                        <td className="py-3 tabular-nums font-semibold text-brand-primary">
-                          {b.occupiedRooms}
-                        </td>
-                        <td className="py-3 tabular-nums font-bold">
-                          {b.occupancyRatePercent.toFixed(1)}%
-                        </td>
-                        <td className="py-3 tabular-nums">
-                          {b.contractedRentVnd.toLocaleString('vi-VN')} đ
-                        </td>
-                        <td className="py-3 tabular-nums">
-                          {b.invoicedVnd.toLocaleString('vi-VN')} đ
-                        </td>
-                        <td className="py-3 tabular-nums font-bold text-emerald-600">
-                          {b.collectedVnd.toLocaleString('vi-VN')} đ
-                        </td>
-                        <td
-                          className={`py-3 tabular-nums font-bold ${
-                            b.receivableVnd > 0
-                              ? 'text-rose-600'
-                              : 'text-slate-400'
-                          }`}
-                        >
-                          {b.receivableVnd.toLocaleString('vi-VN')} đ
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <ReportsWorkspaceView
+              breakdown={reportBreakdown}
+              selectedPeriod={selectedPeriod}
+              onChangePeriod={setSelectedPeriod}
+              shiftPeriodKey={shiftPeriodKey}
+              isLoading={isLoading}
+              onRefresh={() => void loadModuleData()}
+            />
           )}
         </>
       )}
@@ -2927,259 +2379,255 @@ export const OperationalModuleWorkspace: React.FC<
       )}
 
       {/* MODAL 2: CREATE RESERVATION */}
-      {isReservationModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
-            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <KeyRound className="w-4 h-4 text-amber-500" />
-                Tạo phiếu giữ chỗ phòng &amp; Nhận cọc
-              </h3>
-              <button
-                type="button"
-                onClick={() => setIsReservationModalOpen(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
+      <Dialog.Root
+        open={isReservationModalOpen}
+        onOpenChange={setIsReservationModalOpen}
+      >
+        <Dialog.Portal>
+          <Dialog.Backdrop className="fixed inset-0 z-[120] bg-slate-900/60 backdrop-blur-sm" />
+          <Dialog.Viewport className="fixed inset-0 z-[121] flex items-center justify-center p-4">
+            <Dialog.Popup
+              data-testid="reservation-create-dialog"
+              className="relative z-10 flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-[#111827]"
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 p-4 dark:border-slate-800">
+                <Dialog.Title className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-white">
+                  <KeyRound className="h-4 w-4 text-amber-500" />
+                  Tạo phiếu giữ chỗ phòng &amp; Nhận cọc
+                </Dialog.Title>
+                <Dialog.Close className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800">
+                  <X className="h-4 w-4" />
+                </Dialog.Close>
+              </div>
+              <form
+                onSubmit={handleCreateReservation}
+                className="space-y-3.5 overflow-y-auto p-4 sm:p-5"
               >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <form onSubmit={handleCreateReservation} className="p-5 space-y-4">
-              {resvError && (
-                <div className="p-3 text-xs bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 rounded-xl">
-                  {resvError}
-                </div>
-              )}
-              <div>
-                <label className="block text-xs font-semibold mb-1">
-                  Phòng giữ chỗ *
-                </label>
-                <select
-                  value={resvRoomId}
-                  onChange={(e) => setResvRoomId(e.target.value)}
-                  className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-semibold"
-                  required
-                >
-                  <option value="">— Chọn phòng —</option>
-                  {rooms.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.buildingCode} · {r.code} ({r.occupancyStatus})
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
+                {resvError && (
+                  <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700 dark:border-rose-900 dark:bg-rose-950/50 dark:text-rose-300">
+                    {resvError}
+                  </div>
+                )}
                 <div>
-                  <label className="block text-xs font-semibold mb-1">
-                    Tên khách hàng *
+                  <label className="mb-1 block text-xs font-semibold">
+                    Phòng giữ chỗ *
+                  </label>
+                  <select
+                    value={resvRoomId}
+                    onChange={(e) => setResvRoomId(e.target.value)}
+                    className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-semibold dark:border-slate-700 dark:bg-slate-800"
+                    required
+                  >
+                    <option value="">— Chọn phòng —</option>
+                    {rooms.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.buildingCode} · {r.code} ({r.occupancyStatus})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold">
+                      Tên khách hàng *
+                    </label>
+                    <input
+                      type="text"
+                      value={resvCustomerName}
+                      onChange={(e) => setResvCustomerName(e.target.value)}
+                      placeholder="Nguyễn Văn A"
+                      className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs dark:border-slate-700 dark:bg-slate-800"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold">
+                      Số điện thoại *
+                    </label>
+                    <input
+                      type="text"
+                      value={resvCustomerPhone}
+                      onChange={(e) => setResvCustomerPhone(e.target.value)}
+                      placeholder="0912345678"
+                      className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 font-mono text-xs dark:border-slate-700 dark:bg-slate-800"
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div>
+                    <MoneyInput
+                      label="Tiền giữ chỗ"
+                      value={resvHoldAmountVnd}
+                      onChange={setResvHoldAmountVnd}
+                      min={0}
+                      className="text-xs font-bold"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 sm:col-span-2">
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold">
+                        Ngày dự kiến vào
+                      </label>
+                      <input
+                        type="date"
+                        value={resvExpectedMoveIn}
+                        onChange={(e) => setResvExpectedMoveIn(e.target.value)}
+                        className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 px-2.5 text-xs dark:border-slate-700 dark:bg-slate-800"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold">
+                        Số ngày giữ chỗ
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={30}
+                        value={resvHoldDays}
+                        onChange={(e) =>
+                          setResvHoldDays(parseInt(e.target.value, 10) || 7)
+                        }
+                        className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs dark:border-slate-700 dark:bg-slate-800"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold">
+                    Ghi chú
                   </label>
                   <input
                     type="text"
-                    value={resvCustomerName}
-                    onChange={(e) => setResvCustomerName(e.target.value)}
-                    placeholder="Nguyễn Văn A"
-                    className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl"
-                    required
+                    value={resvNotes}
+                    onChange={(e) => setResvNotes(e.target.value)}
+                    placeholder="Yêu cầu dọn dẹp, lắp thêm rèm..."
+                    className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs dark:border-slate-700 dark:bg-slate-800"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1">
-                    Số điện thoại *
-                  </label>
-                  <input
-                    type="text"
-                    value={resvCustomerPhone}
-                    onChange={(e) => setResvCustomerPhone(e.target.value)}
-                    placeholder="0912345678"
-                    className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono"
-                    required
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold mb-1">
-                    Tiền giữ chỗ (VND)
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    step={100000}
-                    value={resvHoldAmountVnd}
-                    onChange={(e) =>
-                      setResvHoldAmountVnd(parseInt(e.target.value, 10) || 0)
+                <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setIsReservationModalOpen(false)}
+                    className="h-9 rounded-xl px-4 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                  >
+                    Hủy
+                  </button>
+                  <SettlementShimmerButton
+                    type="submit"
+                    isLoading={isSavingResv}
+                    loadingText="Đang tạo phiếu..."
+                    disabled={
+                      !resvRoomId ||
+                      !resvCustomerName ||
+                      !resvCustomerPhone
                     }
-                    className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold"
-                  />
+                    className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-amber-600 px-4 text-xs font-bold text-white hover:bg-amber-700 disabled:opacity-50"
+                  >
+                    Tạo phiếu giữ chỗ
+                  </SettlementShimmerButton>
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1">
-                    Ngày dự kiến vào
-                  </label>
-                  <input
-                    type="date"
-                    value={resvExpectedMoveIn}
-                    onChange={(e) => setResvExpectedMoveIn(e.target.value)}
-                    className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1">
-                    Số ngày giữ chỗ
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={30}
-                    value={resvHoldDays}
-                    onChange={(e) =>
-                      setResvHoldDays(parseInt(e.target.value, 10) || 7)
-                    }
-                    className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold mb-1">
-                  Ghi chú
-                </label>
-                <input
-                  type="text"
-                  value={resvNotes}
-                  onChange={(e) => setResvNotes(e.target.value)}
-                  placeholder="Yêu cầu dọn dẹp, lắp thêm rèm..."
-                  className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl"
-                />
-              </div>
-              <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsReservationModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 rounded-xl"
-                >
-                  Hủy
-                </button>
-                <button
-                  type="submit"
-                  disabled={
-                    isSavingResv ||
-                    !resvRoomId ||
-                    !resvCustomerName ||
-                    !resvCustomerPhone
-                  }
-                  className="px-4 py-2 text-xs font-bold bg-amber-600 text-white rounded-xl flex items-center gap-1.5 disabled:opacity-50"
-                >
-                  {isSavingResv && (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  )}
-                  <span>Tạo phiếu giữ chỗ</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+              </form>
+            </Dialog.Popup>
+          </Dialog.Viewport>
+        </Dialog.Portal>
+      </Dialog.Root>
 
       {/* MODAL 3: DEPOSIT REFUND / DEDUCTION */}
-      {isDepositRefundModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
-            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <Wallet className="w-4 h-4 text-emerald-600" />
-                Xử lý hoàn cọc / Khấu trừ
-              </h3>
-              <button
-                type="button"
-                onClick={() => setIsDepositRefundModalOpen(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
+      <Dialog.Root
+        open={isDepositRefundModalOpen}
+        onOpenChange={setIsDepositRefundModalOpen}
+      >
+        <Dialog.Portal>
+          <Dialog.Backdrop className="fixed inset-0 z-[120] bg-slate-900/60 backdrop-blur-sm" />
+          <Dialog.Viewport className="fixed inset-0 z-[121] flex items-center justify-center p-4">
+            <Dialog.Popup
+              data-testid="deposit-refund-dialog"
+              className="relative z-10 flex max-h-[90dvh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-[#111827]"
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 p-4 dark:border-slate-800">
+                <Dialog.Title className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-white">
+                  <Wallet className="h-4 w-4 text-emerald-600" />
+                  Xử lý hoàn cọc / Khấu trừ
+                </Dialog.Title>
+                <Dialog.Close className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800">
+                  <X className="h-4 w-4" />
+                </Dialog.Close>
+              </div>
+              <form
+                onSubmit={handleDepositRefundSubmit}
+                className="space-y-3.5 overflow-y-auto p-4 sm:p-5"
               >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <form onSubmit={handleDepositRefundSubmit} className="p-5 space-y-4">
-              {depError && (
-                <div className="p-3 text-xs bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 rounded-xl">
-                  {depError}
+                {depError && (
+                  <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700 dark:border-rose-900 dark:bg-rose-950/50 dark:text-rose-300">
+                    {depError}
+                  </div>
+                )}
+                <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3.5 py-2.5 text-xs dark:bg-slate-800/80">
+                  <span className="text-slate-500">Số dư cọc khả dụng</span>
+                  <span className="text-base font-bold text-emerald-600 tabular-nums">
+                    {depTotalAmountVnd.toLocaleString('vi-VN')} đ
+                  </span>
                 </div>
-              )}
-              <div className="p-3 bg-slate-50 dark:bg-slate-800/80 rounded-xl text-xs space-y-1">
-                <div className="text-slate-500">Số dư cọc khả dụng:</div>
-                <div className="text-base font-bold text-emerald-600 tabular-nums">
-                  {depTotalAmountVnd.toLocaleString('vi-VN')} đ
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <MoneyInput
+                      label="Số tiền hoàn trả"
+                      value={depRefundVnd}
+                      onChange={setDepRefundVnd}
+                      min={0}
+                      max={depTotalAmountVnd}
+                      className="text-xs font-bold"
+                    />
+                  </div>
+                  <div>
+                    <MoneyInput
+                      label="Số tiền khấu trừ"
+                      value={depDeductionVnd}
+                      onChange={setDepDeductionVnd}
+                      min={0}
+                      max={depTotalAmountVnd}
+                      className="text-xs font-bold"
+                    />
+                  </div>
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold mb-1">
-                    Số tiền hoàn trả (VND)
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={depTotalAmountVnd}
-                    step={100000}
-                    value={depRefundVnd}
-                    onChange={(e) =>
-                      setDepRefundVnd(parseInt(e.target.value, 10) || 0)
-                    }
-                    className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold"
-                  />
+                {depDeductionVnd > 0 && (
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold">
+                      Lý do khấu trừ *
+                    </label>
+                    <input
+                      type="text"
+                      value={depDeductionReason}
+                      onChange={(e) => setDepDeductionReason(e.target.value)}
+                      placeholder="VD: Trừ tiền điện nước kỳ cuối hoặc hư hỏng thiết bị"
+                      className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs dark:border-slate-700 dark:bg-slate-800"
+                      required
+                    />
+                  </div>
+                )}
+                <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setIsDepositRefundModalOpen(false)}
+                    className="h-9 rounded-xl px-4 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                  >
+                    Hủy
+                  </button>
+                  <SettlementShimmerButton
+                    type="submit"
+                    isLoading={isSavingDep}
+                    loadingText="Đang xử lý cọc..."
+                    className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-brand-primary px-4 text-xs font-bold text-white hover:bg-brand-hover disabled:opacity-50"
+                  >
+                    Xác nhận xử lý cọc
+                  </SettlementShimmerButton>
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1">
-                    Số tiền khấu trừ (VND)
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={depTotalAmountVnd}
-                    step={100000}
-                    value={depDeductionVnd}
-                    onChange={(e) =>
-                      setDepDeductionVnd(parseInt(e.target.value, 10) || 0)
-                    }
-                    className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold"
-                  />
-                </div>
-              </div>
-              {depDeductionVnd > 0 && (
-                <div>
-                  <label className="block text-xs font-semibold mb-1">
-                    Lý do khấu trừ *
-                  </label>
-                  <input
-                    type="text"
-                    value={depDeductionReason}
-                    onChange={(e) => setDepDeductionReason(e.target.value)}
-                    placeholder="VD: Trừ tiền điện nước kỳ cuối hoặc hư hỏng thiết bị"
-                    className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl"
-                    required
-                  />
-                </div>
-              )}
-              <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsDepositRefundModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 rounded-xl"
-                >
-                  Hủy
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSavingDep}
-                  className="px-4 py-2 text-xs font-bold bg-brand-primary text-white rounded-xl flex items-center gap-1.5 disabled:opacity-50"
-                >
-                  {isSavingDep && (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  )}
-                  <span>Xác nhận xử lý cọc</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+              </form>
+            </Dialog.Popup>
+          </Dialog.Viewport>
+        </Dialog.Portal>
+      </Dialog.Root>
 
       {/* MODAL 4: EXTEND CONTRACT */}
       {isExtendModalOpen && selectedContract && (
@@ -3708,130 +3156,129 @@ export const OperationalModuleWorkspace: React.FC<
       )}
 
       {/* MODAL 8: CREATE LEDGER ENTRY */}
-      {isLedgerModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
-            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <Wallet className="w-4 h-4 text-brand-primary" />
-                Ghi bút toán sổ quỹ tiền mặt / chuyển khoản
-              </h3>
-              <button
-                type="button"
-                onClick={() => setIsLedgerModalOpen(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
+      <Dialog.Root
+        open={isLedgerModalOpen}
+        onOpenChange={setIsLedgerModalOpen}
+      >
+        <Dialog.Portal>
+          <Dialog.Backdrop className="fixed inset-0 z-[120] bg-slate-900/60 backdrop-blur-sm" />
+          <Dialog.Viewport className="fixed inset-0 z-[121] flex items-center justify-center p-4">
+            <Dialog.Popup
+              data-testid="ledger-create-dialog"
+              className="relative z-10 flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-[#111827]"
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 p-4 dark:border-slate-800">
+                <Dialog.Title className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-white">
+                  <Wallet className="h-4 w-4 text-brand-primary" />
+                  Ghi bút toán sổ quỹ tiền mặt / chuyển khoản
+                </Dialog.Title>
+                <Dialog.Close className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800">
+                  <X className="h-4 w-4" />
+                </Dialog.Close>
+              </div>
+              <form
+                onSubmit={handleCreateLedgerEntry}
+                className="space-y-3.5 overflow-y-auto p-4 sm:p-5"
               >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <form onSubmit={handleCreateLedgerEntry} className="p-5 space-y-4">
-              {lgError && (
-                <div className="p-3 text-xs bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 rounded-xl">
-                  {lgError}
+                {lgError && (
+                  <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700 dark:border-rose-900 dark:bg-rose-950/50 dark:text-rose-300">
+                    {lgError}
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold">
+                      Loại bút toán
+                    </label>
+                    <select
+                      value={lgType}
+                      onChange={(e) =>
+                        setLgType(e.target.value as 'INCOME' | 'EXPENSE')
+                      }
+                      className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-bold dark:border-slate-700 dark:bg-slate-800"
+                    >
+                      <option value="INCOME">Phiếu thu (+)</option>
+                      <option value="EXPENSE">Phiếu chi (-)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold">
+                      Tòa nhà
+                    </label>
+                    <select
+                      value={lgBuildingId}
+                      onChange={(e) => setLgBuildingId(e.target.value)}
+                      className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs dark:border-slate-700 dark:bg-slate-800"
+                    >
+                      <option value="">Chung toàn tổ chức</option>
+                      {activeBuildings.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.code} — {b.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-              )}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold mb-1">
-                    Loại bút toán
-                  </label>
-                  <select
-                    value={lgType}
-                    onChange={(e) =>
-                      setLgType(e.target.value as 'INCOME' | 'EXPENSE')
-                    }
-                    className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold"
-                  >
-                    <option value="INCOME">Phiếu thu (+)</option>
-                    <option value="EXPENSE">Phiếu chi (-)</option>
-                  </select>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold">
+                      Danh mục
+                    </label>
+                    <input
+                      type="text"
+                      value={lgCategory}
+                      onChange={(e) => setLgCategory(e.target.value)}
+                      className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs dark:border-slate-700 dark:bg-slate-800"
+                      required
+                    />
+                  </div>
+                  <div data-testid="input-ledger-amount-wrap">
+                    <MoneyInput
+                      label="Số tiền nguyên *"
+                      value={lgAmountVnd}
+                      onChange={setLgAmountVnd}
+                      min={1000}
+                      className="text-xs font-bold"
+                    />
+                  </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold mb-1">
-                    Tòa nhà
-                  </label>
-                  <select
-                    value={lgBuildingId}
-                    onChange={(e) => setLgBuildingId(e.target.value)}
-                    className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl"
-                  >
-                    <option value="">Chung toàn tổ chức</option>
-                    {activeBuildings.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.code} — {b.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold mb-1">
-                    Danh mục
+                  <label className="mb-1 block text-xs font-semibold">
+                    Diễn giải chi tiết *
                   </label>
                   <input
+                    data-testid="input-ledger-description"
                     type="text"
-                    value={lgCategory}
-                    onChange={(e) => setLgCategory(e.target.value)}
-                    className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl"
+                    value={lgDescription}
+                    onChange={(e) => setLgDescription(e.target.value)}
+                    placeholder="VD: Thu tiền vệ sinh & phí quản lý tòa LK01"
+                    className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs dark:border-slate-700 dark:bg-slate-800"
                     required
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1">
-                    Số tiền nguyên (VND) *
-                  </label>
-                  <input
-                    type="number"
-                    min={1000}
-                    step={10000}
-                    value={lgAmountVnd}
-                    onChange={(e) =>
-                      setLgAmountVnd(parseInt(e.target.value, 10) || 0)
-                    }
-                    className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold"
-                    required
-                  />
+                <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setIsLedgerModalOpen(false)}
+                    className="h-9 rounded-xl px-4 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                  >
+                    Hủy
+                  </button>
+                  <SettlementShimmerButton
+                    data-testid="submit-create-ledger"
+                    type="submit"
+                    isLoading={isSavingLg}
+                    loadingText="Đang lưu bút toán..."
+                    className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-brand-primary px-4 text-xs font-bold text-white hover:bg-brand-hover disabled:opacity-50"
+                  >
+                    Lưu bút toán sổ quỹ
+                  </SettlementShimmerButton>
                 </div>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold mb-1">
-                  Diễn giải chi tiết *
-                </label>
-                <input
-                  data-testid="input-ledger-description"
-                  type="text"
-                  value={lgDescription}
-                  onChange={(e) => setLgDescription(e.target.value)}
-                  placeholder="VD: Thu tiền vệ sinh & phí quản lý tòa LK01"
-                  className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl"
-                  required
-                />
-              </div>
-              <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsLedgerModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 rounded-xl"
-                >
-                  Hủy
-                </button>
-                <button
-                  data-testid="submit-create-ledger"
-                  type="submit"
-                  disabled={isSavingLg}
-                  className="px-4 py-2 text-xs font-bold bg-brand-primary text-white rounded-xl flex items-center gap-1.5 disabled:opacity-50"
-                >
-                  {isSavingLg && (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  )}
-                  <span>Lưu bút toán sổ quỹ</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+              </form>
+            </Dialog.Popup>
+          </Dialog.Viewport>
+        </Dialog.Portal>
+      </Dialog.Root>
 
       {/* Invoice Payment Modal */}
       {selectedInvoice && (() => {

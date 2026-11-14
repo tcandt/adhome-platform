@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { decryptSecret, encryptSecret } from './cryptoVault';
+import { allocateInitialReceipt } from './rentalFinance';
 
 class WebhookError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -47,7 +48,81 @@ export function assertWebhookCredentials(provider: string, credentials: Record<s
   if (provider === 'SEPAY' && !['HMAC_SHA256', 'API_KEY'].includes(auth)) reject(422, 'Phương thức xác thực webhook SePay không được hỗ trợ.');
 }
 
-type Normalized = { eventKey: string; eventType: string; amountVnd: number; identity: string; status: 'RECEIVED' | 'TEST_RECEIVED' };
+type Normalized = {
+  eventKey: string;
+  eventType: string;
+  amountVnd: number;
+  identity: string;
+  status: 'RECEIVED' | 'TEST_RECEIVED';
+  externalTxId: string;
+  accountNumber?: string;
+  subAccount?: string;
+  referenceText?: string;
+};
+
+export function normalizeTransferReference(value: unknown): string {
+  return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd')
+    .replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+}
+
+function invoiceTransferReference(invoice: any): string {
+  const tenant = normalizeTransferReference(invoice.tenant?.fullName);
+  const period = `${String(invoice.periodKey).slice(5, 7)}${String(invoice.periodKey).slice(0, 4)}`;
+  return normalizeTransferReference(`${invoice.room?.code || ''}${tenant}${period}`);
+}
+
+async function settleVerifiedSepayCredit(tx: any, connection: any, verified: Normalized) {
+  if (verified.eventType !== 'CREDIT' || verified.status !== 'RECEIVED' || verified.amountVnd <= 0) return 'IGNORED';
+  const incomingAccounts = [verified.accountNumber, verified.subAccount].map(normalizeTransferReference).filter(Boolean);
+  const configuredAccounts = (connection.accounts || []).map((row: any) => normalizeTransferReference(row.accountNumber));
+  if (!incomingAccounts.some(account => configuredAccounts.includes(account))) return 'ACCOUNT_MISMATCH';
+  const reference = normalizeTransferReference(verified.referenceText);
+  if (!reference) return 'REFERENCE_MISSING';
+
+  const invoices = await tx.invoice.findMany({
+    where: {
+      orgId: connection.orgId,
+      ...(connection.buildingId ? { buildingId: connection.buildingId } : {}),
+      status: { in: ['ISSUED', 'PARTIAL', 'OVERDUE'] },
+    },
+    include: { room: true, tenant: true },
+    take: 500,
+  });
+  const matches = invoices.filter((invoice: any) =>
+    BigInt(invoice.totalAmountVnd) > BigInt(invoice.paidAmountVnd) && invoiceTransferReference(invoice) === reference
+  );
+  if (matches.length !== 1) return matches.length ? 'AMBIGUOUS_REFERENCE' : 'UNMATCHED_REFERENCE';
+
+  const invoice = matches[0];
+  await tx.$executeRaw`SELECT id FROM "invoices" WHERE id = ${invoice.id} FOR UPDATE`;
+  const current = await tx.invoice.findUnique({ where: { id: invoice.id }, include: { room: true, tenant: true } });
+  if (!current || current.status === 'VOID') return 'INVOICE_UNAVAILABLE';
+  const remaining = Math.max(0, Number(current.totalAmountVnd) - Number(current.paidAmountVnd));
+  if (!remaining) return 'ALREADY_PAID';
+  const idempotencyKey = `webhook:${connection.id}:${verified.eventKey}`;
+  if (await tx.paymentTransaction.findUnique({ where: { idempotencyKey } })) return 'PROCESSED';
+
+  const nextPaid = Number(current.paidAmountVnd) + verified.amountVnd;
+  const reconcileState = verified.amountVnd < remaining ? 'PARTIAL_MATCH' : verified.amountVnd > remaining ? 'OVERPAID' : 'MATCHED';
+  await tx.invoice.update({ where: { id: current.id }, data: {
+    paidAmountVnd: BigInt(nextPaid), status: nextPaid >= Number(current.totalAmountVnd) ? 'PAID' : 'PARTIAL',
+  } });
+  await allocateInitialReceipt(tx, current, nextPaid);
+  await tx.paymentTransaction.create({ data: {
+    orgId: connection.orgId, buildingId: current.buildingId, invoiceId: current.id,
+    providerId: 'SEPAY', externalTxId: verified.externalTxId, idempotencyKey,
+    amountVnd: BigInt(verified.amountVnd), payerName: current.tenant?.fullName || null,
+    referenceText: verified.referenceText || null, reconcileState, periodKey: current.periodKey, verifiedAt: new Date(),
+  } });
+  await tx.ledgerEntry.create({ data: {
+    orgId: connection.orgId, buildingId: current.buildingId, periodKey: current.periodKey,
+    entryCode: `WH-${crypto.randomUUID()}`, entryType: 'INCOME', category: 'Thu tiền hóa đơn phòng',
+    amountVnd: BigInt(verified.amountVnd),
+    description: `SePay tự động đối soát hóa đơn ${current.invoiceCode} phòng ${current.room.code} (${reconcileState})`,
+    recordedBy: 'webhook@sepay.vn',
+  } });
+  return 'PROCESSED';
+}
 export function verifyPaymentWebhook(provider: string, credentials: Record<string, string>, auth: string, headers: IncomingMessage['headers'], raw: string, now = Date.now()): Normalized {
   assertWebhookCredentials(provider, credentials, auth);
   let body: Record<string, any>;
@@ -65,11 +140,14 @@ export function verifyPaymentWebhook(provider: string, credentials: Record<strin
     }
     const id = stringId(body.id, 'transaction id');
     if (!['in', 'out'].includes(body.transferType)) reject(400, 'Invalid transfer type');
-    stringId(body.accountNumber, 'account number');
+    const accountNumber = stringId(body.accountNumber, 'account number');
     total = amount(body.transferAmount); type = body.transferType === 'in' ? 'CREDIT' : 'DEBIT';
     isTest = id === '0';
     key = isTest ? `probe:${sha256(raw)}` : `transaction:${id}`;
     identity = [id, type, total, body.accountNumber, body.subAccount || '', body.referenceCode || ''];
+    const referenceText = String(body.content || body.description || '').trim();
+    return { eventKey: key, eventType: type, amountVnd: total, identity: sha256(JSON.stringify(identity)), status: isTest ? 'TEST_RECEIVED' : 'RECEIVED',
+      externalTxId: id, accountNumber, subAccount: typeof body.subAccount === 'string' ? body.subAccount : undefined, referenceText };
   } else if (provider === 'PAYOS') {
     const data = object(body.data);
     verifyHex(body.signature, hmac('sha256', credentials.checksumKey, payosSignedData(data)));
@@ -115,7 +193,7 @@ export function verifyPaymentWebhook(provider: string, credentials: Record<strin
     key = `transaction:${tx}:${type}`; identity = [body.clientId, tx, type, total, body.accountNumber || '', body.vaAccountNumber || ''];
   } else return reject(404, 'Unsupported provider');
   if (key.length > 450) reject(400, 'Event identifier too long');
-  return { eventKey: key, eventType: type, amountVnd: total, identity: sha256(JSON.stringify(identity)), status: isTest ? 'TEST_RECEIVED' : 'RECEIVED' };
+  return { eventKey: key, eventType: type, amountVnd: total, identity: sha256(JSON.stringify(identity)), status: isTest ? 'TEST_RECEIVED' : 'RECEIVED', externalTxId: key };
 }
 
 function readRaw(req: IncomingMessage): Promise<string> {
@@ -155,7 +233,7 @@ export async function handlePaymentWebhook(req: IncomingMessage, res: ServerResp
     const duplicate = await prisma.$transaction(async tx => {
       // Serialize callbacks with configuration changes; do not accept using a just-revoked key.
       await tx.$queryRaw`SELECT id FROM payment_provider_connections WHERE id = ${connectionId} FOR UPDATE`;
-      const connection = await tx.paymentProviderConnection.findFirst({ where: { id: connectionId, providerId: provider } });
+      const connection = await tx.paymentProviderConnection.findFirst({ where: { id: connectionId, providerId: provider }, include: { accounts: true } });
       if (!connection) return reject(404, 'Webhook connection not found');
       if (!connection.webhookEnabled) return reject(503, 'Webhook receiver disabled');
       const plaintext = decryptSecret(connection.credentialsEncrypted);
@@ -164,11 +242,18 @@ export async function handlePaymentWebhook(req: IncomingMessage, res: ServerResp
       const verified = verifyPaymentWebhook(provider, credentials, connection.webhookAuth, req.headers, raw);
       const previous = await tx.paymentWebhookEvent.findUnique({ where: { connectionId_eventKey: { connectionId, eventKey: verified.eventKey } } });
       if (previous && previous.identityHash !== verified.identity) return reject(409, 'Conflicting transaction identity');
-      if (!previous) await tx.paymentWebhookEvent.create({ data: { connectionId, eventKey: verified.eventKey, eventType: verified.eventType, identityHash: verified.identity, amountVnd: BigInt(verified.amountVnd), payloadEncrypted: encryptSecret(raw) as unknown as Prisma.InputJsonValue, status: verified.status } });
+      if (!previous) {
+        const event = await tx.paymentWebhookEvent.create({ data: { connectionId, eventKey: verified.eventKey, eventType: verified.eventType, identityHash: verified.identity, amountVnd: BigInt(verified.amountVnd), payloadEncrypted: encryptSecret(raw) as unknown as Prisma.InputJsonValue, status: verified.status } });
+        const settlementStatus = provider === 'SEPAY' ? await settleVerifiedSepayCredit(tx, connection, verified) : verified.status;
+        if (settlementStatus !== verified.status) await tx.paymentWebhookEvent.update({ where: { id: event.id }, data: { status: settlementStatus } });
+      } else if (provider === 'SEPAY' && previous.status !== 'PROCESSED') {
+        const settlementStatus = await settleVerifiedSepayCredit(tx, connection, verified);
+        if (settlementStatus !== previous.status) await tx.paymentWebhookEvent.update({ where: { id: previous.id }, data: { status: settlementStatus } });
+      }
       await tx.paymentProviderConnection.update({ where: { id: connectionId }, data: { webhookLastReceivedAt: new Date() } });
       return !!previous;
     }, { timeout: 7000, maxWait: 2000 });
-    // ACK only after durable commit. Inbox reception does not create a receipt or settle an invoice.
+    // ACK only after durable inbox storage and any deterministic settlement commit.
     reply(res, provider, 200, undefined, duplicate);
   } catch (error) {
     reply(res, provider, error instanceof WebhookError ? error.status : 503, error instanceof WebhookError ? error.message : 'Webhook storage temporarily unavailable');

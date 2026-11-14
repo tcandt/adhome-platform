@@ -13,7 +13,7 @@ const { build } = createRequire(require.resolve('vite'))('esbuild');
 const out = resolve('apps/landing/node_modules/.cache/payment-webhook-tests');
 await mkdir(out, { recursive: true });
 await build({ entryPoints: ['apps/landing/server/paymentWebhooks.ts', 'apps/landing/server/paymentIntegrationApi.ts', 'apps/landing/server/paymentWebhookConfig.ts', 'apps/landing/server/cryptoVault.ts'], outdir: out, bundle: true, platform: 'node', format: 'cjs', packages: 'external', logLevel: 'silent' });
-const { handlePaymentWebhook, verifyPaymentWebhook, payosSignedData } = require(resolve(out, 'paymentWebhooks.js'));
+const { handlePaymentWebhook, verifyPaymentWebhook, payosSignedData, normalizeTransferReference } = require(resolve(out, 'paymentWebhooks.js'));
 const { handlePaymentIntegrations } = require(resolve(out, 'paymentIntegrationApi.js'));
 const { webhookAddress, paymentWebhookOrigin } = require(resolve(out, 'paymentWebhookConfig.js'));
 const { encryptSecret, decryptSecret } = require(resolve(out, 'cryptoVault.js'));
@@ -23,7 +23,7 @@ const hmac = (algorithm, key, text) => crypto.createHmac(algorithm, key).update(
 const orgId = `webhook-test-${crypto.randomUUID()}`;
 const timestamp = String(Math.floor(Date.now() / 1000));
 const sepayCredentials = { apiToken: 'outbound-api-secret', webhookSecret: 'separate-callback-secret' };
-const sepayBody = { id: 92704, gateway: 'Vietcombank', transactionDate: '2026-11-03 18:00:00', accountNumber: '001234', subAccount: '', code: 'INV001', content: 'Thu tiền phòng', transferType: 'in', transferAmount: 5000000, referenceCode: 'FT-TEST' };
+const sepayBody = { id: 92704, gateway: 'Vietcombank', transactionDate: '2026-11-03 18:00:00', accountNumber: '001234', subAccount: '', code: 'INV001', content: 'P01NGUYENVANAN11-2026', transferType: 'in', transferAmount: 5000000, referenceCode: 'FT-TEST' };
 const sepayRaw = JSON.stringify(sepayBody, null, 2);
 const sepayHeaders = { 'x-sepay-timestamp': timestamp, 'x-sepay-signature': `sha256=${hmac('sha256', sepayCredentials.webhookSecret, `${timestamp}.${sepayRaw}`)}` };
 const payosCredentials = { clientId: 'client', apiKey: 'outbound-key', checksumKey: '1a54716c8f0efb2744fb28b6e38b25da7f67a925d98bc1c18bd8faaecadd7675' };
@@ -73,17 +73,30 @@ try {
   assert.throws(() => verifyPaymentWebhook('SEPAY', sepayCredentials, 'HMAC_SHA256', { ...sepayHeaders, 'x-sepay-timestamp': '1000000000' }, sepayRaw), /Expired/);
   assert.throws(() => verifyPaymentWebhook('SEPAY', sepayCredentials, 'API_KEY', { authorization: 'Apikey outbound-api-secret' }, sepayRaw), /API key/);
   assert.equal(verifyPaymentWebhook('SEPAY', sepayCredentials, 'API_KEY', { authorization: 'Apikey separate-callback-secret' }, sepayRaw).eventType, 'CREDIT');
+  assert.equal(normalizeTransferReference('P01 Nguyễn Văn An 11-2026'), 'P01NGUYENVANAN112026');
   const badPayos = structuredClone(payosBody); badPayos.data.amount++;
   assert.throws(() => verifyPaymentWebhook('PAYOS', payosCredentials, 'HMAC_SHA256', {}, JSON.stringify(badPayos)), /signature/i);
   assert.throws(() => verifyPaymentWebhook('ZALOPAY', { ...zaloCredentials, key2: zaloCredentials.key1 }, 'HMAC_SHA256', {}, JSON.stringify(zaloBody)), /signature/i);
   assert.throws(() => verifyPaymentWebhook('TINGEE', { ...tingeeCredentials, clientId: 'other-client' }, 'HMAC_SHA256', tingeeHeaders, JSON.stringify(tingeeBody)), /mismatch/);
   await db.organization.create({ data: { id: orgId, slug: orgId, name: 'Webhook test', hotline: '000', addressSummary: 'test' } });
+  const building = await db.building.create({ data: { id: `${orgId}-building`, orgId, code: 'BT', name: 'Building test', streetAddress: 'test', ward: 'test', province: 'test' } });
+  const floor = await db.floor.create({ data: { id: `${orgId}-floor`, orgId, buildingId: building.id, floorNumber: 1, name: 'Tầng 1' } });
+  const room = await db.consoleRoom.create({ data: { orgId, buildingId: building.id, floorId: floor.id, code: 'P01', title: 'P01', area: 25, listPriceVnd: 5000000n } });
+  const tenant = await db.tenant.create({ data: { orgId, fullName: 'Nguyễn Văn An', phone: '0900000000', normalizedPhone: '0900000000' } });
+  const invoice = await db.invoice.create({ data: { orgId, buildingId: building.id, roomId: room.id, tenantId: tenant.id, invoiceCode: 'INV-WEBHOOK-1', periodKey: '2026-11', dueDate: '2026-11-10', totalAmountVnd: 5000000n, status: 'ISSUED' } });
   for (const [providerId, credentials, webhookAuth, raw, headers] of cases) {
     const connection = await db.paymentProviderConnection.create({ data: { orgId, providerId, name: `${providerId} webhook test`, webhookAuth, webhookEnabled: true, credentialsEncrypted: encryptSecret(JSON.stringify(credentials)), credentialFields: Object.keys(credentials) } });
+    if (providerId === 'SEPAY') await db.paymentReceivingAccount.create({ data: { connectionId: connection.id, bankCode: 'VCB', accountNumber: '001234', accountName: 'WEBHOOK TEST' } });
     // No Console auth or CSRF headers: provider signature is the endpoint authentication.
     const accepted = await receive(connection, raw, headers);
     assert.equal(accepted.status, providerId === 'MOMO' ? 204 : 200, providerId);
     if (providerId === 'SEPAY') assert.deepEqual(accepted.json, { success: true });
+    if (providerId === 'SEPAY') {
+      const settled = await db.invoice.findUnique({ where: { id: invoice.id } });
+      assert.equal(settled.status, 'PAID');
+      assert.equal(settled.paidAmountVnd, 5000000n);
+      assert.equal(await db.paymentTransaction.count({ where: { invoiceId: invoice.id } }), 1, 'SePay credit creates one receipt');
+    }
     if (providerId === 'SEPAY') {
       const conflictingRaw = JSON.stringify({ ...sepayBody, transferAmount: sepayBody.transferAmount + 1 });
       const conflictingHeaders = { ...headers, 'x-sepay-signature': `sha256=${hmac('sha256', credentials.webhookSecret, `${timestamp}.${conflictingRaw}`)}` };
@@ -132,8 +145,8 @@ try {
   for (const forbidden of ['payloadEncrypted', 'credentialsEncrypted', 'separate-callback-secret', 'tingee-secret']) assert.ok(!serializedSettings.includes(forbidden), 'Settings never serializes webhook secrets/raw inbox');
   assert.equal((await action(noSecret, 'webhook', { version: 1, isEnabled: true })).status, 422);
   const large = await receive(noSecret, 'x'.repeat(128 * 1024 + 1), {}); assert.equal(large.status, 413);
-  assert.equal(await db.paymentTransaction.count({ where: { orgId } }), 0, 'Webhook inbox never creates financial receipts');
-  console.log('PASS: five provider signatures/ACKs, official payOS vector, SePay raw-body/HMAC/API-Key isolation, stale signature, forged payloads, tenant identifiers, encrypted durable inbox, atomic concurrent deduplication, storage failure ACK safety, independent webhook enable, payOS registration, payload limit and zero receipts.');
+  assert.equal(await db.paymentTransaction.count({ where: { orgId } }), 1, 'Only the matched SePay credit creates a financial receipt');
+  console.log('PASS: five provider signatures/ACKs, SePay exact-reference settlement and atomic deduplication, official payOS vector, raw-body/HMAC/API-Key isolation, stale signatures, forged payloads, encrypted durable inbox, storage failure ACK safety, independent webhook enable, payOS registration and payload limit.');
 } finally {
   globalThis.fetch = previousFetch;
   await db.organization.deleteMany({ where: { id: orgId } });

@@ -1706,8 +1706,8 @@ export const OperationalModuleWorkspace: React.FC<
                                     {inv.tenantName || 'Khách thuê chưa cập nhật'}
                                   </span>
                                 </div>
-                                <span className="mt-0.5 block truncate font-mono text-[10.5px] font-semibold text-slate-400 dark:text-slate-500">
-                                  {inv.invoiceCode} · Hạn {formatInvoiceDate(inv.dueDate)}
+                                <span className="mt-0.5 block truncate font-mono text-[10.5px] font-semibold text-slate-400 dark:text-slate-500" title={inv.invoiceCode}>
+                                  #{inv.roomCode ? `${inv.roomCode} (T11)` : inv.invoiceCode} · Hạn {formatInvoiceDate(inv.dueDate)}
                                 </span>
                               </div>
                               <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-bold ring-1 ring-inset ${status.className}`}>
@@ -1804,13 +1804,14 @@ export const OperationalModuleWorkspace: React.FC<
                                 key={inv.id}
                                 className="group transition-colors hover:bg-slate-50/70 dark:hover:bg-slate-900/40"
                               >
-                                <td className="py-3.5 pr-3 align-middle">
+                                <td className="py-3.5 pr-3 align-middle whitespace-nowrap">
                                   <button
                                     type="button"
                                     onClick={() => handleOpenInvoicePaymentModal(inv)}
-                                    className="font-mono font-bold text-slate-900 hover:text-brand-primary dark:text-white"
+                                    title={`Mã hóa đơn đầy đủ: ${inv.invoiceCode}`}
+                                    className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100/90 px-2.5 py-1 font-mono text-[11px] font-bold text-slate-800 hover:bg-blue-50 hover:text-brand-primary dark:bg-slate-800 dark:text-slate-200 transition-colors"
                                   >
-                                    {inv.invoiceCode}
+                                    <span>{inv.roomCode ? `#${inv.roomCode} (T11)` : inv.invoiceCode}</span>
                                   </button>
                                 </td>
                                 <td className="py-3.5 pr-3 align-middle">
@@ -2140,14 +2141,32 @@ export const OperationalModuleWorkspace: React.FC<
                 ) : (
                   <>
                     {/* Mobile Transactions List (md:hidden) */}
-                    <div className="divide-y divide-slate-100 dark:divide-slate-800 md:hidden">
+                    <div className="space-y-3 p-3 md:hidden">
                       {filteredTransactions.map((tx) => {
                         const direction = tx.direction || 'IN';
                         const badge = getReconcileBadge(tx);
                         const channel = getPaymentChannelMeta(tx.providerId);
+                        const shortTxId = tx.externalTxId?.startsWith('TX-')
+                          ? `#TM-${tx.externalTxId.slice(-4)}`
+                          : tx.externalTxId?.startsWith('TM-')
+                            ? `#${tx.externalTxId}`
+                            : tx.externalTxId?.startsWith('SP-')
+                              ? `#${tx.externalTxId}`
+                              : /^\d{6,}$/.test(tx.externalTxId || '')
+                                ? `#SP-${tx.externalTxId?.slice(-6)}`
+                                : `#${(tx.externalTxId || '').slice(-8)}`;
+                        const shortInvoice = tx.roomCode ? `${tx.roomCode} (T11)` : (tx.invoiceCode?.replace(/^INV-HD-/, '') || '—');
+                        const isNormalizedBankRef = /^P\d{2,4}[A-Z0-9]+$/i.test(tx.referenceText || '') && tx.roomCode;
+                        const friendlyTitle = isNormalizedBankRef
+                          ? `Thu tiền phòng ${tx.roomCode} · ${tx.payerName || tx.tenantName || 'Khách thuê'}`
+                          : (tx.referenceText || 'Không có nội dung chuyển khoản');
+
                         return (
-                          <article key={tx.id} className="p-3.5 space-y-2.5">
-                            <div className="flex items-start justify-between gap-2.5">
+                          <article
+                            key={tx.id}
+                            className="rounded-2xl border border-slate-200/90 bg-white p-3.5 shadow-sm transition hover:shadow-md dark:border-slate-800 dark:bg-slate-900/90"
+                          >
+                            <div className="flex items-start justify-between gap-2.5 pb-2.5 border-b border-slate-100 dark:border-slate-800">
                               <div className="flex min-w-0 items-start gap-2.5">
                                 <span
                                   className={`mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-xl ${
@@ -2165,7 +2184,7 @@ export const OperationalModuleWorkspace: React.FC<
                                 <div className="min-w-0">
                                   <div className="flex flex-wrap items-center gap-1.5">
                                     <span
-                                      className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-bold ${channel.badgeClassName}`}
+                                      className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[10.5px] font-bold ${channel.badgeClassName}`}
                                     >
                                       <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${channel.dotClassName}`} />
                                       <span>{channel.label}</span>
@@ -2176,7 +2195,7 @@ export const OperationalModuleWorkspace: React.FC<
                                       </span>
                                     )}
                                   </div>
-                                  <p className="mt-1 truncate text-xs font-semibold text-slate-700 dark:text-slate-200">
+                                  <p className="mt-1 truncate text-xs font-bold text-slate-800 dark:text-slate-100">
                                     {tx.payerName || tx.tenantName || tx.accountName || (direction === 'IN' ? 'Khách thanh toán' : 'Chi hoàn tiền')}
                                   </p>
                                 </div>
@@ -2197,33 +2216,41 @@ export const OperationalModuleWorkspace: React.FC<
                               </div>
                             </div>
 
-                            <div className="rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2 text-xs dark:border-slate-800/80 dark:bg-slate-900/50">
-                              <p className="line-clamp-2 font-medium text-slate-700 dark:text-slate-200">
-                                {tx.referenceText || 'Không có nội dung chuyển khoản'}
+                            <div className="py-2.5 text-xs">
+                              <p className="font-semibold text-slate-800 dark:text-slate-100">
+                                {friendlyTitle}
                               </p>
-                              <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200/60 pt-1.5 text-[10.5px] text-slate-500 dark:border-slate-800">
-                                <span className="truncate font-mono text-[10px] text-slate-400">
-                                  {tx.externalTxId} · {new Date(tx.occurredAt || tx.verifiedAt).toLocaleString('vi-VN')}
-                                </span>
-                                {tx.invoiceCode ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleInspectTransactionInvoice(tx)}
-                                    className="inline-flex items-center gap-1 font-mono text-[11px] font-bold text-brand-primary hover:underline"
-                                  >
-                                    <span>{tx.invoiceCode}</span>
-                                    <ExternalLink className="h-3 w-3" />
-                                  </button>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={() => setActiveModule('invoices')}
-                                    className="font-semibold text-amber-600 hover:underline dark:text-amber-400"
-                                  >
-                                    Đối soát HĐ →
-                                  </button>
-                                )}
-                              </div>
+                              {isNormalizedBankRef && (
+                                <p className="mt-0.5 text-[10px] font-mono text-slate-400">
+                                  Ref: {tx.referenceText}
+                                </p>
+                              )}
+                              <p className="mt-1 text-[10.5px] font-mono text-slate-400">
+                                Mã GD: {shortTxId} · {new Date(tx.occurredAt || tx.verifiedAt).toLocaleString('vi-VN')}
+                              </p>
+                            </div>
+
+                            <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
+                              <span className="text-slate-500 text-[11px]">Hóa đơn khớp:</span>
+                              {tx.invoiceCode ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleInspectTransactionInvoice(tx)}
+                                  title={tx.invoiceCode}
+                                  className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-0.5 font-mono text-[11px] font-bold text-brand-primary dark:bg-blue-950/50 hover:underline"
+                                >
+                                  <span>{shortInvoice}</span>
+                                  <ExternalLink className="h-3 w-3" />
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveModule('invoices')}
+                                  className="font-semibold text-amber-600 hover:underline dark:text-amber-400"
+                                >
+                                  Đối soát HĐ →
+                                </button>
+                              )}
                             </div>
                           </article>
                         );
@@ -2232,75 +2259,98 @@ export const OperationalModuleWorkspace: React.FC<
 
                     {/* Desktop Transactions Table (hidden md:block) */}
                     <div className="hidden overflow-x-auto p-4 md:block">
-                      <table className="w-full text-left text-xs">
+                      <table className="w-full text-left text-xs border-collapse">
                         <thead>
-                          <tr className="border-b border-slate-100 text-[11px] font-semibold text-slate-400 dark:border-slate-800">
-                            <th className="pb-3 pr-3">Thời gian / Mã GD</th>
-                            <th className="pb-3 pr-3">Kênh thanh toán</th>
-                            <th className="pb-3 pr-3">Phòng / Người chuyển</th>
-                            <th className="pb-3 pr-3">Nội dung giao dịch</th>
-                            <th className="pb-3 pr-3 text-right">Số tiền</th>
-                            <th className="pb-3 pr-3">Hóa đơn khớp</th>
-                            <th className="pb-3 text-right">Trạng thái</th>
+                          <tr className="border-b border-slate-200/80 text-[11px] font-bold text-slate-500 uppercase tracking-wider bg-slate-50/70 dark:border-slate-800 dark:bg-slate-900/60">
+                            <th className="py-3 px-3.5 w-[155px]">Thời gian / Mã GD</th>
+                            <th className="py-3 px-3 w-[130px]">Kênh thanh toán</th>
+                            <th className="py-3 px-3 w-[175px]">Phòng / Người nộp</th>
+                            <th className="py-3 px-3 min-w-[220px]">Nội dung giao dịch</th>
+                            <th className="py-3 px-3.5 w-[135px] text-right">Số tiền</th>
+                            <th className="py-3 px-3.5 w-[150px]">Hóa đơn khớp</th>
+                            <th className="py-3 px-3.5 w-[115px] text-right">Trạng thái</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-950">
                           {filteredTransactions.map((tx) => {
                             const direction = tx.direction || 'IN';
                             const badge = getReconcileBadge(tx);
                             const channel = getPaymentChannelMeta(tx.providerId);
+                            const shortTxId = tx.externalTxId?.startsWith('TX-')
+                              ? `#TM-${tx.externalTxId.slice(-4)}`
+                              : tx.externalTxId?.startsWith('TM-')
+                                ? `#${tx.externalTxId}`
+                                : tx.externalTxId?.startsWith('SP-')
+                                  ? `#${tx.externalTxId}`
+                                  : /^\d{6,}$/.test(tx.externalTxId || '')
+                                    ? `#SP-${tx.externalTxId?.slice(-6)}`
+                                    : `#${(tx.externalTxId || '').slice(-8)}`;
+                            const shortInvoice = tx.roomCode ? `${tx.roomCode} (T11)` : (tx.invoiceCode?.replace(/^INV-HD-/, '') || '—');
+                            const isNormalizedBankRef = /^P\d{2,4}[A-Z0-9]+$/i.test(tx.referenceText || '') && tx.roomCode;
+                            const friendlyTitle = isNormalizedBankRef
+                              ? `Thu tiền phòng ${tx.roomCode} · ${tx.payerName || tx.tenantName || 'Khách thuê'}`
+                              : (tx.referenceText || '—');
+
                             return (
                               <tr
                                 key={tx.id}
                                 className="transition-colors hover:bg-slate-50/70 dark:hover:bg-slate-900/40"
                               >
-                                <td className="py-3.5 pr-3 align-middle whitespace-nowrap">
-                                  <span className="block font-mono font-bold text-slate-900 dark:text-white">
-                                    {tx.externalTxId}
+                                <td className="py-3 px-3.5 align-middle whitespace-nowrap">
+                                  <span className="block font-mono font-bold text-slate-900 dark:text-white" title={tx.externalTxId || ''}>
+                                    {shortTxId}
                                   </span>
                                   <span className="mt-0.5 block text-[11px] text-slate-500">
                                     {new Date(tx.occurredAt || tx.verifiedAt).toLocaleString('vi-VN')}
                                   </span>
                                 </td>
-                                <td className="py-3.5 pr-3 align-middle whitespace-nowrap">
+                                <td className="py-3 px-3 align-middle whitespace-nowrap">
                                   <span
-                                    className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-bold ${channel.badgeClassName}`}
+                                    className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-bold ${channel.badgeClassName}`}
                                   >
                                     <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${channel.dotClassName}`} />
                                     <span>{channel.label}</span>
                                   </span>
                                 </td>
-                                <td className="py-3.5 pr-3 align-middle">
-                                  <div className="flex flex-wrap items-center gap-1.5">
+                                <td className="py-3 px-3 align-middle whitespace-nowrap">
+                                  <div className="flex flex-col gap-1 items-start">
                                     {tx.buildingCode && tx.roomCode && (
-                                      <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10.5px] font-bold text-brand-primary dark:bg-blue-950/50 dark:text-blue-300">
+                                      <span className="rounded-md bg-blue-50 px-2 py-0.5 text-[10.5px] font-bold text-brand-primary dark:bg-blue-950/50 dark:text-blue-300">
                                         {tx.buildingCode} · {tx.roomCode}
                                       </span>
                                     )}
-                                    <span className="font-medium text-slate-700 dark:text-slate-200">
+                                    <span className="font-semibold text-slate-800 dark:text-slate-200">
                                       {tx.payerName || tx.tenantName || tx.accountName || '—'}
                                     </span>
                                   </div>
                                 </td>
-                                <td className="py-3.5 pr-3 align-middle max-w-xs">
-                                  <p className="truncate text-slate-700 dark:text-slate-300" title={tx.referenceText || ''}>
-                                    {tx.referenceText || '—'}
-                                  </p>
+                                <td className="py-3 px-3 align-middle">
+                                  <div className="max-w-md">
+                                    <p className="font-semibold text-slate-800 dark:text-slate-100 text-[12px] leading-snug">
+                                      {friendlyTitle}
+                                    </p>
+                                    {isNormalizedBankRef && (
+                                      <p className="mt-0.5 text-[10px] font-mono text-slate-400 truncate" title={tx.referenceText || ''}>
+                                        Ref: {tx.referenceText}
+                                      </p>
+                                    )}
+                                  </div>
                                 </td>
-                                <td className="py-3.5 pr-3 align-middle text-right font-bold tabular-nums whitespace-nowrap">
+                                <td className="py-3 px-3.5 align-middle text-right font-extrabold tabular-nums whitespace-nowrap text-sm">
                                   <span className={direction === 'IN' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>
                                     {direction === 'IN' ? '+' : '-'}
                                     {tx.amountVnd.toLocaleString('vi-VN')} đ
                                   </span>
                                 </td>
-                                <td className="py-3.5 pr-3 align-middle whitespace-nowrap">
+                                <td className="py-3 px-3.5 align-middle whitespace-nowrap">
                                   {tx.invoiceCode ? (
                                     <button
                                       type="button"
                                       onClick={() => handleInspectTransactionInvoice(tx)}
-                                      className="inline-flex items-center gap-1 font-mono font-bold text-brand-primary hover:underline"
+                                      title={`Mã hóa đơn đầy đủ: ${tx.invoiceCode}`}
+                                      className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50/80 px-2.5 py-1 font-mono text-[11px] font-bold text-brand-primary hover:bg-blue-100 dark:bg-blue-950/50 dark:text-blue-300 transition-colors"
                                     >
-                                      <span>{tx.invoiceCode}</span>
+                                      <span>{shortInvoice}</span>
                                       <ExternalLink className="h-3 w-3" />
                                     </button>
                                   ) : (
@@ -2313,8 +2363,8 @@ export const OperationalModuleWorkspace: React.FC<
                                     </button>
                                   )}
                                 </td>
-                                <td className="py-3.5 align-middle text-right whitespace-nowrap">
-                                  <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[10.5px] font-bold ring-1 ring-inset ${badge.className}`}>
+                                <td className="py-3 px-3.5 align-middle text-right whitespace-nowrap">
+                                  <span className={`inline-flex rounded-full px-2.5 py-1 text-[10.5px] font-bold ring-1 ring-inset ${badge.className}`}>
                                     {badge.label}
                                   </span>
                                 </td>

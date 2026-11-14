@@ -131,16 +131,39 @@ async function internalBotApi(req: http.IncomingMessage, res: http.ServerRespons
     const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date());
     const previousMonth = new Date(`${today}T00:00:00Z`); previousMonth.setUTCMonth(previousMonth.getUTCMonth() - 1);
     const sincePeriod = previousMonth.toISOString().slice(0, 7);
-    const [invoices, contracts] = await Promise.all([
+    const [invoices, contracts, paymentTransactions] = await Promise.all([
       prisma.invoice.findMany({ where: { orgId, periodKey: { gte: sincePeriod }, status: { in: ['ISSUED', 'PARTIAL', 'OVERDUE'] },
         contract: { status: { in: ['ACTIVE', 'EXPIRING', 'EXTENDED'] } } }, include: { room: true }, orderBy: { createdAt: 'desc' }, take: 100 }),
       prisma.contract.findMany({ where: { orgId, status: { in: ['ACTIVE', 'EXPIRING', 'EXTENDED'] }, endDate: { gte: today, lte: new Date(Date.parse(`${today}T00:00:00Z`) + 30 * 86400000).toISOString().slice(0, 10) } },
         include: { room: true }, take: 100 }),
+      prisma.paymentTransaction.findMany({
+        where: { orgId, verifiedAt: { gte: new Date(Date.now() - 7 * 86400000) } },
+        include: { invoice: { include: { room: true, tenant: true } } },
+        orderBy: { verifiedAt: 'desc' },
+        take: 50,
+      }),
     ]);
     json(res, 200, { invoices: invoices.filter(i => i.totalAmountVnd > i.paidAmountVnd && (i.policySnapshot as any)?.type !== 'FIRST_COMBINED_INVOICE')
       .map(i => ({ id: i.id, tenantId: i.tenantId, roomCode: i.room.code, invoiceCode: i.invoiceCode, period: i.periodKey,
         dueDate: i.dueDate, amountVnd: Number(i.totalAmountVnd - i.paidAmountVnd), electricVnd: Number(i.electricVnd), waterVnd: Number(i.waterVnd) })),
-      expiring: contracts.map(c => ({ id: c.id, tenantId: c.tenantId, roomCode: c.room.code, endDate: c.endDate })) });
+      expiring: contracts.map(c => ({ id: c.id, tenantId: c.tenantId, roomCode: c.room.code, endDate: c.endDate })),
+      payments: paymentTransactions.map(pt => ({
+        id: pt.id,
+        externalTxId: pt.externalTxId,
+        amountVnd: Number(pt.amountVnd),
+        payerName: pt.payerName || pt.invoice?.tenant?.fullName || 'Khách thuê',
+        providerId: pt.providerId,
+        invoiceId: pt.invoiceId,
+        invoiceCode: pt.invoice?.invoiceCode || '',
+        roomCode: pt.invoice?.room?.code || '',
+        tenantId: pt.invoice?.tenantId || '',
+        totalAmountVnd: pt.invoice ? Number(pt.invoice.totalAmountVnd) : 0,
+        paidAmountVnd: pt.invoice ? Number(pt.invoice.paidAmountVnd) : 0,
+        remainingVnd: pt.invoice ? Math.max(0, Number(pt.invoice.totalAmountVnd - pt.invoice.paidAmountVnd)) : 0,
+        invoiceStatus: pt.invoice?.status || 'PAID',
+        verifiedAt: pt.verifiedAt,
+      })),
+    });
     return true;
   }
   json(res, 404, { error: 'not_found' }); return true;

@@ -1780,21 +1780,21 @@ export const OperationalModuleWorkspace: React.FC<
 
                     {/* Desktop Table View (hidden md:block) */}
                     <div className="hidden md:block overflow-x-auto p-4">
-                      <table className="w-full text-left text-xs" data-testid="invoices-table">
+                      <table className="w-full text-left text-xs min-w-[980px] border-collapse" data-testid="invoices-table">
                         <thead>
-                          <tr className="border-b border-slate-100 dark:border-slate-800 text-[11px] text-slate-400 font-semibold">
-                            <th className="pb-3 pr-3">Mã hóa đơn</th>
-                            <th className="pb-3 pr-3">Phòng / Khách thuê</th>
-                            <th className="pb-3 pr-3">Khoản thu chính</th>
-                            <th className="pb-3 pr-3">Hạn TT</th>
-                            <th className="pb-3 pr-3 text-right">Tổng phải thu</th>
-                            <th className="pb-3 pr-3 text-right">Đã thu</th>
-                            <th className="pb-3 pr-3 text-right">Còn thiếu</th>
-                            <th className="pb-3 pr-3">Trạng thái</th>
-                            <th className="pb-3 text-right">Thao tác</th>
+                          <tr className="border-b border-slate-200/80 dark:border-slate-800 text-[11px] font-bold text-slate-500 uppercase tracking-wider bg-slate-50/70 dark:bg-slate-900/60">
+                            <th className="py-3 px-3.5 w-[140px] whitespace-nowrap">Mã hóa đơn</th>
+                            <th className="py-3 px-3 w-[190px] min-w-[180px] whitespace-nowrap">Phòng / Khách thuê</th>
+                            <th className="py-3 px-3 min-w-[220px]">Khoản thu chính</th>
+                            <th className="py-3 px-3 w-[100px] whitespace-nowrap">Hạn TT</th>
+                            <th className="py-3 px-3.5 text-right w-[115px] whitespace-nowrap">Tổng phải thu</th>
+                            <th className="py-3 px-3.5 text-right w-[115px] whitespace-nowrap">Đã thu</th>
+                            <th className="py-3 px-3.5 text-right w-[115px] whitespace-nowrap">Còn thiếu</th>
+                            <th className="py-3 px-3 w-[125px] whitespace-nowrap">Trạng thái</th>
+                            <th className="py-3 px-3.5 text-right w-[115px] whitespace-nowrap">Thao tác</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-950">
                           {filteredInvoices.map((inv) => {
                             const remaining = Math.max(0, inv.totalAmountVnd - inv.paidAmountVnd);
                             const status = getInvoiceStatus(inv.status, remaining, inv.paidAmountVnd, inv.dueDate);
@@ -1804,7 +1804,7 @@ export const OperationalModuleWorkspace: React.FC<
                                 key={inv.id}
                                 className="group transition-colors hover:bg-slate-50/70 dark:hover:bg-slate-900/40"
                               >
-                                <td className="py-3.5 pr-3 align-middle whitespace-nowrap">
+                                <td className="py-3 px-3.5 align-middle whitespace-nowrap">
                                   <button
                                     type="button"
                                     onClick={() => handleOpenInvoicePaymentModal(inv)}
@@ -1814,22 +1814,22 @@ export const OperationalModuleWorkspace: React.FC<
                                     <span>{inv.roomCode ? `#${inv.roomCode} (T11)` : inv.invoiceCode}</span>
                                   </button>
                                 </td>
-                                <td className="py-3.5 pr-3 align-middle">
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[11px] font-bold text-brand-primary dark:bg-blue-950/50 dark:text-blue-300">
+                                <td className="py-3 px-3 align-middle whitespace-nowrap">
+                                  <div className="flex flex-col gap-1 items-start">
+                                    <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-0.5 text-[10.5px] font-bold text-brand-primary dark:bg-blue-950/50 dark:text-blue-300 whitespace-nowrap">
                                       {inv.buildingCode} · {inv.roomCode}
                                     </span>
-                                    <span className="font-semibold text-slate-800 dark:text-slate-200">
+                                    <span className="font-semibold text-slate-800 dark:text-slate-200 whitespace-nowrap" title={inv.tenantName || ''}>
                                       {inv.tenantName || '—'}
                                     </span>
                                   </div>
                                 </td>
-                                <td className="py-3.5 pr-3 align-middle">
+                                <td className="py-3 px-3 align-middle">
                                   <div className="flex flex-wrap gap-1 max-w-xs">
                                     {feeItems.map((item) => (
                                       <span
                                         key={item.label}
-                                        className="inline-flex items-center gap-1 rounded bg-slate-100/80 px-1.5 py-0.5 text-[10px] text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                                        className="inline-flex items-center gap-1 rounded bg-slate-100/80 px-1.5 py-0.5 text-[10px] text-slate-600 dark:bg-slate-800 dark:text-slate-300 whitespace-nowrap"
                                       >
                                         <span>{item.label}:</span>
                                         <strong className="tabular-nums">{item.amountVnd.toLocaleString('vi-VN')}</strong>
@@ -1837,26 +1837,26 @@ export const OperationalModuleWorkspace: React.FC<
                                     ))}
                                   </div>
                                 </td>
-                                <td className="py-3.5 pr-3 align-middle font-mono text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                                <td className="py-3 px-3 align-middle font-mono text-slate-600 dark:text-slate-300 whitespace-nowrap">
                                   {formatInvoiceDate(inv.dueDate)}
                                 </td>
-                                <td className="py-3.5 pr-3 align-middle text-right font-bold tabular-nums whitespace-nowrap text-slate-900 dark:text-white">
+                                <td className="py-3 px-3.5 align-middle text-right font-bold tabular-nums whitespace-nowrap text-slate-900 dark:text-white">
                                   {inv.totalAmountVnd.toLocaleString('vi-VN')} đ
                                 </td>
-                                <td className="py-3.5 pr-3 align-middle text-right tabular-nums font-semibold whitespace-nowrap text-emerald-600">
+                                <td className="py-3 px-3.5 align-middle text-right tabular-nums font-semibold whitespace-nowrap text-emerald-600">
                                   {inv.paidAmountVnd.toLocaleString('vi-VN')} đ
                                 </td>
-                                <td className="py-3.5 pr-3 align-middle text-right tabular-nums font-semibold whitespace-nowrap">
+                                <td className="py-3 px-3.5 align-middle text-right tabular-nums font-semibold whitespace-nowrap">
                                   <span className={remaining > 0 ? 'text-rose-600 font-bold' : 'text-slate-400'}>
                                     {remaining.toLocaleString('vi-VN')} đ
                                   </span>
                                 </td>
-                                <td className="py-3.5 pr-3 align-middle whitespace-nowrap">
+                                <td className="py-3 px-3 align-middle whitespace-nowrap">
                                   <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[10.5px] font-bold ring-1 ring-inset ${status.className}`}>
                                     {status.label}
                                   </span>
                                 </td>
-                                <td className="py-3.5 align-middle text-right whitespace-nowrap">
+                                <td className="py-3 px-3.5 align-middle text-right whitespace-nowrap">
                                   <div className="inline-flex items-center justify-end gap-1.5">
                                     {remaining > 0 ? (
                                       <AnimatedButton
@@ -2315,11 +2315,11 @@ export const OperationalModuleWorkspace: React.FC<
                                 <td className="py-3 px-3 align-middle whitespace-nowrap">
                                   <div className="flex flex-col gap-1 items-start">
                                     {tx.buildingCode && tx.roomCode && (
-                                      <span className="rounded-md bg-blue-50 px-2 py-0.5 text-[10.5px] font-bold text-brand-primary dark:bg-blue-950/50 dark:text-blue-300">
+                                      <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-0.5 text-[10.5px] font-bold text-brand-primary dark:bg-blue-950/50 dark:text-blue-300 whitespace-nowrap">
                                         {tx.buildingCode} · {tx.roomCode}
                                       </span>
                                     )}
-                                    <span className="font-semibold text-slate-800 dark:text-slate-200">
+                                    <span className="font-semibold text-slate-800 dark:text-slate-200 whitespace-nowrap">
                                       {tx.payerName || tx.tenantName || tx.accountName || '—'}
                                     </span>
                                   </div>

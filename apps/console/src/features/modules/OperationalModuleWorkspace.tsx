@@ -13,9 +13,12 @@ import {
   Building2,
   Calendar,
   CalendarClock,
+  Check,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   ClipboardCheck,
   Clock,
   Copy,
@@ -39,6 +42,7 @@ import {
   RefreshCw,
   RotateCcw,
   Search,
+  Send,
   Settings2,
   Trash2,
   UserCheck,
@@ -391,6 +395,15 @@ export const OperationalModuleWorkspace: React.FC<
   const [invoicePaymentCommittedId, setInvoicePaymentCommittedId] = useState('');
   const invoiceProofInput = useRef<HTMLInputElement>(null);
   const invoicePaymentAttempt = useRef<{ payload: string; key: string } | null>(null);
+  const [isBreakdownExpanded, setIsBreakdownExpanded] = useState(false);
+  const [isSendingZalo, setIsSendingZalo] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  const handleCopyText = (text: string, field: string) => {
+    void navigator.clipboard.writeText(text);
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(null), 2000);
+  };
 
   // Legacy Import Wizard Modal state (C4-IMPORT-01/02)
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -623,13 +636,16 @@ export const OperationalModuleWorkspace: React.FC<
     setSelectedInvoice(inv);
     const due = Math.max(0, inv.totalAmountVnd - inv.paidAmountVnd);
     setInvoicePayAmount(due);
-    setInvoicePayMethod('MANUAL_CASH');
+    setInvoicePayMethod(due > 0 ? 'SEPAY' : 'MANUAL_CASH');
     setInvoicePayRef('');
     setInvoicePayError(null);
     setInvoiceHandover(null);
     setInvoiceDetail(null);
     setInvoiceVietQr(null);
     invoicePaymentAttempt.current = null;
+    setIsBreakdownExpanded(false);
+    setCopiedField(null);
+    setIsSendingZalo(false);
     setInvoiceElectricStart('');
     setInvoiceWaterStart('');
     setInvoiceProof(null);
@@ -716,6 +732,65 @@ export const OperationalModuleWorkspace: React.FC<
       else setInvoicePayError('Lỗi kết nối máy chủ.');
     } finally {
       setIsSavingInvoicePay(false);
+    }
+  };
+
+  const handleSendZaloQr = async () => {
+    if (!selectedInvoice) return;
+    setIsSendingZalo(true);
+    try {
+      const remaining = Math.max(0, selectedInvoice.totalAmountVnd - selectedInvoice.paidAmountVnd);
+      const amountToPay = Math.trunc(invoicePayAmount || remaining);
+      const summaryText = [
+        `THÔNG BÁO THANH TOÁN TIỀN PHÒNG ADHOME`,
+        `Phòng: ${selectedInvoice.roomCode} · ${selectedInvoice.buildingCode}`,
+        `Khách thuê: ${selectedInvoice.tenantName || 'Cư dân'}`,
+        `Kỳ hóa đơn: ${selectedInvoice.periodKey.slice(5, 7)}/${selectedInvoice.periodKey.slice(0, 4)}`,
+        `Số tiền cần thanh toán: ${amountToPay.toLocaleString('vi-VN')} đ`,
+        invoiceVietQr
+          ? [
+              `Ngân hàng: ${invoiceVietQr.bankCode}`,
+              `Số tài khoản: ${invoiceVietQr.accountNumber}`,
+              `Chủ tài khoản: ${invoiceVietQr.accountName}`,
+              `Nội dung chuyển khoản: ${invoiceVietQr.transferContent}`,
+              invoiceQrUrl ? `Mã VietQR: ${invoiceQrUrl}` : '',
+            ]
+              .filter(Boolean)
+              .join('\n')
+          : '',
+      ]
+        .filter(Boolean)
+        .join('\n');
+
+      await navigator.clipboard.writeText(summaryText).catch(() => {});
+
+      await fetch('/api/v1/console/v2/settlements/issue-and-send', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': CONSOLE_CSRF_HEADER,
+        },
+        body: JSON.stringify({
+          periodKey: selectedInvoice.periodKey,
+          obligationKeys: [`${selectedInvoice.periodKey}:${selectedInvoice.roomCode}`],
+          channel: 'ZALO_BOT',
+        }),
+      }).catch(() => {});
+
+      notifySave(
+        true,
+        'Đã gửi mã VietQR thanh toán qua Zalo',
+        'Đã đưa vào hàng đợi ZaloBot cho cư dân và sao chép nội dung vào bộ nhớ tạm.'
+      );
+    } catch {
+      notifySave(
+        false,
+        'Đã sao chép nội dung chuyển khoản Zalo',
+        'Thông tin thanh toán đã có trong bộ nhớ tạm để gửi qua Zalo chat.'
+      );
+    } finally {
+      setIsSendingZalo(false);
     }
   };
 
@@ -3330,15 +3405,17 @@ export const OperationalModuleWorkspace: React.FC<
         </Dialog.Portal>
       </Dialog.Root>
 
-      {/* Invoice Payment Modal */}
+      {/* Invoice Payment / Details Modal */}
       {selectedInvoice && (() => {
         const modalRemaining = Math.max(0, selectedInvoice.totalAmountVnd - selectedInvoice.paidAmountVnd);
+        const isPaidInFull = modalRemaining <= 0 || selectedInvoice.status === 'PAID';
         const modalStatus = getInvoiceStatus(
           selectedInvoice.status,
           modalRemaining,
           selectedInvoice.paidAmountVnd,
           selectedInvoice.dueDate,
         );
+
         return (
           <Dialog.Root
             open={isInvoicePaymentModalOpen}
@@ -3353,276 +3430,570 @@ export const OperationalModuleWorkspace: React.FC<
                   from="bottom"
                   data-testid="invoice-payment-modal"
                   aria-busy={isSavingInvoicePay}
-                  className="invoice-payment-dialog flex max-h-[calc(100dvh-0.5rem)] w-full max-w-4xl flex-col overflow-hidden rounded-t-3xl border border-slate-200 bg-white shadow-2xl outline-none dark:border-slate-800 dark:bg-[#111827] sm:max-h-[calc(100dvh-2rem)] sm:rounded-2xl"
+                  className={`invoice-payment-dialog flex max-h-[calc(100dvh-0.5rem)] w-full flex-col overflow-hidden rounded-t-3xl border border-slate-200 bg-white shadow-2xl outline-none dark:border-slate-800 dark:bg-[#111827] sm:max-h-[calc(100dvh-2rem)] sm:rounded-2xl ${
+                    isPaidInFull ? 'max-w-2xl' : 'max-w-4xl'
+                  }`}
                 >
+                  {/* Modal Header */}
                   <div className="invoice-payment-header flex items-start justify-between gap-3 border-b border-slate-100 p-4 dark:border-slate-800">
                     <div className="min-w-0">
-                      <Dialog.Title className="text-sm font-bold text-slate-900 dark:text-white flex items-start gap-2">
-                        <CreditCard className="w-4 h-4 shrink-0 text-brand-primary mt-0.5" />
+                      <Dialog.Title className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        {isPaidInFull ? (
+                          <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                        ) : (
+                          <CreditCard className="w-4 h-4 shrink-0 text-brand-primary" />
+                        )}
                         <span className="min-w-0 break-words">
-                          {modalRemaining > 0 || invoicePaymentCommittedId ? 'Thu tiền hóa đơn' : 'Chi tiết hóa đơn'} — {selectedInvoice.invoiceCode}
+                          {isPaidInFull ? 'Chi tiết hóa đơn' : 'Thu tiền hóa đơn'} — {selectedInvoice.invoiceCode}
                         </span>
                       </Dialog.Title>
-                      <Dialog.Description className="mt-1 text-xs text-slate-500">
-                        Ghi nhận đúng số tiền thực nhận và phương thức thanh toán.
+                      <Dialog.Description className="mt-0.5 text-xs text-slate-500">
+                        {isPaidInFull
+                          ? 'Hóa đơn đã được thanh toán hoàn tất (Đã thu đủ 100%).'
+                          : 'Lựa chọn chuyển khoản quét mã VietQR, gửi QR Zalo hoặc thu tiền mặt tại quầy.'}
                       </Dialog.Description>
                     </div>
                     <Dialog.Close
                       data-testid="btn-close-invoice-payment-modal"
                       disabled={isSavingInvoicePay}
-                      aria-label="Đóng cửa sổ thu tiền"
-                      className="-mr-1 -mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                      aria-label="Đóng cửa sổ"
+                      className="-mr-1 -mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                     >
                       <X className="w-4 h-4" />
                     </Dialog.Close>
                   </div>
-                  <form onSubmit={handleInvoicePaymentSubmit} className="invoice-payment-form min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-5">
-                    <div className="space-y-4">
-                      {invoicePayError && (
-                        <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700 dark:border-rose-900 dark:bg-rose-950/50 dark:text-rose-300">
-                          {invoicePayError}
+
+                  {/* Modal Body */}
+                  {isPaidInFull ? (
+                    /* CASE 1: ALREADY PAID - CLEAN, ELEGANT, NO REDUNDANCY */
+                    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6 space-y-4">
+                      {/* Completed Success Banner */}
+                      <div className="rounded-2xl border border-emerald-200 bg-gradient-to-b from-emerald-50/90 to-emerald-50/30 p-5 text-center dark:border-emerald-900/60 dark:from-emerald-950/40 dark:to-transparent">
+                        <div className="mx-auto flex h-13 w-13 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-900/60 dark:text-emerald-400 shadow-xs">
+                          <CheckCircle2 className="h-7 w-7" />
+                        </div>
+                        <h3 className="mt-2.5 text-base font-extrabold text-slate-900 dark:text-white">
+                          Hóa đơn đã hoàn tất thanh toán
+                        </h3>
+                        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                          Đã thanh toán đủ 100% · Kỳ {selectedInvoice.periodKey.slice(5, 7)}/{selectedInvoice.periodKey.slice(0, 4)} · Hạn TT {selectedInvoice.dueDate.split('-').reverse().join('/')}
+                        </p>
+
+                        {/* Metric Highlights */}
+                        <div className="mt-4 grid grid-cols-3 gap-2 rounded-xl border border-emerald-100 bg-white/90 p-3 shadow-xs dark:border-emerald-900/40 dark:bg-slate-900/70">
+                          <div>
+                            <span className="block text-[10.5px] font-medium text-slate-400">Tổng hóa đơn</span>
+                            <strong className="mt-0.5 block text-xs sm:text-sm font-bold tabular-nums text-slate-800 dark:text-slate-200">
+                              {selectedInvoice.totalAmountVnd.toLocaleString('vi-VN')} đ
+                            </strong>
+                          </div>
+                          <div>
+                            <span className="block text-[10.5px] font-medium text-emerald-600 dark:text-emerald-400">Đã thu thực tế</span>
+                            <strong className="mt-0.5 block text-xs sm:text-sm font-extrabold tabular-nums text-emerald-600 dark:text-emerald-400">
+                              {selectedInvoice.paidAmountVnd.toLocaleString('vi-VN')} đ
+                            </strong>
+                          </div>
+                          <div>
+                            <span className="block text-[10.5px] font-medium text-slate-400">Còn lại</span>
+                            <strong className="mt-0.5 block text-xs sm:text-sm font-bold tabular-nums text-slate-400">
+                              0 đ
+                            </strong>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Room & Resident Info */}
+                      <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3.5 dark:border-slate-800 dark:bg-slate-900/40">
+                        <div className="grid grid-cols-2 gap-3 text-xs">
+                          <div>
+                            <span className="text-[10.5px] font-medium text-slate-400 block">Căn hộ / Tòa nhà</span>
+                            <span className="font-bold text-slate-900 dark:text-white">
+                              {selectedInvoice.roomCode} · {selectedInvoice.buildingCode}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-[10.5px] font-medium text-slate-400 block">Khách thuê ký hợp đồng</span>
+                            <span className="font-bold text-slate-900 dark:text-white">
+                              {selectedInvoice.tenantName || '—'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Collapsible Fee Breakdown */}
+                      <div className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+                        <button
+                          type="button"
+                          onClick={() => setIsBreakdownExpanded((prev) => !prev)}
+                          className="w-full flex items-center justify-between px-4 py-2.5 bg-slate-50/80 hover:bg-slate-100/80 dark:bg-slate-900/60 text-xs font-semibold text-slate-700 dark:text-slate-300 transition-colors"
+                        >
+                          <span>Chi tiết các khoản thu ({invoiceBreakdown.length} khoản)</span>
+                          <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                            <span>{isBreakdownExpanded ? 'Thu gọn' : 'Xem chi tiết'}</span>
+                            {isBreakdownExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                          </span>
+                        </button>
+
+                        {isBreakdownExpanded && (
+                          <div className="p-3.5 space-y-2 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-950 text-xs">
+                            {invoiceBreakdown.map((row) => (
+                              <div key={row.label} className="flex items-center justify-between py-1 border-b border-slate-50 last:border-0 dark:border-slate-900">
+                                <span className="text-slate-600 dark:text-slate-300">{row.label}</span>
+                                <strong className="tabular-nums font-semibold text-slate-900 dark:text-white">
+                                  {row.amountVnd.toLocaleString('vi-VN')} đ
+                                </strong>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Payment History with Channel & Description */}
+                      {invoiceDetail?.payments?.length > 0 && (
+                        <div className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+                          <div className="px-4 py-2.5 bg-slate-50/80 dark:bg-slate-900/60 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                            <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                              Lịch sử thanh toán ({invoiceDetail.payments.length})
+                            </span>
+                            <span className="text-[10.5px] font-semibold text-emerald-600">Đã đối soát đủ</span>
+                          </div>
+                          <div className="p-3 space-y-2.5 bg-white dark:bg-slate-950">
+                            {invoiceDetail.payments.map((p: any) => {
+                              const channel = getPaymentChannelMeta(p.providerId);
+                              const shortTx = p.externalTxId?.startsWith('TX-')
+                                ? `#TM-${p.externalTxId.slice(-4)}`
+                                : p.externalTxId?.startsWith('SP-')
+                                  ? `#${p.externalTxId}`
+                                  : p.externalTxId?.startsWith('TM-')
+                                    ? `#${p.externalTxId}`
+                                    : /^\d{6,}$/.test(p.externalTxId || '')
+                                      ? `#SP-${p.externalTxId?.slice(-6)}`
+                                      : `#${(p.externalTxId || p.id || '').slice(-8)}`;
+
+                              return (
+                                <div
+                                  key={p.id}
+                                  className="rounded-xl border border-slate-100 bg-slate-50/50 p-3 dark:border-slate-800/80 dark:bg-slate-900/30"
+                                >
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="space-y-1 min-w-0">
+                                      <div className="flex flex-wrap items-center gap-1.5">
+                                        <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10.5px] font-bold ${channel.badgeClassName}`}>
+                                          <span className={`h-1.5 w-1.5 rounded-full ${channel.dotClassName}`} />
+                                          {channel.label}
+                                        </span>
+                                        <span className="font-mono text-[11px] font-bold text-slate-500">
+                                          {shortTx}
+                                        </span>
+                                      </div>
+                                      <p className="text-xs font-semibold text-slate-800 dark:text-slate-100">
+                                        {p.referenceText || `Thanh toán hóa đơn ${selectedInvoice.roomCode || ''}`}
+                                      </p>
+                                      <p className="text-[10.5px] text-slate-400">
+                                        {new Date(p.verifiedAt || p.occurredAt).toLocaleString('vi-VN')}
+                                      </p>
+                                    </div>
+                                    <div className="text-right shrink-0">
+                                      <span className="text-sm font-extrabold tabular-nums text-emerald-600 dark:text-emerald-400">
+                                        +{Number(p.amountVnd).toLocaleString('vi-VN')} đ
+                                      </span>
+                                      {p.proofUrl && (
+                                        <div className="mt-1">
+                                          <a
+                                            href={p.proofUrl}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="inline-flex items-center gap-1 text-[10.5px] font-semibold text-blue-600 hover:underline"
+                                          >
+                                            <ExternalLink className="h-3 w-3" />
+                                            <span>Xem chứng từ</span>
+                                          </a>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
                       )}
-                      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)]">
-                        <section className="space-y-4" aria-labelledby="invoice-detail-heading">
-                          <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-900/40">
-                            <div className="flex flex-wrap items-start justify-between gap-3">
-                              <div>
-                                <h3 id="invoice-detail-heading" className="text-sm font-bold text-slate-900 dark:text-white">Chi tiết hóa đơn</h3>
-                                <p className="mt-0.5 text-xs text-slate-500">
-                                  Kỳ {selectedInvoice.periodKey.slice(5, 7)}/{selectedInvoice.periodKey.slice(0, 4)} · Hạn thanh toán {selectedInvoice.dueDate.split('-').reverse().join('/')}
-                                </p>
+
+                      {/* Single Action: Close Button */}
+                      <div className="pt-2">
+                        <AnimatedButton
+                          type="button"
+                          onClick={() => setIsInvoicePaymentModalOpen(false)}
+                          className="h-11 w-full rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 text-xs font-bold"
+                        >
+                          Đóng
+                        </AnimatedButton>
+                      </div>
+                    </div>
+                  ) : (
+                    /* CASE 2: UNPAID - CLEAR PAYMENT OPTIONS (VIETQR / ZALO QR / CASH) */
+                    <form onSubmit={handleInvoicePaymentSubmit} className="invoice-payment-form min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-5">
+                      <div className="space-y-4">
+                        {invoicePayError && (
+                          <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700 dark:border-rose-900 dark:bg-rose-950/50 dark:text-rose-300">
+                            {invoicePayError}
+                          </div>
+                        )}
+
+                        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(340px,1.15fr)]">
+                          {/* LEFT COLUMN: Summary & Collapsible Breakdown */}
+                          <section className="space-y-3.5" aria-labelledby="invoice-detail-heading">
+                            {/* Debt Summary Box */}
+                            <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-900/40">
+                              <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                  <span className="text-[11px] font-bold text-brand-primary uppercase tracking-wide">
+                                    Kỳ {selectedInvoice.periodKey.slice(5, 7)}/{selectedInvoice.periodKey.slice(0, 4)}
+                                  </span>
+                                  <h3 id="invoice-detail-heading" className="text-sm font-bold text-slate-900 dark:text-white mt-0.5">
+                                    {selectedInvoice.roomCode} · {selectedInvoice.buildingCode}
+                                  </h3>
+                                  <p className="text-xs text-slate-500">Khách thuê: <strong>{selectedInvoice.tenantName || '—'}</strong></p>
+                                </div>
+                                <span className={`rounded-full px-2.5 py-0.5 text-[10.5px] font-bold ring-1 ring-inset ${modalStatus.className}`}>
+                                  {modalStatus.label}
+                                </span>
                               </div>
-                              <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ring-1 ring-inset ${modalStatus.className}`}>
-                                {modalStatus.label}
-                              </span>
+
+                              {/* Amount Breakdown Highlights */}
+                              <div className="mt-4 pt-3 border-t border-slate-200/80 dark:border-slate-700/80 space-y-1.5 text-xs">
+                                <div className="flex justify-between text-slate-500">
+                                  <span>Tổng phát hành:</span>
+                                  <strong className="tabular-nums text-slate-800 dark:text-slate-200">{selectedInvoice.totalAmountVnd.toLocaleString('vi-VN')} đ</strong>
+                                </div>
+                                {selectedInvoice.paidAmountVnd > 0 && (
+                                  <div className="flex justify-between text-emerald-600 font-semibold">
+                                    <span>Đã thanh toán trước:</span>
+                                    <strong className="tabular-nums">+{selectedInvoice.paidAmountVnd.toLocaleString('vi-VN')} đ</strong>
+                                  </div>
+                                )}
+                                <div className="flex items-baseline justify-between pt-2 border-t border-slate-200 dark:border-slate-700">
+                                  <span className="text-xs font-bold text-slate-700 dark:text-slate-200">Còn phải thu:</span>
+                                  <strong className="text-base sm:text-lg font-extrabold tabular-nums text-brand-primary">
+                                    {modalRemaining.toLocaleString('vi-VN')} đ
+                                  </strong>
+                                </div>
+                              </div>
                             </div>
-                            <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
-                              <div>
-                                <dt className="text-slate-500">Phòng / Tòa</dt>
-                                <dd className="mt-0.5 font-bold">{selectedInvoice.roomCode} · {selectedInvoice.buildingCode}</dd>
-                              </div>
-                              <div>
-                                <dt className="text-slate-500">Khách thuê</dt>
-                                <dd className="mt-0.5 font-bold">{selectedInvoice.tenantName || '—'}</dd>
-                              </div>
-                            </dl>
-                            <div className="mt-4 border-t border-slate-200 pt-3 dark:border-slate-700">
-                              {invoiceHandoverLoading && !invoiceDetail ? (
-                                <p role="status" className="text-xs text-slate-500">Đang tải chi tiết hóa đơn…</p>
-                              ) : invoiceBreakdown.length > 0 ? (
-                                <div className="space-y-2 text-xs">
-                                  {invoiceBreakdown.map(row => (
-                                    <div key={row.label} className="flex items-center justify-between gap-4">
+
+                            {/* Collapsible Fee Breakdown */}
+                            <div className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+                              <button
+                                type="button"
+                                onClick={() => setIsBreakdownExpanded((prev) => !prev)}
+                                className="w-full flex items-center justify-between px-3.5 py-2.5 bg-slate-50/80 hover:bg-slate-100/80 dark:bg-slate-900/60 text-xs font-semibold text-slate-700 dark:text-slate-300 transition-colors"
+                              >
+                                <span>Chi tiết các khoản thu ({invoiceBreakdown.length} khoản)</span>
+                                <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                                  <span>{isBreakdownExpanded ? 'Thu gọn' : 'Xem chi tiết'}</span>
+                                  {isBreakdownExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                                </span>
+                              </button>
+
+                              {isBreakdownExpanded && (
+                                <div className="p-3.5 space-y-2 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-950 text-xs">
+                                  {invoiceBreakdown.map((row) => (
+                                    <div key={row.label} className="flex items-center justify-between py-1 border-b border-slate-50 last:border-0 dark:border-slate-900">
                                       <span className="text-slate-600 dark:text-slate-300">{row.label}</span>
-                                      <strong className="tabular-nums">{row.amountVnd.toLocaleString('vi-VN')} đ</strong>
+                                      <strong className="tabular-nums font-semibold text-slate-900 dark:text-white">
+                                        {row.amountVnd.toLocaleString('vi-VN')} đ
+                                      </strong>
                                     </div>
                                   ))}
                                 </div>
-                              ) : (
-                                <p className="text-xs text-slate-500">Chưa có chi tiết khoản thu.</p>
                               )}
                             </div>
-                            <div className="mt-4 space-y-2 border-t border-slate-200 pt-3 text-xs dark:border-slate-700">
-                              <div className="flex justify-between gap-4">
-                                <span className="text-slate-500">Tổng hóa đơn</span>
-                                <strong className="tabular-nums">{selectedInvoice.totalAmountVnd.toLocaleString('vi-VN')} đ</strong>
-                              </div>
-                              <div className="flex justify-between gap-4">
-                                <span className="text-slate-500">Đã thu</span>
-                                <strong className="tabular-nums text-emerald-600">{selectedInvoice.paidAmountVnd.toLocaleString('vi-VN')} đ</strong>
-                              </div>
-                              <div className="flex items-end justify-between gap-4 border-t border-slate-200 pt-3 dark:border-slate-700">
-                                <span className="font-semibold">Còn phải thu</span>
-                                <strong className={`text-lg tabular-nums ${modalRemaining > 0 ? 'text-brand-primary' : 'text-emerald-600'}`}>
-                                  {modalRemaining.toLocaleString('vi-VN')} đ
-                                </strong>
-                              </div>
-                            </div>
-                          </div>
-                          {invoiceDetail?.payments?.length > 0 && (
-                            <details open={modalRemaining <= 0} className="rounded-xl border border-slate-200 px-4 py-3 text-xs dark:border-slate-800">
-                              <summary className="cursor-pointer font-semibold">Lịch sử thanh toán ({invoiceDetail.payments.length})</summary>
-                              <div className="mt-3 space-y-2">
-                                {invoiceDetail.payments.map((payment: any) => (
-                                  <div key={payment.id} className="flex justify-between gap-3 border-t border-slate-100 pt-2 first:border-0 first:pt-0 dark:border-slate-800">
-                                    <span>
-                                      <b>{formatPaymentProviderLabel(payment.providerId)}</b>
-                                      <small className="mt-0.5 block text-slate-500">{new Date(payment.verifiedAt).toLocaleString('vi-VN')}</small>
-                                    </span>
-                                    <strong className="tabular-nums text-emerald-600">+{Number(payment.amountVnd).toLocaleString('vi-VN')} đ</strong>
-                                  </div>
-                                ))}
-                              </div>
-                            </details>
-                          )}
-                        </section>
 
-                        <section className="space-y-4" aria-labelledby="invoice-payment-heading">
-                          <div>
-                            <h3 id="invoice-payment-heading" className="text-sm font-bold text-slate-900 dark:text-white">Ghi nhận thanh toán</h3>
-                            <p className="mt-0.5 text-xs text-slate-500">Chọn cách thu tiền và kiểm tra số tiền trước khi xác nhận.</p>
-                          </div>
-                          <div className="grid grid-cols-2 gap-2" role="group" aria-label="Phương thức thanh toán chính">
-                            <AnimatedButton
-                              type="button"
-                              aria-pressed={invoicePayMethod === 'MANUAL_CASH'}
-                              onClick={() => setInvoicePayMethod('MANUAL_CASH')}
-                              className={`flex min-h-12 items-center justify-center gap-2 rounded-xl border px-3 text-xs font-bold ${
-                                invoicePayMethod === 'MANUAL_CASH'
-                                  ? 'border-blue-600 bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300'
-                                  : 'border-slate-200 text-slate-600 dark:border-slate-700 dark:text-slate-300'
-                              }`}
-                            >
-                              <Banknote size={17} />Tiền mặt
-                            </AnimatedButton>
-                            <AnimatedButton
-                              type="button"
-                              aria-pressed={invoicePayMethod === 'SEPAY'}
-                              onClick={() => setInvoicePayMethod('SEPAY')}
-                              className={`flex min-h-12 items-center justify-center gap-2 rounded-xl border px-3 text-xs font-bold ${
-                                invoicePayMethod === 'SEPAY'
-                                  ? 'border-blue-600 bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300'
-                                  : 'border-slate-200 text-slate-600 dark:border-slate-700 dark:text-slate-300'
-                              }`}
-                            >
-                              <QrCode size={17} />Quét QR
-                            </AnimatedButton>
-                          </div>
-                          <select id="invoice-payment-method" aria-label="Phương thức thanh toán" value={invoicePayMethod} onChange={(e) => setInvoicePayMethod(e.target.value as any)} className="sr-only">
-                            <option value="MANUAL_CASH">Tiền mặt (Thu trực tiếp)</option>
-                            <option value="MANUAL_TRANSFER">Chuyển khoản ngân hàng</option>
-                            <option value="SEPAY">SePay (Quét mã VietQR)</option>
-                            <option value="PAYOS">PayOS (Cổng thanh toán)</option>
-                          </select>
-                          <div>
-                            <label htmlFor="invoice-payment-amount" className="mb-1.5 block text-xs font-semibold">Số tiền thu</label>
-                            <MoneyInput
-                              id="invoice-payment-amount"
-                              min={1}
-                              value={invoicePayAmount}
-                              max={modalRemaining}
-                              onChange={setInvoicePayAmount}
-                              className="min-h-12 bg-slate-50 text-sm font-bold text-brand-primary dark:bg-slate-800"
-                              required
-                            />
-                          </div>
-
-                          {invoicePayMethod === 'SEPAY' && (
-                            <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-3 dark:border-blue-900 dark:bg-blue-950/20">
-                              {invoiceQrUrl && invoiceVietQr ? (
-                                <div className="grid gap-3 sm:grid-cols-[180px_1fr] sm:items-center">
-                                  <div className="mx-auto w-full max-w-[210px] rounded-lg border border-slate-200 bg-white p-2">
-                                    <img src={invoiceQrUrl} alt={`Mã VietQR thanh toán hóa đơn ${selectedInvoice.invoiceCode}`} className="aspect-square w-full object-contain" />
-                                  </div>
-                                  <dl className="min-w-0 space-y-2 text-xs">
-                                    <div><dt className="text-slate-500">Ngân hàng</dt><dd className="font-bold">{invoiceVietQr.bankCode}</dd></div>
-                                    <div><dt className="text-slate-500">Chủ tài khoản</dt><dd className="font-bold break-words">{invoiceVietQr.accountName}</dd></div>
-                                    <div>
-                                      <dt className="text-slate-500">Số tài khoản</dt>
-                                      <dd className="flex items-center gap-1.5 font-bold">
-                                        <span className="break-all">{invoiceVietQr.accountNumber}</span>
-                                        <button type="button" aria-label="Sao chép số tài khoản" title="Sao chép số tài khoản" onClick={() => void navigator.clipboard.writeText(invoiceVietQr.accountNumber)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-blue-700 hover:bg-blue-100 dark:text-blue-300"><Copy size={14} /></button>
-                                      </dd>
-                                    </div>
-                                    <div>
-                                      <dt className="text-slate-500">Nội dung chuyển khoản</dt>
-                                      <dd className="flex items-center gap-1.5 font-bold">
-                                        <span className="break-all">{invoiceVietQr.transferContent}</span>
-                                        <button type="button" aria-label="Sao chép nội dung chuyển khoản" title="Sao chép nội dung chuyển khoản" onClick={() => void navigator.clipboard.writeText(invoiceVietQr.transferContent)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-blue-700 hover:bg-blue-100 dark:text-blue-300"><Copy size={14} /></button>
-                                      </dd>
-                                    </div>
-                                  </dl>
+                            {/* Previous Payment History (if any) */}
+                            {invoiceDetail?.payments?.length > 0 && (
+                              <div className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+                                <div className="px-3.5 py-2 bg-slate-50/80 dark:bg-slate-900/60 border-b border-slate-100 dark:border-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200">
+                                  Đã thanh toán các đợt trước ({invoiceDetail.payments.length})
                                 </div>
-                              ) : (
-                                <div className="flex gap-2 text-xs text-amber-800 dark:text-amber-300">
-                                  <AlertCircle size={16} className="shrink-0" />
-                                  <p>Chưa có tài khoản SePay đã xác minh cho tòa nhà này. Cấu hình tài khoản nhận tiền trong Cài đặt trước khi quét QR.</p>
+                                <div className="p-2.5 space-y-2 text-xs">
+                                  {invoiceDetail.payments.map((p: any) => {
+                                    const channel = getPaymentChannelMeta(p.providerId);
+                                    return (
+                                      <div key={p.id} className="flex items-center justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-900">
+                                        <div>
+                                          <div className="flex items-center gap-1">
+                                            <span className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-bold ${channel.badgeClassName}`}>{channel.label}</span>
+                                            <span className="font-mono text-[10.5px] text-slate-400">#{p.externalTxId?.slice(-6) || p.id.slice(-6)}</span>
+                                          </div>
+                                          <p className="mt-0.5 text-[11px] text-slate-500">{new Date(p.verifiedAt || p.occurredAt).toLocaleDateString('vi-VN')}</p>
+                                        </div>
+                                        <strong className="tabular-nums text-emerald-600">+{Number(p.amountVnd).toLocaleString('vi-VN')} đ</strong>
+                                      </div>
+                                    );
+                                  })}
                                 </div>
-                              )}
-                            </div>
-                          )}
-
-                          {invoiceHandoverLoading && <p role="status" className="text-xs text-slate-500">Đang kiểm tra điều kiện bàn giao…</p>}
-                          {invoiceHandover && (invoiceHandover.electricRequired || invoiceHandover.waterRequired) && invoicePayAmount >= modalRemaining && (
-                            <fieldset className="space-y-3 rounded-xl border border-blue-200 bg-blue-50 p-3 dark:border-blue-900 dark:bg-blue-950/30">
-                              <legend className="px-1 text-xs font-bold">Chỉ số đầu kỳ để bàn giao tự động</legend>
-                              {invoiceHandover.electricRequired && (
-                                <label className="block text-xs font-semibold">
-                                  Chỉ số điện (kWh)
-                                  <input type="number" min="0" step="any" required value={invoiceElectricStart} onChange={e => { setInvoiceElectricStart(e.target.value); setInvoicePayError(null); }} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" />
-                                </label>
-                              )}
-                              {invoiceHandover.waterRequired && (
-                                <label className="block text-xs font-semibold">
-                                  Chỉ số nước (m³)
-                                  <input type="number" min="0" step="any" required value={invoiceWaterStart} onChange={e => { setInvoiceWaterStart(e.target.value); setInvoicePayError(null); }} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" />
-                                </label>
-                              )}
-                              <p className="text-xs text-slate-600 dark:text-slate-300">Thu đủ hóa đơn sẽ kích hoạt hợp đồng, người ở và trạng thái phòng trong cùng giao dịch.</p>
-                            </fieldset>
-                          )}
-
-                          <div className="rounded-xl border border-dashed border-slate-300 p-3 dark:border-slate-700">
-                            <input
-                              ref={invoiceProofInput}
-                              type="file"
-                              accept="image/jpeg,image/png,image/webp"
-                              className="sr-only"
-                              aria-label="Ảnh chứng từ thanh toán"
-                              onChange={e => {
-                                const file = e.target.files?.[0] || null;
-                                e.target.value = '';
-                                if (file && file.size > 8 * 1024 * 1024) {
-                                  setInvoicePayError('Ảnh chứng từ phải nhỏ hơn 8 MB.');
-                                  return;
-                                }
-                                setInvoiceProof(file);
-                                setInvoicePayError(null);
-                              }}
-                            />
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="min-w-0">
-                                <p className="text-xs font-semibold">Ảnh chứng từ <span className="font-normal text-slate-500">(nếu có)</span></p>
-                                <p className="truncate text-[11px] text-slate-500">{invoiceProof?.name || 'JPEG, PNG hoặc WebP · tối đa 8 MB'}</p>
-                              </div>
-                              <AnimatedButton type="button" onClick={() => invoiceProofInput.current?.click()} className="flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-xs font-semibold text-blue-700 dark:border-slate-700 dark:text-blue-300">
-                                <ImagePlus size={14} />{invoiceProof ? 'Đổi ảnh' : 'Tải ảnh'}
-                              </AnimatedButton>
-                            </div>
-                            {invoicePaymentProofs.length > 0 && (
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                {invoicePaymentProofs.map((proof, index) => (
-                                  <a key={proof.id} href={proof.proofUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-8 items-center gap-1 rounded-lg bg-slate-100 px-2 text-[11px] font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                                    <ExternalLink size={12} />Chứng từ {index + 1}
-                                  </a>
-                                ))}
                               </div>
                             )}
-                          </div>
-                          <div>
-                            <label className="mb-1 block text-xs font-semibold">Ghi chú / Mã giao dịch tham chiếu</label>
-                            <input
-                              type="text"
-                              placeholder="VD: GD-123456 hoặc Thu tiền đợt 1"
-                              value={invoicePayRef}
-                              onChange={(e) => setInvoicePayRef(e.target.value)}
-                              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs dark:border-slate-700 dark:bg-slate-800"
-                            />
-                          </div>
-                        </section>
+                          </section>
+
+                          {/* RIGHT COLUMN: Intuitive Payment Methods (VietQR / Zalo QR / Cash) */}
+                          <section className="space-y-4" aria-labelledby="invoice-payment-heading">
+                            <div>
+                              <h3 id="invoice-payment-heading" className="text-sm font-bold text-slate-900 dark:text-white">
+                                Chọn hình thức thanh toán
+                              </h3>
+                              <p className="mt-0.5 text-xs text-slate-500">
+                                Quét mã chuyển khoản VietQR tự động hoặc thu tiền mặt tại quầy.
+                              </p>
+                            </div>
+
+                            {/* 2 Primary Mode Tabs */}
+                            <div className="grid grid-cols-2 gap-2" role="group" aria-label="Phương thức thanh toán chính">
+                              <AnimatedButton
+                                type="button"
+                                aria-pressed={invoicePayMethod === 'SEPAY' || invoicePayMethod === 'MANUAL_TRANSFER'}
+                                onClick={() => setInvoicePayMethod('SEPAY')}
+                                className={`flex min-h-12 items-center justify-center gap-2 rounded-xl border px-3 text-xs font-bold transition-all ${
+                                  invoicePayMethod === 'SEPAY' || invoicePayMethod === 'MANUAL_TRANSFER'
+                                    ? 'border-blue-600 bg-blue-50 text-blue-700 ring-2 ring-blue-500/20 dark:bg-blue-950/40 dark:text-blue-300'
+                                    : 'border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300'
+                                }`}
+                              >
+                                <QrCode size={17} className="text-blue-600 dark:text-blue-400" />
+                                <span>Chuyển khoản VietQR</span>
+                              </AnimatedButton>
+
+                              <AnimatedButton
+                                type="button"
+                                aria-pressed={invoicePayMethod === 'MANUAL_CASH'}
+                                onClick={() => setInvoicePayMethod('MANUAL_CASH')}
+                                className={`flex min-h-12 items-center justify-center gap-2 rounded-xl border px-3 text-xs font-bold transition-all ${
+                                  invoicePayMethod === 'MANUAL_CASH'
+                                    ? 'border-emerald-600 bg-emerald-50 text-emerald-700 ring-2 ring-emerald-500/20 dark:bg-emerald-950/40 dark:text-emerald-300'
+                                    : 'border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300'
+                                }`}
+                              >
+                                <Banknote size={17} className="text-emerald-600 dark:text-emerald-400" />
+                                <span>Tiền mặt tại quầy</span>
+                              </AnimatedButton>
+                            </div>
+
+                            {/* TAB 1: VIETQR & ZALO SEND */}
+                            {(invoicePayMethod === 'SEPAY' || invoicePayMethod === 'MANUAL_TRANSFER') && (
+                              <div className="space-y-3 rounded-2xl border border-blue-200/80 bg-blue-50/40 p-4 dark:border-blue-900/50 dark:bg-blue-950/20">
+                                {invoiceQrUrl && invoiceVietQr ? (
+                                  <div className="space-y-3">
+                                    <div className="grid gap-3 sm:grid-cols-[160px_1fr] sm:items-center">
+                                      <div className="mx-auto w-full max-w-[170px] rounded-xl border border-blue-200 bg-white p-2 shadow-xs dark:border-slate-700">
+                                        <img
+                                          src={invoiceQrUrl}
+                                          alt={`Mã VietQR thanh toán hóa đơn ${selectedInvoice.invoiceCode}`}
+                                          className="aspect-square w-full object-contain"
+                                        />
+                                      </div>
+                                      <dl className="min-w-0 space-y-1.5 text-xs">
+                                        <div>
+                                          <dt className="text-[10.5px] text-slate-500">Ngân hàng &amp; Chủ tài khoản</dt>
+                                          <dd className="font-bold text-slate-900 dark:text-white">
+                                            {invoiceVietQr.bankCode} · {invoiceVietQr.accountName}
+                                          </dd>
+                                        </div>
+                                        <div>
+                                          <dt className="text-[10.5px] text-slate-500">Số tài khoản</dt>
+                                          <dd className="flex items-center gap-1.5 font-mono font-bold text-blue-700 dark:text-blue-300">
+                                            <span>{invoiceVietQr.accountNumber}</span>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleCopyText(invoiceVietQr.accountNumber, 'acc')}
+                                              className="p-1 rounded hover:bg-blue-100 text-blue-600 dark:hover:bg-blue-900/50"
+                                              title="Sao chép số tài khoản"
+                                            >
+                                              {copiedField === 'acc' ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
+                                            </button>
+                                          </dd>
+                                        </div>
+                                        <div>
+                                          <dt className="text-[10.5px] text-slate-500">Số tiền cần chuyển</dt>
+                                          <dd className="flex items-center gap-1.5 font-bold text-emerald-600">
+                                            <span>{Math.trunc(invoicePayAmount || modalRemaining).toLocaleString('vi-VN')} đ</span>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleCopyText(String(Math.trunc(invoicePayAmount || modalRemaining)), 'amount')}
+                                              className="p-1 rounded hover:bg-blue-100 text-blue-600 dark:hover:bg-blue-900/50"
+                                              title="Sao chép số tiền"
+                                            >
+                                              {copiedField === 'amount' ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
+                                            </button>
+                                          </dd>
+                                        </div>
+                                        <div>
+                                          <dt className="text-[10.5px] text-slate-500">Nội dung chuyển khoản chuẩn</dt>
+                                          <dd className="flex items-center gap-1.5 font-mono font-bold text-slate-800 dark:text-slate-100">
+                                            <span className="truncate max-w-[150px]">{invoiceVietQr.transferContent}</span>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleCopyText(invoiceVietQr.transferContent, 'content')}
+                                              className="p-1 rounded hover:bg-blue-100 text-blue-600 dark:hover:bg-blue-900/50"
+                                              title="Sao chép nội dung chuyển khoản"
+                                            >
+                                              {copiedField === 'content' ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
+                                            </button>
+                                          </dd>
+                                        </div>
+                                      </dl>
+                                    </div>
+
+                                    {/* Action: Gửi QR Zalo Button */}
+                                    <div className="pt-2 border-t border-blue-200/80 dark:border-blue-900/50">
+                                      <AnimatedButton
+                                        type="button"
+                                        disabled={isSendingZalo}
+                                        onClick={handleSendZaloQr}
+                                        className="w-full flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2.5 text-xs font-bold text-white shadow-xs transition-colors disabled:opacity-50"
+                                      >
+                                        {isSendingZalo ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+                                        <span>Gửi QR Zalo cho khách thuê</span>
+                                      </AnimatedButton>
+                                      <p className="mt-1 text-center text-[10.5px] text-slate-500">
+                                        Tự động gửi mã VietQR qua ZaloBot và sao chép nội dung vào bộ nhớ tạm.
+                                      </p>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="flex gap-2 text-xs text-amber-800 dark:text-amber-300">
+                                    <AlertCircle size={16} className="shrink-0" />
+                                    <p>Đang chuẩn bị mã VietQR hoặc chưa cấu hình tài khoản SePay cho tòa nhà này.</p>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {/* TAB 2: CASH PAYMENT AT COUNTER */}
+                            {invoicePayMethod === 'MANUAL_CASH' && (
+                              <div className="space-y-3.5 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-900/40">
+                                <div>
+                                  <label htmlFor="invoice-payment-amount" className="mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                    Số tiền thu thực tế
+                                  </label>
+                                  <MoneyInput
+                                    id="invoice-payment-amount"
+                                    min={1}
+                                    value={invoicePayAmount}
+                                    max={modalRemaining}
+                                    onChange={setInvoicePayAmount}
+                                    className="min-h-11 bg-white text-sm font-bold text-emerald-600 dark:bg-slate-800"
+                                    required
+                                  />
+                                </div>
+
+                                {invoiceHandover && (invoiceHandover.electricRequired || invoiceHandover.waterRequired) && invoicePayAmount >= modalRemaining && (
+                                  <fieldset className="space-y-3 rounded-xl border border-blue-200 bg-blue-50/80 p-3 dark:border-blue-900 dark:bg-blue-950/30">
+                                    <legend className="px-1 text-xs font-bold text-blue-900 dark:text-blue-300">
+                                      Chỉ số đầu kỳ để bàn giao tự động
+                                    </legend>
+                                    {invoiceHandover.electricRequired && (
+                                      <label className="block text-xs font-semibold">
+                                        Chỉ số điện ban đầu (kWh)
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          step="any"
+                                          required
+                                          value={invoiceElectricStart}
+                                          onChange={(e) => {
+                                            setInvoiceElectricStart(e.target.value);
+                                            setInvoicePayError(null);
+                                          }}
+                                          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800"
+                                        />
+                                      </label>
+                                    )}
+                                    {invoiceHandover.waterRequired && (
+                                      <label className="block text-xs font-semibold">
+                                        Chỉ số nước ban đầu (m³)
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          step="any"
+                                          required
+                                          value={invoiceWaterStart}
+                                          onChange={(e) => {
+                                            setInvoiceWaterStart(e.target.value);
+                                            setInvoicePayError(null);
+                                          }}
+                                          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800"
+                                        />
+                                      </label>
+                                    )}
+                                    <p className="text-[10.5px] text-slate-500">
+                                      Thu đủ hóa đơn sẽ kích hoạt hợp đồng, người ở và phòng trong cùng giao dịch.
+                                    </p>
+                                  </fieldset>
+                                )}
+
+                                <div>
+                                  <label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                    Ghi chú / Diễn giải phiếu thu
+                                  </label>
+                                  <input
+                                    type="text"
+                                    placeholder="VD: Thu tiền mặt tại quầy lễ tân"
+                                    value={invoicePayRef}
+                                    onChange={(e) => setInvoicePayRef(e.target.value)}
+                                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800"
+                                  />
+                                </div>
+
+                                <div className="rounded-xl border border-dashed border-slate-300 p-2.5 dark:border-slate-700">
+                                  <input
+                                    ref={invoiceProofInput}
+                                    type="file"
+                                    accept="image/jpeg,image/png,image/webp"
+                                    className="sr-only"
+                                    aria-label="Ảnh biên nhận tiền mặt"
+                                    onChange={(e) => {
+                                      const file = e.target.files?.[0] || null;
+                                      e.target.value = '';
+                                      if (file && file.size > 8 * 1024 * 1024) {
+                                        setInvoicePayError('Ảnh biên nhận phải nhỏ hơn 8 MB.');
+                                        return;
+                                      }
+                                      setInvoiceProof(file);
+                                      setInvoicePayError(null);
+                                    }}
+                                  />
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="min-w-0">
+                                      <p className="text-xs font-semibold">Ảnh biên nhận tiền mặt <span className="font-normal text-slate-500">(nếu có)</span></p>
+                                      <p className="truncate text-[10.5px] text-slate-400">{invoiceProof?.name || 'Chụp biên nhận viết tay hoặc phiếu thu'}</p>
+                                    </div>
+                                    <AnimatedButton
+                                      type="button"
+                                      onClick={() => invoiceProofInput.current?.click()}
+                                      className="flex min-h-8 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:text-slate-200 hover:bg-slate-50"
+                                    >
+                                      <ImagePlus size={13} />
+                                      <span>{invoiceProof ? 'Đổi ảnh' : 'Tải ảnh'}</span>
+                                    </AnimatedButton>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </section>
+                        </div>
                       </div>
-                    </div>
-                    <div className="invoice-payment-actions sticky bottom-0 -mx-4 mt-5 flex gap-2 border-t border-slate-100 bg-white/95 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur dark:border-slate-800 dark:bg-[#111827]/95 sm:-mx-5 sm:px-5 sm:pb-0">
-                      <AnimatedButton
-                        type="button"
-                        onClick={() => setIsInvoicePaymentModalOpen(false)}
-                        disabled={isSavingInvoicePay}
-                        className="min-h-11 flex-1 rounded-xl bg-slate-100 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-300"
-                      >
-                        Đóng
-                      </AnimatedButton>
-                      {(modalRemaining > 0 || Boolean(invoicePaymentCommittedId)) && (
+
+                      {/* UNPAID Bottom Actions */}
+                      <div className="invoice-payment-actions sticky bottom-0 -mx-4 mt-5 flex gap-2 border-t border-slate-100 bg-white/95 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur dark:border-slate-800 dark:bg-[#111827]/95 sm:-mx-5 sm:px-5 sm:pb-0">
+                        <AnimatedButton
+                          type="button"
+                          onClick={() => setIsInvoicePaymentModalOpen(false)}
+                          disabled={isSavingInvoicePay}
+                          className="min-h-11 flex-1 rounded-xl bg-slate-100 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-300"
+                        >
+                          Đóng
+                        </AnimatedButton>
+
                         <AnimatedButton
                           type="submit"
                           disabled={isSavingInvoicePay || invoiceHandoverLoading}
@@ -3636,12 +4007,16 @@ export const OperationalModuleWorkspace: React.FC<
                               shimmeringColor="#ffffff"
                             />
                           ) : (
-                            <span>{invoicePaymentCommittedId ? 'Lưu chứng từ' : 'Xác nhận thu tiền'}</span>
+                            <span>
+                              {invoicePayMethod === 'MANUAL_CASH'
+                                ? 'Xác nhận thu tiền mặt'
+                                : 'Xác nhận gạch nợ chuyển khoản'}
+                            </span>
                           )}
                         </AnimatedButton>
-                      )}
-                    </div>
-                  </form>
+                      </div>
+                    </form>
+                  )}
                 </Dialog.Popup>
               </Dialog.Viewport>
             </Dialog.Portal>

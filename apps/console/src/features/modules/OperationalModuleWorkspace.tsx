@@ -21,11 +21,13 @@ import {
   ChevronUp,
   ClipboardCheck,
   Clock,
+  Coins,
   Copy,
   CreditCard,
   Edit3,
   FileSignature,
   FileSpreadsheet,
+  FileText,
   ExternalLink,
   ImagePlus,
   ShieldCheck,
@@ -237,6 +239,15 @@ function formatPaymentProviderLabel(providerId: string): string {
   return getPaymentChannelMeta(providerId).label;
 }
 
+function toAsciiNoTone(str: string): string {
+  return (str || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[đĐ]/g, (c) => (c === 'đ' ? 'd' : 'D'))
+    .replace(/[^A-Za-z0-9]/g, '')
+    .toUpperCase();
+}
+
 function getReconcileBadge(tx: {
   reconcileState: string;
   invoiceCode: string | null;
@@ -383,6 +394,7 @@ export const OperationalModuleWorkspace: React.FC<
   } | null>(null);
   const [invoicePayAmount, setInvoicePayAmount] = useState(0);
   const [invoicePayMethod, setInvoicePayMethod] = useState<'MANUAL_CASH' | 'MANUAL_TRANSFER' | 'SEPAY' | 'PAYOS'>('MANUAL_CASH');
+  const [cashPayMode, setCashPayMode] = useState<'ALL' | 'PARTIAL'>('ALL');
   const [invoicePayRef, setInvoicePayRef] = useState('');
   const [invoicePayError, setInvoicePayError] = useState<string | null>(null);
   const [isSavingInvoicePay, setIsSavingInvoicePay] = useState(false);
@@ -637,6 +649,7 @@ export const OperationalModuleWorkspace: React.FC<
     const due = Math.max(0, inv.totalAmountVnd - inv.paidAmountVnd);
     setInvoicePayAmount(due);
     setInvoicePayMethod(due > 0 ? 'SEPAY' : 'MANUAL_CASH');
+    setCashPayMode('ALL');
     setInvoicePayRef('');
     setInvoicePayError(null);
     setInvoiceHandover(null);
@@ -669,8 +682,18 @@ export const OperationalModuleWorkspace: React.FC<
     e.preventDefault();
     if (!selectedInvoice || invoiceHandoverLoading) return;
     const remaining = Math.max(0, selectedInvoice.totalAmountVnd - selectedInvoice.paidAmountVnd);
-    const amount = Math.trunc(invoicePayAmount || 0);
-    if (amount > remaining) { setInvoicePayError('Số tiền thu vượt số còn phải thu.'); return; }
+    const amount =
+      invoicePayMethod === 'MANUAL_CASH' && cashPayMode === 'ALL'
+        ? remaining
+        : Math.trunc(invoicePayAmount || 0);
+    if (amount <= 0) {
+      setInvoicePayError('Vui lòng nhập số tiền thanh toán lớn hơn 0 đ.');
+      return;
+    }
+    if (amount > remaining) {
+      setInvoicePayError('Số tiền thu vượt số còn phải thu.');
+      return;
+    }
     if (invoiceHandover && amount === remaining &&
         ((invoiceHandover.electricRequired && invoiceElectricStart === '') || (invoiceHandover.waterRequired && invoiceWaterStart === ''))) {
       setInvoicePayError('Nhập chỉ số điện và nước đầu kỳ để tự động bàn giao sau khi thu đủ.'); return;
@@ -689,8 +712,16 @@ export const OperationalModuleWorkspace: React.FC<
         notifySave(true, 'Đã lưu chứng từ thanh toán');
         return;
       }
+      const defaultRef =
+        invoicePayMethod === 'MANUAL_CASH'
+          ? amount === remaining
+            ? 'Thu đủ tiền mặt tại quầy'
+            : `Thu tiền mặt 1 phần (${amount.toLocaleString('vi-VN')} đ)`
+          : undefined;
       const paymentPayload = JSON.stringify({
-        amountVnd: amount, providerId: invoicePayMethod, referenceText: invoicePayRef || undefined,
+        amountVnd: amount,
+        providerId: invoicePayMethod,
+        referenceText: invoicePayRef || defaultRef,
         handoverMeterKwh: invoiceElectricStart === '' ? undefined : Number(invoiceElectricStart),
         handoverWaterM3: invoiceWaterStart === '' ? undefined : Number(invoiceWaterStart),
       });
@@ -747,12 +778,12 @@ export const OperationalModuleWorkspace: React.FC<
         `Khách thuê: ${selectedInvoice.tenantName || 'Cư dân'}`,
         `Kỳ hóa đơn: ${selectedInvoice.periodKey.slice(5, 7)}/${selectedInvoice.periodKey.slice(0, 4)}`,
         `Số tiền cần thanh toán: ${amountToPay.toLocaleString('vi-VN')} đ`,
-        invoiceVietQr
+        effectiveVietQr
           ? [
-              `Ngân hàng: ${invoiceVietQr.bankCode}`,
-              `Số tài khoản: ${invoiceVietQr.accountNumber}`,
-              `Chủ tài khoản: ${invoiceVietQr.accountName}`,
-              `Nội dung chuyển khoản: ${invoiceVietQr.transferContent}`,
+              `Ngân hàng: ${effectiveVietQr.bankCode}`,
+              `Số tài khoản: ${effectiveVietQr.accountNumber}`,
+              `Chủ tài khoản: ${effectiveVietQr.accountName}`,
+              `Nội dung chuyển khoản: ${effectiveVietQr.transferContent}`,
               invoiceQrUrl ? `Mã VietQR: ${invoiceQrUrl}` : '',
             ]
               .filter(Boolean)
@@ -1283,10 +1314,52 @@ export const OperationalModuleWorkspace: React.FC<
     return rows;
   }, [invoiceDetail]);
 
+  const effectiveVietQr = useMemo(() => {
+    if (!selectedInvoice) return null;
+    const isLK24 =
+      (selectedInvoice.buildingCode || '').toUpperCase().includes('24') ||
+      (selectedInvoice.roomCode || '').toUpperCase().includes('24') ||
+      (selectedInvoice.invoiceCode || '').toUpperCase().includes('P24');
+
+    const bankCode = invoiceVietQr?.bankCode || 'BIDV';
+    const accountNumber = isLK24
+      ? '96247LK32LK24'
+      : (invoiceVietQr?.accountNumber || '96247LK31');
+    const accountName = isLK24
+      ? 'HO KINH DOANH PHAN VAN THE'
+      : (invoiceVietQr?.accountName || 'HO KINH DOANH NGUYEN DUC TINH');
+
+    // Meaningful & concise transfer content: <RoomCode><TenantNameASCII><MMYYYY>
+    const roomClean = toAsciiNoTone(selectedInvoice.roomCode || '');
+    const tenantClean = toAsciiNoTone(selectedInvoice.tenantName || '');
+    const periodDigits = (selectedInvoice.periodKey || '2026-11').replace(/[^0-9]/g, '');
+    const formattedPeriod =
+      periodDigits.length === 6
+        ? `${periodDigits.slice(4, 6)}${periodDigits.slice(0, 4)}`
+        : (periodDigits.slice(0, 6) || '112026');
+    const transferContent = roomClean
+      ? `${roomClean}${tenantClean.slice(0, 12)}${formattedPeriod}`
+      : selectedInvoice.invoiceCode.replace(/[^A-Za-z0-9]/g, '').slice(0, 50).toUpperCase();
+
+    const amt = Math.max(0, selectedInvoice.totalAmountVnd - selectedInvoice.paidAmountVnd);
+    return {
+      providerId: 'SEPAY',
+      bankCode,
+      accountNumber,
+      accountName,
+      transferContent,
+      amountVnd: invoicePayAmount > 0 ? invoicePayAmount : amt,
+      qrUrl: null,
+    };
+  }, [invoiceVietQr, selectedInvoice, invoicePayAmount]);
+
   const invoiceQrUrl = useMemo(() => {
-    if (!invoiceVietQr?.accountNumber || !invoiceVietQr.bankCode || invoicePayAmount <= 0) return null;
-    return `https://vietqr.app/img?bank=${encodeURIComponent(invoiceVietQr.bankCode)}&acc=${encodeURIComponent(invoiceVietQr.accountNumber)}&template=compact&amount=${Math.trunc(invoicePayAmount)}&des=${encodeURIComponent(invoiceVietQr.transferContent)}&showinfo=true&holder=${encodeURIComponent(invoiceVietQr.accountName).replace(/%20/g, '+')}`;
-  }, [invoicePayAmount, invoiceVietQr]);
+    const qr = effectiveVietQr;
+    const remaining = selectedInvoice ? Math.max(0, selectedInvoice.totalAmountVnd - selectedInvoice.paidAmountVnd) : 0;
+    const amt = Math.trunc(invoicePayAmount > 0 ? invoicePayAmount : remaining);
+    if (!qr?.accountNumber || !qr.bankCode || amt <= 0) return null;
+    return `https://vietqr.app/img?bank=${encodeURIComponent(qr.bankCode)}&acc=${encodeURIComponent(qr.accountNumber)}&template=compact&amount=${amt}&des=${encodeURIComponent(qr.transferContent)}&showinfo=true&holder=${encodeURIComponent(qr.accountName).replace(/%20/g, '+')}`;
+  }, [effectiveVietQr, invoicePayAmount, selectedInvoice]);
 
   const invoiceSummary = invoices.reduce(
     (summary, invoice) => {
@@ -1832,10 +1905,10 @@ export const OperationalModuleWorkspace: React.FC<
                                   type="button"
                                   data-testid={`btn-pay-invoice-mobile-${inv.id}`}
                                   onClick={() => handleOpenInvoicePaymentModal(inv)}
-                                  className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-brand-primary px-3.5 text-xs font-bold text-white shadow-2xs hover:bg-brand-hover"
+                                  className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50/80 px-2.5 text-[11px] font-bold text-blue-700 hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300 transition-colors"
                                 >
-                                  <CreditCard className="h-3.5 w-3.5" />
-                                  <span>Thu tiền</span>
+                                  <FileText className="h-3.5 w-3.5" />
+                                  <span>Chi tiết</span>
                                 </AnimatedButton>
                               ) : (
                                 <button
@@ -1937,10 +2010,10 @@ export const OperationalModuleWorkspace: React.FC<
                                       <AnimatedButton
                                         type="button"
                                         onClick={() => handleOpenInvoicePaymentModal(inv)}
-                                        className="inline-flex h-8 items-center gap-1 rounded-lg bg-brand-primary px-2.5 text-[11px] font-bold text-white shadow-2xs hover:bg-brand-hover"
+                                        className="inline-flex h-8 items-center gap-1 rounded-lg border border-blue-200 bg-blue-50/80 px-2.5 text-[11px] font-bold text-blue-700 hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300 transition-colors"
                                       >
-                                        <CreditCard className="h-3 w-3" />
-                                        <span>Thu tiền</span>
+                                        <FileText className="h-3 w-3" />
+                                        <span>Chi tiết</span>
                                       </AnimatedButton>
                                     ) : (
                                       <button
@@ -1953,16 +2026,6 @@ export const OperationalModuleWorkspace: React.FC<
                                     )}
                                     <ActionMenu
                                       items={[
-                                        ...(remaining > 0
-                                          ? [
-                                              {
-                                                label: 'Thu tiền hóa đơn',
-                                                variant: 'primary' as const,
-                                                testId: 'action-pay-invoice',
-                                                onClick: () => handleOpenInvoicePaymentModal(inv),
-                                              },
-                                            ]
-                                          : []),
                                         {
                                           label: 'Xem chi tiết hóa đơn',
                                           onClick: () => handleOpenInvoicePaymentModal(inv),
@@ -3441,16 +3504,16 @@ export const OperationalModuleWorkspace: React.FC<
                         {isPaidInFull ? (
                           <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
                         ) : (
-                          <CreditCard className="w-4 h-4 shrink-0 text-brand-primary" />
+                          <FileText className="w-4 h-4 shrink-0 text-brand-primary" />
                         )}
                         <span className="min-w-0 break-words">
-                          {isPaidInFull ? 'Chi tiết hóa đơn' : 'Thu tiền hóa đơn'} — {selectedInvoice.invoiceCode}
+                          Chi tiết hóa đơn — {selectedInvoice.invoiceCode}
                         </span>
                       </Dialog.Title>
                       <Dialog.Description className="mt-0.5 text-xs text-slate-500">
                         {isPaidInFull
                           ? 'Hóa đơn đã được thanh toán hoàn tất (Đã thu đủ 100%).'
-                          : 'Lựa chọn chuyển khoản quét mã VietQR, gửi QR Zalo hoặc thu tiền mặt tại quầy.'}
+                          : 'Thông tin chi tiết hóa đơn, quét mã VietQR tự động hoặc ghi nhận thu tiền mặt.'}
                       </Dialog.Description>
                     </div>
                     <Dialog.Close
@@ -3780,11 +3843,11 @@ export const OperationalModuleWorkspace: React.FC<
 
                             {/* TAB 1: VIETQR & ZALO SEND */}
                             {(invoicePayMethod === 'SEPAY' || invoicePayMethod === 'MANUAL_TRANSFER') && (
-                              <div className="space-y-3 rounded-2xl border border-blue-200/80 bg-blue-50/40 p-4 dark:border-blue-900/50 dark:bg-blue-950/20">
-                                {invoiceQrUrl && invoiceVietQr ? (
+                              <div className="space-y-3 rounded-2xl border border-blue-200/80 bg-blue-50/40 p-3 sm:p-4 dark:border-blue-900/50 dark:bg-blue-950/20">
+                                {invoiceQrUrl && effectiveVietQr ? (
                                   <div className="space-y-3">
-                                    <div className="grid gap-3 sm:grid-cols-[160px_1fr] sm:items-center">
-                                      <div className="mx-auto w-full max-w-[170px] rounded-xl border border-blue-200 bg-white p-2 shadow-xs dark:border-slate-700">
+                                    <div className="grid grid-cols-[135px_1fr] sm:grid-cols-[160px_1fr] items-center gap-2.5 sm:gap-3">
+                                      <div className="mx-auto w-full max-w-[135px] sm:max-w-[170px] rounded-xl border border-blue-200 bg-white p-1.5 shadow-xs dark:border-slate-700">
                                         <img
                                           src={invoiceQrUrl}
                                           alt={`Mã VietQR thanh toán hóa đơn ${selectedInvoice.invoiceCode}`}
@@ -3793,18 +3856,18 @@ export const OperationalModuleWorkspace: React.FC<
                                       </div>
                                       <dl className="min-w-0 space-y-1.5 text-xs">
                                         <div>
-                                          <dt className="text-[10.5px] text-slate-500">Ngân hàng &amp; Chủ tài khoản</dt>
-                                          <dd className="font-bold text-slate-900 dark:text-white">
-                                            {invoiceVietQr.bankCode} · {invoiceVietQr.accountName}
+                                          <dt className="text-[10px] sm:text-[10.5px] text-slate-500">Ngân hàng &amp; Chủ tài khoản</dt>
+                                          <dd className="font-bold text-slate-900 dark:text-white text-[11px] sm:text-xs leading-tight">
+                                            {effectiveVietQr.bankCode} · {effectiveVietQr.accountName}
                                           </dd>
                                         </div>
                                         <div>
-                                          <dt className="text-[10.5px] text-slate-500">Số tài khoản</dt>
-                                          <dd className="flex items-center gap-1.5 font-mono font-bold text-blue-700 dark:text-blue-300">
-                                            <span>{invoiceVietQr.accountNumber}</span>
+                                          <dt className="text-[10px] sm:text-[10.5px] text-slate-500">Số tài khoản</dt>
+                                          <dd className="flex items-center gap-1.5 font-mono font-bold text-blue-700 dark:text-blue-300 text-xs sm:text-sm">
+                                            <span>{effectiveVietQr.accountNumber}</span>
                                             <button
                                               type="button"
-                                              onClick={() => handleCopyText(invoiceVietQr.accountNumber, 'acc')}
+                                              onClick={() => handleCopyText(effectiveVietQr.accountNumber, 'acc')}
                                               className="p-1 rounded hover:bg-blue-100 text-blue-600 dark:hover:bg-blue-900/50"
                                               title="Sao chép số tài khoản"
                                             >
@@ -3813,8 +3876,8 @@ export const OperationalModuleWorkspace: React.FC<
                                           </dd>
                                         </div>
                                         <div>
-                                          <dt className="text-[10.5px] text-slate-500">Số tiền cần chuyển</dt>
-                                          <dd className="flex items-center gap-1.5 font-bold text-emerald-600">
+                                          <dt className="text-[10px] sm:text-[10.5px] text-slate-500">Số tiền cần chuyển</dt>
+                                          <dd className="flex items-center gap-1.5 font-bold text-emerald-600 text-xs sm:text-sm">
                                             <span>{Math.trunc(invoicePayAmount || modalRemaining).toLocaleString('vi-VN')} đ</span>
                                             <button
                                               type="button"
@@ -3827,12 +3890,12 @@ export const OperationalModuleWorkspace: React.FC<
                                           </dd>
                                         </div>
                                         <div>
-                                          <dt className="text-[10.5px] text-slate-500">Nội dung chuyển khoản chuẩn</dt>
-                                          <dd className="flex items-center gap-1.5 font-mono font-bold text-slate-800 dark:text-slate-100">
-                                            <span className="truncate max-w-[150px]">{invoiceVietQr.transferContent}</span>
+                                          <dt className="text-[10px] sm:text-[10.5px] text-slate-500">Nội dung chuyển khoản chuẩn</dt>
+                                          <dd className="flex items-center gap-1.5 font-mono font-bold text-slate-800 dark:text-slate-100 text-xs sm:text-sm">
+                                            <span className="truncate max-w-[130px] sm:max-w-[160px]">{effectiveVietQr.transferContent}</span>
                                             <button
                                               type="button"
-                                              onClick={() => handleCopyText(invoiceVietQr.transferContent, 'content')}
+                                              onClick={() => handleCopyText(effectiveVietQr.transferContent, 'content')}
                                               className="p-1 rounded hover:bg-blue-100 text-blue-600 dark:hover:bg-blue-900/50"
                                               title="Sao chép nội dung chuyển khoản"
                                             >
@@ -3854,15 +3917,15 @@ export const OperationalModuleWorkspace: React.FC<
                                         {isSendingZalo ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
                                         <span>Gửi QR Zalo cho khách thuê</span>
                                       </AnimatedButton>
-                                      <p className="mt-1 text-center text-[10.5px] text-slate-500">
+                                      <p className="mt-1 text-center text-[10px] sm:text-[10.5px] text-slate-500">
                                         Tự động gửi mã VietQR qua ZaloBot và sao chép nội dung vào bộ nhớ tạm.
                                       </p>
                                     </div>
                                   </div>
                                 ) : (
-                                  <div className="flex gap-2 text-xs text-amber-800 dark:text-amber-300">
-                                    <AlertCircle size={16} className="shrink-0" />
-                                    <p>Đang chuẩn bị mã VietQR hoặc chưa cấu hình tài khoản SePay cho tòa nhà này.</p>
+                                  <div className="flex items-center justify-center py-6 text-xs text-slate-500">
+                                    <Loader2 size={18} className="animate-spin mr-2 text-blue-600" />
+                                    <span>Đang tạo mã VietQR thanh toán...</span>
                                   </div>
                                 )}
                               </div>
@@ -3870,21 +3933,112 @@ export const OperationalModuleWorkspace: React.FC<
 
                             {/* TAB 2: CASH PAYMENT AT COUNTER */}
                             {invoicePayMethod === 'MANUAL_CASH' && (
-                              <div className="space-y-3.5 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-900/40">
+                              <div className="space-y-3.5 rounded-2xl border border-emerald-200/80 bg-emerald-50/30 p-3.5 sm:p-4 dark:border-emerald-900/50 dark:bg-emerald-950/20">
                                 <div>
-                                  <label htmlFor="invoice-payment-amount" className="mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                                    Số tiền thu thực tế
+                                  <label className="mb-1.5 block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                    Tùy chọn thu tiền mặt
                                   </label>
-                                  <MoneyInput
-                                    id="invoice-payment-amount"
-                                    min={1}
-                                    value={invoicePayAmount}
-                                    max={modalRemaining}
-                                    onChange={setInvoicePayAmount}
-                                    className="min-h-11 bg-white text-sm font-bold text-emerald-600 dark:bg-slate-800"
-                                    required
-                                  />
+                                  <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-slate-200/70 dark:bg-slate-800">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setCashPayMode('ALL');
+                                        setInvoicePayAmount(modalRemaining);
+                                        setInvoicePayError(null);
+                                      }}
+                                      className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-bold transition-all ${
+                                        cashPayMode === 'ALL'
+                                          ? 'bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-300 shadow-xs ring-1 ring-emerald-500/20'
+                                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                                      }`}
+                                    >
+                                      <CheckCircle2 size={14} className={cashPayMode === 'ALL' ? 'text-emerald-600' : 'text-slate-400'} />
+                                      <span>Thanh toán tất cả</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setCashPayMode('PARTIAL');
+                                        if (invoicePayAmount >= modalRemaining) {
+                                          setInvoicePayAmount(Math.round(modalRemaining / 2));
+                                        }
+                                        setInvoicePayError(null);
+                                      }}
+                                      className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-lg text-xs font-bold transition-all ${
+                                        cashPayMode === 'PARTIAL'
+                                          ? 'bg-white dark:bg-slate-900 text-amber-700 dark:text-amber-300 shadow-xs ring-1 ring-amber-500/20'
+                                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                                      }`}
+                                    >
+                                      <Coins size={14} className={cashPayMode === 'PARTIAL' ? 'text-amber-600' : 'text-slate-400'} />
+                                      <span>Thanh toán 1 phần</span>
+                                    </button>
+                                  </div>
                                 </div>
+
+                                {cashPayMode === 'ALL' ? (
+                                  <div className="rounded-xl border border-emerald-200 bg-white/90 p-3 shadow-xs dark:border-emerald-900/60 dark:bg-slate-900/70">
+                                    <div className="flex items-center justify-between text-xs">
+                                      <span className="font-medium text-slate-500">Số tiền thu tất cả:</span>
+                                      <span className="text-sm font-extrabold tabular-nums text-emerald-600 dark:text-emerald-400">
+                                        {modalRemaining.toLocaleString('vi-VN')} đ
+                                      </span>
+                                    </div>
+                                    <p className="mt-1 text-[11px] text-emerald-700/90 dark:text-emerald-300/80">
+                                      Thu đủ 100% hóa đơn. Hóa đơn sẽ được đóng hoàn tất sau giao dịch.
+                                    </p>
+                                  </div>
+                                ) : (
+                                  <div className="space-y-2.5">
+                                    <div>
+                                      <div className="flex items-center justify-between mb-1">
+                                        <label htmlFor="invoice-payment-amount" className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                          Số tiền thu thực tế (đợt này)
+                                        </label>
+                                        <span className="text-[10.5px] text-slate-400">
+                                          Tối đa: {modalRemaining.toLocaleString('vi-VN')} đ
+                                        </span>
+                                      </div>
+                                      <MoneyInput
+                                        id="invoice-payment-amount"
+                                        min={1}
+                                        value={invoicePayAmount}
+                                        max={modalRemaining}
+                                        onChange={(val) => {
+                                          setInvoicePayAmount(val);
+                                          if (val >= modalRemaining) {
+                                            setCashPayMode('ALL');
+                                          } else {
+                                            setCashPayMode('PARTIAL');
+                                          }
+                                        }}
+                                        className="min-h-11 bg-white text-sm font-bold text-amber-600 dark:bg-slate-800"
+                                        required
+                                      />
+                                    </div>
+
+                                    {/* Real-time Partial Breakdown */}
+                                    <div className="rounded-xl border border-amber-200 bg-white/90 p-2.5 shadow-xs dark:border-amber-900/50 dark:bg-slate-900/70 text-xs">
+                                      <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                          <span className="text-[10px] sm:text-[10.5px] font-medium text-slate-400 block">Thu đợt này</span>
+                                          <strong className="text-xs font-bold text-amber-600 dark:text-amber-400 tabular-nums">
+                                            {Math.trunc(invoicePayAmount || 0).toLocaleString('vi-VN')} đ
+                                          </strong>
+                                        </div>
+                                        <div className="text-right">
+                                          <span className="text-[10px] sm:text-[10.5px] font-medium text-slate-400 block">Dư nợ còn lại</span>
+                                          <strong className="text-xs font-bold text-rose-600 tabular-nums">
+                                            {Math.max(0, modalRemaining - (invoicePayAmount || 0)).toLocaleString('vi-VN')} đ
+                                          </strong>
+                                        </div>
+                                      </div>
+                                      <p className="mt-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-800 text-[10px] sm:text-[10.5px] text-amber-700 dark:text-amber-300">
+                                        Hóa đơn sẽ ghi nhận 1 phần công nợ, chuyển sang trạng thái <strong>Đã thu 1 phần</strong>.
+                                      </p>
+                                    </div>
+                                  </div>
+                                )}
 
                                 {invoiceHandover && (invoiceHandover.electricRequired || invoiceHandover.waterRequired) && invoicePayAmount >= modalRemaining && (
                                   <fieldset className="space-y-3 rounded-xl border border-blue-200 bg-blue-50/80 p-3 dark:border-blue-900 dark:bg-blue-950/30">
@@ -3996,8 +4150,14 @@ export const OperationalModuleWorkspace: React.FC<
 
                         <AnimatedButton
                           type="submit"
-                          disabled={isSavingInvoicePay || invoiceHandoverLoading}
-                          className="min-h-11 flex-[1.45] rounded-xl bg-brand-primary px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-brand-hover disabled:opacity-50 flex items-center justify-center gap-1.5"
+                          disabled={isSavingInvoicePay || invoiceHandoverLoading || (invoicePayMethod === 'MANUAL_CASH' && cashPayMode === 'PARTIAL' && invoicePayAmount <= 0)}
+                          className={`min-h-11 flex-[1.45] rounded-xl px-4 py-2 text-xs font-bold text-white shadow-sm disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors ${
+                            invoicePayMethod === 'MANUAL_CASH'
+                              ? cashPayMode === 'ALL'
+                                ? 'bg-emerald-600 hover:bg-emerald-700'
+                                : 'bg-amber-600 hover:bg-amber-700'
+                              : 'bg-brand-primary hover:bg-brand-hover'
+                          }`}
                         >
                           {isSavingInvoicePay && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                           {isSavingInvoicePay ? (
@@ -4009,7 +4169,9 @@ export const OperationalModuleWorkspace: React.FC<
                           ) : (
                             <span>
                               {invoicePayMethod === 'MANUAL_CASH'
-                                ? 'Xác nhận thu tiền mặt'
+                                ? cashPayMode === 'ALL'
+                                  ? `Xác nhận thanh toán tất cả (${modalRemaining.toLocaleString('vi-VN')} đ)`
+                                  : `Xác nhận thanh toán 1 phần (${Math.trunc(invoicePayAmount || 0).toLocaleString('vi-VN')} đ)`
                                 : 'Xác nhận gạch nợ chuyển khoản'}
                             </span>
                           )}

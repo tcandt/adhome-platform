@@ -46,6 +46,8 @@ export interface CompactPeriodStepperProps {
   onChangePeriod: (nextPeriod: string) => void;
   shiftPeriodKey: (period: string, deltaMonths: number) => string;
   testIdPrefix?: string;
+  className?: string;
+  fullWidth?: boolean;
 }
 
 /** Compact Month/Year period stepper consistent on Mobile (< sm) and Desktop. */
@@ -54,29 +56,33 @@ export const CompactPeriodStepper: React.FC<CompactPeriodStepperProps> = ({
   onChangePeriod,
   shiftPeriodKey,
   testIdPrefix = 'module',
+  className = '',
+  fullWidth = true,
 }) => {
   const currentPeriod = getCurrentVnPeriodKey();
   return (
-    <div className="flex items-center gap-1.5">
+    <div className={`flex items-center gap-1.5 ${fullWidth ? 'flex-1 min-w-0' : ''} ${className}`}>
       <div
         data-testid={`${testIdPrefix}-period-selector`}
-        className="inline-flex h-8 sm:h-9 items-center gap-0.5 rounded-xl bg-slate-100 p-0.5 sm:p-1 dark:bg-slate-800/80"
+        className={`flex h-9 items-center justify-between gap-1 rounded-xl bg-slate-100/90 p-1 dark:bg-slate-800/90 ${
+          fullWidth ? 'flex-1 min-w-0' : 'inline-flex'
+        }`}
       >
         <button
           type="button"
           data-testid={`btn-${testIdPrefix}-period-prev`}
           aria-label="Kỳ trước"
           onClick={() => onChangePeriod(shiftPeriodKey(selectedPeriod, -1))}
-          className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-white hover:text-slate-900 dark:hover:bg-slate-700 dark:hover:text-white"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-white hover:text-slate-900 dark:hover:bg-slate-700 dark:hover:text-white shadow-xs"
         >
-          <ChevronLeft className="h-3.5 w-3.5" />
+          <ChevronLeft className="h-4 w-4" />
         </button>
-        <label className="relative inline-flex cursor-pointer items-center gap-1 px-1.5 sm:px-2 text-[11px] sm:text-xs font-bold text-slate-800 dark:text-slate-100 whitespace-nowrap">
-          <Calendar className="h-3.5 w-3.5 shrink-0 text-brand-primary" />
-          <span className="sm:hidden">
-            T{selectedPeriod.slice(5, 7)}/{selectedPeriod.slice(0, 4)}
+        <label className="relative flex flex-1 min-w-0 cursor-pointer items-center justify-center gap-1.5 px-2 text-xs font-bold text-slate-800 dark:text-slate-100">
+          <Calendar className="h-4 w-4 shrink-0 text-brand-primary" />
+          <span className="sm:hidden truncate">
+            Tháng {selectedPeriod.slice(5, 7)}/{selectedPeriod.slice(0, 4)}
           </span>
-          <span className="hidden sm:inline">
+          <span className="hidden sm:inline truncate">
             Kỳ {formatPeriodDisplay(selectedPeriod)}
           </span>
           <input
@@ -96,9 +102,9 @@ export const CompactPeriodStepper: React.FC<CompactPeriodStepperProps> = ({
           data-testid={`btn-${testIdPrefix}-period-next`}
           aria-label="Kỳ sau"
           onClick={() => onChangePeriod(shiftPeriodKey(selectedPeriod, 1))}
-          className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-white hover:text-slate-900 dark:hover:bg-slate-700 dark:hover:text-white"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-white hover:text-slate-900 dark:hover:bg-slate-700 dark:hover:text-white shadow-xs"
         >
-          <ChevronRight className="h-3.5 w-3.5" />
+          <ChevronRight className="h-4 w-4" />
         </button>
       </div>
 
@@ -106,7 +112,7 @@ export const CompactPeriodStepper: React.FC<CompactPeriodStepperProps> = ({
         <button
           type="button"
           onClick={() => onChangePeriod(currentPeriod)}
-          className="hidden sm:inline-flex h-9 items-center rounded-xl bg-blue-50 px-2.5 text-[11px] font-semibold text-blue-600 transition-colors hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-400 whitespace-nowrap"
+          className="hidden md:inline-flex h-9 items-center rounded-xl bg-blue-50 px-2.5 text-[11px] font-semibold text-blue-600 transition-colors hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-400 whitespace-nowrap shrink-0"
         >
           Kỳ này
         </button>

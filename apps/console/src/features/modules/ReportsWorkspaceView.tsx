@@ -158,12 +158,13 @@ export const ReportsWorkspaceView: React.FC<ReportsWorkspaceViewProps> = ({
   return (
     <div data-testid="reports-workspace-view" className="space-y-3">
       {/* Compact Header & Period Stepper */}
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-200/90 bg-white px-3 py-2.5 dark:border-slate-800 dark:bg-[#111827]">
+      <div className="flex items-center gap-2 rounded-2xl border border-slate-200/90 bg-white p-1.5 sm:px-3 sm:py-2.5 dark:border-slate-800 dark:bg-[#111827]">
         <CompactPeriodStepper
           selectedPeriod={selectedPeriod}
           onChangePeriod={onChangePeriod}
           shiftPeriodKey={shiftPeriodKey}
           testIdPrefix="reports"
+          fullWidth
         />
 
         <button
@@ -171,10 +172,11 @@ export const ReportsWorkspaceView: React.FC<ReportsWorkspaceViewProps> = ({
           data-testid="reports-export-csv"
           onClick={handleExportCsv}
           disabled={filteredBreakdown.length === 0}
-          className="inline-flex h-8 sm:h-9 items-center gap-1.5 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200"
+          aria-label="Xuất CSV"
+          title="Xuất CSV"
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200 shadow-xs transition-colors"
         >
-          <Download className="h-3.5 w-3.5" />
-          <span>Xuất CSV</span>
+          <Download className="h-4 w-4" />
         </button>
       </div>
 

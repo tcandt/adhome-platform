@@ -31,7 +31,11 @@ export function VndAmountInput({ value, onChange, ...props }: Props) {
     const selection = event.currentTarget.selectionStart ?? event.currentTarget.value.length;
     caretDigits.current = (event.currentTarget.value.slice(0, selection).match(/\d/g) || []).length;
     const digits = event.currentTarget.value.replace(/\D/g, '');
-    const parsed = digits ? Number(digits) : null;
-    onChange(parsed !== null && Number.isSafeInteger(parsed) ? parsed : value);
+    if (!digits) {
+      onChange(null);
+      return;
+    }
+    const parsed = Number(digits);
+    onChange(Number.isSafeInteger(parsed) ? parsed : null);
   }} />;
 }

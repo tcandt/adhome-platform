@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@animate-ui/react/primitives/buttons/button';
 import { ShimmeringText } from '@animate-ui/react/primitives/texts/shimmering';
-import { Banknote, CheckCircle2, Plus, RefreshCw } from 'lucide-react';
+import { Banknote, CheckCircle2, LayoutGrid, Plus, RefreshCw, Table } from 'lucide-react';
 import { CONSOLE_CSRF_HEADER } from '@/app/providers/AuthContext';
 import { usePortfolio } from '@/app/providers/PortfolioContext';
 import { SettingsDialog } from '@/shared/ui/SettingsDialog';
@@ -44,6 +44,7 @@ export function PaymentIntegrationHub() {
   const [reference, setReference] = useState('');
   const [filter, setFilter] = useState('ALL');
   const [search, setSearch] = useState('');
+  const [viewMode, setViewMode] = useState<'card' | 'table'>('table');
   const load = useCallback(async () => {
     const data = await request();
     setProviders(data.providers); setConnections(data.connections); setLegacy(data.legacyConfigured);
@@ -95,8 +96,48 @@ export function PaymentIntegrationHub() {
 
   return <section className="space-y-5" data-testid="payment-integration-hub" aria-busy={loading || !!busy}>
     <div className="flex flex-wrap items-start justify-between gap-3">
-      <div><h2 className="text-lg font-bold">Tích hợp thanh toán & ngân hàng</h2><p className="mt-1 max-w-2xl text-sm text-slate-500">Quản lý nhiều kết nối và tài khoản nhận tiền. Kiểm tra API và kích hoạt từng kết nối độc lập.</p></div>
-      <div className="flex flex-wrap gap-2"><Button className={buttonClass} disabled={loading || !!busy} onClick={() => void reload()} aria-label="Tải lại tích hợp"><RefreshCw size={16} />Tải lại</Button><Button className={primaryClass} disabled={!providers.length || !!busy} onClick={() => edit()}><Plus size={16} />Thêm kết nối</Button></div>
+      <div>
+        <h2 className="text-lg font-bold">Tích hợp thanh toán & ngân hàng</h2>
+        <p className="mt-1 max-w-2xl text-sm text-slate-500">
+          Quản lý nhiều kết nối và tài khoản nhận tiền. Kiểm tra API và kích hoạt từng kết nối độc lập.
+        </p>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center rounded-xl border border-slate-200 dark:border-slate-700 p-0.5 bg-slate-50 dark:bg-slate-800">
+          <button
+            type="button"
+            data-testid="toggle-banking-view-table"
+            onClick={() => setViewMode('table')}
+            className={`p-1.5 rounded-lg text-xs transition-colors ${
+              viewMode === 'table'
+                ? 'bg-white dark:bg-slate-900 text-brand-primary shadow-xs font-bold'
+                : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+            }`}
+            title="Dạng bảng (Table view)"
+          >
+            <Table size={16} />
+          </button>
+          <button
+            type="button"
+            data-testid="toggle-banking-view-card"
+            onClick={() => setViewMode('card')}
+            className={`p-1.5 rounded-lg text-xs transition-colors ${
+              viewMode === 'card'
+                ? 'bg-white dark:bg-slate-900 text-brand-primary shadow-xs font-bold'
+                : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+            }`}
+            title="Dạng thẻ (Card view)"
+          >
+            <LayoutGrid size={16} />
+          </button>
+        </div>
+        <Button className={buttonClass} disabled={loading || !!busy} onClick={() => void reload()} aria-label="Tải lại tích hợp">
+          <RefreshCw size={16} />Tải lại
+        </Button>
+        <Button className={primaryClass} disabled={!providers.length || !!busy} onClick={() => edit()}>
+          <Plus size={16} />Thêm kết nối
+        </Button>
+      </div>
     </div>
     {legacy.length > 0 && <p className="rounded-lg border border-amber-300 p-3 text-sm">Có cấu hình cũ: {legacy.join(', ')}. Dữ liệu cũ vẫn được giữ. Hãy tạo kết nối mới với đầy đủ trường xác thực; module không tự chuyển đổi khóa chung.</p>}
     {error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">{error}</p>}
@@ -105,15 +146,249 @@ export function PaymentIntegrationHub() {
       <div className="flex gap-2 overflow-x-auto pb-1">{providers.map(p => <Button key={p.id} className={`${buttonClass} whitespace-nowrap`} disabled={!!busy} onClick={() => edit(undefined, p.id)}><Plus size={14} />{p.name}<span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500 dark:bg-slate-800">{connections.filter(c => c.providerId === p.id).length}</span></Button>)}</div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3"><label className="text-xs font-semibold">Nhà cung cấp<select className={inputClass} value={filter} onChange={e => setFilter(e.target.value)}><option value="ALL">Tất cả ({connections.length})</option>{providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label><label className="text-xs font-semibold sm:col-span-2">Tìm kết nối / tài khoản<input className={inputClass} value={search} onChange={e => setSearch(e.target.value)} placeholder="Tên kết nối, ngân hàng hoặc số tài khoản" /></label></div>
       {!visible.length && <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500"><Banknote className="mx-auto mb-2" />{connections.length ? 'Không tìm thấy kết nối phù hợp.' : 'Chưa có kết nối. Chọn nhà cung cấp để thêm một hoặc nhiều tài khoản ngân hàng.'}</div>}
-      <div className="space-y-3">{visible.map(c => {
-        const p = providers.find(p => p.id === c.providerId);
-        return <article key={c.id} className="rounded-xl border border-slate-200 p-4 dark:border-slate-800" data-testid={`payment-connection-${c.id}`}>
-          <div className="flex flex-wrap justify-between gap-3"><div className="min-w-0"><h3 className="break-words font-bold">{c.name}</h3><p className="mt-1 text-xs text-slate-500">{p?.name} · {c.environment === 'LIVE' ? 'Thực tế (LIVE)' : 'Thử nghiệm'} · {c.buildingId ? allBuildings.find(b => b.id === c.buildingId)?.name || 'Tòa nhà đã gán' : 'Toàn tổ chức'}</p></div><div className="flex flex-wrap gap-2 text-xs"><span className="rounded-full bg-slate-100 px-2 py-1 dark:bg-slate-800">{c.status === 'VERIFIED' ? 'Đã kiểm tra API' : c.status === 'ERROR' ? 'Kiểm tra thất bại' : 'Chưa kiểm tra'}</span><span className="rounded-full bg-slate-100 px-2 py-1 dark:bg-slate-800">{c.isEnabled ? 'API: đang bật' : 'API: đang tắt'}</span></div></div>
-          <p className="my-3 text-xs text-slate-500">{c.accounts.length ? `${c.accounts.length} tài khoản nhận tiền` : 'Chưa khai báo tài khoản nhận tiền'}</p>
-          {c.lastTestMessage && <p className="mb-3 text-xs text-slate-500">{c.lastTestMessage} {c.lastTestedAt && `(${new Date(c.lastTestedAt).toLocaleString('vi-VN')})`}</p>}
-          <Button className={primaryClass} disabled={!!busy} onClick={() => edit(c)}>Cấu hình</Button>
-        </article>;
-      })}</div>
+      {visible.length > 0 && (
+        viewMode === 'table' ? (
+          <div className="overflow-x-auto rounded-xl border border-slate-200/80 dark:border-slate-800" data-testid="banking-table-view">
+            <table className="w-full text-left text-xs min-w-[760px]">
+              <thead>
+                <tr className="border-b border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/60 text-slate-500 font-semibold">
+                  <th className="py-2.5 px-3">Tên kết nối & Nhà cung cấp</th>
+                  <th className="py-2.5 px-3">Môi trường & Phạm vi</th>
+                  <th className="py-2.5 px-3">Tài khoản nhận tiền chi tiết</th>
+                  <th className="py-2.5 px-3">Trạng thái API</th>
+                  <th className="py-2.5 px-3 text-right">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {visible.map((c) => {
+                  const p = providers.find((pr) => pr.id === c.providerId);
+                  const buildingName = c.buildingId
+                    ? allBuildings.find((b) => b.id === c.buildingId)?.name || 'Tòa nhà đã gán'
+                    : 'Toàn tổ chức';
+                  return (
+                    <tr
+                      key={c.id}
+                      data-testid={`payment-connection-row-${c.id}`}
+                      className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
+                    >
+                      <td className="py-3 px-3">
+                        <div className="font-bold text-slate-900 dark:text-white">{c.name}</div>
+                        <div className="text-[11px] text-slate-500 flex items-center gap-1.5 mt-0.5">
+                          <span className="font-semibold text-brand-primary">{p?.name || c.providerId}</span>
+                        </div>
+                      </td>
+                      <td className="py-3 px-3">
+                        <div className="font-semibold text-slate-800 dark:text-slate-200">
+                          {c.environment === 'LIVE' ? (
+                            <span className="text-emerald-700 dark:text-emerald-400">Thực tế (LIVE)</span>
+                          ) : (
+                            <span className="text-amber-700 dark:text-amber-400">Thử nghiệm (SANDBOX)</span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-slate-500 mt-0.5">{buildingName}</div>
+                      </td>
+                      <td className="py-3 px-3">
+                        {c.accounts.length > 0 ? (
+                          <div className="space-y-1.5">
+                            {c.accounts.map((acc, idx) => (
+                              <div key={idx} className="flex flex-wrap items-center gap-1.5 text-xs">
+                                <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300 font-bold text-[10px]">
+                                  {acc.bankCode}
+                                </span>
+                                <span className="font-mono font-bold text-slate-900 dark:text-white">
+                                  {acc.accountNumber}
+                                </span>
+                                <span className="text-slate-500 text-[11px]">
+                                  ({acc.accountName})
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 italic text-xs">Chưa khai báo tài khoản</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-3">
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                c.status === 'VERIFIED'
+                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                                : c.status === 'ERROR'
+                                ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300'
+                                : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                              }`}
+                            >
+                              {c.status === 'VERIFIED'
+                                ? 'Đã kiểm tra API'
+                                : c.status === 'ERROR'
+                                ? 'Kiểm tra thất bại'
+                                : 'Chưa kiểm tra'}
+                            </span>
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                c.isEnabled
+                                  ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+                                  : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                              }`}
+                            >
+                              {c.isEnabled ? 'API: Đang bật' : 'API: Đang tắt'}
+                            </span>
+                          </div>
+                          {c.lastTestMessage && (
+                            <div className="text-[10px] text-slate-500 truncate max-w-[200px]" title={c.lastTestMessage}>
+                              {c.lastTestMessage}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-3 px-3 text-right">
+                        <div className="inline-flex items-center gap-1.5">
+                          <Button
+                            className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200"
+                            disabled={!!busy}
+                            onClick={() => edit(c)}
+                          >
+                            Cấu hình
+                          </Button>
+                          {p?.canTest && (
+                            <Button
+                              className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-blue-50 text-brand-primary hover:bg-blue-100 dark:bg-blue-950 dark:text-blue-300"
+                              disabled={!!busy}
+                              onClick={() => {
+                                setError('');
+                                setReference('');
+                                setTestTarget(c);
+                              }}
+                            >
+                              Kiểm tra
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3" data-testid="banking-card-view">
+            {visible.map((c) => {
+              const p = providers.find((pr) => pr.id === c.providerId);
+              const buildingName = c.buildingId
+                ? allBuildings.find((b) => b.id === c.buildingId)?.name || 'Tòa nhà đã gán'
+                : 'Toàn tổ chức';
+              return (
+                <article
+                  key={c.id}
+                  className="rounded-2xl border border-slate-200 p-4 dark:border-slate-800 bg-white dark:bg-[#111827] shadow-xs space-y-3 flex flex-col justify-between"
+                  data-testid={`payment-connection-${c.id}`}
+                >
+                  <div className="space-y-2.5">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <h3 className="break-words font-bold text-sm text-slate-900 dark:text-white">
+                          {c.name}
+                        </h3>
+                        <p className="mt-0.5 text-xs text-slate-500">
+                          <span className="font-semibold text-brand-primary">{p?.name || c.providerId}</span>
+                          {' · '}
+                          {c.environment === 'LIVE' ? 'Thực tế (LIVE)' : 'Thử nghiệm'}
+                          {' · '}
+                          {buildingName}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 text-xs shrink-0">
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                            c.status === 'VERIFIED'
+                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                              : c.status === 'ERROR'
+                              ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300'
+                              : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                          }`}
+                        >
+                          {c.status === 'VERIFIED'
+                            ? 'Đã kiểm tra API'
+                            : c.status === 'ERROR'
+                            ? 'Kiểm tra thất bại'
+                            : 'Chưa kiểm tra'}
+                        </span>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                            c.isEnabled
+                              ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+                              : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                          }`}
+                        >
+                          {c.isEnabled ? 'API: Đang bật' : 'API: Đang tắt'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Detail Bank Accounts List */}
+                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-1.5">
+                      <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                        Tài khoản nhận tiền ({c.accounts.length}):
+                      </div>
+                      {c.accounts.length > 0 ? (
+                        <div className="space-y-1">
+                          {c.accounts.map((acc, idx) => (
+                            <div
+                              key={idx}
+                              className="flex flex-wrap items-center gap-1.5 text-xs bg-slate-50 dark:bg-slate-800/60 p-1.5 rounded-lg border border-slate-100 dark:border-slate-800"
+                            >
+                              <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 font-bold text-[10px]">
+                                {acc.bankCode}
+                              </span>
+                              <span className="font-mono font-bold text-slate-900 dark:text-white">
+                                {acc.accountNumber}
+                              </span>
+                              <span className="text-slate-500 text-[11px]">
+                                · {acc.accountName}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-slate-400 italic">Chưa khai báo tài khoản nhận tiền</p>
+                      )}
+                    </div>
+
+                    {c.lastTestMessage && (
+                      <p className="text-xs text-slate-500 bg-slate-50 dark:bg-slate-800/40 p-2 rounded-lg">
+                        {c.lastTestMessage}{' '}
+                        {c.lastTestedAt && `(${new Date(c.lastTestedAt).toLocaleString('vi-VN')})`}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                    <Button className={primaryClass} disabled={!!busy} onClick={() => edit(c)}>
+                      Cấu hình
+                    </Button>
+                    {p?.canTest && (
+                      <Button
+                        className={buttonClass}
+                        disabled={!!busy}
+                        onClick={() => {
+                          setError('');
+                          setReference('');
+                          setTestTarget(c);
+                        }}
+                      >
+                        Kiểm tra API
+                      </Button>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )
+      )}
       {auditLogs.length > 0 && <details className="rounded-xl border border-slate-200 p-4 dark:border-slate-800"><summary className="cursor-pointer text-sm font-bold">Nhật ký tích hợp · 20 thao tác gần nhất</summary><ul className="mt-3 space-y-3">{auditLogs.map(log => <li key={log.id} className="break-words border-t border-slate-100 pt-2 text-xs dark:border-slate-800"><p>{log.summary}</p><p className="mt-1 text-slate-500">{log.actorEmail} · {new Date(log.createdAt).toLocaleString('vi-VN')}</p></li>)}</ul></details>}
     </>}
     {draft && provider && <SettingsDialog title={draft.id ? 'Sửa kết nối thanh toán' : 'Thêm kết nối thanh toán'} description="Cấu hình kết nối và tài khoản nhận tiền." busy={!!busy} onClose={() => setDraft(null)}>

@@ -291,3 +291,15 @@ export function formatPeriodDisplay(periodKey: string): string {
   return `Tháng ${m}/${y}`;
 }
 
+export function shiftPeriodKey(periodKey: string, deltaMonths: number): string {
+  const match = periodKey.match(/^(\d{4})-(\d{2})$/);
+  if (!match) return getCurrentVnPeriodKey();
+  const year = Number(match[1]);
+  const monthIdx = Number(match[2]) - 1 + deltaMonths;
+  const d = new Date(Date.UTC(year, monthIdx, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(
+    2,
+    '0'
+  )}`;
+}
+

@@ -82,7 +82,15 @@ export function NavigationProvider({
   const [buildingsSubTab, setBuildingsSubTabState] =
     useState<BuildingsSubTabId>('rooms');
   const [focusedTenantId, setFocusedTenantId] = useState<string | null>(null);
-  const [settingsTab, setSettingsTab] = useState<SettingsTabId>('organization');
+  const [settingsTab, setSettingsTab] = useState<SettingsTabId>(() => {
+    if (typeof window !== 'undefined') {
+      const urlTab = new URLSearchParams(window.location.search).get('tab');
+      if (urlTab && SETTINGS_TABS_CONFIG.some((t) => t.id === urlTab)) {
+        return urlTab as SettingsTabId;
+      }
+    }
+    return 'organization';
+  });
   const [selectedPeriod, setSelectedPeriod] = useState<string>(() =>
     getCurrentVnPeriodKey()
   );

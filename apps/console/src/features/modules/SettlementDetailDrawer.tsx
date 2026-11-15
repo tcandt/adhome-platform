@@ -153,7 +153,7 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
   useEffect(() => {
     if (!row) return;
     setBaseMonthlyRentVnd(
-      Math.round(row.rent.baseMonthlyRentVnd || row.contract.monthlyRentVnd || 0)
+      Math.round(row.rent.baseMonthlyRentVnd || row.contract?.monthlyRentVnd || 0)
     );
     setStartKwhInput(row.electric.startKwh !== null ? String(row.electric.startKwh) : '0');
     setEndKwhInput(row.electric.endKwh !== null ? String(row.electric.endKwh) : '');
@@ -221,7 +221,7 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
 
     await onSaveRoomInput({
       roomId: row.room.id,
-      contractId: row.contract.id,
+      contractId: row.contract?.id || '',
       periodKey: row.periodKey,
       rent:
         !Number.isNaN(baseMonthlyRentVnd) && baseMonthlyRentVnd >= 0
@@ -291,7 +291,7 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                 )}
               </div>
               <Dialog.Title className="mt-1 text-sm sm:text-base font-bold text-slate-900 dark:text-white truncate">
-                {row.tenant.fullName} · {row.contract.code}
+                {row.tenant.fullName}{row.contract?.code ? ` · ${row.contract.code}` : ''}
               </Dialog.Title>
               <Dialog.Description className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">
                 Kỳ {row.periodKey} ({row.periodDisplayRange}) · Cần thu:{' '}
@@ -464,7 +464,7 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                   <div>
                     <span className="block text-[10.5px] text-slate-400">Hợp đồng &amp; Nhân khẩu</span>
                     <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
-                      {row.contract.code} · {row.water.occupantCount} người
+                      {row.contract?.code || 'Chưa có HĐ'} · {row.water.occupantCount} người
                     </span>
                   </div>
                   <div>

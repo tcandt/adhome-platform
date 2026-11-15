@@ -12,8 +12,10 @@ import {
   Lock,
   Edit3,
   AlertCircle,
+  LayoutGrid,
   Loader2,
   Save,
+  Table,
   X,
 } from 'lucide-react';
 import { useAuth, CONSOLE_CSRF_HEADER } from '@/app/providers/AuthContext';
@@ -85,6 +87,7 @@ export const AccountManagementView: React.FC = () => {
   const [formPermissions, setFormPermissions] = useState<string[]>([]);
   const [formIsActive, setFormIsActive] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [viewMode, setViewMode] = useState<'card' | 'table'>('table');
 
   const loadAccounts = useCallback(async () => {
     setIsLoading(true);
@@ -539,6 +542,36 @@ export const AccountManagementView: React.FC = () => {
             Tài khoản nhân sự ({accounts.length})
           </h3>
           <div className="flex shrink-0 items-center gap-2">
+            {/* View Mode Toggle: Table / Card */}
+            <div className="flex items-center rounded-xl border border-slate-200 dark:border-slate-700 p-0.5 bg-slate-50 dark:bg-slate-800">
+              <button
+                type="button"
+                data-testid="toggle-view-table"
+                onClick={() => setViewMode('table')}
+                className={`p-1.5 rounded-lg text-xs transition-colors ${
+                  viewMode === 'table'
+                    ? 'bg-white dark:bg-slate-900 text-brand-primary shadow-xs font-bold'
+                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                }`}
+                title="Dạng bảng (Table view)"
+              >
+                <Table className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                data-testid="toggle-view-card"
+                onClick={() => setViewMode('card')}
+                className={`p-1.5 rounded-lg text-xs transition-colors ${
+                  viewMode === 'card'
+                    ? 'bg-white dark:bg-slate-900 text-brand-primary shadow-xs font-bold'
+                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                }`}
+                title="Dạng thẻ (Card view)"
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </button>
+            </div>
+
             <SettingsButton
               type="button"
               className="h-9 w-9 p-0"
@@ -568,9 +601,9 @@ export const AccountManagementView: React.FC = () => {
             <Loader2 className="w-4 h-4 animate-spin text-brand-primary" />
             <span>Đang tải danh sách nhân sự từ PostgreSQL...</span>
           </div>
-        ) : (
+        ) : viewMode === 'table' ? (
           <div className="account-list-wrap overflow-x-auto">
-            <table data-testid="console-accounts-table" className="account-list-table w-full text-left text-xs">
+            <table data-testid="console-accounts-table" className="account-list-table w-full text-left text-xs min-w-[640px]">
               <thead>
                 <tr className="border-b border-appBorder-light dark:border-appBorder-dark text-slate-400 font-semibold">
                   <th className="pb-3">Nhân sự / Email</th>
@@ -694,6 +727,113 @@ export const AccountManagementView: React.FC = () => {
                 })}
               </tbody>
             </table>
+          </div>
+        ) : (
+          /* Card View */
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="console-accounts-cards">
+            {accounts.map(acc => {
+              const isSelf = acc.id === user?.id;
+              return (
+                <div
+                  key={acc.id}
+                  data-testid={`account-card-${acc.email}`}
+                  className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-4 shadow-xs space-y-3 flex flex-col justify-between"
+                >
+                  <div className="space-y-2.5">
+                    {/* Top: Name, self badge, role */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="font-bold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                          <span className="truncate">{acc.displayName}</span>
+                          {isSelf && (
+                            <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-brand-primary dark:bg-blue-950/60 dark:text-blue-300">
+                              Bạn
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-0.5 truncate">
+                          {acc.email}
+                        </div>
+                      </div>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                          acc.role === 'ADMIN'
+                            ? 'bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 border border-purple-200 dark:border-purple-800'
+                            : 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
+                        }`}
+                      >
+                        {acc.role}
+                      </span>
+                    </div>
+
+                    {/* Details: Building Scope, Permissions, Session, Status */}
+                    <div className="grid grid-cols-2 gap-2 text-xs pt-2.5 border-t border-slate-100 dark:border-slate-800">
+                      <div>
+                        <div className="text-[10.5px] text-slate-400 font-medium">Tòa nhà</div>
+                        <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 mt-0.5 truncate" title={acc.role === 'ADMIN' ? 'Toàn bộ tổ chức' : acc.buildingScopes.join(', ')}>
+                          {acc.role === 'ADMIN' || acc.buildingScopes.includes('*')
+                            ? `Toàn bộ tổ chức (${buildings.length} tòa)`
+                            : acc.buildingScopes.length === 0
+                            ? 'Chưa gán tòa'
+                            : `${acc.buildingScopes.length} tòa nhà`}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10.5px] text-slate-400 font-medium">Quyền hạn</div>
+                        <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 mt-0.5">
+                          {acc.role === 'ADMIN' ? 'Toàn quyền (18/18)' : `${acc.permissions.length} quyền`}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10.5px] text-slate-400 font-medium">Phiên bảo mật</div>
+                        <div className="text-xs font-mono font-semibold text-slate-800 dark:text-slate-200 mt-0.5">
+                          v{acc.sessionVersion}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10.5px] text-slate-400 font-medium">Trạng thái</div>
+                        <div className="text-xs font-semibold mt-0.5 flex items-center gap-1">
+                          <span
+                            className={`inline-block h-2 w-2 rounded-full ${
+                              acc.isActive ? 'bg-emerald-500' : 'bg-slate-400'
+                            }`}
+                          />
+                          <span className={acc.isActive ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}>
+                            {acc.isActive ? 'Đang hoạt động' : 'Đã khóa'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+                    {!isSelf ? (
+                      <button
+                        type="button"
+                        onClick={() => void handleToggleActiveQuick(acc)}
+                        className={`text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border transition-colors ${
+                          acc.isActive
+                            ? 'border-slate-200 text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-400'
+                            : 'border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
+                        }`}
+                      >
+                        {acc.isActive ? 'Khóa' : 'Kích hoạt'}
+                      </button>
+                    ) : <span />}
+                    <button
+                      type="button"
+                      data-testid={`account-card-edit-${acc.email}`}
+                      onClick={() => openEditForm(acc)}
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 transition-colors"
+                    >
+                      <Edit3 className="h-3.5 w-3.5 text-brand-primary" />
+                      <span>Phân quyền</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

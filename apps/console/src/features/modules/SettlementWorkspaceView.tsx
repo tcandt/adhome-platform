@@ -30,6 +30,7 @@ import {
   Sparkles,
   Unlock,
   Users,
+  X,
   Zap,
 } from 'lucide-react';
 import { formatPeriodDisplay } from '@/app/navigation/navigationConfig';
@@ -90,6 +91,11 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
   const [quickTab, setQuickTab] = useState<QuickFilterTabId>('ALL');
   const [buildingFilter, setBuildingFilter] = useState<string>('ALL');
   const [waterModeFilter, setWaterModeFilter] = useState<string>('ALL');
+  const [isMobileFilterOpen, setIsMobileFilterOpen] = useState<boolean>(false);
+  const activeFilterCount =
+    (quickTab !== 'ALL' ? 1 : 0) +
+    (waterModeFilter !== 'ALL' ? 1 : 0) +
+    (buildingFilter !== 'ALL' ? 1 : 0);
   const [sortField, setSortField] = useState<SortField>('ROOM_CODE');
   const [sortDirection, setSortDirection] = useState<SortDirection>('ASC');
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -202,9 +208,9 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
         row.room.code,
         row.building.code,
         row.building.name,
-        row.tenant.fullName,
-        row.tenant.phone,
-        row.contract.code,
+        row.tenant?.fullName,
+        row.tenant?.phone,
+        row.contract?.code,
         row.invoice?.code,
       ]
         .filter(Boolean)
@@ -828,7 +834,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
-                <label className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 text-xs font-bold text-slate-900 dark:text-white">
+                <label className="relative inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 text-xs font-bold text-slate-900 dark:text-white">
                   <Calendar className="w-3.5 h-3.5 text-blue-600" />
                   <span>Kỳ {formatPeriodDisplay(selectedPeriod)}</span>
                   <input
@@ -840,7 +846,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                         onChangePeriod(e.target.value);
                       }
                     }}
-                    className="sr-only"
+                    className="absolute inset-0 h-full w-full cursor-pointer opacity-0 z-10 [color-scheme:light] dark:[color-scheme:dark]"
                   />
                 </label>
                 <button
@@ -1032,7 +1038,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
-              <label className="inline-flex flex-1 min-w-0 h-9 cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 text-xs font-bold text-slate-900 dark:text-white">
+              <label className="relative inline-flex flex-1 min-w-0 h-9 cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 text-xs font-bold text-slate-900 dark:text-white">
                 <Calendar className="w-3.5 h-3.5 shrink-0 text-blue-600" />
                 <span className="whitespace-nowrap">
                   T{selectedPeriod.slice(5)}/{selectedPeriod.slice(0, 4)}
@@ -1046,7 +1052,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                       onChangePeriod(e.target.value);
                     }
                   }}
-                  className="sr-only"
+                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0 z-10 [color-scheme:light] dark:[color-scheme:dark]"
                 />
               </label>
               <button
@@ -1139,7 +1145,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
             />
           </div>
 
-          {/* Row 2: Search + Water Filter */}
+          {/* Row 2: Search + Phễu lọc */}
           <div className="flex items-center gap-1.5">
             <div className="relative flex-1 min-w-0">
               <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -1155,24 +1161,27 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                 className="h-9 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 pl-8 pr-2.5 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:border-blue-500 focus:bg-white dark:focus:bg-slate-900 focus:outline-none"
               />
             </div>
-            <select
-              aria-label="Phương thức tính nước"
-              data-testid="mobile-water-filter"
-              value={waterModeFilter}
-              onChange={(e) => {
-                setWaterModeFilter(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="h-9 w-[122px] shrink-0 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 text-[11.5px] font-semibold text-slate-800 dark:text-slate-200"
+            <button
+              type="button"
+              data-testid="btn-open-mobile-filter"
+              onClick={() => setIsMobileFilterOpen(true)}
+              className={`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl border px-3 text-xs font-bold transition-colors ${
+                activeFilterCount > 0
+                  ? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-700 dark:bg-blue-950/60 dark:text-blue-300'
+                  : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200'
+              }`}
             >
-              <option value="ALL">Nước: Tất cả</option>
-              <option value="PER_M3">Theo khối m³</option>
-              <option value="PER_PERSON">Đầu người</option>
-              <option value="FIXED_PER_ROOM">Khoán phòng</option>
-            </select>
+              <Filter className="w-3.5 h-3.5" />
+              <span>Lọc</span>
+              {activeFilterCount > 0 && (
+                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-blue-600 text-[10px] font-black text-white">
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
           </div>
 
-          {/* Compact Mode + Quick Status Line */}
+          {/* Row 3: Compact Mode + Room Count */}
           <div className="flex items-center justify-between gap-2 px-0.5 text-[11px]">
             <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800 px-2 py-0.5 text-[10.5px] font-bold text-blue-700 dark:text-blue-300 truncate">
               <Sparkles className="w-3 h-3 shrink-0" />
@@ -1182,29 +1191,81 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                 ? 'Chế độ C: Thủ công'
                 : 'Chế độ A: Tự động nháp'}
             </span>
-            {availableBuildings.length > 1 ? (
-              <select
-                aria-label="Lọc nhanh tòa có phát sinh"
-                value={buildingFilter}
-                onChange={(e) => {
-                  setBuildingFilter(e.target.value);
+            <span className="text-[10.5px] font-medium text-slate-400 shrink-0">
+              {filteredRows.length} / {rawRows.length} phòng
+            </span>
+          </div>
+
+          {/* Active Filter Chips */}
+          {activeFilterCount > 0 && (
+            <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+              {quickTab !== 'ALL' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuickTab('ALL');
+                    setCurrentPage(1);
+                  }}
+                  className="inline-flex items-center gap-1 rounded-lg bg-blue-100 dark:bg-blue-950/80 px-2 py-0.5 text-[10.5px] font-bold text-blue-800 dark:text-blue-300 hover:bg-blue-200"
+                >
+                  <span>
+                    {quickTab === 'MISSING_DATA'
+                      ? 'Cần bổ sung'
+                      : quickTab === 'PENDING_APPROVAL'
+                      ? 'Chờ duyệt'
+                      : quickTab === 'READY_TO_SEND'
+                      ? 'Sẵn sàng gửi'
+                      : quickTab === 'SENT'
+                      ? 'Đã gửi'
+                      : quickTab === 'UNPAID'
+                      ? 'Chưa thanh toán'
+                      : 'Bất thường'}
+                  </span>
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+              {waterModeFilter !== 'ALL' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setWaterModeFilter('ALL');
+                    setCurrentPage(1);
+                  }}
+                  className="inline-flex items-center gap-1 rounded-lg bg-sky-100 dark:bg-sky-950/80 px-2 py-0.5 text-[10.5px] font-bold text-sky-800 dark:text-sky-300 hover:bg-sky-200"
+                >
+                  <span>
+                    Nước: {waterModeFilter === 'PER_M3' ? 'Khối m³' : waterModeFilter === 'PER_PERSON' ? 'Đầu người' : 'Khoán'}
+                  </span>
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+              {buildingFilter !== 'ALL' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBuildingFilter('ALL');
+                    setCurrentPage(1);
+                  }}
+                  className="inline-flex items-center gap-1 rounded-lg bg-amber-100 dark:bg-amber-950/80 px-2 py-0.5 text-[10.5px] font-bold text-amber-800 dark:text-amber-300 hover:bg-amber-200"
+                >
+                  <span>Tòa: {availableBuildings.find((b) => b.id === buildingFilter)?.code || buildingFilter}</span>
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setQuickTab('ALL');
+                  setWaterModeFilter('ALL');
+                  setBuildingFilter('ALL');
                   setCurrentPage(1);
                 }}
-                className="h-6 max-w-[140px] rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-1.5 text-[10.5px] font-semibold text-slate-700 dark:text-slate-200"
+                className="text-[10.5px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 underline ml-0.5 font-medium"
               >
-                <option value="ALL">Mọi tòa ({availableBuildings.length})</option>
-                {availableBuildings.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.code}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <span className="text-[10.5px] font-medium text-slate-400 shrink-0">
-                {roomGroups.length} phòng kỳ {formatPeriodDisplay(selectedPeriod)}
-              </span>
-            )}
-          </div>
+                Xóa lọc
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Feedback Banner */}
@@ -1333,7 +1394,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
          ===================================================================== */}
       <div className="rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#111827] shadow-xs overflow-hidden">
         {/* Table Toolbar: Quick Filter Tabs + Sort + Column Selector */}
-        <div className="flex flex-wrap lg:flex-nowrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 px-3 sm:px-4 py-2.5">
+        <div className="hidden md:flex flex-wrap lg:flex-nowrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 px-3 sm:px-4 py-2.5">
           {/* Quick Filter Tabs (Section 4.3) */}
           <div className="flex items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden min-w-0" role="tablist">
             {[
@@ -1548,10 +1609,10 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                         {/* 4. Tenant / Representative */}
                         <td className="py-2.5 px-1.5 max-w-[130px]">
                           <div className="font-semibold text-slate-900 dark:text-white truncate">
-                            {row.tenant.fullName}
+                            {row.tenant?.fullName || 'Chưa có khách'}
                           </div>
                           <div className="text-[10px] text-slate-500 font-mono truncate">
-                            {row.contract.code}
+                            {row.contract?.code || '—'}
                           </div>
                         </td>
 
@@ -2133,7 +2194,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                                                       {member.tenant.fullName}
                                                     </div>
                                                     <div className="font-mono text-[10px] text-slate-500 truncate">
-                                                      {member.contract.code}
+                                                      {member.contract?.code || '—'}
                                                     </div>
                                                   </div>
                                                 </div>
@@ -2221,10 +2282,53 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
               const row = group.primaryRow;
               const isExpanded = Boolean(expandedRooms[group.roomId]);
 
+              const isVacant = Boolean(
+                (row as any).isVacant ||
+                !row.contract ||
+                !row.tenant?.fullName ||
+                row.tenant.fullName === 'Chưa có khách' ||
+                row.room.occupancyStatus === 'AVAILABLE'
+              );
+
+              // 1. PHÒNG TRỐNG / CHƯA CÓ KHÁCH (Không chạy cron chốt kỳ)
+              if (isVacant) {
+                return (
+                  <div
+                    key={row.obligationKey || `vacant-${row.room.id}`}
+                    data-testid={`settlement-mobile-card-${row.room.code}`}
+                    className="p-3.5 space-y-2 bg-white dark:bg-[#111827] border-l-4 border-l-slate-300 dark:border-l-slate-700"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openDrawerForRow(row, 'OVERVIEW')}
+                          className="text-sm font-extrabold text-slate-800 dark:text-slate-200 hover:underline"
+                        >
+                          {row.room.code}
+                        </button>
+                        <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10.5px] font-semibold text-slate-600 dark:text-slate-400">
+                          Chưa có khách
+                        </span>
+                      </div>
+                      <span className="font-mono text-xs font-semibold text-slate-400">
+                        0 đ
+                      </span>
+                    </div>
+
+                    <div className="text-[11px] text-slate-400 flex items-center justify-between">
+                      <span>Phòng trống · Tự động bỏ qua khỏi cron kỳ</span>
+                      <span className="italic">Chưa có hợp đồng</span>
+                    </div>
+                  </div>
+                );
+              }
+
+              // 2. PHÒNG ĐƠN / CĂN HỘ 1 HỢP ĐỒNG (Bố trí gọn gàng, sạch đẹp)
               if (!group.isSharedRoom) {
-                const invBadge = getInvoiceStatusBadge(row.statuses.invoiceStatus);
-                const payBadge = getPaymentStatusBadge(row.statuses.paymentStatus);
-                const dataBadge = getDataStatusBadge(row.statuses.dataStatus);
+                const rentAmount = row.rent?.roomRentVnd || row.contract?.monthlyRentVnd || 0;
+                const electricAmount = row.electric?.electricVnd || 0;
+                const waterAmount = row.water?.waterVnd || 0;
 
                 return (
                   <div
@@ -2232,6 +2336,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                     data-testid={`settlement-mobile-card-${row.room.code}`}
                     className="p-3.5 space-y-2.5 bg-white dark:bg-[#111827]"
                   >
+                    {/* Hàng 1: Mã phòng · Tên khách (Trái) & Tổng tiền (Phải) */}
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5 flex-wrap">
@@ -2242,64 +2347,116 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                           >
                             {row.room.code}
                           </button>
-                          <span className="rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[10.5px] font-bold text-slate-600 dark:text-slate-300">
-                            {row.building.code}
-                          </span>
-                          <span className={`inline-flex items-center gap-1 text-[10.5px] font-semibold ${dataBadge.textClassName}`}>
-                            <span className={`h-1.5 w-1.5 rounded-full ${dataBadge.dotClassName}`} />
-                            {dataBadge.label}
+                          <span className="text-slate-300 dark:text-slate-600 font-bold">·</span>
+                          <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                            {row.tenant.fullName}
                           </span>
                         </div>
-                        <div className="mt-0.5 text-xs font-semibold text-slate-900 dark:text-white truncate">
-                          {row.tenant.fullName}
-                        </div>
+                        {row.contract?.billingCycle && row.contract.billingCycle !== 'MONTHLY' && (
+                          <div className="mt-0.5 text-[10px] font-semibold text-violet-600 dark:text-violet-400">
+                            Chu kỳ: {row.contract.billingCycle === 'QUARTERLY' ? '3 tháng' : row.contract.billingCycle === 'BIANNUAL' ? '6 tháng' : 'Theo chu kỳ'}
+                          </div>
+                        )}
                       </div>
+
                       <div className="text-right shrink-0">
-                        <div className="font-mono text-sm font-extrabold text-slate-900 dark:text-white">
+                        <div className="font-mono text-sm font-black text-slate-900 dark:text-white">
                           {formatVnd(row.totals.totalPayableVnd)}
                         </div>
-                        <div className="mt-0.5 flex items-center justify-end gap-2 flex-wrap">
-                          <span className={`inline-flex items-center gap-1 text-[10.5px] font-semibold ${invBadge.textClassName}`}>
-                            <span className={`h-1.5 w-1.5 rounded-full ${invBadge.dotClassName}`} />
-                            {invBadge.label}
-                          </span>
-                          <span className={`inline-flex items-center gap-1 text-[10.5px] font-semibold ${payBadge.textClassName}`}>
-                            <span className={`h-1.5 w-1.5 rounded-full ${payBadge.dotClassName}`} />
-                            {payBadge.label}
-                          </span>
-                        </div>
+                        {row.statuses.paymentStatus === 'PARTIAL' && (
+                          <div className="font-mono text-[10px] font-bold text-rose-600 dark:text-rose-400">
+                            Còn: {formatVnd(row.totals.remainingAmountVnd)}
+                          </div>
+                        )}
                       </div>
                     </div>
 
-                    {/* Breakdown mini row */}
-                    <div className="grid grid-cols-3 gap-1.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 p-2 text-[11px]">
+                    {/* Hàng 2: Trạng thái tinh gọn (Dạng Pill badge, không dùng bullet rườm rà) */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {/* Badge trạng thái Hóa đơn / Thanh toán */}
+                      {row.statuses.paymentStatus === 'PAID' ? (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 text-[10.5px] font-bold text-emerald-700 dark:text-emerald-300">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                          Đã thanh toán
+                        </span>
+                      ) : row.statuses.paymentStatus === 'PARTIAL' ? (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 px-2 py-0.5 text-[10.5px] font-bold text-amber-800 dark:text-amber-300">
+                          <Banknote className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                          Thu 1 phần ({formatVnd(row.totals.paidAmountVnd)})
+                        </span>
+                      ) : row.statuses.invoiceStatus === 'ISSUED' ? (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 px-2 py-0.5 text-[10.5px] font-bold text-rose-700 dark:text-rose-300">
+                          Chưa thanh toán
+                        </span>
+                      ) : row.statuses.invoiceStatus === 'PENDING_APPROVAL' ? (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 px-2 py-0.5 text-[10.5px] font-bold text-indigo-700 dark:text-indigo-300">
+                          <ShieldCheck className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
+                          Chờ duyệt HĐ
+                        </span>
+                      ) : row.statuses.invoiceStatus === 'APPROVED' ? (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 px-2 py-0.5 text-[10.5px] font-bold text-blue-700 dark:text-blue-300">
+                          Đã duyệt · Chờ gửi
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2 py-0.5 text-[10.5px] font-semibold text-slate-700 dark:text-slate-300">
+                          Hóa đơn nháp
+                        </span>
+                      )}
+
+                      {/* Badge cảnh báo nhập liệu (Chỉ hiện khi thiếu dữ liệu hoặc bất thường) */}
+                      {row.water.status === 'NEED_M3_INPUT' && (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-sky-50 dark:bg-sky-950/60 border border-sky-200 dark:border-sky-800 px-2 py-0.5 text-[10.5px] font-bold text-sky-700 dark:text-sky-300">
+                          <Droplets className="w-3 h-3 text-sky-600 dark:text-sky-400" />
+                          Thiếu số nước
+                        </span>
+                      )}
+                      {row.electric.status === 'MISSING_DATA' && (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 px-2 py-0.5 text-[10.5px] font-bold text-amber-700 dark:text-amber-300">
+                          <Zap className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                          Thiếu số điện
+                        </span>
+                      )}
+                      {row.statuses.dataStatus === 'ANOMALY' && (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 px-2 py-0.5 text-[10.5px] font-bold text-rose-700 dark:text-rose-300">
+                          <AlertCircle className="w-3 h-3 text-rose-600 dark:text-rose-400" />
+                          Bất thường
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Hàng 3: Chi tiết tiền (Tiền phòng, Tiền điện, Tiền nước hiển thị đúng số liệu) */}
+                    <div className="grid grid-cols-3 gap-1.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 p-2 text-[11px] border border-slate-100 dark:border-slate-800/80">
                       <div>
-                        <span className="text-slate-400 block text-[10px]">Tiền phòng</span>
-                        <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
-                          {formatVnd(row.totals.roomRentVnd)}
+                        <span className="text-slate-400 block text-[9.5px]">Tiền phòng</span>
+                        <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                          {formatVnd(rentAmount)}
                         </span>
                       </div>
                       <div>
-                        <span className="text-slate-400 block text-[10px]">Tiền điện</span>
-                        <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
-                          {row.electric.status === 'MISSING_DATA' ? 'Thiếu kWh' : formatVnd(row.totals.electricVnd)}
+                        <span className="text-slate-400 block text-[9.5px]">Tiền điện</span>
+                        <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                          {row.electric.status === 'MISSING_DATA'
+                            ? 'Chưa nhập'
+                            : formatVnd(electricAmount)}
                         </span>
                       </div>
                       <div>
-                        <span className="text-slate-400 block text-[10px]">Tiền nước</span>
-                        <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
-                          {row.water.status === 'NEED_M3_INPUT' ? 'Cần nhập m³' : formatVnd(row.totals.waterVnd)}
+                        <span className="text-slate-400 block text-[9.5px]">Tiền nước</span>
+                        <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                          {row.water.status === 'NEED_M3_INPUT'
+                            ? 'Cần nhập'
+                            : formatVnd(waterAmount)}
                         </span>
                       </div>
                     </div>
 
-                    {/* Mobile Compact Action Buttons (h-8 thin & balanced) */}
+                    {/* Hàng 4: Nút bấm hành động (Gọn gàng h-8) */}
                     <div className="flex items-center gap-2 pt-0.5">
                       {row.water.status === 'NEED_M3_INPUT' ? (
                         <button
                           type="button"
                           onClick={() => openQuickInput(row, 'WATER')}
-                          className="flex-1 h-8 rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white text-[11.5px] font-bold flex items-center justify-center gap-1.5"
+                          className="flex-1 h-8 rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white text-[11.5px] font-bold flex items-center justify-center gap-1.5 shadow-xs"
                         >
                           <Droplets className="w-3.5 h-3.5" /> Nhập m³ nước
                         </button>
@@ -2307,7 +2464,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                         <button
                           type="button"
                           onClick={() => openQuickInput(row, 'ELECTRIC')}
-                          className="flex-1 h-8 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[11.5px] font-bold flex items-center justify-center gap-1.5"
+                          className="flex-1 h-8 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[11.5px] font-bold flex items-center justify-center gap-1.5 shadow-xs"
                         >
                           <Zap className="w-3.5 h-3.5" /> Nhập chỉ số điện
                         </button>
@@ -2315,7 +2472,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                         <button
                           type="button"
                           onClick={() => void handleApproveObligations([row.obligationKey], 'APPROVE')}
-                          className="flex-1 h-8 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11.5px] font-bold flex items-center justify-center gap-1.5"
+                          className="flex-1 h-8 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11.5px] font-bold flex items-center justify-center gap-1.5 shadow-xs"
                         >
                           <ShieldCheck className="w-3.5 h-3.5" /> Phê duyệt
                         </button>
@@ -2323,7 +2480,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                         <button
                           type="button"
                           onClick={() => void handleIssueAndSend([row.obligationKey])}
-                          className="flex-1 h-8 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11.5px] font-bold flex items-center justify-center gap-1.5"
+                          className="flex-1 h-8 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11.5px] font-bold flex items-center justify-center gap-1.5 shadow-xs"
                         >
                           <Send className="w-3.5 h-3.5" /> Gửi hóa đơn
                         </button>
@@ -2331,7 +2488,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                         <button
                           type="button"
                           onClick={() => openDrawerForRow(row, 'PAYMENT')}
-                          className="flex-1 h-8 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11.5px] font-bold flex items-center justify-center gap-1.5"
+                          className="flex-1 h-8 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11.5px] font-bold flex items-center justify-center gap-1.5 shadow-xs"
                         >
                           <Banknote className="w-3.5 h-3.5" /> Thu tiền / Đối soát
                         </button>
@@ -2340,7 +2497,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                       <button
                         type="button"
                         onClick={() => openDrawerForRow(row, 'OVERVIEW')}
-                        className="h-8 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-[11.5px] font-bold text-slate-700 dark:text-slate-200 shrink-0"
+                        className="h-8 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-[11.5px] font-bold text-slate-700 dark:text-slate-200 shrink-0 hover:bg-slate-100 dark:hover:bg-slate-700"
                       >
                         Chi tiết
                       </button>
@@ -2349,14 +2506,10 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                 );
               }
 
-              // SHARED ROOM MOBILE CARD WITH COLLAPSIBLE MEMBER BREAKDOWN
+              // 3. PHÒNG Ở GHÉP (SHARED ROOM - Gom nhóm tinh gọn)
               const sharedGroupKeys = group.members.map((m) => m.obligationKey);
-              const sharedDataBadge =
-                group.aggregatedCounts.anomalyCount > 0
-                  ? getDataStatusBadge('ANOMALY')
-                  : group.aggregatedCounts.missingDataCount > 0
-                  ? getDataStatusBadge('MISSING_DATA')
-                  : getDataStatusBadge('COMPLETE');
+              const hasAnomaly = group.aggregatedCounts.anomalyCount > 0;
+              const hasMissingData = group.aggregatedCounts.missingDataCount > 0;
 
               return (
                 <Collapsible.Root
@@ -2366,6 +2519,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                   data-testid={`settlement-mobile-card-${group.room.code}`}
                   className="p-3.5 space-y-2.5 bg-white dark:bg-[#111827]"
                 >
+                  {/* Hàng 1: Mã phòng · Ở ghép & Tổng tiền phòng */}
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
@@ -2376,47 +2530,78 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                         >
                           {group.room.code}
                         </button>
-                        <span className="rounded bg-violet-100 dark:bg-violet-950/70 px-1.5 py-0.5 text-[10px] font-bold text-violet-700 dark:text-violet-300">
-                          Ở ghép · {group.totalMembersCount} TV
-                        </span>
-                        <span className="rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[10.5px] font-bold text-slate-600 dark:text-slate-300">
-                          {group.building.code}
+                        <span className="text-slate-300 dark:text-slate-600 font-bold">·</span>
+                        <span className="rounded-md bg-violet-100 dark:bg-violet-950/70 px-1.5 py-0.5 text-[10.5px] font-bold text-violet-700 dark:text-violet-300">
+                          Ở ghép ({group.totalMembersCount} TV)
                         </span>
                       </div>
-                      <div className="mt-0.5 text-xs font-semibold text-slate-900 dark:text-white truncate">
-                        {group.totalMembersCount} thành viên · Hóa đơn tách riêng
+                      <div className="mt-0.5 text-xs text-slate-500 truncate">
+                        Hóa đơn tách riêng từng thành viên
                       </div>
                     </div>
                     <div className="text-right shrink-0">
-                      <div className="font-mono text-sm font-extrabold text-slate-900 dark:text-white">
+                      <div className="font-mono text-sm font-black text-slate-900 dark:text-white">
                         {formatVnd(group.aggregatedTotals.totalPayableVnd)}
                       </div>
-                      <span className={`mt-0.5 inline-flex items-center gap-1 text-[10.5px] font-semibold ${sharedDataBadge.textClassName}`}>
-                        <span className={`h-1.5 w-1.5 rounded-full ${sharedDataBadge.dotClassName}`} />
-                        {sharedDataBadge.label}
-                      </span>
+                      {group.aggregatedTotals.remainingAmountVnd > 0 && group.aggregatedTotals.paidAmountVnd > 0 && (
+                        <div className="font-mono text-[10px] font-bold text-rose-600 dark:text-rose-400">
+                          Còn: {formatVnd(group.aggregatedTotals.remainingAmountVnd)}
+                        </div>
+                      )}
                     </div>
                   </div>
 
-                  {/* Aggregated Shared Room Breakdown */}
-                  <div className="grid grid-cols-3 gap-1.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 p-2 text-[11px]">
+                  {/* Hàng 2: Trạng thái gom phòng ở ghép */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {group.aggregatedTotals.remainingAmountVnd === 0 && group.aggregatedTotals.paidAmountVnd > 0 ? (
+                      <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 text-[10.5px] font-bold text-emerald-700 dark:text-emerald-300">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                        Cả phòng đã nộp đủ
+                      </span>
+                    ) : group.aggregatedTotals.paidAmountVnd > 0 ? (
+                      <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 px-2 py-0.5 text-[10.5px] font-bold text-amber-800 dark:text-amber-300">
+                        <Banknote className="w-3 h-3 text-amber-600" />
+                        Đã thu {formatVnd(group.aggregatedTotals.paidAmountVnd)}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2 py-0.5 text-[10.5px] font-semibold text-slate-700 dark:text-slate-300">
+                        Chưa thu tiền
+                      </span>
+                    )}
+
+                    {hasMissingData && (
+                      <span className="inline-flex items-center gap-1 rounded-md bg-sky-50 dark:bg-sky-950/60 border border-sky-200 dark:border-sky-800 px-2 py-0.5 text-[10.5px] font-bold text-sky-700 dark:text-sky-300">
+                        <Droplets className="w-3 h-3 text-sky-600" />
+                        Cần bổ sung số đo
+                      </span>
+                    )}
+                    {hasAnomaly && (
+                      <span className="inline-flex items-center gap-1 rounded-md bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 px-2 py-0.5 text-[10.5px] font-bold text-rose-700 dark:text-rose-300">
+                        <AlertCircle className="w-3 h-3 text-rose-600" />
+                        Bất thường
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Hàng 3: Chi tiết tổng hợp phòng ở ghép */}
+                  <div className="grid grid-cols-3 gap-1.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 p-2 text-[11px] border border-slate-100 dark:border-slate-800/80">
                     <div>
-                      <span className="text-slate-400 block text-[10px]">Tổng tiền phòng</span>
-                      <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
+                      <span className="text-slate-400 block text-[9.5px]">Tổng tiền phòng</span>
+                      <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
                         {formatVnd(group.aggregatedTotals.roomRentVnd)}
                       </span>
                     </div>
                     <div>
-                      <span className="text-slate-400 block text-[10px]">Điện chung</span>
-                      <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
+                      <span className="text-slate-400 block text-[9.5px]">Điện chung</span>
+                      <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
                         {row.electric.status === 'MISSING_DATA'
                           ? 'Thiếu kWh'
                           : formatVnd(group.aggregatedTotals.electricVnd)}
                       </span>
                     </div>
                     <div>
-                      <span className="text-slate-400 block text-[10px]">Nước chung</span>
-                      <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
+                      <span className="text-slate-400 block text-[9.5px]">Nước chung</span>
+                      <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
                         {row.water.status === 'NEED_M3_INPUT'
                           ? 'Thiếu m³'
                           : formatVnd(group.aggregatedTotals.waterVnd)}
@@ -2424,18 +2609,18 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                     </div>
                   </div>
 
-                  {/* Mobile Actions: Quick utility / Bulk room action + Member Expand Toggle */}
+                  {/* Hàng 4: Thao tác & Toggle xem chi tiết thành viên */}
                   <div className="flex items-center gap-2">
                     <Collapsible.Trigger
                       type="button"
                       data-testid={`btn-mobile-toggle-shared-${group.room.code}`}
-                      className="flex-1 h-8 rounded-lg border border-violet-200 dark:border-violet-800 bg-violet-50 hover:bg-violet-100 dark:bg-violet-950/50 text-violet-700 dark:text-violet-300 text-[11.5px] font-bold flex items-center justify-center gap-1.5 px-2.5"
+                      className="flex-1 h-8 rounded-lg border border-violet-200 dark:border-violet-800 bg-violet-50 hover:bg-violet-100 dark:bg-violet-950/50 text-violet-700 dark:text-violet-300 text-[11.5px] font-bold flex items-center justify-center gap-1.5 px-2.5 shadow-xs"
                     >
                       <Users className="w-3.5 h-3.5 shrink-0" />
                       <span>
                         {isExpanded
                           ? 'Thu gọn thành viên'
-                          : `Xem ${group.totalMembersCount} HĐ thành viên`}
+                          : `Xem ${group.totalMembersCount} thành viên`}
                       </span>
                       <ChevronDown
                         className={`w-3.5 h-3.5 shrink-0 transition-transform duration-200 ${
@@ -2447,7 +2632,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                       <button
                         type="button"
                         onClick={() => openQuickInput(row, 'WATER')}
-                        className="h-8 px-3 rounded-lg bg-cyan-600 text-white text-[11.5px] font-bold shrink-0"
+                        className="h-8 px-3 rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white text-[11.5px] font-bold shrink-0 shadow-xs"
                       >
                         Nhập m³
                       </button>
@@ -2455,27 +2640,20 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                       <button
                         type="button"
                         onClick={() => void handleIssueAndSend(sharedGroupKeys)}
-                        className="h-8 px-3 rounded-lg bg-blue-600 text-white text-[11.5px] font-bold shrink-0"
+                        className="h-8 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11.5px] font-bold shrink-0 shadow-xs"
                       >
                         Gửi cả phòng
                       </button>
                     ) : null}
                   </div>
 
-                  {/* Collapsible Mobile Member Breakdown List */}
+                  {/* Danh sách thành viên mở rộng */}
                   <Collapsible.Panel className="overflow-hidden">
-                    <div className="pt-1.5 space-y-2 border-t border-violet-100 dark:border-violet-900/50">
-                      <div className="text-[10.5px] font-medium text-violet-700 dark:text-violet-300">
-                        Tiền phòng gán riêng • Điện &amp; nước chia đều {group.totalMembersCount} thành viên:
-                      </div>
+                    <div className="pt-2 space-y-2 border-t border-violet-100 dark:border-violet-900/50">
                       {group.members.map((member, mIdx) => {
-                        const mInvBadge = getInvoiceStatusBadge(member.statuses.invoiceStatus);
-                        const mPayBadge = getPaymentStatusBadge(member.statuses.paymentStatus);
-                        const mExtras =
-                          member.totals.serviceFeeVnd +
-                          member.totals.extraChargeVnd +
-                          member.totals.adjustmentVnd -
-                          member.totals.discountVnd;
+                        const mRent = member.rent?.roomRentVnd || member.contract?.monthlyRentVnd || 0;
+                        const mElectric = member.electric?.electricVnd || 0;
+                        const mWater = member.water?.waterVnd || 0;
                         return (
                           <div
                             key={member.obligationKey}
@@ -2488,55 +2666,54 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                                   #{mIdx + 1} · {member.tenant.fullName}
                                 </div>
                                 <div className="font-mono text-[10px] text-slate-500 truncate">
-                                  {member.invoice?.code || member.contract.code}
+                                  {member.invoice?.code || member.contract?.code || '—'}
                                 </div>
                               </div>
                               <div className="text-right shrink-0">
                                 <div className="font-mono text-xs font-extrabold text-blue-700 dark:text-blue-400">
                                   {formatVnd(member.totals.totalPayableVnd)}
                                 </div>
-                                <div className="flex items-center justify-end gap-2 mt-0.5">
-                                  <span className={`inline-flex items-center gap-1 text-[10px] font-semibold ${mInvBadge.textClassName}`}>
-                                    <span className={`h-1.5 w-1.5 rounded-full ${mInvBadge.dotClassName}`} />
-                                    {mInvBadge.label}
-                                  </span>
-                                  <span className={`inline-flex items-center gap-1 text-[10px] font-semibold ${mPayBadge.textClassName}`}>
-                                    <span className={`h-1.5 w-1.5 rounded-full ${mPayBadge.dotClassName}`} />
-                                    {mPayBadge.label}
-                                  </span>
+                                <div className="mt-0.5">
+                                  {member.statuses.paymentStatus === 'PAID' ? (
+                                    <span className="inline-flex items-center gap-1 rounded bg-emerald-100 dark:bg-emerald-950 px-1.5 py-0.2 text-[9.5px] font-bold text-emerald-700 dark:text-emerald-300">
+                                      Đã thanh toán
+                                    </span>
+                                  ) : member.statuses.paymentStatus === 'PARTIAL' ? (
+                                    <span className="inline-flex items-center gap-1 rounded bg-amber-100 dark:bg-amber-950 px-1.5 py-0.2 text-[9.5px] font-bold text-amber-800 dark:text-amber-300">
+                                      Thu 1 phần
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 rounded bg-rose-100 dark:bg-rose-950 px-1.5 py-0.2 text-[9.5px] font-bold text-rose-700 dark:text-rose-300">
+                                      Chưa thanh toán
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                             </div>
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10.5px] bg-white/80 dark:bg-slate-900/60 rounded-lg p-2">
+                            <div className="grid grid-cols-3 gap-1.5 text-[10.5px] bg-white/80 dark:bg-slate-900/60 rounded-lg p-2 border border-violet-100 dark:border-violet-900/40">
                               <div>
-                                <span className="text-slate-400 block text-[10px]">Tiền phòng riêng</span>
-                                <span className="font-mono font-bold text-slate-800 dark:text-slate-200 whitespace-nowrap tabular-nums">
-                                  {formatVnd(member.totals.roomRentVnd)}
+                                <span className="text-slate-400 block text-[9.5px]">Tiền phòng riêng</span>
+                                <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                                  {formatVnd(mRent)}
                                 </span>
                               </div>
                               <div>
-                                <span className="text-slate-400 block text-[10px]">Điện (1/{group.totalMembersCount})</span>
-                                <span className="font-mono font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap tabular-nums">
-                                  {formatVnd(member.totals.electricVnd)}
+                                <span className="text-slate-400 block text-[9.5px]">Điện chia</span>
+                                <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                                  {formatVnd(mElectric)}
                                 </span>
                               </div>
                               <div>
-                                <span className="text-slate-400 block text-[10px]">Nước (1/{group.totalMembersCount})</span>
-                                <span className="font-mono font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap tabular-nums">
-                                  {formatVnd(member.totals.waterVnd)}
-                                </span>
-                              </div>
-                              <div>
-                                <span className="text-slate-400 block text-[10px]">DV &amp; Phí khác</span>
-                                <span className="font-mono font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap tabular-nums">
-                                  {formatVnd(mExtras)}
+                                <span className="text-slate-400 block text-[9.5px]">Nước chia</span>
+                                <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                                  {formatVnd(mWater)}
                                 </span>
                               </div>
                             </div>
                             <button
                               type="button"
                               onClick={() => openDrawerForRow(member, 'FEES')}
-                              className="w-full h-8 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[11px] font-bold text-slate-700 dark:text-slate-200"
+                              className="w-full h-7 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50"
                             >
                               Xem / Sửa hóa đơn thành viên
                             </button>
@@ -2715,7 +2892,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                       const r = quickInputModal.row!;
                       const ok = await handleSaveRoomInput({
                         roomId: r.room.id,
-                        contractId: r.contract.id,
+                        contractId: r.contract?.id || '',
                         periodKey: r.periodKey,
                         applyToRoomMembers:
                           Boolean(r.sharedRoomInfo?.isSharedRoom) || r.room.sharedContractCount > 1,
@@ -2856,6 +3033,208 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                 />
               </div>
             )}
+            </Dialog.Popup>
+          </Dialog.Viewport>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+      {/* =====================================================================
+          PHỄU LỌC MOBILE BOTTOM SHEET / MODAL
+         ===================================================================== */}
+      <Dialog.Root open={isMobileFilterOpen} onOpenChange={setIsMobileFilterOpen}>
+        <Dialog.Portal>
+          <Dialog.Backdrop className="fixed inset-0 z-50 bg-slate-950/50 backdrop-blur-[2px]" />
+          <Dialog.Viewport className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+            <Dialog.Popup
+              from="bottom"
+              data-testid="settlement-mobile-filter-modal"
+              className="relative w-full max-w-lg rounded-t-3xl sm:rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0F172A] p-5 shadow-2xl max-h-[85dvh] overflow-y-auto space-y-4 outline-none"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400">
+                    <Filter className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <Dialog.Title className="text-sm font-extrabold text-slate-900 dark:text-white">
+                      Phễu lọc quyết toán
+                    </Dialog.Title>
+                    <Dialog.Description className="text-[11px] text-slate-500">
+                      Tùy chỉnh tiêu chí hiển thị phòng &amp; hóa đơn
+                    </Dialog.Description>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  data-testid="btn-close-mobile-filter"
+                  onClick={() => setIsMobileFilterOpen(false)}
+                  className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Group 1: Trạng thái quyết toán & Hóa đơn */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Trạng thái quyết toán &amp; hóa đơn
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { id: 'ALL' as QuickFilterTabId, label: 'Tất cả', count: dynamicProgress.totalObligations },
+                    { id: 'MISSING_DATA' as QuickFilterTabId, label: 'Cần bổ sung', count: dynamicProgress.missingDataCount },
+                    { id: 'PENDING_APPROVAL' as QuickFilterTabId, label: 'Chờ duyệt', count: dynamicProgress.pendingApprovalCount },
+                    { id: 'READY_TO_SEND' as QuickFilterTabId, label: 'Sẵn sàng gửi', count: dynamicProgress.readyToSendCount },
+                    { id: 'SENT' as QuickFilterTabId, label: 'Đã gửi', count: dynamicProgress.sentCount },
+                    { id: 'UNPAID' as QuickFilterTabId, label: 'Chưa thanh toán', count: dynamicProgress.unpaidCount },
+                    { id: 'ANOMALY' as QuickFilterTabId, label: 'Bất thường', count: dynamicProgress.anomalyCount },
+                  ].map((tab) => {
+                    const active = quickTab === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        data-testid={`mobile-filter-status-${tab.id.toLowerCase()}`}
+                        onClick={() => {
+                          setQuickTab(tab.id);
+                          setCurrentPage(1);
+                        }}
+                        className={`flex items-center justify-between rounded-xl px-3 py-2 text-xs font-bold transition-all text-left border ${
+                          active
+                            ? 'border-blue-600 bg-blue-50 text-blue-700 dark:border-blue-500 dark:bg-blue-950/70 dark:text-blue-300 shadow-xs'
+                            : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 hover:border-slate-300'
+                        }`}
+                      >
+                        <span className="truncate">{tab.label}</span>
+                        <span
+                          className={`ml-1.5 shrink-0 rounded-full px-1.5 py-0.5 font-mono text-[10px] ${
+                            active
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                          }`}
+                        >
+                          {tab.count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Group 2: Phương thức tính nước */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Phương thức tính nước
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { id: 'ALL', label: 'Tất cả cách tính' },
+                    { id: 'PER_M3', label: 'Theo khối m³' },
+                    { id: 'PER_PERSON', label: 'Theo đầu người' },
+                    { id: 'FIXED_PER_ROOM', label: 'Khoán phòng' },
+                  ].map((item) => {
+                    const active = waterModeFilter === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        data-testid={`mobile-filter-water-${item.id.toLowerCase()}`}
+                        onClick={() => {
+                          setWaterModeFilter(item.id);
+                          setCurrentPage(1);
+                        }}
+                        className={`flex items-center justify-between rounded-xl px-3 py-2 text-xs font-bold transition-all text-left border ${
+                          active
+                            ? 'border-sky-600 bg-sky-50 text-sky-700 dark:border-sky-500 dark:bg-sky-950/70 dark:text-sky-300 shadow-xs'
+                            : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 hover:border-slate-300'
+                        }`}
+                      >
+                        <span className="truncate">{item.label}</span>
+                        {active && <CheckCircle2 className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400 shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Group 3: Tòa nhà */}
+              {availableBuildings.length > 1 && (
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Tòa nhà phát sinh
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      data-testid="mobile-filter-building-all"
+                      onClick={() => {
+                        setBuildingFilter('ALL');
+                        setCurrentPage(1);
+                      }}
+                      className={`flex items-center justify-between rounded-xl px-3 py-2 text-xs font-bold transition-all text-left border ${
+                        buildingFilter === 'ALL'
+                          ? 'border-amber-600 bg-amber-50 text-amber-800 dark:border-amber-500 dark:bg-amber-950/70 dark:text-amber-300 shadow-xs'
+                          : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 hover:border-slate-300'
+                      }`}
+                    >
+                      <span className="truncate">Mọi tòa ({availableBuildings.length})</span>
+                      {buildingFilter === 'ALL' && (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                      )}
+                    </button>
+                    {availableBuildings.map((b) => {
+                      const active = buildingFilter === b.id;
+                      return (
+                        <button
+                          key={b.id}
+                          type="button"
+                          data-testid={`mobile-filter-building-${b.id}`}
+                          onClick={() => {
+                            setBuildingFilter(b.id);
+                            setCurrentPage(1);
+                          }}
+                          className={`flex items-center justify-between rounded-xl px-3 py-2 text-xs font-bold transition-all text-left border ${
+                            active
+                              ? 'border-amber-600 bg-amber-50 text-amber-800 dark:border-amber-500 dark:bg-amber-950/70 dark:text-amber-300 shadow-xs'
+                              : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 hover:border-slate-300'
+                          }`}
+                        >
+                          <span className="truncate">{b.code}</span>
+                          {active && (
+                            <CheckCircle2 className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  data-testid="btn-reset-mobile-filter"
+                  onClick={() => {
+                    setQuickTab('ALL');
+                    setWaterModeFilter('ALL');
+                    setBuildingFilter('ALL');
+                    setCurrentPage(1);
+                  }}
+                  className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 py-2.5 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  Thiết lập lại
+                </button>
+                <button
+                  type="button"
+                  data-testid="btn-apply-mobile-filter"
+                  onClick={() => setIsMobileFilterOpen(false)}
+                  className="flex-1 rounded-xl bg-blue-600 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-blue-700"
+                >
+                  Áp dụng ({filteredRows.length} phòng)
+                </button>
+              </div>
             </Dialog.Popup>
           </Dialog.Viewport>
         </Dialog.Portal>

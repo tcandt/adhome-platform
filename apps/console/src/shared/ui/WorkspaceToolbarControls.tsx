@@ -3,6 +3,7 @@ import { Popover } from '@animate-ui/react/primitives/base-ui/popover';
 import { Button } from '@animate-ui/react/primitives/buttons/button';
 import {
   Calendar,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Filter,
@@ -15,6 +16,7 @@ import {
 import {
   formatPeriodDisplay,
   getCurrentVnPeriodKey,
+  shiftPeriodKey as defaultShiftPeriodKey,
 } from '@/app/navigation/navigationConfig';
 
 /**
@@ -44,7 +46,7 @@ export function useResponsiveViewMode(): [
 export interface CompactPeriodStepperProps {
   selectedPeriod: string;
   onChangePeriod: (nextPeriod: string) => void;
-  shiftPeriodKey: (period: string, deltaMonths: number) => string;
+  shiftPeriodKey?: (period: string, deltaMonths: number) => string;
   testIdPrefix?: string;
   className?: string;
   fullWidth?: boolean;
@@ -54,7 +56,7 @@ export interface CompactPeriodStepperProps {
 export const CompactPeriodStepper: React.FC<CompactPeriodStepperProps> = ({
   selectedPeriod,
   onChangePeriod,
-  shiftPeriodKey,
+  shiftPeriodKey = defaultShiftPeriodKey,
   testIdPrefix = 'module',
   className = '',
   fullWidth = true,
@@ -64,7 +66,7 @@ export const CompactPeriodStepper: React.FC<CompactPeriodStepperProps> = ({
     <div className={`flex items-center gap-1.5 ${fullWidth ? 'flex-1 min-w-0' : ''} ${className}`}>
       <div
         data-testid={`${testIdPrefix}-period-selector`}
-        className={`flex h-9 items-center justify-between gap-1 rounded-xl bg-slate-100/90 p-1 dark:bg-slate-800/90 ${
+        className={`flex h-9 items-center justify-between gap-0.5 rounded-xl border border-slate-200/80 bg-slate-100/80 p-0.5 dark:border-slate-700/80 dark:bg-slate-800/80 shadow-2xs ${
           fullWidth ? 'flex-1 min-w-0' : 'inline-flex'
         }`}
       >
@@ -73,20 +75,19 @@ export const CompactPeriodStepper: React.FC<CompactPeriodStepperProps> = ({
           data-testid={`btn-${testIdPrefix}-period-prev`}
           aria-label="Kỳ trước"
           onClick={() => onChangePeriod(shiftPeriodKey(selectedPeriod, -1))}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-white hover:text-slate-900 dark:hover:bg-slate-700 dark:hover:text-white shadow-xs"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-white hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-white active:scale-95 shadow-2xs"
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
-        <label className="relative flex flex-1 min-w-0 cursor-pointer items-center justify-center gap-1.5 px-2 text-xs font-bold text-slate-800 dark:text-slate-100">
-          <Calendar className="h-4 w-4 shrink-0 text-brand-primary" />
-          <span className="sm:hidden truncate">
+        <label className="relative flex flex-1 min-w-0 cursor-pointer items-center justify-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-800 transition-colors hover:bg-white/80 dark:text-slate-100 dark:hover:bg-slate-700/70">
+          <Calendar className="h-3.5 w-3.5 shrink-0 text-brand-primary" />
+          <span className="truncate">
             Tháng {selectedPeriod.slice(5, 7)}/{selectedPeriod.slice(0, 4)}
           </span>
-          <span className="hidden sm:inline truncate">
-            Kỳ {formatPeriodDisplay(selectedPeriod)}
-          </span>
+          <ChevronDown className="h-3 w-3 shrink-0 text-slate-400 dark:text-slate-500" />
           <input
             data-testid={`input-${testIdPrefix}-period`}
+            aria-label="Kỳ tài chính"
             type="month"
             value={selectedPeriod}
             onChange={(e) => {
@@ -94,7 +95,7 @@ export const CompactPeriodStepper: React.FC<CompactPeriodStepperProps> = ({
                 onChangePeriod(e.target.value);
               }
             }}
-            className="sr-only"
+            className="absolute inset-0 h-full w-full cursor-pointer opacity-0 z-10 [color-scheme:light] dark:[color-scheme:dark]"
           />
         </label>
         <button
@@ -102,7 +103,7 @@ export const CompactPeriodStepper: React.FC<CompactPeriodStepperProps> = ({
           data-testid={`btn-${testIdPrefix}-period-next`}
           aria-label="Kỳ sau"
           onClick={() => onChangePeriod(shiftPeriodKey(selectedPeriod, 1))}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-white hover:text-slate-900 dark:hover:bg-slate-700 dark:hover:text-white shadow-xs"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-white hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-white active:scale-95 shadow-2xs"
         >
           <ChevronRight className="h-4 w-4" />
         </button>
@@ -112,7 +113,7 @@ export const CompactPeriodStepper: React.FC<CompactPeriodStepperProps> = ({
         <button
           type="button"
           onClick={() => onChangePeriod(currentPeriod)}
-          className="hidden md:inline-flex h-9 items-center rounded-xl bg-blue-50 px-2.5 text-[11px] font-semibold text-blue-600 transition-colors hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-400 whitespace-nowrap shrink-0"
+          className="hidden md:inline-flex h-9 items-center rounded-xl bg-blue-50 px-2.5 text-[11px] font-semibold text-blue-600 transition-colors hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-400 whitespace-nowrap shrink-0 shadow-2xs"
         >
           Kỳ này
         </button>

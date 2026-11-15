@@ -44,6 +44,9 @@ export interface SettlementRow {
   periodDisplayRange: string;
   isPeriodLocked: boolean;
   isFrozenSnapshot: boolean;
+  isVacant?: boolean;
+  hasActiveContract?: boolean;
+  cronSkip?: boolean;
   room: {
     id: string;
     code: string;
@@ -71,7 +74,10 @@ export interface SettlementRow {
     endDate: string;
     occupantCount: number;
     monthlyRentVnd: number;
-  };
+    billingCycle?: string;
+    cycleMonths?: number;
+    isCycleDueInPeriod?: boolean;
+  } | null;
   rent: {
     roomRentVnd: number;
     baseMonthlyRentVnd: number;
@@ -264,7 +270,7 @@ export function groupSettlementRowsByRoom(rows: SettlementRow[]): SettlementRoom
       const idxA = a.sharedRoomInfo?.memberIndex ?? 1;
       const idxB = b.sharedRoomInfo?.memberIndex ?? 1;
       if (idxA !== idxB) return idxA - idxB;
-      return a.contract.code.localeCompare(b.contract.code, 'vi');
+      return (a.contract?.code || '').localeCompare(b.contract?.code || '', 'vi');
     });
     const primaryRow = members[0];
     const isSharedRoom = Boolean(
@@ -276,9 +282,15 @@ export function groupSettlementRowsByRoom(rows: SettlementRow[]): SettlementRoom
 
     const aggregatedTotals = members.reduce(
       (acc, m) => ({
-        roomRentVnd: acc.roomRentVnd + Number(m.totals.roomRentVnd || 0),
-        electricVnd: acc.electricVnd + Number(m.totals.electricVnd || 0),
-        waterVnd: acc.waterVnd + Number(m.totals.waterVnd || 0),
+        roomRentVnd:
+          acc.roomRentVnd +
+          Number(m.totals.roomRentVnd ?? m.rent?.roomRentVnd ?? m.contract?.monthlyRentVnd ?? 0),
+        electricVnd:
+          acc.electricVnd +
+          Number(m.totals.electricVnd ?? m.electric?.electricVnd ?? 0),
+        waterVnd:
+          acc.waterVnd +
+          Number(m.totals.waterVnd ?? m.water?.waterVnd ?? 0),
         serviceFeeVnd: acc.serviceFeeVnd + Number(m.totals.serviceFeeVnd || 0),
         extraChargeVnd: acc.extraChargeVnd + Number(m.totals.extraChargeVnd || 0),
         discountVnd: acc.discountVnd + Number(m.totals.discountVnd || 0),
@@ -703,7 +715,7 @@ export function exportSettlementCsv(rows: SettlementRow[], periodKey: string) {
     r.building.code,
     r.tenant.fullName,
     r.tenant.phone,
-    r.contract.code,
+    r.contract?.code || '',
     r.periodKey,
     r.totals.roomRentVnd,
     r.electric.consumptionKwh ?? '',

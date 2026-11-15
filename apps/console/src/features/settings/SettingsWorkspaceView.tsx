@@ -5,9 +5,11 @@ import {
   BellRing,
   Building2,
   CheckCircle2,
+  CheckSquare,
   Clock,
   Droplets,
   KeyRound,
+  LayoutGrid,
   Loader2,
   Lock,
   Mail,
@@ -15,9 +17,12 @@ import {
   Pencil,
   Phone,
   RefreshCw,
+  RotateCcw,
   Save,
   ShieldCheck,
   Sliders,
+  Square,
+  Table,
   X,
   Zap,
 } from 'lucide-react';
@@ -36,6 +41,7 @@ import { SettingsButton } from '@/shared/ui/SettingsButton';
 import { NumberInput } from '@/shared/ui/NumberInput';
 import { HunonicSettingsModal } from '@/features/modules/modals/HunonicSettingsModal';
 import { VersionHistory } from './VersionHistory';
+import { ActionMenu } from '@/shared/ui/ActionMenu';
 
 interface IntegrationRow {
   id: string;
@@ -171,13 +177,16 @@ export const SettingsWorkspaceView: React.FC = () => {
   };
 
   // Tariffs form
-  const [defaultElectricRateVnd, setDefaultElectricRateVnd] = useState<number | null>(3800);
-  const [defaultWaterMethod, setDefaultWaterMethod] = useState('PER_M3');
-  const [defaultWaterRateVnd, setDefaultWaterRateVnd] = useState<number | null>(15000);
+  const [defaultElectricRateVnd, setDefaultElectricRateVnd] = useState<number | null>(0);
+  const [defaultWaterMethod, setDefaultWaterMethod] = useState('PER_PERSON');
+  const [defaultWaterRateVnd, setDefaultWaterRateVnd] = useState<number | null>(100000);
   const [defaultDepositMonths, setDefaultDepositMonths] = useState(1);
-  const [buildingTariffs, setBuildingTariffs] = useState<BuildingTariffRow[]>(
-    []
-  );
+  const [buildingTariffs, setBuildingTariffs] = useState<BuildingTariffRow[]>([]);
+  const [tariffViewMode, setTariffViewMode] = useState<'card' | 'table'>('table');
+  const [selectedBuildingIds, setSelectedBuildingIds] = useState<string[]>([]);
+  const [bulkElectricRateVnd, setBulkElectricRateVnd] = useState<number | null>(null);
+  const [bulkWaterMethod, setBulkWaterMethod] = useState<string>('');
+  const [bulkWaterRateVnd, setBulkWaterRateVnd] = useState<number | null>(null);
 
   // Integrations, Notification Channels, Cron & Audits
   const [integrations, setIntegrations] = useState<IntegrationRow[]>([]);
@@ -223,11 +232,15 @@ export const SettingsWorkspaceView: React.FC = () => {
         setOrgEmail(data.organization.contactEmail || '');
         setOrgAddress(data.organization.addressSummary || '');
         setDefaultElectricRateVnd(
-          Number(data.organization.defaultElectricRateVnd ?? 3800)
+          data.organization.defaultElectricRateVnd !== null && data.organization.defaultElectricRateVnd !== undefined
+            ? Number(data.organization.defaultElectricRateVnd)
+            : 0
         );
-        setDefaultWaterMethod(data.organization.defaultWaterMethod || 'PER_M3');
+        setDefaultWaterMethod(data.organization.defaultWaterMethod || 'PER_PERSON');
         setDefaultWaterRateVnd(
-          Number(data.organization.defaultWaterRateVnd ?? 15000)
+          data.organization.defaultWaterRateVnd !== null && data.organization.defaultWaterRateVnd !== undefined
+            ? Number(data.organization.defaultWaterRateVnd)
+            : 100000
         );
         setDefaultDepositMonths(
           Number(data.organization.defaultDepositMonths ?? 1)
@@ -449,79 +462,78 @@ export const SettingsWorkspaceView: React.FC = () => {
         <>
           {/* TAB 1: ORGANIZATION & LEGAL INFO */}
           {settingsTab === 'organization' && (
-            <div className="max-w-3xl">
-              <div className="p-5 sm:p-6 bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800 rounded-2xl shadow-sm space-y-5">
-                {/* Header */}
-                <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800/80 gap-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-brand-primary dark:bg-blue-950/50 dark:text-blue-400">
-                      <Building2 className="h-5 w-5" />
-                    </div>
-                    <div className="min-w-0">
-                      <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white leading-tight">
-                        Thông tin pháp nhân &amp; Liên hệ vận hành
-                      </h3>
-                      <p className="text-[11.5px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
-                        Thông tin hiển thị trên hợp đồng, hóa đơn và thông báo vận hành
-                      </p>
-                    </div>
+            <div className="max-w-2xl">
+              <div className="p-5 sm:p-6 bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800 rounded-2xl shadow-sm space-y-4">
+                {/* Header matching modal style */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-base font-semibold text-slate-900 dark:text-white">
+                      Thông tin pháp nhân &amp; Liên hệ vận hành
+                    </h3>
+                    <p className="mt-0.5 break-words text-sm text-slate-500 dark:text-slate-400">
+                      Thông tin tổ chức hiển thị trên hợp đồng, hóa đơn và thông báo vận hành
+                    </p>
                   </div>
-
-                  {canManageSettings && !isEditingOrg && (
-                    <button
-                      type="button"
-                      data-testid="btn-edit-org-settings"
-                      onClick={handleStartEditOrg}
-                      className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 transition-colors shrink-0"
-                      title="Chỉnh sửa thông tin tổ chức"
-                    >
-                      <Pencil className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" />
-                      <span>Chỉnh sửa</span>
-                    </button>
-                  )}
                 </div>
 
                 {!isEditingOrg ? (
-                  /* Read-only compact specification view */
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="sm:col-span-2 rounded-xl bg-slate-50/70 dark:bg-slate-800/40 p-3.5 border border-slate-100 dark:border-slate-800/60">
-                      <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                        Tên tổ chức / Thương hiệu vận hành
+                  /* Read-only specification view formatted like BuildingInfoDialog (Ảnh 2) */
+                  <div className="space-y-4">
+                    {/* Primary Organization Box */}
+                    <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-xl bg-slate-50 p-3.5 sm:p-4 dark:bg-slate-800/60">
+                      <div className="col-span-2 min-w-0">
+                        <dt className="text-xs text-slate-500 dark:text-slate-400">
+                          Tên tổ chức / Thương hiệu vận hành
+                        </dt>
+                        <dd className="mt-0.5 break-words text-sm font-semibold text-slate-900 dark:text-white">
+                          {orgName || <span className="italic text-slate-400 font-normal">Chưa thiết lập</span>}
+                        </dd>
                       </div>
-                      <div className="mt-1 text-sm sm:text-base font-bold text-slate-900 dark:text-white">
-                        {orgName || <span className="italic text-slate-400 font-normal">Chưa thiết lập</span>}
+                      <div className="col-span-2 min-w-0">
+                        <dt className="text-xs text-slate-500 dark:text-slate-400">
+                          Địa chỉ văn phòng đại diện
+                        </dt>
+                        <dd className="mt-0.5 break-words text-sm leading-5 font-semibold text-slate-800 dark:text-slate-200">
+                          {orgAddress || <span className="italic text-slate-400 font-normal">Chưa thiết lập</span>}
+                        </dd>
                       </div>
-                    </div>
+                    </dl>
 
-                    <div className="rounded-xl bg-slate-50/70 dark:bg-slate-800/40 p-3.5 border border-slate-100 dark:border-slate-800/60 flex flex-col justify-between">
-                      <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                        <Phone className="h-3 w-3 text-slate-400" />
-                        <span>Hotline tổng đài</span>
-                      </div>
-                      <div className="mt-1 font-mono text-sm font-bold text-slate-800 dark:text-slate-200">
-                        {orgHotline || <span className="italic text-slate-400 font-normal">Chưa thiết lập</span>}
-                      </div>
-                    </div>
+                    {/* Operational Contacts Section */}
+                    <section className="border-t border-slate-200/80 pt-3.5 dark:border-slate-700">
+                      <h4 className="mb-2.5 text-sm font-semibold text-slate-900 dark:text-white">
+                        Liên hệ vận hành
+                      </h4>
+                      <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
+                        <div className="min-w-0">
+                          <dt className="text-xs text-slate-500 dark:text-slate-400">Hotline tổng đài</dt>
+                          <dd className="mt-0.5 font-mono text-sm font-semibold text-slate-800 dark:text-slate-200">
+                            {orgHotline || <span className="italic text-slate-400 font-normal">Chưa thiết lập</span>}
+                          </dd>
+                        </div>
+                        <div className="min-w-0">
+                          <dt className="text-xs text-slate-500 dark:text-slate-400">Email liên hệ chính thức</dt>
+                          <dd className="mt-0.5 break-words text-sm font-medium text-slate-800 dark:text-slate-200" title={orgEmail}>
+                            {orgEmail || <span className="italic text-slate-400 font-normal">Chưa thiết lập</span>}
+                          </dd>
+                        </div>
+                      </dl>
+                    </section>
 
-                    <div className="rounded-xl bg-slate-50/70 dark:bg-slate-800/40 p-3.5 border border-slate-100 dark:border-slate-800/60 flex flex-col justify-between">
-                      <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                        <Mail className="h-3 w-3 text-slate-400" />
-                        <span>Email liên hệ chính thức</span>
+                    {/* Button Chỉnh sửa -> Chuyển về bên dưới card */}
+                    {canManageSettings && (
+                      <div className="border-t border-slate-200/80 pt-3.5 dark:border-slate-800 flex justify-end">
+                        <button
+                          type="button"
+                          data-testid="btn-edit-org-settings"
+                          onClick={handleStartEditOrg}
+                          className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 transition-colors"
+                        >
+                          <Pencil className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" />
+                          <span>Chỉnh sửa</span>
+                        </button>
                       </div>
-                      <div className="mt-1 text-sm font-medium text-slate-800 dark:text-slate-200 truncate" title={orgEmail}>
-                        {orgEmail || <span className="italic text-slate-400 font-normal">Chưa thiết lập</span>}
-                      </div>
-                    </div>
-
-                    <div className="sm:col-span-2 rounded-xl bg-slate-50/70 dark:bg-slate-800/40 p-3.5 border border-slate-100 dark:border-slate-800/60">
-                      <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                        <MapPin className="h-3 w-3 text-slate-400" />
-                        <span>Địa chỉ văn phòng đại diện</span>
-                      </div>
-                      <div className="mt-1 text-sm font-medium text-slate-800 dark:text-slate-200">
-                        {orgAddress || <span className="italic text-slate-400 font-normal">Chưa thiết lập</span>}
-                      </div>
-                    </div>
+                    )}
                   </div>
                 ) : (
                   /* Edit form */
@@ -643,28 +655,28 @@ export const SettingsWorkspaceView: React.FC = () => {
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold mb-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
+                <div className="flex flex-col justify-end space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 min-h-[36px] flex items-end pb-0.5">
                     Đơn giá điện mặc định (VND/kWh)
                   </label>
                   <VndAmountInput
                     data-testid="input-default-electric-rate"
                     value={defaultElectricRateVnd}
                     onChange={setDefaultElectricRateVnd}
-                    className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold"
+                    className="w-full h-10 text-xs px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold"
                   />
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold mb-1">
+                <div className="flex flex-col justify-end space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 min-h-[36px] flex items-end pb-0.5">
                     Phương thức tính nước mặc định
                   </label>
                   <select
                     data-testid="select-default-water-method"
                     value={defaultWaterMethod}
                     onChange={(e) => setDefaultWaterMethod(e.target.value)}
-                    className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-semibold"
+                    className="w-full h-10 text-xs px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-semibold"
                   >
                     <option value="PER_M3">
                       1. Theo đồng hồ đo (VND / m³)
@@ -678,20 +690,20 @@ export const SettingsWorkspaceView: React.FC = () => {
                   </select>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold mb-1">
+                <div className="flex flex-col justify-end space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 min-h-[36px] flex items-end pb-0.5">
                     Đơn giá nước mặc định (VND)
                   </label>
                   <VndAmountInput
                     data-testid="input-default-water-rate"
                     value={defaultWaterRateVnd}
                     onChange={setDefaultWaterRateVnd}
-                    className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold"
+                    className="w-full h-10 text-xs px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold"
                   />
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold mb-1">
+                <div className="flex flex-col justify-end space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 min-h-[36px] flex items-end pb-0.5">
                     Số tháng đặt cọc mặc định
                   </label>
                   <NumberInput
@@ -699,72 +711,475 @@ export const SettingsWorkspaceView: React.FC = () => {
                     max={12}
                     value={defaultDepositMonths}
                     onValueChange={value => setDefaultDepositMonths(Math.trunc(value))}
-                    className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold"
+                    className="w-full h-10 text-xs px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold"
                   />
                 </div>
               </div>
 
-              <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-3">
-                <h4 className="text-xs font-bold text-slate-700 dark:text-slate-200">
-                  Giá riêng theo tòa nhà · Để trống để kế thừa
-                </h4>
-                <div className="space-y-2">
-                  {buildingTariffs.map((b, idx) => (
-                    <div
-                      key={b.id}
-                      className="grid grid-cols-1 md:grid-cols-4 gap-2.5 items-center p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/70 dark:border-slate-700/70 text-xs"
-                    >
-                      <div className="font-bold text-slate-900 dark:text-white">
-                        {b.code} — {b.name}
-                      </div>
-                      <VndAmountInput
-                        aria-label={`Giá điện ${b.name}`}
-                        placeholder={`Điện · ${(defaultElectricRateVnd ?? 0).toLocaleString('vi-VN')} đ`}
-                        value={b.electricRateVnd}
-                        onChange={(val) => {
-                          setBuildingTariffs((prev) =>
-                            prev.map((row, i) =>
-                              i === idx ? { ...row, electricRateVnd: val } : row
-                            )
-                          );
-                        }}
-                        className="px-2.5 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"
-                      />
-                      <select
-                        value={b.waterBillingMethod || ''}
-                        onChange={(e) => {
-                          const val = e.target.value || null;
-                          setBuildingTariffs((prev) =>
-                            prev.map((row, i) =>
-                              i === idx
-                                ? { ...row, waterBillingMethod: val }
-                                : row
-                            )
-                          );
-                        }}
-                        className="px-2.5 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"
+              <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-3">
+                {/* Header with Title and View Mode Toggle */}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                      <span>Giá riêng theo tòa nhà ({buildingTariffs.length} tòa)</span>
+                      <span className="text-[11px] font-normal text-slate-500">· Để trống để kế thừa giá mặc định</span>
+                    </h4>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {/* View mode toggle: Table / Card */}
+                    <div className="flex items-center rounded-xl border border-slate-200 dark:border-slate-700 p-0.5 bg-slate-50 dark:bg-slate-800">
+                      <button
+                        type="button"
+                        data-testid="toggle-tariff-view-table"
+                        onClick={() => setTariffViewMode('table')}
+                        className={`p-1.5 rounded-lg text-xs transition-colors ${
+                          tariffViewMode === 'table'
+                            ? 'bg-white dark:bg-slate-900 text-brand-primary shadow-xs font-bold'
+                            : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                        }`}
+                        title="Dạng bảng (Table view)"
                       >
-                        <option value="">Kế thừa phương thức nước</option>
-                        <option value="PER_M3">Theo đồng hồ (m³)</option>
-                        <option value="PER_PERSON">Theo đầu người</option>
-                        <option value="FIXED_PER_ROOM">Khoán cố định</option>
-                      </select>
-                      <VndAmountInput
-                        aria-label={`Giá nước ${b.name}`}
-                        placeholder={`Nước · ${(defaultWaterRateVnd ?? 0).toLocaleString('vi-VN')} đ`}
-                        value={b.waterRateVnd}
-                        onChange={(val) => {
+                        <Table className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="toggle-tariff-view-card"
+                        onClick={() => setTariffViewMode('card')}
+                        className={`p-1.5 rounded-lg text-xs transition-colors ${
+                          tariffViewMode === 'card'
+                            ? 'bg-white dark:bg-slate-900 text-brand-primary shadow-xs font-bold'
+                            : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                        }`}
+                        title="Dạng thẻ (Card view)"
+                      >
+                        <LayoutGrid className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bulk Setting Toolbar (when 1 or more buildings are selected) */}
+                {selectedBuildingIds.length > 0 && (
+                  <div className="p-3.5 rounded-2xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/60 space-y-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-xs font-bold text-blue-900 dark:text-blue-200">
+                        Đang chọn {selectedBuildingIds.length}/{buildingTariffs.length} tòa nhà để thiết lập hàng loạt:
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedBuildingIds([])}
+                        className="text-xs font-medium text-blue-700 hover:underline dark:text-blue-300"
+                      >
+                        Bỏ chọn tất cả
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 items-end">
+                      <div className="flex flex-col justify-end space-y-1">
+                        <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 min-h-[28px] flex items-end pb-0.5">
+                          Đơn giá điện áp dụng (VND/kWh)
+                        </label>
+                        <VndAmountInput
+                          placeholder={`Mặc định: ${(defaultElectricRateVnd ?? 0).toLocaleString('vi-VN')} đ`}
+                          value={bulkElectricRateVnd}
+                          onChange={setBulkElectricRateVnd}
+                          className="w-full h-9 px-2.5 py-1.5 text-xs rounded-xl bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 font-bold"
+                        />
+                      </div>
+                      <div className="flex flex-col justify-end space-y-1">
+                        <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 min-h-[28px] flex items-end pb-0.5">
+                          Phương thức tính nước áp dụng
+                        </label>
+                        <select
+                          value={bulkWaterMethod}
+                          onChange={(e) => setBulkWaterMethod(e.target.value)}
+                          className="w-full h-9 px-2.5 py-1.5 text-xs rounded-xl bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 font-semibold"
+                        >
+                          <option value="">-- Giữ nguyên phương thức --</option>
+                          <option value="PER_M3">1. Theo đồng hồ (m³)</option>
+                          <option value="PER_PERSON">2. Theo đầu người</option>
+                          <option value="FIXED_PER_ROOM">3. Khoán cố định phòng</option>
+                        </select>
+                      </div>
+                      <div className="flex flex-col justify-end space-y-1">
+                        <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 min-h-[28px] flex items-end pb-0.5">
+                          Đơn giá nước áp dụng (VND)
+                        </label>
+                        <VndAmountInput
+                          placeholder={`Mặc định: ${(defaultWaterRateVnd ?? 0).toLocaleString('vi-VN')} đ`}
+                          value={bulkWaterRateVnd}
+                          onChange={setBulkWaterRateVnd}
+                          className="w-full h-9 px-2.5 py-1.5 text-xs rounded-xl bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 font-bold"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
                           setBuildingTariffs((prev) =>
-                            prev.map((row, i) =>
-                              i === idx ? { ...row, waterRateVnd: val } : row
+                            prev.map((b) =>
+                              selectedBuildingIds.includes(b.id)
+                                ? { ...b, electricRateVnd: null, waterBillingMethod: null, waterRateVnd: null }
+                                : b
                             )
                           );
+                          notifySave(true, 'Đã đặt lại về mặc định', `Đã xóa giá riêng cho ${selectedBuildingIds.length} tòa.`);
                         }}
-                        className="px-2.5 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"
-                      />
+                        className="px-3 py-1.5 text-xs font-semibold rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 transition-colors"
+                      >
+                        Kế thừa mặc định tổ chức ({selectedBuildingIds.length} tòa)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBuildingTariffs((prev) =>
+                            prev.map((b) => {
+                              if (!selectedBuildingIds.includes(b.id)) return b;
+                              return {
+                                ...b,
+                                ...(bulkElectricRateVnd !== null ? { electricRateVnd: bulkElectricRateVnd } : {}),
+                                ...(bulkWaterMethod ? { waterBillingMethod: bulkWaterMethod } : {}),
+                                ...(bulkWaterRateVnd !== null ? { waterRateVnd: bulkWaterRateVnd } : {}),
+                              };
+                            })
+                          );
+                          notifySave(true, 'Đã áp dụng biểu giá', `Đã áp dụng cho ${selectedBuildingIds.length} tòa nhà đã chọn.`);
+                        }}
+                        className="px-3.5 py-1.5 text-xs font-bold rounded-xl bg-brand-primary text-white hover:bg-brand-hover shadow-xs transition-colors"
+                      >
+                        Áp dụng cho {selectedBuildingIds.length} tòa đã chọn
+                      </button>
                     </div>
-                  ))}
-                </div>
+                  </div>
+                )}
+
+                {/* TABLE VIEW */}
+                {tariffViewMode === 'table' ? (
+                  <div className="overflow-x-auto rounded-xl border border-slate-200/80 dark:border-slate-700">
+                    <table className="w-full text-left text-xs min-w-[720px]">
+                      <thead>
+                        <tr className="border-b border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/60 text-slate-500 font-semibold">
+                          <th className="py-2.5 px-3 w-10 text-center">
+                            <input
+                              type="checkbox"
+                              data-testid="checkbox-select-all-tariffs"
+                              aria-label="Chọn tất cả tòa nhà"
+                              checked={buildingTariffs.length > 0 && selectedBuildingIds.length === buildingTariffs.length}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedBuildingIds(buildingTariffs.map((b) => b.id));
+                                } else {
+                                  setSelectedBuildingIds([]);
+                                }
+                              }}
+                              className="rounded border-slate-300 text-brand-primary focus:ring-brand-primary"
+                            />
+                          </th>
+                          <th className="py-2.5 px-3 min-w-[140px]">Tòa nhà</th>
+                          <th className="py-2.5 px-3 min-w-[150px]">Đơn giá điện (VND/kWh)</th>
+                          <th className="py-2.5 px-3 min-w-[180px]">Phương thức tính nước</th>
+                          <th className="py-2.5 px-3 min-w-[150px]">Đơn giá nước (VND)</th>
+                          <th className="py-2.5 px-3 text-center min-w-[110px]">Trạng thái</th>
+                          <th className="py-2.5 px-3 text-right w-12">
+                            <span className="sr-only">Thao tác</span>
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {buildingTariffs.map((b, idx) => {
+                          const isCustomized =
+                            b.electricRateVnd !== null ||
+                            b.waterBillingMethod !== null ||
+                            b.waterRateVnd !== null;
+                          const isSelected = selectedBuildingIds.includes(b.id);
+
+                          return (
+                            <tr
+                              key={b.id}
+                              data-testid={`tariff-row-${b.id}`}
+                              className={`transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40 ${
+                                isSelected ? 'bg-blue-50/40 dark:bg-blue-950/20' : ''
+                              }`}
+                            >
+                              <td className="py-3 px-3 text-center">
+                                <input
+                                  type="checkbox"
+                                  data-testid={`checkbox-building-${b.id}`}
+                                  aria-label={`Chọn tòa ${b.name}`}
+                                  checked={isSelected}
+                                  onChange={() => {
+                                    setSelectedBuildingIds((prev) =>
+                                      prev.includes(b.id)
+                                        ? prev.filter((id) => id !== b.id)
+                                        : [...prev, b.id]
+                                    );
+                                  }}
+                                  className="rounded border-slate-300 text-brand-primary focus:ring-brand-primary"
+                                />
+                              </td>
+                              <td className="py-3 px-3">
+                                <div className="font-bold text-slate-900 dark:text-white">
+                                  {b.name}
+                                </div>
+                                <div className="text-[11px] text-slate-500 font-mono">
+                                  {b.code}
+                                </div>
+                              </td>
+                              <td className="py-3 px-3">
+                                <VndAmountInput
+                                  aria-label={`Giá điện ${b.name}`}
+                                  placeholder={`Điện · ${(defaultElectricRateVnd ?? 0).toLocaleString('vi-VN')} đ`}
+                                  value={b.electricRateVnd}
+                                  onChange={(val) => {
+                                    setBuildingTariffs((prev) =>
+                                      prev.map((row, i) =>
+                                        i === idx ? { ...row, electricRateVnd: val } : row
+                                      )
+                                    );
+                                  }}
+                                  className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"
+                                />
+                              </td>
+                              <td className="py-3 px-3">
+                                <select
+                                  value={b.waterBillingMethod || ''}
+                                  onChange={(e) => {
+                                    const val = e.target.value || null;
+                                    setBuildingTariffs((prev) =>
+                                      prev.map((row, i) =>
+                                        i === idx
+                                          ? { ...row, waterBillingMethod: val }
+                                          : row
+                                      )
+                                    );
+                                  }}
+                                  className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"
+                                >
+                                  <option value="">
+                                    Kế thừa ({defaultWaterMethod === 'PER_PERSON' ? 'Theo người' : defaultWaterMethod === 'PER_M3' ? 'Theo m³' : 'Khoán'})
+                                  </option>
+                                  <option value="PER_M3">Theo đồng hồ (m³)</option>
+                                  <option value="PER_PERSON">Theo đầu người</option>
+                                  <option value="FIXED_PER_ROOM">Khoán cố định phòng</option>
+                                </select>
+                              </td>
+                              <td className="py-3 px-3">
+                                <VndAmountInput
+                                  aria-label={`Giá nước ${b.name}`}
+                                  placeholder={`Nước · ${(defaultWaterRateVnd ?? 0).toLocaleString('vi-VN')} đ`}
+                                  value={b.waterRateVnd}
+                                  onChange={(val) => {
+                                    setBuildingTariffs((prev) =>
+                                      prev.map((row, i) =>
+                                        i === idx ? { ...row, waterRateVnd: val } : row
+                                      )
+                                    );
+                                  }}
+                                  className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"
+                                />
+                              </td>
+                              <td className="py-3 px-3 text-center">
+                                {isCustomized ? (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                                    Giá riêng
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                                    Kế thừa
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3 px-3 text-right">
+                                <div className="flex justify-end">
+                                  <ActionMenu
+                                    ariaLabel={`Tùy chọn biểu giá ${b.name}`}
+                                    contextTitle={b.name}
+                                    contextSubtitle={b.code}
+                                    items={[
+                                      {
+                                        label: 'Về mặc định tổ chức',
+                                        icon: <RotateCcw className="w-4 h-4 text-slate-500" />,
+                                        disabled: !isCustomized,
+                                        onClick: () => {
+                                          setBuildingTariffs((prev) =>
+                                            prev.map((row, i) =>
+                                              i === idx
+                                                ? {
+                                                    ...row,
+                                                    electricRateVnd: null,
+                                                    waterBillingMethod: null,
+                                                    waterRateVnd: null,
+                                                  }
+                                                : row
+                                            )
+                                          );
+                                          notifySave(true, 'Đã đặt lại về mặc định', `Tòa ${b.name} đã chuyển sang kế thừa giá tổ chức.`);
+                                        },
+                                      },
+                                    ]}
+                                  />
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  /* CARD VIEW */
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3" data-testid="console-tariffs-cards">
+                    {buildingTariffs.map((b, idx) => {
+                      const isCustomized =
+                        b.electricRateVnd !== null ||
+                        b.waterBillingMethod !== null ||
+                        b.waterRateVnd !== null;
+                      const isSelected = selectedBuildingIds.includes(b.id);
+
+                      return (
+                        <div
+                          key={b.id}
+                          data-testid={`tariff-card-${b.id}`}
+                          className={`p-3.5 rounded-2xl border transition-colors space-y-3 ${
+                            isSelected
+                              ? 'bg-blue-50/30 dark:bg-blue-950/20 border-blue-300 dark:border-blue-800'
+                              : 'bg-white dark:bg-slate-900 border-slate-200/80 dark:border-slate-800'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <label className="flex items-center gap-2 cursor-pointer min-w-0">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => {
+                                  setSelectedBuildingIds((prev) =>
+                                    prev.includes(b.id)
+                                      ? prev.filter((id) => id !== b.id)
+                                      : [...prev, b.id]
+                                  );
+                                }}
+                                className="rounded border-slate-300 text-brand-primary focus:ring-brand-primary"
+                              />
+                              <div className="min-w-0">
+                                <span className="font-bold text-xs text-slate-900 dark:text-white truncate block">
+                                  {b.name}
+                                </span>
+                                <span className="text-[10px] text-slate-500 font-mono">
+                                  {b.code}
+                                </span>
+                              </div>
+                            </label>
+
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {isCustomized ? (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                                  Giá riêng
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                                  Kế thừa
+                                </span>
+                              )}
+                              <ActionMenu
+                                ariaLabel={`Tùy chọn biểu giá ${b.name}`}
+                                contextTitle={b.name}
+                                contextSubtitle={b.code}
+                                items={[
+                                  {
+                                    label: 'Về mặc định tổ chức',
+                                    icon: <RotateCcw className="w-4 h-4 text-slate-500" />,
+                                    disabled: !isCustomized,
+                                    onClick: () => {
+                                      setBuildingTariffs((prev) =>
+                                        prev.map((row, i) =>
+                                          i === idx
+                                            ? {
+                                                ...row,
+                                                electricRateVnd: null,
+                                                waterBillingMethod: null,
+                                                waterRateVnd: null,
+                                              }
+                                            : row
+                                        )
+                                      );
+                                      notifySave(true, 'Đã đặt lại về mặc định', `Tòa ${b.name} đã chuyển sang kế thừa giá tổ chức.`);
+                                    },
+                                  },
+                                ]}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 border-t border-slate-100 dark:border-slate-800">
+                            <div>
+                              <label className="block text-[10px] font-semibold text-slate-500 mb-1">
+                                Điện (VND/kWh)
+                              </label>
+                              <VndAmountInput
+                                aria-label={`Giá điện ${b.name}`}
+                                placeholder={`Điện · ${(defaultElectricRateVnd ?? 0).toLocaleString('vi-VN')} đ`}
+                                value={b.electricRateVnd}
+                                onChange={(val) => {
+                                  setBuildingTariffs((prev) =>
+                                    prev.map((row, i) =>
+                                      i === idx ? { ...row, electricRateVnd: val } : row
+                                    )
+                                  );
+                                }}
+                                className="w-full px-2 py-1.5 text-xs rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-semibold text-slate-500 mb-1">
+                                Phương thức nước
+                              </label>
+                              <select
+                                value={b.waterBillingMethod || ''}
+                                onChange={(e) => {
+                                  const val = e.target.value || null;
+                                  setBuildingTariffs((prev) =>
+                                    prev.map((row, i) =>
+                                      i === idx
+                                        ? { ...row, waterBillingMethod: val }
+                                        : row
+                                    )
+                                  );
+                                }}
+                                className="w-full px-2 py-1.5 text-xs rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                              >
+                                <option value="">Kế thừa mặc định</option>
+                                <option value="PER_M3">Theo đồng hồ (m³)</option>
+                                <option value="PER_PERSON">Theo người</option>
+                                <option value="FIXED_PER_ROOM">Khoán phòng</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-semibold text-slate-500 mb-1">
+                                Nước (VND)
+                              </label>
+                              <VndAmountInput
+                                aria-label={`Giá nước ${b.name}`}
+                                placeholder={`Nước · ${(defaultWaterRateVnd ?? 0).toLocaleString('vi-VN')} đ`}
+                                value={b.waterRateVnd}
+                                onChange={(val) => {
+                                  setBuildingTariffs((prev) =>
+                                    prev.map((row, i) =>
+                                      i === idx ? { ...row, waterRateVnd: val } : row
+                                    )
+                                  );
+                                }}
+                                className="w-full px-2 py-1.5 text-xs rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end pt-2">

@@ -3,7 +3,8 @@ import { ArrowRight, DoorOpen, FileSignature, Receipt, RefreshCw, Wallet } from 
 import { useAuth } from '@/app/providers/AuthContext';
 import { useNavigation } from '@/app/providers/NavigationContext';
 import { usePortfolio } from '@/app/providers/PortfolioContext';
-import { formatPeriodDisplay } from '@/app/navigation/navigationConfig';
+import { formatPeriodDisplay, shiftPeriodKey } from '@/app/navigation/navigationConfig';
+import { CompactPeriodStepper } from '@/shared/ui/WorkspaceToolbarControls';
 
 import { ContractCreationWizardModal as ContractWizard } from '../modules/modals/ContractCreationWizardModal';
 const money = (n: number) => `${Math.trunc(n).toLocaleString('vi-VN')} đ`;
@@ -71,25 +72,22 @@ export function MobileOverviewSummary() {
       </div>
 
       <section className={`${card} overflow-hidden p-4`} aria-label="Tài chính theo kỳ">
-        <div className="grid grid-cols-[minmax(0,1fr)_140px] items-center gap-3 border-b border-slate-100 pb-3 dark:border-slate-800">
+        <div className="flex items-center justify-between gap-2.5 border-b border-slate-100 pb-3 dark:border-slate-800">
           <div className="min-w-0">
             <h2 className="text-sm font-bold text-slate-900 dark:text-white">Tài chính</h2>
             <p className="mt-0.5 truncate text-[11px] text-slate-500 dark:text-slate-400">
-              Kỳ {formatPeriodDisplay(selectedPeriod)}
+              Doanh thu &amp; dòng tiền
             </p>
           </div>
-          <label className="block min-w-0">
-            <span className="sr-only">Kỳ tài chính</span>
-            <input
-              aria-label="Kỳ tài chính"
-              type="month"
-              value={selectedPeriod}
-              onChange={e => {
-                if (/^\d{4}-\d{2}$/.test(e.target.value)) setSelectedPeriod(e.target.value);
-              }}
-              className="block h-9 w-full min-w-0 max-w-full rounded-xl border border-slate-200/80 bg-slate-50 px-2.5 text-center text-xs font-semibold text-slate-800 shadow-2xs outline-none transition-colors focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200 dark:focus:border-blue-500 dark:focus:ring-blue-950 [color-scheme:light] dark:[color-scheme:dark]"
+          <div className="shrink-0">
+            <CompactPeriodStepper
+              selectedPeriod={selectedPeriod}
+              onChangePeriod={setSelectedPeriod}
+              shiftPeriodKey={shiftPeriodKey}
+              testIdPrefix="mobile-overview"
+              fullWidth={false}
             />
-          </label>
+          </div>
         </div>
 
         <div className="py-4">

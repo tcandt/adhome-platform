@@ -250,6 +250,75 @@ export function calculateContractPeriodRent(input: CalculateRentInput): Calculat
   };
 }
 
+export function resolveContractBillingCycle(
+  contract: any,
+  periodKey: string
+): {
+  billingCycle: 'MONTHLY' | 'BI_MONTHLY' | 'QUARTERLY' | 'BIANNUAL' | 'ANNUAL';
+  cycleMonths: number;
+  isCycleDueInPeriod: boolean;
+  cycleNote: string;
+} {
+  let billingCycle: 'MONTHLY' | 'BI_MONTHLY' | 'QUARTERLY' | 'BIANNUAL' | 'ANNUAL' = 'MONTHLY';
+  let cycleMonths = 1;
+
+  if (contract?.billingCycle) {
+    billingCycle = contract.billingCycle;
+  } else if (contract?.notes) {
+    try {
+      const parsed = typeof contract.notes === 'string' ? JSON.parse(contract.notes) : contract.notes;
+      if (parsed?.billingCycle) billingCycle = parsed.billingCycle;
+      else if (parsed?.cycleMonths) cycleMonths = Number(parsed.cycleMonths);
+    } catch {
+      const n = String(contract.notes).toLowerCase();
+      if (n.includes('quý') || n.includes('quarterly') || n.includes('3 tháng')) {
+        billingCycle = 'QUARTERLY';
+      } else if (n.includes('6 tháng') || n.includes('biannual') || n.includes('nửa năm')) {
+        billingCycle = 'BIANNUAL';
+      } else if (n.includes('1 năm') || n.includes('hàng năm') || n.includes('annual') || n.includes('12 tháng')) {
+        billingCycle = 'ANNUAL';
+      } else if (n.includes('2 tháng') || n.includes('bi_monthly')) {
+        billingCycle = 'BI_MONTHLY';
+      }
+    }
+  }
+
+  if (billingCycle === 'QUARTERLY') cycleMonths = 3;
+  else if (billingCycle === 'BIANNUAL') cycleMonths = 6;
+  else if (billingCycle === 'ANNUAL') cycleMonths = 12;
+  else if (billingCycle === 'BI_MONTHLY') cycleMonths = 2;
+  else cycleMonths = 1;
+
+  let isCycleDueInPeriod = true;
+  let cycleNote = 'Chu kỳ 1 tháng';
+
+  if (cycleMonths > 1 && contract?.startDate && periodKey) {
+    try {
+      const startYear = parseInt(contract.startDate.slice(0, 4), 10);
+      const startMonth = parseInt(contract.startDate.slice(5, 7), 10);
+      const periodYear = parseInt(periodKey.slice(0, 4), 10);
+      const periodMonth = parseInt(periodKey.slice(5, 7), 10);
+
+      if (!isNaN(startYear) && !isNaN(startMonth) && !isNaN(periodYear) && !isNaN(periodMonth)) {
+        const monthDiff = (periodYear - startYear) * 12 + (periodMonth - startMonth);
+        if (monthDiff < 0) {
+          isCycleDueInPeriod = false;
+          cycleNote = 'Hợp đồng chưa bắt đầu';
+        } else {
+          isCycleDueInPeriod = monthDiff % cycleMonths === 0;
+          cycleNote = isCycleDueInPeriod
+            ? `Kỳ chốt chu kỳ ${cycleMonths} tháng`
+            : `Đang trong chu kỳ ${cycleMonths} tháng (đã thanh toán trước)`;
+        }
+      }
+    } catch {
+      isCycleDueInPeriod = true;
+    }
+  }
+
+  return { billingCycle, cycleMonths, isCycleDueInPeriod, cycleNote };
+}
+
 export interface CalculateElectricInput {
   method?: 'HUNONIC_AUTO' | 'MANUAL' | 'FIXED';
   startKwh: number | null | undefined;
@@ -1262,6 +1331,9 @@ export async function buildSettlementWorkspacePayload(params: {
         sharedIndex: orderedRoomContracts.length > 1 ? contractIndex : undefined,
       });
 
+      // Contract billing cycle check (e.g. 1 month, 3 months, 6 months)
+      const resolvedCycle = resolveContractBillingCycle(contract, periodKey);
+
       // Room Rent resolution (Rule 5: never mix deposit into roomRentVnd!)
       const rentCalc = calculateContractPeriodRent({
         monthlyRentVnd: toSafeNum(
@@ -1281,6 +1353,11 @@ export async function buildSettlementWorkspacePayload(params: {
         bookingDepositVnd: isFirstCombined ? toSafeNum(finSummary.bookingDepositB) : 0,
         contractDepositVnd: isFirstCombined ? toSafeNum(finSummary.contractDepositRequiredC) : 0,
       });
+
+      if (!resolvedCycle.isCycleDueInPeriod && !matchedInvoice?.roomRentVnd && settlementMeta.rent?.roomRentVnd === undefined) {
+        rentCalc.roomRentVnd = 0;
+        rentCalc.formulaNote = `Không tính tiền thuê (Đã thu theo chu kỳ ${resolvedCycle.cycleMonths} tháng từ ${contract.startDate})`;
+      }
 
       const baseServiceFee = toSafeNum(room.serviceFeeVnd ?? 0);
       const defaultFeeItems: FeeLineItem[] = Array.isArray(settlementMeta.feeItems)
@@ -1588,6 +1665,9 @@ export async function buildSettlementWorkspacePayload(params: {
           startDate: contract.startDate,
           endDate: contract.endDate,
           occupantCount: resolvedOccupantCount,
+          billingCycle: resolvedCycle.billingCycle,
+          cycleMonths: resolvedCycle.cycleMonths,
+          isCycleDueInPeriod: resolvedCycle.isCycleDueInPeriod,
           monthlyRentVnd: toSafeNum(
             settlementMeta.rent?.baseMonthlyRentVnd ??
               contract.monthlyRentVnd ??
@@ -1683,6 +1763,148 @@ export async function buildSettlementWorkspacePayload(params: {
     }
   }
 
+  // Append vacant rooms (rooms without active contract or invoice in this period)
+  for (const room of rooms) {
+    if (obligationsByRoom.has(room.id)) continue;
+
+    const building = buildingById.get(room.buildingId) || room.building;
+    const buildingPeriod = periodLockByBuilding.get(room.buildingId);
+    const isPeriodLocked = buildingPeriod?.status === 'LOCKED';
+
+    settlementRows.push({
+      obligationKey: `${periodKey}:${room.id}:vacant`,
+      periodKey,
+      periodDisplayRange: range.displayRange,
+      isPeriodLocked,
+      isFrozenSnapshot: false,
+      isVacant: true,
+      hasActiveContract: false,
+      cronSkip: true,
+      room: {
+        id: room.id,
+        code: room.code,
+        title: room.title,
+        occupancyStatus: room.occupancyStatus || 'AVAILABLE',
+        rentalModel: room.rentalModel,
+        sharedContractCount: 0,
+      },
+      sharedRoomInfo: {
+        isSharedRoom: false,
+        memberIndex: 1,
+        totalMembers: 1,
+        weight: 1,
+        totalWeight: 1,
+      },
+      building: {
+        id: building.id,
+        code: building.code,
+        name: building.name,
+      },
+      tenant: {
+        id: `vacant-${room.id}`,
+        fullName: 'Chưa có khách',
+        phone: '',
+        email: '',
+      },
+      contract: null,
+      rent: {
+        roomRentVnd: 0,
+        baseMonthlyRentVnd: toSafeNum(room.baseRentVnd || 0),
+        activeDays: 0,
+        basisDays: range.daysInMonth,
+        isProrated: false,
+        prorateReason: 'NO_CONTRACT',
+        exemptDaysDeductionVnd: 0,
+        rentDiscountVnd: 0,
+        excludedDepositsVnd: 0,
+        formulaNote: 'Chưa có hợp đồng / Chưa có khách',
+      },
+      electric: {
+        method: 'MANUAL',
+        status: 'COMPLETE',
+        anomalyCode: null,
+        anomalyMessage: null,
+        startKwh: null,
+        endKwh: null,
+        consumptionKwh: 0,
+        ratePerKwhVnd: 0,
+        electricVnd: 0,
+        formulaNote: '0 kWh',
+        meterId: null,
+        meterSerial: null,
+        connectionStatus: 'UNCONFIGURED',
+        lastSyncedAt: null,
+        inputSource: 'NONE',
+        updatedBy: null,
+      },
+      water: {
+        mode: room.waterBillingMethod || 'PER_PERSON',
+        status: 'COMPLETE',
+        anomalyCode: null,
+        anomalyMessage: null,
+        occupantCount: 0,
+        startM3: null,
+        endM3: null,
+        consumptionM3: null,
+        unitRateVnd: room.waterRateVnd || 0,
+        waterVnd: 0,
+        displayLabel: '0 đ',
+        formulaNote: '0 đ',
+        inputSource: 'CONTRACT_POLICY',
+        updatedBy: null,
+        updatedAt: null,
+      },
+      totals: {
+        roomRentVnd: 0,
+        electricVnd: 0,
+        waterVnd: 0,
+        serviceFeeVnd: 0,
+        extraChargeVnd: 0,
+        discountVnd: 0,
+        adjustmentVnd: 0,
+        previousDebtVnd: 0,
+        currentPeriodDueVnd: 0,
+        totalPayableVnd: 0,
+        paidAmountVnd: 0,
+        remainingAmountVnd: 0,
+        overpaidAmountVnd: 0,
+      },
+      safety: {
+        canApprove: false,
+        canAutoIssue: false,
+        blockingReasons: ['Phòng trống — chưa có hợp đồng thuê / chưa có khách.'],
+        dataStatus: 'COMPLETE',
+      },
+      statuses: {
+        dataStatus: 'COMPLETE',
+        invoiceStatus: 'NOT_CREATED',
+        deliveryStatus: 'NOT_SENT',
+        paymentStatus: 'UNPAID',
+      },
+      invoice: null,
+      delivery: {
+        channel: defaultDeliveryChannel,
+        recipientName: 'Chưa có khách',
+        recipientContact: '',
+        status: 'NOT_SENT',
+        sentAt: null,
+        deliveredAt: null,
+        attempts: 0,
+        lastError: null,
+        txId: null,
+      },
+      payments: {
+        totalPayableVnd: 0,
+        paidAmountVnd: 0,
+        remainingAmountVnd: 0,
+        overpaidAmountVnd: 0,
+        status: 'UNPAID',
+        transactions: [],
+      },
+      history: [],
+    });
+  }
+
   settlementRows.sort((a, b) => {
     const bCmp = String(a.building.code).localeCompare(String(b.building.code), 'vi');
     if (bCmp !== 0) return bCmp;
@@ -1711,11 +1933,11 @@ export async function buildSettlementWorkspacePayload(params: {
       0
     ),
     readyInvoicesCount: settlementRows.filter((r) => r.safety.canApprove).length,
-    totalObligationsCount: settlementRows.length,
+    totalObligationsCount: settlementRows.filter((r) => !r.isVacant).length,
     sentInvoicesCount: settlementRows.filter((r) =>
       ['SENT', 'DELIVERED'].includes(r.statuses.deliveryStatus)
     ).length,
-    needSendInvoicesCount: settlementRows.filter((r) => r.statuses.invoiceStatus !== 'VOID').length,
+    needSendInvoicesCount: settlementRows.filter((r) => !r.isVacant && r.statuses.invoiceStatus !== 'VOID').length,
     totalCollectedVnd: settlementRows.reduce((sum, r) => sum + r.totals.paidAmountVnd, 0),
     totalRemainingReceivableVnd: settlementRows.reduce(
       (sum, r) => sum + r.totals.remainingAmountVnd,
@@ -1725,10 +1947,10 @@ export async function buildSettlementWorkspacePayload(params: {
 
   // Part C: Independent progress dimensions
   const progressSummary = {
-    totalObligations: settlementRows.length,
-    completeDataCount: settlementRows.filter((r) => r.statuses.dataStatus === 'COMPLETE').length,
-    missingDataCount: settlementRows.filter((r) => r.statuses.dataStatus === 'MISSING_DATA').length,
-    anomalyCount: settlementRows.filter((r) => r.statuses.dataStatus === 'ANOMALY').length,
+    totalObligations: settlementRows.filter((r) => !r.isVacant).length,
+    completeDataCount: settlementRows.filter((r) => !r.isVacant && r.statuses.dataStatus === 'COMPLETE').length,
+    missingDataCount: settlementRows.filter((r) => !r.isVacant && r.statuses.dataStatus === 'MISSING_DATA').length,
+    anomalyCount: settlementRows.filter((r) => !r.isVacant && r.statuses.dataStatus === 'ANOMALY').length,
     draftCreatedCount: settlementRows.filter((r) => r.statuses.invoiceStatus !== 'NOT_CREATED')
       .length,
     pendingApprovalCount: settlementRows.filter((r) =>
@@ -2402,7 +2624,7 @@ export async function handleSettlementCenterApi(params: {
       periodKey,
     });
     const updatedRow = updatedWorkspace.settlementRows.find(
-      (r) => r.room.id === room.id && r.contract.id === contract.id
+      (r) => r.room.id === room.id && r.contract?.id === contract.id
     );
 
     sendJson(res, 200, {
@@ -2466,6 +2688,14 @@ export async function handleSettlementCenterApi(params: {
 
     for (const row of rowsToProcess) {
       if (row.isPeriodLocked) continue;
+
+      if (row.isVacant || !row.hasActiveContract || !row.contract || row.cronSkip) {
+        continue;
+      }
+
+      if (row.contract?.isCycleDueInPeriod === false && row.totals.totalPayableVnd === 0) {
+        continue;
+      }
 
       if (row.invoice && ['ISSUED', 'PARTIAL', 'PAID'].includes(row.invoice.dbStatus)) {
         continue;
@@ -2731,6 +2961,15 @@ export async function handleSettlementCenterApi(params: {
         continue;
       }
 
+      if (row.isVacant || !row.contract) {
+        skippedList.push({
+          obligationKey: row.obligationKey,
+          roomCode: row.room.code,
+          reasons: ['Phòng trống — chưa có hợp đồng / chưa có khách.'],
+        });
+        continue;
+      }
+
       if (action === 'APPROVE' && !row.safety.canApprove) {
         skippedList.push({
           obligationKey: row.obligationKey,
@@ -2919,6 +3158,14 @@ export async function handleSettlementCenterApi(params: {
     const defaultDueDate = `${periodKey}-05`;
 
     for (const row of candidates) {
+      if (row.isVacant || !row.contract) {
+        failedDeliveries.push({
+          roomCode: row.room.code,
+          reason: 'Phòng trống — chưa có hợp đồng / chưa có khách.',
+        });
+        continue;
+      }
+
       if (!row.safety.canApprove) {
         failedDeliveries.push({
           roomCode: row.room.code,

@@ -335,11 +335,11 @@ export function groupSettlementRowsByRoom(rows: SettlementRow[]): SettlementRoom
       paidCount: members.filter((m) => m.statuses.paymentStatus === 'PAID').length,
       canApproveCount: members.filter(
         (m) =>
-          m.safety.canApprove &&
+          (m.safety?.canApprove ?? true) &&
           !['APPROVED', 'ISSUED', 'VOID'].includes(m.statuses.invoiceStatus)
       ).length,
       canSendCount: members.filter(
-        (m) => m.safety.canSend && m.statuses.deliveryStatus !== 'DELIVERED'
+        (m) => (m.safety?.canSend ?? true) && m.statuses.deliveryStatus !== 'DELIVERED'
       ).length,
     };
 

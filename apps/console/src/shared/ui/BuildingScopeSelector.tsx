@@ -231,7 +231,7 @@ export const BuildingScopeSelector: React.FC<{
                     {building.name}
                   </span>
                   <span className="mt-1 block text-[11px] text-slate-400">
-                    {building.code} · {building.stats.availableRooms} phòng
+                    {building.code} · {building.stats?.availableRooms ?? 0} phòng
                     trống
                   </span>
                 </span>

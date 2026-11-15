@@ -240,7 +240,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
         (s, r) => s + r.totals.serviceFeeVnd + r.totals.extraChargeVnd,
         0
       ),
-      readyInvoicesCount: baseScopedRows.filter((r) => r.safety.canApprove).length,
+      readyInvoicesCount: baseScopedRows.filter((r) => r.safety?.canApprove ?? true).length,
       totalObligationsCount: baseScopedRows.length,
       sentInvoicesCount: baseScopedRows.filter((r) =>
         ['SENT', 'DELIVERED'].includes(r.statuses.deliveryStatus)
@@ -268,7 +268,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
       ).length,
       readyToSendCount: baseScopedRows.filter(
         (r) =>
-          r.safety.canApprove &&
+          (r.safety?.canApprove ?? true) &&
           ['APPROVED', 'PENDING_APPROVAL', 'DRAFT', 'ISSUED'].includes(r.statuses.invoiceStatus) &&
           !['SENT', 'DELIVERED'].includes(r.statuses.deliveryStatus)
       ).length,
@@ -299,7 +299,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
           return ['DRAFT', 'PENDING_APPROVAL'].includes(r.statuses.invoiceStatus);
         case 'READY_TO_SEND':
           return (
-            r.safety.canApprove &&
+            (r.safety?.canApprove ?? true) &&
             ['APPROVED', 'PENDING_APPROVAL', 'DRAFT', 'ISSUED'].includes(r.statuses.invoiceStatus) &&
             !['SENT', 'DELIVERED'].includes(r.statuses.deliveryStatus)
           );
@@ -1792,7 +1792,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                                       },
                                     ]
                                   : []),
-                                ...(canManageSettlements && row.safety.canApprove
+                                ...(canManageSettlements && (row.safety?.canApprove ?? true)
                                   ? [
                                       {
                                         label: 'Phê duyệt hóa đơn này',
@@ -1802,7 +1802,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                                       },
                                     ]
                                   : []),
-                                ...(canManageInvoices && row.safety.canApprove
+                                ...(canManageInvoices && (row.safety?.canApprove ?? true)
                                   ? [
                                       {
                                         label:
@@ -2246,7 +2246,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                                                     Sửa / Chi tiết
                                                   </button>
                                                   {canManageInvoices &&
-                                                    member.safety.canApprove &&
+                                                    (member.safety?.canApprove ?? true) &&
                                                     member.statuses.invoiceStatus !== 'ISSUED' && (
                                                       <button
                                                         type="button"

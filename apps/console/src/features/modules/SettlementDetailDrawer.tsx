@@ -187,8 +187,8 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
     setConfirmWaterAnomaly(false);
 
     setFeeItemsDraft(row.totals.feeItems || []);
-    setSelectedChannel(row.delivery.channel || 'ZALO_OA');
-    setRecipientOverride(row.delivery.recipientContact || row.tenant.phone || row.tenant.email || '');
+    setSelectedChannel(row.delivery?.channel || 'ZALO_OA');
+    setRecipientOverride(row.delivery?.recipientContact || row.tenant?.phone || row.tenant?.email || '');
     setPaymentAmountVnd(Math.round(row.totals.remainingAmountVnd || 0));
     setPaymentNoteInput(
       `Thanh toán hóa đơn ${row.invoice?.code || `phòng ${row.room.code}`} kỳ ${row.periodKey}`
@@ -211,7 +211,7 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
 
   const isLockedOrFrozen =
     row.isPeriodLocked ||
-    (row.invoice !== null && ['ISSUED', 'PAID', 'PARTIAL'].includes(row.invoice.dbStatus));
+    Boolean(row.invoice && ['ISSUED', 'PAID', 'PARTIAL'].includes(row.invoice.dbStatus));
 
   const handleAddFeeItem = () => {
     const amountNum = Math.round(
@@ -323,14 +323,14 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
   ];
 
   return (
-    <>
-      <Dialog.Root open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
+    <Dialog.Root open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 z-50 bg-slate-950/50 backdrop-blur-[2px] transition-opacity" />
-        <Dialog.Popup
-          data-testid="settlement-detail-drawer"
-          className="fixed inset-y-0 right-0 z-50 flex h-[100dvh] w-full max-w-2xl flex-col bg-white dark:bg-[#0F172A] shadow-2xl border-l border-slate-200 dark:border-slate-800 focus:outline-none"
-        >
+        <Dialog.Viewport className="fixed inset-0 z-50 flex justify-end">
+          <Dialog.Popup
+            data-testid="settlement-detail-drawer"
+            className="relative flex h-[100dvh] w-full max-w-2xl flex-col bg-white dark:bg-[#0F172A] shadow-2xl border-l border-slate-200 dark:border-slate-800 focus:outline-none"
+          >
           {/* Drawer Header */}
           <div className="flex items-start justify-between gap-2 border-b border-slate-200 dark:border-slate-800 px-3.5 sm:px-5 py-2.5 sm:py-3 bg-slate-50/70 dark:bg-slate-900/60 shrink-0">
             <div className="min-w-0">
@@ -494,14 +494,14 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                 </div>
 
                 {/* Safety / Blocking Reasons Banner */}
-                {!row.safety.canApprove && (
+                {row.safety && !row.safety.canApprove && (
                   <div className="rounded-xl border border-amber-200 bg-amber-50/90 dark:border-amber-800/80 dark:bg-amber-950/40 px-3 py-2.5 text-xs text-amber-900 dark:text-amber-200 space-y-1.5">
                     <div className="font-bold flex items-center gap-1.5">
                       <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                       <span>Cần bổ sung trước khi phê duyệt:</span>
                     </div>
                     <ul className="list-disc pl-4 space-y-0.5 text-[11.5px]">
-                      {row.safety.blockingReasons.map((reason, idx) => (
+                      {(row.safety.blockingReasons || []).map((reason, idx) => (
                         <li key={idx}>{reason}</li>
                       ))}
                     </ul>
@@ -608,7 +608,7 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
 
                 {/* Quick Workflow Buttons (Compact aligned row) */}
                 <div className="flex items-center justify-end gap-2 pt-1">
-                  {canManageSettlements && !row.isPeriodLocked && row.safety.canApprove && (
+                  {canManageSettlements && !row.isPeriodLocked && (row.safety?.canApprove ?? true) && (
                     <SettlementShimmerButton
                       type="button"
                       data-testid="drawer-btn-approve"
@@ -623,7 +623,7 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                       <span>Phê duyệt</span>
                     </SettlementShimmerButton>
                   )}
-                  {canManageInvoices && row.safety.canApprove && (
+                  {canManageInvoices && (row.safety?.canApprove ?? true) && (
                     <SettlementShimmerButton
                       type="button"
                       data-testid="drawer-btn-issue-send"
@@ -1054,17 +1054,17 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
 
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500 pt-0.5">
                     <span>
-                      Lần gửi: <strong className="text-slate-700 dark:text-slate-200">{row.delivery.sentAt ? new Date(row.delivery.sentAt).toLocaleString('vi-VN') : 'Chưa gửi'}</strong>
+                      Lần gửi: <strong className="text-slate-700 dark:text-slate-200">{row.delivery?.sentAt ? new Date(row.delivery.sentAt).toLocaleString('vi-VN') : 'Chưa gửi'}</strong>
                     </span>
                     <span>
-                      Số lần thử: <strong className="text-slate-700 dark:text-slate-200">{row.delivery.attempts}</strong>
+                      Số lần thử: <strong className="text-slate-700 dark:text-slate-200">{row.delivery?.attempts ?? 0}</strong>
                     </span>
                     <span>
-                      Mã GD: <strong className="font-mono text-slate-700 dark:text-slate-200">{row.delivery.txId || '—'}</strong>
+                      Mã GD: <strong className="font-mono text-slate-700 dark:text-slate-200">{row.delivery?.txId || '—'}</strong>
                     </span>
                   </div>
 
-                  {row.delivery.lastError && (
+                  {row.delivery?.lastError && (
                     <div className="rounded-lg border border-rose-200 bg-rose-50 dark:border-rose-800 dark:bg-rose-950/40 px-2.5 py-2 text-[11px] text-rose-700 dark:text-rose-300">
                       Lỗi gửi gần nhất: {row.delivery.lastError}
                     </div>
@@ -1135,7 +1135,7 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                       data-testid="drawer-btn-send-invoice-now"
                       isLoading={isSaving}
                       loadingText="Đang gửi..."
-                      disabled={!row.safety.canApprove}
+                      disabled={Boolean(row.safety && !row.safety.canApprove)}
                       onClick={() =>
                         void onIssueAndSend([row.obligationKey], selectedChannel, recipientOverride)
                       }
@@ -1326,122 +1326,121 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                 )}
               </div>
             )}
+            {/* DIALOG CHỈNH SỬA CẤU HÌNH PHÒNG (Nested Modal) */}
+            <Dialog.Root open={showRoomConfigModal} onOpenChange={setShowRoomConfigModal}>
+              <Dialog.Portal>
+                <Dialog.Backdrop className="fixed inset-0 z-[60] bg-slate-950/60 backdrop-blur-xs transition-opacity" />
+                <Dialog.Viewport className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+                  <Dialog.Popup className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 shadow-2xl space-y-4 z-[70]">
+                    <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="p-2 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                          <Sliders className="w-5 h-5" />
+                        </span>
+                        <div>
+                          <Dialog.Title className="text-sm font-bold text-slate-900 dark:text-white">
+                            Cấu hình biểu giá phòng {row.room.code}
+                          </Dialog.Title>
+                          <Dialog.Description className="text-[11px] text-slate-500">
+                            Cập nhật trực tiếp cấu hình phòng và đồng bộ kỳ thanh toán này.
+                          </Dialog.Description>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowRoomConfigModal(false)}
+                        className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <div className="space-y-3 text-xs">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          Đơn giá điện phòng (VND / kWh)
+                        </label>
+                        <MoneyInput
+                          value={cfgElectricRateVnd}
+                          onChange={(val) => setCfgElectricRateVnd(val)}
+                          placeholder="VD: 3.800"
+                          className="!h-9 !py-0 !text-xs !font-mono !font-bold"
+                        />
+                        <span className="text-[10px] text-slate-400 mt-0.5 block">
+                          Áp dụng cho đồng hồ Hunonic và công tơ phòng {row.room.code}
+                        </span>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          Phương thức tính tiền nước
+                        </label>
+                        <select
+                          value={cfgWaterMode}
+                          onChange={(e) => setCfgWaterMode(e.target.value)}
+                          className="w-full h-9 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 text-xs font-semibold text-slate-900 dark:text-white"
+                        >
+                          <option value="PER_PERSON">1. Theo đầu người (VND / người / tháng)</option>
+                          <option value="PER_M3">2. Theo đồng hồ nước (VND / m³ tiêu thụ)</option>
+                          <option value="FIXED_PER_ROOM">3. Khoán theo phòng (VND / phòng / tháng)</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          Đơn giá nước phòng (VND)
+                        </label>
+                        <MoneyInput
+                          value={cfgWaterRateVnd}
+                          onChange={(val) => setCfgWaterRateVnd(val)}
+                          placeholder="VD: 100.000 hoặc 25.000"
+                          className="!h-9 !py-0 !text-xs !font-mono !font-bold"
+                        />
+                        <span className="text-[10px] text-slate-400 mt-0.5 block">
+                          {cfgWaterMode === 'PER_M3' ? 'Giá tính theo mỗi m³ nước tiêu thụ' : cfgWaterMode === 'PER_PERSON' ? 'Giá tính theo mỗi người cư trú/tháng' : 'Giá khoán trọn gói mỗi tháng'}
+                        </span>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          Giá thuê phòng niêm yết (VND / tháng)
+                        </label>
+                        <MoneyInput
+                          value={cfgRoomPriceVnd}
+                          onChange={(val) => setCfgRoomPriceVnd(val)}
+                          placeholder="VD: 4.500.000"
+                          className="!h-9 !py-0 !text-xs !font-mono !font-bold"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => setShowRoomConfigModal(false)}
+                        className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                      >
+                        Hủy
+                      </button>
+                      <SettlementShimmerButton
+                        type="button"
+                        isLoading={isUpdatingConfig}
+                        loadingText="Đang lưu cấu hình..."
+                        onClick={() => void handleSaveRoomConfig()}
+                        className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-colors"
+                      >
+                        <span>Lưu cấu hình phòng &amp; Đồng bộ</span>
+                      </SettlementShimmerButton>
+                    </div>
+                  </Dialog.Popup>
+                </Dialog.Viewport>
+              </Dialog.Portal>
+            </Dialog.Root>
           </div>
         </Dialog.Popup>
-      </Dialog.Portal>
-    </Dialog.Root>
-
-      {/* DIALOG CHỈNH SỬA CẤU HÌNH PHÒNG */}
-      <Dialog.Root open={showRoomConfigModal} onOpenChange={setShowRoomConfigModal}>
-        <Dialog.Portal>
-          <Dialog.Backdrop className="fixed inset-0 z-60 bg-slate-950/60 backdrop-blur-xs transition-opacity" />
-          <Dialog.Viewport className="fixed inset-0 z-60 flex items-center justify-center p-4">
-            <Dialog.Popup className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 shadow-2xl space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-                <div className="flex items-center gap-2">
-                  <span className="p-2 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400">
-                    <Sliders className="w-5 h-5" />
-                  </span>
-                  <div>
-                    <Dialog.Title className="text-sm font-bold text-slate-900 dark:text-white">
-                      Cấu hình biểu giá phòng {row.room.code}
-                    </Dialog.Title>
-                    <Dialog.Description className="text-[11px] text-slate-500">
-                      Cập nhật trực tiếp cấu hình phòng và đồng bộ kỳ thanh toán này.
-                    </Dialog.Description>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowRoomConfigModal(false)}
-                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="space-y-3 text-xs">
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Đơn giá điện phòng (VND / kWh)
-                  </label>
-                  <MoneyInput
-                    value={cfgElectricRateVnd}
-                    onChange={(val) => setCfgElectricRateVnd(val)}
-                    placeholder="VD: 3.800"
-                    className="!h-9 !py-0 !text-xs !font-mono !font-bold"
-                  />
-                  <span className="text-[10px] text-slate-400 mt-0.5 block">
-                    Áp dụng cho đồng hồ Hunonic và công tơ phòng {row.room.code}
-                  </span>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Phương thức tính tiền nước
-                  </label>
-                  <select
-                    value={cfgWaterMode}
-                    onChange={(e) => setCfgWaterMode(e.target.value)}
-                    className="w-full h-9 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 text-xs font-semibold text-slate-900 dark:text-white"
-                  >
-                    <option value="PER_PERSON">1. Theo đầu người (VND / người / tháng)</option>
-                    <option value="PER_M3">2. Theo đồng hồ nước (VND / m³ tiêu thụ)</option>
-                    <option value="FIXED_PER_ROOM">3. Khoán theo phòng (VND / phòng / tháng)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Đơn giá nước phòng (VND)
-                  </label>
-                  <MoneyInput
-                    value={cfgWaterRateVnd}
-                    onChange={(val) => setCfgWaterRateVnd(val)}
-                    placeholder="VD: 100.000 hoặc 25.000"
-                    className="!h-9 !py-0 !text-xs !font-mono !font-bold"
-                  />
-                  <span className="text-[10px] text-slate-400 mt-0.5 block">
-                    {cfgWaterMode === 'PER_M3' ? 'Giá tính theo mỗi m³ nước tiêu thụ' : cfgWaterMode === 'PER_PERSON' ? 'Giá tính theo mỗi người cư trú/tháng' : 'Giá khoán trọn gói mỗi tháng'}
-                  </span>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Giá thuê phòng niêm yết (VND / tháng)
-                  </label>
-                  <MoneyInput
-                    value={cfgRoomPriceVnd}
-                    onChange={(val) => setCfgRoomPriceVnd(val)}
-                    placeholder="VD: 4.500.000"
-                    className="!h-9 !py-0 !text-xs !font-mono !font-bold"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setShowRoomConfigModal(false)}
-                  className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-                >
-                  Hủy
-                </button>
-                <SettlementShimmerButton
-                  type="button"
-                  isLoading={isUpdatingConfig}
-                  loadingText="Đang lưu cấu hình..."
-                  onClick={() => void handleSaveRoomConfig()}
-                  className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-colors"
-                >
-                  <span>Lưu cấu hình phòng &amp; Đồng bộ</span>
-                </SettlementShimmerButton>
-              </div>
-            </Dialog.Popup>
-          </Dialog.Viewport>
-        </Dialog.Portal>
-      </Dialog.Root>
-    </>
+      </Dialog.Viewport>
+    </Dialog.Portal>
+  </Dialog.Root>
   );
 };
 

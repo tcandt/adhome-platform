@@ -15,10 +15,21 @@ assertSecurityConfiguration();
 await ensurePostgreSqlSeeded();
 const middleware = createApiAndDynamicSeoMiddleware({ isDev: false });
 const internalKey = process.env.ADHOME_ZALO_BOT_ADMIN_API_KEY || '';
+function toAsciiAccountName(name: string): string {
+  return (name || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[đĐ]/g, (c) => (c === 'đ' ? 'd' : 'D'))
+    .replace(/[^A-Za-z0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase();
+}
+
 const fallbackPaymentAccount = {
   bank: process.env.ADHOME_PAYMENT_FALLBACK_BANK?.trim() || 'BIDV',
   accountNumber: process.env.ADHOME_PAYMENT_FALLBACK_ACCOUNT?.trim() || '96247LK31',
-  accountName: process.env.ADHOME_PAYMENT_FALLBACK_HOLDER?.trim() || 'HO KINH DOANH NGUYEN DUC TINH',
+  accountName: toAsciiAccountName(process.env.ADHOME_PAYMENT_FALLBACK_HOLDER?.trim() || 'HKD NGUYEN DUC TINH'),
   providerId: process.env.ADHOME_PAYMENT_FALLBACK_PROVIDER?.trim().toUpperCase() || 'SEPAY',
 };
 const authorized = (value: string) => {
@@ -76,16 +87,31 @@ async function internalBotApi(req: http.IncomingMessage, res: http.ServerRespons
     const paymentConnections = await prisma.paymentProviderConnection.findMany({
       where: { orgId, environment: 'LIVE', status: 'VERIFIED', isEnabled: true,
         OR: [{ buildingId: contract.room.buildingId }, { buildingId: null }], accounts: { some: {} } },
-      include: { accounts: { orderBy: [{ bankCode: 'asc' }, { accountNumber: 'asc' }], take: 1 } },
+      include: { accounts: { orderBy: [{ bankCode: 'asc' }, { accountNumber: 'asc' }] } },
       orderBy: { updatedAt: 'desc' },
     });
     const paymentConnection = paymentConnections.find(connection => connection.buildingId === contract.room.buildingId)
-      || paymentConnections.find(connection => connection.buildingId === null);
-    const paymentAccount = paymentConnection?.accounts[0];
-    const landlord = (contract.room.building?.landlord || {}) as Record<string, unknown>;
-    const accountNumber = paymentAccount?.accountNumber || String(landlord.accountNumber || '').trim() || fallbackPaymentAccount.accountNumber;
-    const bank = paymentAccount?.bankCode || String(landlord.bank || '').trim() || fallbackPaymentAccount.bank;
-    const accountName = paymentAccount?.accountName || String(landlord.accountName || landlord.fullName || '').trim() || fallbackPaymentAccount.accountName;
+      || paymentConnections.find(connection => connection.buildingId === null)
+      || paymentConnections[0];
+    const allAccounts = paymentConnection?.accounts || [];
+    const bldCodeClean = (contract.room.building?.code || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    const landlordRaw = (contract.room.building?.landlord || {}) as Record<string, unknown>;
+    const landlordNameClean = toAsciiAccountName(String(landlordRaw.fullName || landlordRaw.accountName || ''));
+
+    // Match appropriate gateway receiving account by building code or landlord identity
+    const paymentAccount = allAccounts.find(acc => {
+      const accNum = acc.accountNumber.toUpperCase();
+      const accName = toAsciiAccountName(acc.accountName);
+      return (
+        (bldCodeClean && (accNum.includes(bldCodeClean) || accNum.includes(bldCodeClean.slice(-4)))) ||
+        (landlordNameClean && (accName.includes(landlordNameClean) || landlordNameClean.includes(accName)))
+      );
+    }) || allAccounts[0] || null;
+
+    // Strict rule: STK sent to tenants MUST be the integrated gateway account (SePay), never landlord personal account
+    const accountNumber = paymentAccount?.accountNumber || fallbackPaymentAccount.accountNumber;
+    const bank = paymentAccount?.bankCode || fallbackPaymentAccount.bank;
+    const accountName = toAsciiAccountName(paymentAccount?.accountName || fallbackPaymentAccount.accountName);
     const invoiceAmount = invoice ? Number(invoice.totalAmountVnd - invoice.paidAmountVnd) : 0;
     const periodLabel = invoice ? `${invoice.periodKey.slice(5, 7)}/${invoice.periodKey.slice(0, 4)}` : '';
     const paymentName = contract.tenant.fullName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd')
@@ -104,7 +130,7 @@ async function internalBotApi(req: http.IncomingMessage, res: http.ServerRespons
     ].filter(Boolean) : [];
     const paymentProviderId = paymentConnection?.providerId || fallbackPaymentAccount.providerId;
     const qrTemplate = paymentProviderId === 'SEPAY' ? 'compact' : 'compact2';
-    const qrHolder = encodeURIComponent(accountName).replace(/%20/g, '+');
+    const qrHolder = accountName.replace(/\s+/g, '+');
     const qrUrl = invoice && accountNumber && bank
       ? `https://vietqr.app/img?bank=${encodeURIComponent(bank)}&acc=${encodeURIComponent(accountNumber)}&template=${qrTemplate}&amount=${invoiceAmount}&des=${encodeURIComponent(transferContent)}&showinfo=true&holder=${qrHolder}`
       : null;

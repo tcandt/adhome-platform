@@ -40,7 +40,7 @@ async function queueBusinessNotifications(pool, config, fetchImpl = fetch) {
         renderTemplate(templates.CONTRACT_EXPIRING, { roomCode: row.roomCode, endDate: row.endDate })],
     );
   }
-  const adminGroup = (await pool.query('SELECT chat_id FROM zalo_bot_admin_groups WHERE bot_id = $1', [config.bot_id])).rows[0];
+  const adminGroup = (await pool.query('SELECT chat_id FROM zalo_bot_admin_groups WHERE bot_id = $1', [config.bot_id]))?.rows?.[0];
   for (const pt of candidates.payments || []) {
     const isFull = pt.invoiceStatus === 'PAID';
     const statusText = isFull ? 'Đã hoàn tất thanh toán (100%)' : `Thanh toán 1 phần (còn lại: ${money(pt.remainingVnd)}đ)`;

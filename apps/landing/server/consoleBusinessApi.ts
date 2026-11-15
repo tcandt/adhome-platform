@@ -497,6 +497,17 @@ function slugifyVietnamese(input: string): string {
     .slice(0, 90);
 }
 
+function toAsciiAccountName(name: string): string {
+  return (name || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[đĐ]/g, (c) => (c === 'đ' ? 'd' : 'D'))
+    .replace(/[^A-Za-z0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase();
+}
+
 function parseMaxOccupantsNumber(raw: string | number | null | undefined): number {
   if (typeof raw === 'number' && Number.isFinite(raw)) {
     return Math.max(1, Math.min(12, Math.trunc(raw)));
@@ -7671,17 +7682,34 @@ export async function handleConsoleV2Api(
           OR: [{ buildingId: inv.buildingId }, { buildingId: null }],
           accounts: { some: {} },
         },
-        include: { accounts: { orderBy: [{ bankCode: 'asc' }, { accountNumber: 'asc' }], take: 1 } },
+        include: { accounts: { orderBy: [{ bankCode: 'asc' }, { accountNumber: 'asc' }] } },
         orderBy: { updatedAt: 'desc' },
       }),
     ]);
     const paymentConnection = paymentConnections.find(connection => connection.buildingId === inv.buildingId)
-      || paymentConnections.find(connection => connection.buildingId === null);
-    const paymentAccount = paymentConnection?.accounts[0] || null;
+      || paymentConnections.find(connection => connection.buildingId === null)
+      || paymentConnections[0];
+    const allAccounts = paymentConnection?.accounts || [];
+    const bldCodeClean = (inv.building?.code || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    const landlordRaw = (inv.building?.landlord || {}) as Record<string, unknown>;
+    const landlordNameClean = toAsciiAccountName(String(landlordRaw.fullName || landlordRaw.accountName || ''));
+
+    // Match appropriate gateway receiving account by building code or landlord identity
+    const paymentAccount = allAccounts.find(acc => {
+      const accNum = acc.accountNumber.toUpperCase();
+      const accName = toAsciiAccountName(acc.accountName);
+      return (
+        (bldCodeClean && (accNum.includes(bldCodeClean) || accNum.includes(bldCodeClean.slice(-4)))) ||
+        (landlordNameClean && (accName.includes(landlordNameClean) || landlordNameClean.includes(accName)))
+      );
+    }) || allAccounts[0] || null;
+
     const remainingAmountVnd = Math.max(0, toSafeVndNumber(inv.totalAmountVnd) - toSafeVndNumber(inv.paidAmountVnd));
     const transferContent = inv.invoiceCode.replace(/[^A-Za-z0-9]/g, '').slice(0, 50).toUpperCase();
+    const accountNameClean = paymentAccount ? toAsciiAccountName(paymentAccount.accountName) : '';
+    const qrHolder = accountNameClean.replace(/\s+/g, '+');
     const qrUrl = paymentAccount && remainingAmountVnd > 0
-      ? `https://vietqr.app/img?bank=${encodeURIComponent(paymentAccount.bankCode)}&acc=${encodeURIComponent(paymentAccount.accountNumber)}&template=compact&amount=${remainingAmountVnd}&des=${encodeURIComponent(transferContent)}&showinfo=true&holder=${encodeURIComponent(paymentAccount.accountName).replace(/%20/g, '+')}`
+      ? `https://vietqr.app/img?bank=${encodeURIComponent(paymentAccount.bankCode)}&acc=${encodeURIComponent(paymentAccount.accountNumber)}&template=compact&amount=${remainingAmountVnd}&des=${encodeURIComponent(transferContent)}&showinfo=true&holder=${qrHolder}`
       : null;
     const proofs = await paymentProofMap(prisma, actor.orgId, inv.payments.map(payment => payment.id));
     return sendJson(res, 200, {
@@ -7694,7 +7722,7 @@ export async function handleConsoleV2Api(
         providerId: paymentConnection?.providerId || 'SEPAY',
         bankCode: paymentAccount.bankCode,
         accountNumber: paymentAccount.accountNumber,
-        accountName: paymentAccount.accountName,
+        accountName: accountNameClean,
         transferContent,
         amountVnd: remainingAmountVnd,
         qrUrl,

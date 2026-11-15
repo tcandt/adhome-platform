@@ -113,7 +113,9 @@ async function register(client, botId, orgId, update, inboxId, lookup, exists) {
         row.qrUrl ? [`Hóa đơn cho: ${roomCode} · ${row.tenantName}`,
           ...(row.items || []).map(item => `- ${item.label}: ${Number(item.amountVnd).toLocaleString('vi-VN')}đ`),
           `Tổng thanh toán: ${Number(row.amountVnd).toLocaleString('vi-VN')}đ`, '',
-          `${row.accountNumber} / ${row.bank}`, row.accountName, `Nội dung: ${row.transferContent}`].join('\n') : null],
+          `${row.accountNumber} / ${row.bank}`,
+          (row.accountName || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[đĐ]/g, c => (c === 'đ' ? 'd' : 'D')).trim().toUpperCase(),
+          `Nội dung: ${row.transferContent}`].join('\n') : null],
     );
   }
   return status;

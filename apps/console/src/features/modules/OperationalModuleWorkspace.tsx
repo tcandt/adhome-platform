@@ -1332,8 +1332,8 @@ export const OperationalModuleWorkspace: React.FC<
       ? '96247LK32LK24'
       : (invoiceVietQr?.accountNumber || '96247LK31');
     const accountName = isLK24
-      ? 'HO KINH DOANH PHAN VAN THE'
-      : (invoiceVietQr?.accountName || 'HO KINH DOANH NGUYEN DUC TINH');
+      ? 'HKD PHAN VAN THE'
+      : (invoiceVietQr?.accountName ? toAsciiNoTone(invoiceVietQr.accountName) : 'HKD NGUYEN DUC TINH');
 
     // Meaningful & concise transfer content: <RoomCode><TenantNameASCII><MMYYYY>
     const roomClean = toAsciiNoTone(selectedInvoice.roomCode || '');
@@ -1364,7 +1364,8 @@ export const OperationalModuleWorkspace: React.FC<
     const remaining = selectedInvoice ? Math.max(0, selectedInvoice.totalAmountVnd - selectedInvoice.paidAmountVnd) : 0;
     const amt = Math.trunc(invoicePayAmount > 0 ? invoicePayAmount : remaining);
     if (!qr?.accountNumber || !qr.bankCode || amt <= 0) return null;
-    return `https://vietqr.app/img?bank=${encodeURIComponent(qr.bankCode)}&acc=${encodeURIComponent(qr.accountNumber)}&template=compact&amount=${amt}&des=${encodeURIComponent(qr.transferContent)}&showinfo=true&holder=${encodeURIComponent(qr.accountName).replace(/%20/g, '+')}`;
+    const holderAscii = toAsciiNoTone(qr.accountName || '').replace(/\s+/g, '+');
+    return `https://vietqr.app/img?bank=${encodeURIComponent(qr.bankCode)}&acc=${encodeURIComponent(qr.accountNumber)}&template=compact&amount=${amt}&des=${encodeURIComponent(qr.transferContent)}&showinfo=true&holder=${holderAscii}`;
   }, [effectiveVietQr, invoicePayAmount, selectedInvoice]);
 
   const invoiceSummary = invoices.reduce(

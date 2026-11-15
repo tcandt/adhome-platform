@@ -494,7 +494,7 @@ export const OperationalModuleWorkspace: React.FC<
   const [lgType, setLgType] = useState<'INCOME' | 'EXPENSE'>('INCOME');
   const [lgCategory, setLgCategory] = useState('Khác');
   const [lgBuildingId, setLgBuildingId] = useState('');
-  const [lgAmountVnd, setLgAmountVnd] = useState(1500000);
+  const [lgAmountVnd, setLgAmountVnd] = useState(0);
   const [lgDescription, setLgDescription] = useState('');
   const [lgError, setLgError] = useState<string | null>(null);
   const [isSavingLg, setIsSavingLg] = useState(false);
@@ -1163,6 +1163,11 @@ export const OperationalModuleWorkspace: React.FC<
 
   const handleCreateLedgerEntry = async (e: React.FormEvent) => {
     e.preventDefault();
+    const parsedAmount = Math.trunc(Number(lgAmountVnd) || 0);
+    if (parsedAmount <= 0) {
+      setLgError('Vui lòng nhập số tiền lớn hơn 0 đ.');
+      return;
+    }
     setIsSavingLg(true);
     setLgError(null);
     try {
@@ -1178,7 +1183,7 @@ export const OperationalModuleWorkspace: React.FC<
           category: lgCategory.trim(),
           buildingId: lgBuildingId || null,
           periodKey: selectedPeriod,
-          amountVnd: Math.trunc(Number(lgAmountVnd) || 0),
+          amountVnd: parsedAmount,
           description: lgDescription.trim(),
         }),
       });
@@ -2535,6 +2540,8 @@ export const OperationalModuleWorkspace: React.FC<
                 setLgError(null);
                 setLgCategory('Khác');
                 setLgBuildingId(activeBuildings[0]?.id || '');
+                setLgAmountVnd(0);
+                setLgDescription('');
                 setIsLedgerModalOpen(true);
               }}
             />
@@ -3431,7 +3438,8 @@ export const OperationalModuleWorkspace: React.FC<
                       label="Số tiền *"
                       value={lgAmountVnd}
                       onChange={setLgAmountVnd}
-                      min={1000}
+                      min={0}
+                      placeholder="0"
                       className="h-9 text-xs font-bold rounded-xl bg-slate-50 border-slate-200 dark:bg-slate-800 dark:border-slate-700"
                     />
                   </div>

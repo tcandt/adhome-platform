@@ -81,10 +81,15 @@ export const MoneyInput: React.FC<MoneyInputProps> = ({
 
   // Sync external value updates
   useEffect(() => {
-    const numeric = typeof value === 'bigint' ? Number(value) : typeof value === 'number' ? value : parseVnd(value);
-    const formatted = numeric === 0 ? '' : formatVnd(numeric);
+    const numeric = typeof value === 'bigint' ? Number(value) : typeof value === 'number' ? value : parseVnd(String(value ?? ''));
+    if (numeric === 0) {
+      if (displayValue !== '' && parseVnd(displayValue) !== 0) {
+        setDisplayValue('');
+      }
+      return;
+    }
     if (parseVnd(displayValue) !== numeric) {
-      setDisplayValue(formatted);
+      setDisplayValue(formatVnd(numeric));
     }
   }, [value]);
 
@@ -96,10 +101,27 @@ export const MoneyInput: React.FC<MoneyInputProps> = ({
     // Digits before caret
     const digitsBeforeCaret = rawVal.slice(0, prevCaret).replace(/\D/g, '').length;
 
-    const parsed = parseVnd(rawVal);
-    const clamped = min !== undefined && parsed < min ? min : max !== undefined && parsed > max ? max : parsed;
+    // Clean digits only
+    const cleanDigits = rawVal.replace(/\D/g, '');
 
-    const formatted = clamped === 0 && rawVal.trim() === '' ? '' : formatVnd(clamped);
+    // Allow user to completely clear/delete the value
+    if (cleanDigits === '' || cleanDigits === '0') {
+      setDisplayValue('');
+      onChange(0);
+      return;
+    }
+
+    const parsed = parseInt(cleanDigits, 10);
+    if (isNaN(parsed) || parsed === 0) {
+      setDisplayValue('');
+      onChange(0);
+      return;
+    }
+
+    // Only clamp max if specified (do NOT clamp min during typing so the user can backspace freely)
+    const clamped = max !== undefined && parsed > max ? max : parsed;
+
+    const formatted = formatVnd(clamped);
     setDisplayValue(formatted);
     onChange(clamped);
 

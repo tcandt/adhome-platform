@@ -10,8 +10,8 @@ import { type WebhookConnection, type WebhookGuide } from './PaymentWebhookPanel
 
 type Provider = { id: string; name: string; description: string; docsUrl: string; canTest: boolean; environments: string[]; fields: { key: string; label: string; secret: boolean; optional?: boolean }[]; testReference: boolean; webhook: WebhookGuide };
 type Account = { bankCode: string; accountNumber: string; accountName: string };
-type Connection = WebhookConnection & { name: string; environment: string; buildingId: string | null; isEnabled: boolean; status: string; credentialFields: string[]; version: number; lastTestedAt: string | null; lastTestMessage: string | null; verificationScope: string | null; accounts: Account[] };
-type Draft = { id?: string; creationId?: string; version?: number; providerId: string; name: string; environment: string; buildingId: string; webhookAuth: string; credentials: Record<string, string>; accounts: Account[] };
+type Connection = WebhookConnection & { name: string; environment: string; buildingId: string | null; isEnabled: boolean; status: string; credentialFields: string[]; maskedCredentials?: Record<string, string>; version: number; lastTestedAt: string | null; lastTestMessage: string | null; verificationScope: string | null; accounts: Account[] };
+type Draft = { id?: string; creationId?: string; version?: number; providerId: string; name: string; environment: string; buildingId: string; webhookAuth: string; credentials: Record<string, string>; maskedCredentials?: Record<string, string>; accounts: Account[] };
 const endpoint = '/api/v1/console/v2/settings/payment-connections';
 const inputClass = 'mt-1 min-w-0 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900';
 const buttonClass = 'inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700';
@@ -71,7 +71,7 @@ export function PaymentIntegrationHub() {
   const edit = (connection?: Connection, providerId = providers[0]?.id) => {
     setFormError('');
     setWebhookCopyMessage('');
-    setDraft(connection ? { ...connection, buildingId: connection.buildingId || '', webhookAuth: connection.webhookAuth || 'HMAC_SHA256', credentials: {}, accounts: connection.accounts.map(a => ({ bankCode: a.bankCode, accountNumber: a.accountNumber, accountName: a.accountName })) } : { creationId: creationId(), providerId, name: '', environment: providers.find(p => p.id === providerId)?.environments[0] || 'LIVE', buildingId: '', webhookAuth: 'HMAC_SHA256', credentials: {}, accounts: [] });
+    setDraft(connection ? { ...connection, buildingId: connection.buildingId || '', webhookAuth: connection.webhookAuth || 'HMAC_SHA256', credentials: {}, maskedCredentials: connection.maskedCredentials || {}, accounts: connection.accounts.map(a => ({ bankCode: a.bankCode, accountNumber: a.accountNumber, accountName: a.accountName })) } : { creationId: creationId(), providerId, name: '', environment: providers.find(p => p.id === providerId)?.environments[0] || 'LIVE', buildingId: '', webhookAuth: 'HMAC_SHA256', credentials: {}, maskedCredentials: {}, accounts: [] });
   };
   const run = async (key: string, operation: () => Promise<unknown>, message: string, inForm = false) => {
     if (working.current) return;
@@ -411,9 +411,20 @@ export function PaymentIntegrationHub() {
               const explanation = provider.id === 'SEPAY' && field.key === 'webhookSecret'
                 ? draft.webhookAuth === 'API_KEY' ? 'Dùng API Key ở mục Bảo mật webhook SePay, không dùng API Token đọc tài khoản.' : 'Dùng Secret Key ở mục Bảo mật webhook SePay, không dùng API Token đọc tài khoản.'
                 : provider.id === 'SEPAY' && field.key === 'apiToken' ? 'Tùy chọn. Chỉ dùng kiểm tra quyền đọc API SePay, không dùng xác thực webhook.' : '';
+              const masked = draft.maskedCredentials?.[field.key];
               return <div key={field.key} className="min-w-0">
-                <div className="flex min-h-6 items-center gap-1"><label htmlFor={`payment-credential-${field.key}`} className="truncate text-xs font-semibold">{label}</label>{explanation && <FieldInfoHint label={label}>{explanation}</FieldInfoHint>}</div>
-                <input id={`payment-credential-${field.key}`} required={!draft.id && !field.optional} type={field.secret ? 'password' : 'text'} autoComplete="off" maxLength={4096} className={inputClass} value={draft.credentials[field.key] || ''} onChange={e => setDraft({ ...draft, credentials: { ...draft.credentials, [field.key]: e.target.value } })} placeholder={draft.id ? 'Để trống' : label} />
+                <div className="flex min-h-6 items-center justify-between gap-1">
+                  <div className="flex items-center gap-1 min-w-0">
+                    <label htmlFor={`payment-credential-${field.key}`} className="truncate text-xs font-semibold">{label}</label>
+                    {explanation && <FieldInfoHint label={label}>{explanation}</FieldInfoHint>}
+                  </div>
+                  {masked && (
+                    <span className="shrink-0 rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                      Đã lưu: <code className="font-mono">{masked}</code>
+                    </span>
+                  )}
+                </div>
+                <input id={`payment-credential-${field.key}`} required={!draft.id && !field.optional && !masked} type={field.secret ? 'password' : 'text'} autoComplete="off" maxLength={4096} className={inputClass} value={draft.credentials[field.key] || ''} onChange={e => setDraft({ ...draft, credentials: { ...draft.credentials, [field.key]: e.target.value } })} placeholder={masked ? `Đã lưu (${masked}) · Nhập để đổi` : (draft.id ? 'Để trống' : label)} />
               </div>;
             })}</div>
           </div>

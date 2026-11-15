@@ -41,11 +41,42 @@ export async function handlePaymentIntegrations(req: IncomingMessage, res: Serve
     const method = req.method || 'GET';
     if (method === 'GET' && !id) {
       const [connections, legacy, auditLogs] = await Promise.all([
-        prisma.paymentProviderConnection.findMany({ where: { orgId: actor.orgId }, select: safeSelect, orderBy: { createdAt: 'desc' } }),
+        prisma.paymentProviderConnection.findMany({ where: { orgId: actor.orgId }, select: { ...safeSelect, credentialsEncrypted: true }, orderBy: { createdAt: 'desc' } }),
         prisma.integrationConnection.findMany({ where: { orgId: actor.orgId, category: 'PAYMENT' }, select: { providerId: true, secretHint: true, accountLabel: true } }),
         prisma.consoleAuditLog.findMany({ where: { orgId: actor.orgId, entityType: 'PAYMENT_CONNECTION' }, select: { id: true, actorEmail: true, summary: true, createdAt: true }, orderBy: { createdAt: 'desc' }, take: 20 }),
       ]);
-      sendJson(res, 200, { ok: true, providers: PAYMENT_PROVIDERS, publicWebhookOrigin: paymentWebhookOrigin(req), connections: connections.map(c => ({ ...c, ...webhookAddress(c.providerId, c.id, req), webhookEvents: c.webhookEvents.map(e => ({ ...e, amountVnd: e.amountVnd === null ? null : Number(e.amountVnd) })) })), auditLogs, legacyConfigured: legacy.filter(p => p.secretHint || p.accountLabel).map(p => p.providerId) });
+      sendJson(res, 200, {
+        ok: true,
+        providers: PAYMENT_PROVIDERS,
+        publicWebhookOrigin: paymentWebhookOrigin(req),
+        connections: connections.map(c => {
+          const { credentialsEncrypted, ...rest } = c;
+          const maskedCredentials: Record<string, string> = {};
+          if (credentialsEncrypted) {
+            const plaintext = decryptSecret(credentialsEncrypted);
+            if (plaintext) {
+              try {
+                const creds = JSON.parse(plaintext);
+                for (const [k, v] of Object.entries(creds)) {
+                  if (typeof v === 'string' && v.trim()) {
+                    const trimmed = v.trim();
+                    const visibleChars = Math.min(4, Math.max(1, trimmed.length - 2));
+                    maskedCredentials[k] = `${trimmed.slice(0, visibleChars)}••••••••`;
+                  }
+                }
+              } catch {}
+            }
+          }
+          return {
+            ...rest,
+            maskedCredentials,
+            ...webhookAddress(c.providerId, c.id, req),
+            webhookEvents: c.webhookEvents.map(e => ({ ...e, amountVnd: e.amountVnd === null ? null : Number(e.amountVnd) }))
+          };
+        }),
+        auditLogs,
+        legacyConfigured: legacy.filter(p => p.secretHint || p.accountLabel).map(p => p.providerId)
+      });
       return true;
     }
     if (!(method === 'POST' && (!id || action)) && !(method === 'PATCH' && id && !action)) throw new IntegrationError('Phương thức không được hỗ trợ.', 405, 'METHOD_NOT_ALLOWED');
@@ -166,7 +197,22 @@ export async function handlePaymentIntegrations(req: IncomingMessage, res: Serve
         }
       }
       if (!existing && await tx.paymentProviderConnection.count({ where: { orgId: actor.orgId } }) >= 100) throw new IntegrationError('Tổ chức đã đạt giới hạn 100 kết nối.');
-      const data = { name, environment, buildingId, credentialsEncrypted: encrypted, credentialFields: provider.fields.filter(field => credentials[field.key]).map(field => field.key), status: 'UNCONFIGURED', isEnabled: false, lastTestedAt: null, lastTestMessage: null, verificationScope: null, webhookAuth, webhookEnabled: false, webhookLastReceivedAt: null, webhookRegisteredAt: null };
+      const data = {
+        name,
+        environment,
+        buildingId,
+        credentialsEncrypted: encrypted,
+        credentialFields: provider.fields.filter(field => credentials[field.key]).map(field => field.key),
+        status: 'UNCONFIGURED',
+        isEnabled: false,
+        lastTestedAt: null,
+        lastTestMessage: null,
+        verificationScope: null,
+        webhookAuth,
+        webhookEnabled: existing ? existing.webhookEnabled : false,
+        webhookLastReceivedAt: existing ? existing.webhookLastReceivedAt : null,
+        webhookRegisteredAt: existing ? existing.webhookRegisteredAt : null
+      };
       let connectionId: string;
       if (existing) {
         const update = await tx.paymentProviderConnection.updateMany({ where: { id: existing.id, orgId: actor.orgId, version: existing.version }, data: { ...data, version: { increment: 1 } } });

@@ -71,6 +71,27 @@ function parseJsonObject(raw: unknown): Record<string, any> {
   return {};
 }
 
+export function parseDateParts(raw: unknown): { year: number; month: number; day: number } | null {
+  if (!raw) return null;
+  if (typeof raw === 'string') {
+    const match = raw.trim().match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+    if (match) {
+      return {
+        year: parseInt(match[1], 10),
+        month: parseInt(match[2], 10),
+        day: parseInt(match[3], 10),
+      };
+    }
+  }
+  const d = new Date(raw as any);
+  if (Number.isNaN(d.getTime())) return null;
+  return {
+    year: d.getUTCFullYear(),
+    month: d.getUTCMonth() + 1,
+    day: d.getUTCDate(),
+  };
+}
+
 export function getPeriodDateRange(periodKey: string): PeriodDateRange {
   const match = /^(\d{4})-(\d{2})$/.exec(String(periodKey || '').trim());
   const now = new Date();
@@ -147,51 +168,53 @@ export function calculateContractPeriodRent(input: CalculateRentInput): Calculat
   let movedOutMidMonth = false;
 
   if (effectiveStartRaw) {
-    const d = new Date(effectiveStartRaw);
-    if (!Number.isNaN(d.getTime())) {
-      const y = d.getUTCFullYear();
-      const m = d.getUTCMonth() + 1;
-      if (y === range.year && m === range.month) {
-        startDay = Math.max(1, Math.min(range.daysInMonth, d.getUTCDate()));
+    const parts = parseDateParts(effectiveStartRaw);
+    if (parts) {
+      if (parts.year === range.year && parts.month === range.month) {
+        startDay = Math.max(1, Math.min(range.daysInMonth, parts.day));
         if (startDay > 1) movedInMidMonth = true;
-      } else if (d.getTime() > range.endDate.getTime()) {
-        return {
-          roomRentVnd: 0,
-          baseMonthlyRentVnd: monthlyRent,
-          activeDays: 0,
-          basisDays,
-          isProrated: true,
-          prorateReason: 'PARTIAL_STAY',
-          exemptDaysDeductionVnd: 0,
-          rentDiscountVnd: 0,
-          excludedDepositsVnd: Math.max(0, toSafeNum(input.bookingDepositVnd) + toSafeNum(input.contractDepositVnd)),
-          formulaNote: 'Hợp đồng bắt đầu sau kỳ quyết toán',
-        };
+      } else {
+        const startTimestamp = Date.UTC(parts.year, parts.month - 1, parts.day, 0, 0, 0);
+        if (startTimestamp > range.endDate.getTime()) {
+          return {
+            roomRentVnd: 0,
+            baseMonthlyRentVnd: monthlyRent,
+            activeDays: 0,
+            basisDays,
+            isProrated: true,
+            prorateReason: 'PARTIAL_STAY',
+            exemptDaysDeductionVnd: 0,
+            rentDiscountVnd: 0,
+            excludedDepositsVnd: Math.max(0, toSafeNum(input.bookingDepositVnd) + toSafeNum(input.contractDepositVnd)),
+            formulaNote: 'Hợp đồng bắt đầu sau kỳ quyết toán',
+          };
+        }
       }
     }
   }
 
   if (effectiveEndRaw) {
-    const d = new Date(effectiveEndRaw);
-    if (!Number.isNaN(d.getTime())) {
-      const y = d.getUTCFullYear();
-      const m = d.getUTCMonth() + 1;
-      if (y === range.year && m === range.month) {
-        endDay = Math.max(1, Math.min(range.daysInMonth, d.getUTCDate()));
+    const parts = parseDateParts(effectiveEndRaw);
+    if (parts) {
+      if (parts.year === range.year && parts.month === range.month) {
+        endDay = Math.max(1, Math.min(range.daysInMonth, parts.day));
         if (endDay < range.daysInMonth) movedOutMidMonth = true;
-      } else if (d.getTime() < range.startDate.getTime()) {
-        return {
-          roomRentVnd: 0,
-          baseMonthlyRentVnd: monthlyRent,
-          activeDays: 0,
-          basisDays,
-          isProrated: true,
-          prorateReason: 'PARTIAL_STAY',
-          exemptDaysDeductionVnd: 0,
-          rentDiscountVnd: 0,
-          excludedDepositsVnd: Math.max(0, toSafeNum(input.bookingDepositVnd) + toSafeNum(input.contractDepositVnd)),
-          formulaNote: 'Hợp đồng đã kết thúc trước kỳ quyết toán',
-        };
+      } else {
+        const endTimestamp = Date.UTC(parts.year, parts.month - 1, parts.day, 23, 59, 59);
+        if (endTimestamp < range.startDate.getTime()) {
+          return {
+            roomRentVnd: 0,
+            baseMonthlyRentVnd: monthlyRent,
+            activeDays: 0,
+            basisDays,
+            isProrated: true,
+            prorateReason: 'PARTIAL_STAY',
+            exemptDaysDeductionVnd: 0,
+            rentDiscountVnd: 0,
+            excludedDepositsVnd: Math.max(0, toSafeNum(input.bookingDepositVnd) + toSafeNum(input.contractDepositVnd)),
+            formulaNote: 'Hợp đồng đã kết thúc trước kỳ quyết toán',
+          };
+        }
       }
     }
   }
@@ -218,12 +241,14 @@ export function calculateContractPeriodRent(input: CalculateRentInput): Calculat
     grossRentVnd = Math.round((monthlyRent * activeDays) / basisDays);
     if (movedInMidMonth && movedOutMidMonth) {
       prorateReason = 'PARTIAL_STAY';
+      formulaNote = `Tính theo ngày ở thực tế: ${startDay}/${range.month} – ${endDay}/${range.month} (${activeDays}/${basisDays} ngày) × ${monthlyRent.toLocaleString('vi-VN')} ₫`;
     } else if (movedInMidMonth) {
       prorateReason = 'MID_MONTH_MOVE_IN';
+      formulaNote = `Tính từ ngày vào ở ${startDay}/${range.month} đến hết tháng (${activeDays}/${basisDays} ngày) × ${monthlyRent.toLocaleString('vi-VN')} ₫`;
     } else {
       prorateReason = 'MID_MONTH_MOVE_OUT';
+      formulaNote = `Tính từ đầu tháng đến ngày trả phòng ${endDay}/${range.month} (${activeDays}/${basisDays} ngày) × ${monthlyRent.toLocaleString('vi-VN')} ₫`;
     }
-    formulaNote = `Tính theo ngày ở thực tế: ${activeDays}/${basisDays} ngày × ${monthlyRent.toLocaleString('vi-VN')} ₫`;
   }
 
   const exemptDays = Math.max(0, Math.min(activeDays, toSafeNum(input.exemptDays)));
@@ -1199,6 +1224,20 @@ export async function buildSettlementWorkspacePayload(params: {
           ['ISSUED', 'PAID', 'PARTIAL', 'OVERDUE'].includes(matchedInvoice.status) &&
           Boolean(settlementMeta.frozenAt || isFirstCombined));
 
+      // Move-in date check for new tenant first month proration
+      const rawMoveInDate = settlementMeta.rent?.moveInDate || contract.moveInDate || contract.startDate;
+      const moveInParts = parseDateParts(rawMoveInDate);
+      const isNewTenantFirstMonth = Boolean(
+        moveInParts &&
+          moveInParts.year === range.year &&
+          moveInParts.month === range.month &&
+          moveInParts.day > 1
+      );
+      const firstMonthStartDay = isNewTenantFirstMonth && moveInParts ? moveInParts.day : 1;
+      const firstMonthActiveDays = isNewTenantFirstMonth
+        ? Math.max(1, range.daysInMonth - firstMonthStartDay + 1)
+        : range.daysInMonth;
+
       // Electric Meter & Reading resolution
       const electricMeter = electricMeterByRoomId.get(room.id);
       const currentReadingRecord = electricMeter?.readings?.find((r: any) => r.periodKey === periodKey);
@@ -1221,27 +1260,38 @@ export async function buildSettlementWorkspacePayload(params: {
       let resolvedEndKwh: number | null = null;
 
       if (effectiveElectricMeta?.startKwh !== undefined && effectiveElectricMeta?.startKwh !== null) {
-        resolvedStartKwh = effectiveElectricMeta.startKwh;
+        resolvedStartKwh = Number(effectiveElectricMeta.startKwh);
+      } else if (isNewTenantFirstMonth && contract.handoverMeterKwh != null) {
+        resolvedStartKwh = Number(contract.handoverMeterKwh);
       } else if (prevReadingRecord?.readingKwh !== undefined) {
         resolvedStartKwh = Number(prevReadingRecord.readingKwh);
       } else if (electricMeter && currentReadingRecord?.readingKwh !== undefined) {
         const monthDelta = Number(electricMeter.monthReportedKwh ?? 0);
         resolvedStartKwh = Math.max(0, Number(currentReadingRecord.readingKwh) - monthDelta);
-      } else if (electricMeter && electricMeter.connectionStatus === 'ONLINE' && electricMeter.cumulativeKwh != null) {
+      } else if (electricMeter && electricMeter.cumulativeKwh != null) {
         const monthDelta = Number(electricMeter.monthReportedKwh ?? 0);
         resolvedStartKwh = Math.max(0, Number(electricMeter.cumulativeKwh) - monthDelta);
+      } else if (electricMeter && electricMeter.monthReportedKwh != null) {
+        resolvedStartKwh = 0;
       } else if (isFirstCombined) {
         resolvedStartKwh = 0;
-      } else if (electricMeter) {
-        resolvedStartKwh = Number(electricMeter.cumulativeKwh || 0);
+      } else {
+        resolvedStartKwh = null;
       }
 
       if (effectiveElectricMeta?.endKwh !== undefined && effectiveElectricMeta?.endKwh !== null) {
-        resolvedEndKwh = effectiveElectricMeta.endKwh;
+        resolvedEndKwh = Number(effectiveElectricMeta.endKwh);
       } else if (currentReadingRecord?.readingKwh !== undefined) {
         resolvedEndKwh = Number(currentReadingRecord.readingKwh);
-      } else if (electricMeter && electricMeter.connectionStatus === 'ONLINE' && electricMeter.monthReportedKwh != null) {
-        resolvedEndKwh = Number(electricMeter.cumulativeKwh || 0);
+      } else if (electricMeter && electricMeter.cumulativeKwh != null) {
+        resolvedEndKwh = Number(electricMeter.cumulativeKwh);
+      } else if (electricMeter && electricMeter.monthReportedKwh != null) {
+        const rawReported = Number(electricMeter.monthReportedKwh);
+        if (isNewTenantFirstMonth) {
+          resolvedEndKwh = Number(((rawReported * firstMonthActiveDays) / range.daysInMonth).toFixed(2));
+        } else {
+          resolvedEndKwh = rawReported;
+        }
       } else if (isFirstCombined) {
         resolvedEndKwh = resolvedStartKwh ?? 0;
       } else {
@@ -1250,24 +1300,38 @@ export async function buildSettlementWorkspacePayload(params: {
 
       const electricRateVnd = Number(
         effectiveElectricMeta?.ratePerKwhVnd ??
-          electricMeter?.tariffRateVnd ??
+          contract.electricRateVnd ??
           room.electricRateVnd ??
+          electricMeter?.tariffRateVnd ??
+          building?.electricRateVnd ??
           org?.defaultElectricRateVnd ??
           3800
       );
+
+      let effectiveFixedElectricVnd = effectiveElectricMeta?.fixedAmountVnd;
+      if (electricMethod === 'FIXED' && effectiveFixedElectricVnd === undefined) {
+        const baseFixed = Number(contract.electricRateVnd ?? room.electricRateVnd ?? 0);
+        effectiveFixedElectricVnd = isNewTenantFirstMonth
+          ? Math.round((baseFixed * firstMonthActiveDays) / range.daysInMonth)
+          : baseFixed;
+      }
 
       const electricCalc = calculateObligationElectric({
         method: electricMethod,
         startKwh: resolvedStartKwh,
         endKwh: resolvedEndKwh,
         ratePerKwhVnd: electricRateVnd,
-        fixedAmountVnd: effectiveElectricMeta?.fixedAmountVnd,
+        fixedAmountVnd: effectiveFixedElectricVnd,
         meterReplaced: Boolean(effectiveElectricMeta?.meterReplaced),
         replacementOffsetKwh: effectiveElectricMeta?.replacementOffsetKwh,
         anomalyConfirmed: Boolean(effectiveElectricMeta?.anomalyConfirmed),
         sharedWeights: orderedRoomContracts.length > 1 ? sharedWeights : undefined,
         sharedIndex: orderedRoomContracts.length > 1 ? contractIndex : undefined,
       });
+
+      if (isNewTenantFirstMonth && electricCalc.status === 'COMPLETE' && !electricCalc.formulaNote.includes('vào ở')) {
+        electricCalc.formulaNote += ` (Tính từ ngày vào ở ${firstMonthStartDay}/${range.month}: ${firstMonthActiveDays}/${range.daysInMonth} ngày)`;
+      }
 
       // Water calculation resolution
       const effectiveWaterMeta =
@@ -1299,7 +1363,7 @@ export async function buildSettlementWorkspacePayload(params: {
         )
       );
 
-      const resolvedWaterUnitRate = Number(
+      let resolvedWaterUnitRate = Number(
         effectiveWaterMeta?.unitRateVnd ??
           contract.waterRateVnd ??
           room.waterRateVnd ??
@@ -1307,6 +1371,10 @@ export async function buildSettlementWorkspacePayload(params: {
           org?.defaultWaterRateVnd ??
           (normalizeWaterMode(rawWaterMode) === 'PER_M3' ? 25000 : 100000)
       );
+
+      if (isNewTenantFirstMonth && (rawWaterMode === 'PER_PERSON' || rawWaterMode === 'FIXED')) {
+        resolvedWaterUnitRate = Math.round((resolvedWaterUnitRate * firstMonthActiveDays) / range.daysInMonth);
+      }
 
       const waterConsumptionM3 =
         effectiveWaterMeta?.consumptionM3 !== undefined && effectiveWaterMeta?.consumptionM3 !== null
@@ -1317,6 +1385,13 @@ export async function buildSettlementWorkspacePayload(params: {
           ? 0
           : null;
 
+      const waterStartM3 =
+        effectiveWaterMeta?.startM3 !== undefined && effectiveWaterMeta?.startM3 !== null
+          ? effectiveWaterMeta.startM3
+          : isNewTenantFirstMonth && contract.handoverWaterM3 != null
+          ? Number(contract.handoverWaterM3)
+          : null;
+
       const waterCalc = calculateObligationWater({
         mode: rawWaterMode,
         occupantCount: resolvedOccupantCount,
@@ -1324,12 +1399,16 @@ export async function buildSettlementWorkspacePayload(params: {
         waterPricePerM3Vnd: resolvedWaterUnitRate,
         waterFixedRoomVnd: resolvedWaterUnitRate,
         consumptionM3: waterConsumptionM3,
-        startM3: effectiveWaterMeta?.startM3 ?? null,
+        startM3: waterStartM3,
         endM3: effectiveWaterMeta?.endM3 ?? null,
         anomalyConfirmed: Boolean(effectiveWaterMeta?.anomalyConfirmed),
         sharedWeights: orderedRoomContracts.length > 1 ? sharedWeights : undefined,
         sharedIndex: orderedRoomContracts.length > 1 ? contractIndex : undefined,
       });
+
+      if (isNewTenantFirstMonth && (rawWaterMode === 'PER_PERSON' || rawWaterMode === 'FIXED') && !waterCalc.formulaNote.includes('vào ở')) {
+        waterCalc.formulaNote += ` (Tính từ ngày vào ở ${firstMonthStartDay}/${range.month}: ${firstMonthActiveDays}/${range.daysInMonth} ngày)`;
+      }
 
       // Contract billing cycle check (e.g. 1 month, 3 months, 6 months)
       const resolvedCycle = resolveContractBillingCycle(contract, periodKey);
@@ -1345,7 +1424,7 @@ export async function buildSettlementWorkspacePayload(params: {
         periodKey,
         contractStartDate: contract.startDate,
         contractEndDate: contract.endDate,
-        moveInDate: settlementMeta.rent?.moveInDate,
+        moveInDate: rawMoveInDate,
         moveOutDate: settlementMeta.rent?.moveOutDate,
         rateChange: settlementMeta.rent?.rateChange || null,
         exemptDays: settlementMeta.rent?.exemptDays || 0,
@@ -2376,7 +2455,7 @@ export async function handleSettlementCenterApi(params: {
         periodKey,
         contractStartDate: memberContract.startDate,
         contractEndDate: memberContract.endDate,
-        moveInDate: (isPrimary ? body.rent?.moveInDate : undefined) ?? mPrevMeta.rent?.moveInDate,
+        moveInDate: (isPrimary ? body.rent?.moveInDate : undefined) ?? mPrevMeta.rent?.moveInDate ?? memberContract.moveInDate ?? memberContract.startDate,
         moveOutDate: (isPrimary ? body.rent?.moveOutDate : undefined) ?? mPrevMeta.rent?.moveOutDate,
         rateChange: (isPrimary ? body.rent?.rateChange : undefined) ?? mPrevMeta.rent?.rateChange,
         exemptDays: (isPrimary ? body.rent?.exemptDays : undefined) ?? mPrevMeta.rent?.exemptDays,
@@ -2388,7 +2467,7 @@ export async function handleSettlementCenterApi(params: {
         method: mElectricMeta.method || 'MANUAL',
         startKwh: mElectricMeta.startKwh,
         endKwh: mElectricMeta.endKwh,
-        ratePerKwhVnd: Number(mElectricMeta.ratePerKwhVnd ?? room.electricRateVnd ?? 3800),
+        ratePerKwhVnd: Number(mElectricMeta.ratePerKwhVnd ?? memberContract.electricRateVnd ?? room.electricRateVnd ?? 3800),
         meterReplaced: Boolean(mElectricMeta.meterReplaced),
         replacementOffsetKwh: Number(mElectricMeta.replacementOffsetKwh || 0),
         anomalyConfirmed: Boolean(mElectricMeta.anomalyConfirmed),

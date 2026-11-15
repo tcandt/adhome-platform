@@ -4,6 +4,7 @@ import {
   AlertCircle,
   BellRing,
   Building2,
+  CalendarDays,
   CheckCircle2,
   CheckSquare,
   Clock,
@@ -21,6 +22,7 @@ import {
   Save,
   ShieldCheck,
   Sliders,
+  Sparkles,
   Square,
   Table,
   X,
@@ -112,6 +114,15 @@ interface LoginAuditRow {
   clientIp: string;
   createdAt: string;
 }
+
+const SETTLEMENT_CRON_PRESETS = [
+  { value: '0 6 1 * *', label: '06:00 sáng Ngày 1 hàng tháng (Mặc định chuẩn)' },
+  { value: '0 6 25 * *', label: '06:00 sáng Ngày 25 hàng tháng (Chốt sớm)' },
+  { value: '0 23 28 * *', label: '23:00 đêm Ngày 28 hàng tháng (Cuối tháng)' },
+  { value: '0 6 15 * *', label: '06:00 sáng Ngày 15 hàng tháng (Giữa tháng)' },
+  { value: '0 6 * * *', label: '06:00 sáng Hàng ngày' },
+  { value: 'CUSTOM', label: 'Tùy chỉnh biểu thức Cron...' },
+];
 
 const cronToMinutes = (expression?: string) => {
   if (!expression) return 60;
@@ -1424,76 +1435,274 @@ export const SettingsWorkspaceView: React.FC = () => {
               </div>
 
               <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
-                {cronJobs.map((job, idx) => (
-                  <div
-                    key={job.id}
-                    className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                  >
-                    <div>
-                      <div className="font-bold text-slate-900 dark:text-white">
-                        {job.displayName}
-                      </div>
-                      <div className="text-[11px] text-slate-500 font-mono">
-                        Key: {job.jobKey} · Timezone: {job.timezone} · Lần chạy
-                        cuối: {job.lastRunStatus}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      {job.jobKey === 'HUNONIC_HOURLY_SYNC' ? <NumberInput
-                        min={job.jobKey === 'HUNONIC_HOURLY_SYNC' ? 1 : undefined}
-                        max={job.jobKey === 'HUNONIC_HOURLY_SYNC' ? 1440 : undefined}
-                        aria-label={job.jobKey === 'HUNONIC_HOURLY_SYNC' ? 'Chu kỳ đồng bộ Hunonic theo phút' : undefined}
-                        value={cronToMinutes(job.cronExpression)}
-                        onValueChange={(value) => {
-                          setCronJobs((prev) =>
-                            prev.map((j, i) =>
-                              i === idx ? { ...j, cronExpression: value < 60 ? `*/${Math.trunc(value)} * * * *` : value === 1440 ? '0 0 * * *' : `0 */${Math.max(1, Math.trunc(value / 60))} * * *` } : j
-                            )
-                          );
-                        }}
-                        className="w-36 px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-xs"
-                      /> : <input type="text" value={job.cronExpression} onChange={e => setCronJobs(prev => prev.map((j, i) => i === idx ? { ...j, cronExpression: e.target.value } : j))} className="w-36 px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-xs" />}
-                      <label className="inline-flex items-center gap-1.5 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={job.isEnabled}
-                          onChange={(e) => {
-                            const checked = e.target.checked;
-                            setCronJobs((prev) =>
-                              prev.map((j, i) =>
-                                i === idx ? { ...j, isEnabled: checked } : j
-                              )
-                            );
-                          }}
-                          className="rounded text-brand-primary"
-                        />
-                        <span className="font-semibold">
-                          {job.isEnabled ? 'Bật' : 'Tắt'}
-                        </span>
-                      </label>
-                      <button
-                        type="button"
-                        disabled={isSaving}
-                        onClick={() =>
-                          void patchSettingsSection(
-                            'cron',
-                            {
-                              jobKey: job.jobKey,
-                              cronExpression: job.cronExpression,
-                              ...(job.jobKey === 'HUNONIC_HOURLY_SYNC' ? { intervalMinutes: cronToMinutes(job.cronExpression) } : {}),
-                              isEnabled: job.isEnabled,
-                            },
-                            `Đã lưu lịch tự động: ${job.displayName}`
-                          )
-                        }
-                        className="px-3 py-1.5 rounded-lg font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100"
+                {cronJobs.map((job, idx) => {
+                  const isSettlementJob = job.jobKey === 'BILLING_PERIOD_CUTOFF';
+                  if (isSettlementJob) {
+                    const matchedPreset = SETTLEMENT_CRON_PRESETS.find((p) => p.value === job.cronExpression);
+                    const selectedPreset = matchedPreset ? matchedPreset.value : 'CUSTOM';
+                    return (
+                      <div
+                        key={job.id}
+                        className="p-4 my-2.5 rounded-xl border border-blue-200/90 dark:border-blue-900/60 bg-blue-50/50 dark:bg-blue-950/20 space-y-3"
                       >
-                        Lưu
-                      </button>
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                          <div className="flex items-center gap-2.5">
+                            <span className="p-2 rounded-xl bg-blue-500/10 text-brand-primary dark:text-blue-400">
+                              <CalendarDays className="w-5 h-5" />
+                            </span>
+                            <div>
+                              <div className="font-bold text-slate-900 dark:text-white flex items-center gap-2 text-[13px]">
+                                {job.displayName}
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-md font-bold bg-blue-100 text-blue-700 dark:bg-blue-900/60 dark:text-blue-300">
+                                  Tổng hợp kỳ & Hóa đơn
+                                </span>
+                              </div>
+                              <div className="text-[11px] text-slate-500 font-mono mt-0.5">
+                                Key: {job.jobKey} · Múi giờ: {job.timezone} · Lần chạy cuối: {job.lastRunStatus}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3 shrink-0">
+                            <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold">
+                              <input
+                                type="checkbox"
+                                checked={job.isEnabled}
+                                onChange={(e) => {
+                                  const checked = e.target.checked;
+                                  setCronJobs((prev) =>
+                                    prev.map((j, i) =>
+                                      i === idx ? { ...j, isEnabled: checked } : j
+                                    )
+                                  );
+                                }}
+                                className="rounded text-brand-primary"
+                              />
+                              <span>{job.isEnabled ? 'Đang bật' : 'Đang tắt'}</span>
+                            </label>
+                            <button
+                              type="button"
+                              disabled={isSaving}
+                              onClick={() =>
+                                void patchSettingsSection(
+                                  'cron',
+                                  {
+                                    jobKey: job.jobKey,
+                                    cronExpression: job.cronExpression,
+                                    isEnabled: job.isEnabled,
+                                  },
+                                  `Đã lưu lịch tự động: ${job.displayName}`
+                                )
+                              }
+                              className="px-3 py-1.5 rounded-lg font-bold bg-brand-primary hover:bg-brand-primary/90 text-white text-xs shadow-xs"
+                            >
+                              Lưu cấu hình
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Chế độ tổng hợp & Lịch chạy */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 text-xs">
+                          <div className="space-y-1">
+                            <label className="font-semibold text-slate-700 dark:text-slate-300">
+                              Chế độ tổng hợp kỳ:
+                            </label>
+                            <select
+                              value={
+                                job.displayName.includes('Chỉ số')
+                                  ? 'METERS_ONLY'
+                                  : job.displayName.includes('chu kỳ')
+                                  ? 'CYCLE_AWARE'
+                                  : 'AUTO_DRAFT'
+                              }
+                              onChange={(e) => {
+                                const mode = e.target.value;
+                                const newTitle =
+                                  mode === 'METERS_ONLY'
+                                    ? 'Chốt chỉ số điện nước & Khởi tạo dữ liệu kỳ mới'
+                                    : mode === 'CYCLE_AWARE'
+                                    ? 'Tự động tổng hợp theo chu kỳ hợp đồng & Lập hóa đơn nháp'
+                                    : 'Chốt chỉ số cuối kỳ & khởi tạo bảng tổng hợp nháp';
+                                setCronJobs((prev) =>
+                                  prev.map((j, i) =>
+                                    i === idx ? { ...j, displayName: newTitle } : j
+                                  )
+                                );
+                              }}
+                              className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
+                            >
+                              <option value="AUTO_DRAFT">Chế độ A: Tự động nháp (Khởi tạo & lập hóa đơn nháp)</option>
+                              <option value="METERS_ONLY">Chế độ B: Chốt chỉ số điện nước & Đồng bộ</option>
+                              <option value="CYCLE_AWARE">Chế độ C: Theo chu kỳ hợp đồng (1 - 12 tháng)</option>
+                            </select>
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="font-semibold text-slate-700 dark:text-slate-300">
+                              Lịch chạy định kỳ (Asia/Ho_Chi_Minh):
+                            </label>
+                            <div className="flex gap-2">
+                              <select
+                                value={selectedPreset}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  if (val !== 'CUSTOM') {
+                                    setCronJobs((prev) =>
+                                      prev.map((j, i) =>
+                                        i === idx ? { ...j, cronExpression: val } : j
+                                      )
+                                    );
+                                  }
+                                }}
+                                className="flex-1 px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 font-mono text-[11px]"
+                              >
+                                {SETTLEMENT_CRON_PRESETS.map((p) => (
+                                  <option key={p.value} value={p.value}>
+                                    {p.label}
+                                  </option>
+                                ))}
+                              </select>
+                              {selectedPreset === 'CUSTOM' && (
+                                <input
+                                  type="text"
+                                  value={job.cronExpression}
+                                  onChange={(e) =>
+                                    setCronJobs((prev) =>
+                                      prev.map((j, i) =>
+                                        i === idx ? { ...j, cronExpression: e.target.value } : j
+                                      )
+                                    )
+                                  }
+                                  placeholder="* * * * *"
+                                  className="w-28 px-2 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono text-xs"
+                                />
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Quy tắc thông minh tóm tắt */}
+                        <div className="p-2 rounded-lg bg-white/80 dark:bg-slate-900/70 border border-blue-100 dark:border-blue-900/40 text-[11px] text-slate-600 dark:text-slate-400 space-y-1">
+                          <div className="flex items-center gap-1.5 font-bold text-slate-700 dark:text-slate-300">
+                            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                            Quy tắc tự động thông minh đã áp dụng:
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pl-2">
+                            <div className="flex items-start gap-1.5">
+                              <span className="text-emerald-500 font-bold shrink-0">✓</span>
+                              <span><strong>Bỏ qua phòng chưa có khách:</strong> Không tạo hóa đơn nháp cho phòng trống, hiển thị trạng thái "Chưa có khách".</span>
+                            </div>
+                            <div className="flex items-start gap-1.5">
+                              <span className="text-emerald-500 font-bold shrink-0">✓</span>
+                              <span><strong>Tính theo ngày ở thực tế:</strong> Khách mới vào ở giữa tháng sẽ tính tiền phòng và điện nước từ ngày ở đến hết tháng, không tính trọn tháng.</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div
+                      key={job.id}
+                      className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    >
+                      <div>
+                        <div className="font-bold text-slate-900 dark:text-white">
+                          {job.displayName}
+                        </div>
+                        <div className="text-[11px] text-slate-500 font-mono">
+                          Key: {job.jobKey} · Timezone: {job.timezone} · Lần chạy
+                          cuối: {job.lastRunStatus}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {job.jobKey === 'HUNONIC_HOURLY_SYNC' ? (
+                          <NumberInput
+                            min={job.jobKey === 'HUNONIC_HOURLY_SYNC' ? 1 : undefined}
+                            max={job.jobKey === 'HUNONIC_HOURLY_SYNC' ? 1440 : undefined}
+                            aria-label={
+                              job.jobKey === 'HUNONIC_HOURLY_SYNC'
+                                ? 'Chu kỳ đồng bộ Hunonic theo phút'
+                                : undefined
+                            }
+                            value={cronToMinutes(job.cronExpression)}
+                            onValueChange={(value) => {
+                              setCronJobs((prev) =>
+                                prev.map((j, i) =>
+                                  i === idx
+                                    ? {
+                                        ...j,
+                                        cronExpression:
+                                          value < 60
+                                            ? `*/${Math.trunc(value)} * * * *`
+                                            : value === 1440
+                                            ? '0 0 * * *'
+                                            : `0 */${Math.max(1, Math.trunc(value / 60))} * * *`,
+                                      }
+                                    : j
+                                )
+                              );
+                            }}
+                            className="w-36 px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-xs"
+                          />
+                        ) : (
+                          <input
+                            type="text"
+                            value={job.cronExpression}
+                            onChange={(e) =>
+                              setCronJobs((prev) =>
+                                prev.map((j, i) =>
+                                  i === idx ? { ...j, cronExpression: e.target.value } : j
+                                )
+                              )
+                            }
+                            className="w-36 px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-xs"
+                          />
+                        )}
+                        <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={job.isEnabled}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              setCronJobs((prev) =>
+                                prev.map((j, i) =>
+                                  i === idx ? { ...j, isEnabled: checked } : j
+                                )
+                              );
+                            }}
+                            className="rounded text-brand-primary"
+                          />
+                          <span className="font-semibold">
+                            {job.isEnabled ? 'Bật' : 'Tắt'}
+                          </span>
+                        </label>
+                        <button
+                          type="button"
+                          disabled={isSaving}
+                          onClick={() =>
+                            void patchSettingsSection(
+                              'cron',
+                              {
+                                jobKey: job.jobKey,
+                                cronExpression: job.cronExpression,
+                                ...(job.jobKey === 'HUNONIC_HOURLY_SYNC'
+                                  ? { intervalMinutes: cronToMinutes(job.cronExpression) }
+                                  : {}),
+                                isEnabled: job.isEnabled,
+                              },
+                              `Đã lưu lịch tự động: ${job.displayName}`
+                            )
+                          }
+                          className="px-3 py-1.5 rounded-lg font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100"
+                        >
+                          Lưu
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}

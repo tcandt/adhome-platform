@@ -4,6 +4,7 @@ import { assertSecurityConfiguration } from './authRbac';
 import { createApiAndDynamicSeoMiddleware, ensurePostgreSqlSeeded, getPrismaClient } from './publicApiPlugin';
 import { pruneConsoleAuditHistory } from './auditRetention';
 import { executeHunonicBackgroundSync } from './hunonicSyncWorker';
+import { buildSettlementWorkspacePayload } from './settlementCenterApi';
 
 const host = process.env.ADHOME_API_HOST || '127.0.0.1';
 const port = Number(process.env.ADHOME_API_PORT || 8082);
@@ -220,6 +221,48 @@ async function runHunonicCronJobs() {
       .finally(() => runningCronJobs.delete(job.id));
   }
 }
-const hunonicCronTick = () => void runHunonicCronJobs().catch(error => console.error('Hunonic cron scheduler failed', error));
-hunonicCronTick();
-setInterval(hunonicCronTick, 60_000).unref();
+async function runBillingCutoffCronJobs() {
+  const prisma = getPrismaClient();
+  const jobs = await prisma.cronJobConfig.findMany({ where: { jobKey: 'BILLING_PERIOD_CUTOFF', isEnabled: true } });
+  const now = Date.now();
+  for (const job of jobs) {
+    if (runningCronJobs.has(job.id)) continue;
+    // Check interval - at least 60 minutes between runs
+    if (job.lastRunAt && now - job.lastRunAt.getTime() < 60 * 60_000) continue;
+    runningCronJobs.add(job.id);
+    await prisma.cronJobConfig.update({ where: { id: job.id }, data: { lastRunAt: new Date(), lastRunStatus: 'RUNNING' } });
+    const currentPeriodKey = new Date().toISOString().slice(0, 7);
+    const buildings = await prisma.building.findMany({ where: { orgId: job.orgId }, select: { id: true } });
+    const scopedBuildingIds = buildings.map((b: any) => b.id);
+    void buildSettlementWorkspacePayload({ prisma, orgId: job.orgId, scopedBuildingIds, periodKey: currentPeriodKey })
+      .then(async (result) => {
+        const compiledCount = result.rows.filter((r: any) => !r.isVacant && !r.cronSkip).length;
+        await prisma.cronJobConfig.update({
+          where: { id: job.id },
+          data: {
+            lastRunStatus: 'SUCCESS',
+            successCount: { increment: 1 },
+            lastError: null,
+          },
+        });
+        console.log(`[Cron BILLING_PERIOD_CUTOFF] Tự động tổng hợp kỳ ${currentPeriodKey} thành công: ${compiledCount} phòng có hợp đồng.`);
+      })
+      .catch((error) =>
+        prisma.cronJobConfig.update({
+          where: { id: job.id },
+          data: {
+            lastRunStatus: 'FAILED',
+            failureCount: { increment: 1 },
+            lastError: error instanceof Error ? error.message.slice(0, 500) : 'Tự động tổng hợp kỳ thất bại.',
+          },
+        })
+      )
+      .finally(() => runningCronJobs.delete(job.id));
+  }
+}
+const cronMasterTick = () => {
+  void runHunonicCronJobs().catch(error => console.error('Hunonic cron scheduler failed', error));
+  void runBillingCutoffCronJobs().catch(error => console.error('Billing cutoff cron scheduler failed', error));
+};
+cronMasterTick();
+setInterval(cronMasterTick, 60_000).unref();

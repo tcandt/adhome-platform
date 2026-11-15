@@ -10,10 +10,15 @@ import {
   KeyRound,
   Loader2,
   Lock,
+  Mail,
+  MapPin,
+  Pencil,
+  Phone,
   RefreshCw,
   Save,
   ShieldCheck,
   Sliders,
+  X,
   Zap,
 } from 'lucide-react';
 import { SETTINGS_TABS_CONFIG } from '@/app/navigation/navigationConfig';
@@ -130,6 +135,40 @@ export const SettingsWorkspaceView: React.FC = () => {
   const [orgHotline, setOrgHotline] = useState('');
   const [orgEmail, setOrgEmail] = useState('');
   const [orgAddress, setOrgAddress] = useState('');
+  const [isEditingOrg, setIsEditingOrg] = useState(false);
+  const [editOrgName, setEditOrgName] = useState('');
+  const [editOrgHotline, setEditOrgHotline] = useState('');
+  const [editOrgEmail, setEditOrgEmail] = useState('');
+  const [editOrgAddress, setEditOrgAddress] = useState('');
+
+  const handleStartEditOrg = () => {
+    setEditOrgName(orgName);
+    setEditOrgHotline(orgHotline);
+    setEditOrgEmail(orgEmail);
+    setEditOrgAddress(orgAddress);
+    setIsEditingOrg(true);
+  };
+
+  const handleCancelEditOrg = () => {
+    setIsEditingOrg(false);
+  };
+
+  const handleSaveOrganization = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const ok = await patchSettingsSection(
+      'organization',
+      {
+        name: editOrgName.trim(),
+        hotline: editOrgHotline.trim(),
+        contactEmail: editOrgEmail.trim(),
+        addressSummary: editOrgAddress.trim(),
+      },
+      'Đã cập nhật thông tin tổ chức.'
+    );
+    if (ok) {
+      setIsEditingOrg(false);
+    }
+  };
 
   // Tariffs form
   const [defaultElectricRateVnd, setDefaultElectricRateVnd] = useState<number | null>(3800);
@@ -256,7 +295,7 @@ export const SettingsWorkspaceView: React.FC = () => {
     section: string,
     body: Record<string, unknown>,
     okMessage: string
-  ) => {
+  ): Promise<boolean> => {
     setIsSaving(true);
     setErrorMsg(null);
     setSuccessMsg(null);
@@ -274,14 +313,16 @@ export const SettingsWorkspaceView: React.FC = () => {
       if (!res.ok || !data.ok) {
         setErrorMsg(data.message || 'Không thể lưu thay đổi cấu hình.');
         notifySave(false, 'Không thể lưu cấu hình', data.message || 'Máy chủ từ chối thao tác.');
-        return;
+        return false;
       }
       await Promise.all([loadSettings(), refreshPortfolio()]);
       setSuccessMsg(okMessage);
       notifySave(true, okMessage);
+      return true;
     } catch {
       setErrorMsg('Lỗi kết nối khi lưu cấu hình.');
       notifySave(false, 'Không thể lưu cấu hình', 'Lỗi kết nối máy chủ.');
+      return false;
     } finally {
       setIsSaving(false);
     }
@@ -406,132 +447,164 @@ export const SettingsWorkspaceView: React.FC = () => {
         </div>
       ) : (
         <>
-          {/* TAB 1: ORGANIZATION & BUILDINGS */}
+          {/* TAB 1: ORGANIZATION & LEGAL INFO */}
           {settingsTab === 'organization' && (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void patchSettingsSection(
-                    'organization',
-                    {
-                      name: orgName,
-                      hotline: orgHotline,
-                      contactEmail: orgEmail,
-                      addressSummary: orgAddress,
-                    },
-                    'Đã cập nhật thông tin tổ chức trên PostgreSQL.'
-                  );
-                }}
-                className="lg:col-span-7 p-5 bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800 rounded-2xl space-y-4"
-              >
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                  <Building2 className="w-4 h-4 text-brand-primary" />
-                  Thông tin pháp nhân &amp; Liên hệ vận hành
-                </h3>
-
-                <div>
-                  <label className="block text-xs font-semibold mb-1">
-                    Tên tổ chức / Thương hiệu vận hành *
-                  </label>
-                  <input
-                    data-testid="input-org-name"
-                    type="text"
-                    value={orgName}
-                    onChange={(e) => setOrgName(e.target.value)}
-                    className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-semibold"
-                    required
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold mb-1">
-                      Hotline tổng đài *
-                    </label>
-                    <input
-                      data-testid="input-org-hotline"
-                      type="text"
-                      value={orgHotline}
-                      onChange={(e) => setOrgHotline(e.target.value)}
-                      className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold mb-1">
-                      Email liên hệ chính thức
-                    </label>
-                    <input
-                      type="email"
-                      value={orgEmail}
-                      onChange={(e) => setOrgEmail(e.target.value)}
-                      className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold mb-1">
-                    Địa chỉ văn phòng đại diện *
-                  </label>
-                  <input
-                    type="text"
-                    value={orgAddress}
-                    onChange={(e) => setOrgAddress(e.target.value)}
-                    className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl"
-                    required
-                  />
-                </div>
-
-                <div className="flex justify-end pt-2">
-                  <button
-                    data-testid="submit-org-settings"
-                    type="submit"
-                    disabled={isSaving}
-                    className="px-4 py-2 text-xs font-bold bg-brand-primary hover:bg-brand-hover text-white rounded-xl inline-flex items-center gap-1.5 disabled:opacity-50"
-                  >
-                    {isSaving ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <Save className="w-3.5 h-3.5" />
-                    )}
-                    <span>Lưu thông tin tổ chức</span>
-                  </button>
-                </div>
-              </form>
-
-              <div className="lg:col-span-5 p-5 bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800 rounded-2xl space-y-3">
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                  Danh mục tòa nhà thuộc tổ chức ({allBuildings.length} tòa)
-                </h3>
-                <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
-                  {allBuildings.map((b) => (
-                    <div
-                      key={b.id}
-                      className="py-3 flex items-center justify-between gap-2"
-                    >
-                      <div>
-                        <div className="font-bold text-slate-900 dark:text-white">
-                          {b.code} — {b.name}
-                        </div>
-                        <div className="text-[11px] text-slate-500">
-                          {b.streetAddress}, {b.ward} · {b.stats.totalRooms}{' '}
-                          phòng ({b.stats.floorsCount} tầng)
-                        </div>
-                      </div>
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          b.status === 'ACTIVE'
-                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
-                            : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-                        }`}
-                      >
-                        {b.status}
-                      </span>
+            <div className="max-w-3xl">
+              <div className="p-5 sm:p-6 bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800 rounded-2xl shadow-sm space-y-5">
+                {/* Header */}
+                <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800/80 gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-brand-primary dark:bg-blue-950/50 dark:text-blue-400">
+                      <Building2 className="h-5 w-5" />
                     </div>
-                  ))}
+                    <div className="min-w-0">
+                      <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white leading-tight">
+                        Thông tin pháp nhân &amp; Liên hệ vận hành
+                      </h3>
+                      <p className="text-[11.5px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                        Thông tin hiển thị trên hợp đồng, hóa đơn và thông báo vận hành
+                      </p>
+                    </div>
+                  </div>
+
+                  {canManageSettings && !isEditingOrg && (
+                    <button
+                      type="button"
+                      data-testid="btn-edit-org-settings"
+                      onClick={handleStartEditOrg}
+                      className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 transition-colors shrink-0"
+                      title="Chỉnh sửa thông tin tổ chức"
+                    >
+                      <Pencil className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" />
+                      <span>Chỉnh sửa</span>
+                    </button>
+                  )}
                 </div>
+
+                {!isEditingOrg ? (
+                  /* Read-only compact specification view */
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="sm:col-span-2 rounded-xl bg-slate-50/70 dark:bg-slate-800/40 p-3.5 border border-slate-100 dark:border-slate-800/60">
+                      <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                        Tên tổ chức / Thương hiệu vận hành
+                      </div>
+                      <div className="mt-1 text-sm sm:text-base font-bold text-slate-900 dark:text-white">
+                        {orgName || <span className="italic text-slate-400 font-normal">Chưa thiết lập</span>}
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl bg-slate-50/70 dark:bg-slate-800/40 p-3.5 border border-slate-100 dark:border-slate-800/60 flex flex-col justify-between">
+                      <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                        <Phone className="h-3 w-3 text-slate-400" />
+                        <span>Hotline tổng đài</span>
+                      </div>
+                      <div className="mt-1 font-mono text-sm font-bold text-slate-800 dark:text-slate-200">
+                        {orgHotline || <span className="italic text-slate-400 font-normal">Chưa thiết lập</span>}
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl bg-slate-50/70 dark:bg-slate-800/40 p-3.5 border border-slate-100 dark:border-slate-800/60 flex flex-col justify-between">
+                      <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                        <Mail className="h-3 w-3 text-slate-400" />
+                        <span>Email liên hệ chính thức</span>
+                      </div>
+                      <div className="mt-1 text-sm font-medium text-slate-800 dark:text-slate-200 truncate" title={orgEmail}>
+                        {orgEmail || <span className="italic text-slate-400 font-normal">Chưa thiết lập</span>}
+                      </div>
+                    </div>
+
+                    <div className="sm:col-span-2 rounded-xl bg-slate-50/70 dark:bg-slate-800/40 p-3.5 border border-slate-100 dark:border-slate-800/60">
+                      <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                        <MapPin className="h-3 w-3 text-slate-400" />
+                        <span>Địa chỉ văn phòng đại diện</span>
+                      </div>
+                      <div className="mt-1 text-sm font-medium text-slate-800 dark:text-slate-200">
+                        {orgAddress || <span className="italic text-slate-400 font-normal">Chưa thiết lập</span>}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* Edit form */
+                  <form onSubmit={handleSaveOrganization} className="space-y-4 pt-1">
+                    <div>
+                      <label className="block text-xs font-semibold mb-1 text-slate-700 dark:text-slate-300">
+                        Tên tổ chức / Thương hiệu vận hành *
+                      </label>
+                      <input
+                        data-testid="input-org-name"
+                        type="text"
+                        value={editOrgName}
+                        onChange={(e) => setEditOrgName(e.target.value)}
+                        className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-semibold outline-none focus:border-brand-primary"
+                        required
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold mb-1 text-slate-700 dark:text-slate-300">
+                          Hotline tổng đài *
+                        </label>
+                        <input
+                          data-testid="input-org-hotline"
+                          type="text"
+                          value={editOrgHotline}
+                          onChange={(e) => setEditOrgHotline(e.target.value)}
+                          className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono outline-none focus:border-brand-primary"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold mb-1 text-slate-700 dark:text-slate-300">
+                          Email liên hệ chính thức
+                        </label>
+                        <input
+                          type="email"
+                          value={editOrgEmail}
+                          onChange={(e) => setEditOrgEmail(e.target.value)}
+                          className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:border-brand-primary"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold mb-1 text-slate-700 dark:text-slate-300">
+                        Địa chỉ văn phòng đại diện *
+                      </label>
+                      <input
+                        type="text"
+                        value={editOrgAddress}
+                        onChange={(e) => setEditOrgAddress(e.target.value)}
+                        className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:border-brand-primary"
+                        required
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+                      <button
+                        type="button"
+                        onClick={handleCancelEditOrg}
+                        disabled={isSaving}
+                        className="px-3.5 py-2 text-xs font-semibold rounded-xl text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors"
+                      >
+                        Hủy
+                      </button>
+                      <button
+                        data-testid="submit-org-settings"
+                        type="submit"
+                        disabled={isSaving}
+                        className="px-4 py-2 text-xs font-bold bg-brand-primary hover:bg-brand-hover text-white rounded-xl inline-flex items-center gap-1.5 disabled:opacity-50 shadow-sm transition-colors"
+                      >
+                        {isSaving ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Save className="w-3.5 h-3.5" />
+                        )}
+                        <span>Lưu thay đổi</span>
+                      </button>
+                    </div>
+                  </form>
+                )}
               </div>
             </div>
           )}

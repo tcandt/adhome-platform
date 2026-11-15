@@ -116,9 +116,9 @@ interface LoginAuditRow {
 }
 
 const SETTLEMENT_CRON_PRESETS = [
-  { value: '0 6 1 * *', label: '06:00 sáng Ngày 1 hàng tháng (Mặc định chuẩn)' },
+  { value: '0 23 28 * *', label: '23:00 đêm Ngày cuối cùng của tháng (Khuyên dùng - Chốt tháng cũ & Báo Admin)' },
+  { value: '0 6 1 * *', label: '06:00 sáng Ngày 1 hàng tháng (Chốt kỳ đầu tháng)' },
   { value: '0 6 25 * *', label: '06:00 sáng Ngày 25 hàng tháng (Chốt sớm)' },
-  { value: '0 23 28 * *', label: '23:00 đêm Ngày 28 hàng tháng (Cuối tháng)' },
   { value: '0 6 15 * *', label: '06:00 sáng Ngày 15 hàng tháng (Giữa tháng)' },
   { value: '0 6 * * *', label: '06:00 sáng Hàng ngày' },
   { value: 'CUSTOM', label: 'Tùy chỉnh biểu thức Cron...' },
@@ -1512,6 +1512,8 @@ export const SettingsWorkspaceView: React.FC = () => {
                                   ? 'METERS_ONLY'
                                   : job.displayName.includes('chu kỳ')
                                   ? 'CYCLE_AWARE'
+                                  : job.displayName.includes('Tự động phát hành')
+                                  ? 'AUTO_FULL'
                                   : 'AUTO_DRAFT'
                               }
                               onChange={(e) => {
@@ -1521,6 +1523,8 @@ export const SettingsWorkspaceView: React.FC = () => {
                                     ? 'Chốt chỉ số điện nước & Khởi tạo dữ liệu kỳ mới'
                                     : mode === 'CYCLE_AWARE'
                                     ? 'Tự động tổng hợp theo chu kỳ hợp đồng & Lập hóa đơn nháp'
+                                    : mode === 'AUTO_FULL'
+                                    ? 'Tự động tổng hợp & Tự động phát hành gửi khách hàng'
                                     : 'Chốt chỉ số cuối kỳ & khởi tạo bảng tổng hợp nháp';
                                 setCronJobs((prev) =>
                                   prev.map((j, i) =>
@@ -1530,9 +1534,10 @@ export const SettingsWorkspaceView: React.FC = () => {
                               }}
                               className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
                             >
-                              <option value="AUTO_DRAFT">Chế độ A: Tự động nháp (Khởi tạo & lập hóa đơn nháp)</option>
-                              <option value="METERS_ONLY">Chế độ B: Chốt chỉ số điện nước & Đồng bộ</option>
+                              <option value="AUTO_DRAFT">Chế độ A: Tự động nháp &amp; Thông báo nhóm Admin (Khuyên dùng)</option>
+                              <option value="METERS_ONLY">Chế độ B: Chốt chỉ số điện nước &amp; Đồng bộ</option>
                               <option value="CYCLE_AWARE">Chế độ C: Theo chu kỳ hợp đồng (1 - 12 tháng)</option>
+                              <option value="AUTO_FULL">Chế độ D: Tự động phát hành &amp; Gửi thẳng khách hàng</option>
                             </select>
                           </div>
 
@@ -1586,14 +1591,18 @@ export const SettingsWorkspaceView: React.FC = () => {
                             <Sparkles className="w-3.5 h-3.5 text-amber-500" />
                             Quy tắc tự động thông minh đã áp dụng:
                           </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pl-2">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 pl-2">
                             <div className="flex items-start gap-1.5">
                               <span className="text-emerald-500 font-bold shrink-0">✓</span>
-                              <span><strong>Bỏ qua phòng chưa có khách:</strong> Không tạo hóa đơn nháp cho phòng trống, hiển thị trạng thái "Chưa có khách".</span>
+                              <span><strong>Bỏ qua phòng trống:</strong> Không tạo hóa đơn nháp cho phòng chưa có hợp đồng / chưa có khách.</span>
                             </div>
                             <div className="flex items-start gap-1.5">
                               <span className="text-emerald-500 font-bold shrink-0">✓</span>
-                              <span><strong>Tính theo ngày ở thực tế:</strong> Khách mới vào ở giữa tháng sẽ tính tiền phòng và điện nước từ ngày ở đến hết tháng, không tính trọn tháng.</span>
+                              <span><strong>Tính theo ngày ở:</strong> Khách vào ở giữa tháng tính tiền phòng &amp; điện nước theo số ngày ở thực tế.</span>
+                            </div>
+                            <div className="flex items-start gap-1.5">
+                              <span className="text-emerald-500 font-bold shrink-0">✓</span>
+                              <span><strong>Thông báo nhóm Admin:</strong> Tự động báo nhóm Zalo Admin khi tổng hợp xong để ban quản lý duyệt phát hành.</span>
                             </div>
                           </div>
                         </div>

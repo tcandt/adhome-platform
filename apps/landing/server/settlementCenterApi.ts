@@ -2238,6 +2238,46 @@ export async function handleSettlementCenterApi(params: {
         : [...orderedRoomContracts, requestedContract];
 
     const isSharedRoom = room.rentalModel === 'SHARED_ROOM' || effectiveContracts.length > 1;
+
+    // Support updating master room configuration (tariffs / price) directly from settlement drawer
+    if (body.updateRoomConfig && typeof body.updateRoomConfig === 'object') {
+      const cfg = body.updateRoomConfig;
+      const roomUpdateData: any = {};
+      if (typeof cfg.electricRateVnd === 'number' || cfg.electricRateVnd === null) {
+        roomUpdateData.electricRateVnd = cfg.electricRateVnd;
+      }
+      if (typeof cfg.waterRateVnd === 'number' || cfg.waterRateVnd === null) {
+        roomUpdateData.waterRateVnd = cfg.waterRateVnd;
+      }
+      if (typeof cfg.waterBillingMethod === 'string' && ['PER_PERSON', 'PER_M3', 'FIXED_PER_ROOM'].includes(cfg.waterBillingMethod)) {
+        roomUpdateData.waterBillingMethod = cfg.waterBillingMethod;
+      }
+      if (typeof cfg.basePriceVnd === 'number' && cfg.basePriceVnd >= 500_000) {
+        roomUpdateData.listPriceVnd = BigInt(cfg.basePriceVnd);
+      }
+      if (Object.keys(roomUpdateData).length > 0) {
+        await prisma.consoleRoom.update({
+          where: { id: roomId },
+          data: roomUpdateData,
+        });
+        Object.assign(room, roomUpdateData);
+
+        const contractUpdateData: any = {};
+        if (roomUpdateData.electricRateVnd !== undefined) contractUpdateData.electricRateVnd = roomUpdateData.electricRateVnd;
+        if (roomUpdateData.waterRateVnd !== undefined) contractUpdateData.waterRateVnd = roomUpdateData.waterRateVnd;
+        if (roomUpdateData.waterBillingMethod !== undefined) contractUpdateData.waterBillingMethod = roomUpdateData.waterBillingMethod;
+        if (typeof cfg.basePriceVnd === 'number' && cfg.basePriceVnd >= 500_000) {
+          contractUpdateData.monthlyRentVnd = BigInt(cfg.basePriceVnd);
+        }
+        if (Object.keys(contractUpdateData).length > 0) {
+          await prisma.contract.updateMany({
+            where: { orgId, roomId: room.id, status: { in: ['ACTIVE', 'EXTENDED', 'EXPIRING_SOON', 'DRAFT'] } },
+            data: contractUpdateData,
+          });
+          if (requestedContract) Object.assign(requestedContract, contractUpdateData);
+        }
+      }
+    }
     const sharedWeights = effectiveContracts.map((rc: any) => {
       const occCount = (room.occupants || []).filter((o: any) => o.contractId === rc.id).length;
       return Math.max(1, occCount || Number(rc.occupantsCount || 1) || 1);
@@ -2294,7 +2334,7 @@ export async function handleSettlementCenterApi(params: {
         startKwh,
         endKwh,
         ratePerKwhVnd: Number(
-          eInput.ratePerKwhVnd ?? prevElectric.ratePerKwhVnd ?? room.electricRateVnd ?? 3800
+          eInput.ratePerKwhVnd ?? requestedContract?.electricRateVnd ?? prevElectric.ratePerKwhVnd ?? room.electricRateVnd ?? 3800
         ),
         meterReplaced: Boolean(eInput.meterReplaced ?? prevElectric.meterReplaced),
         replacementOffsetKwh: Number(eInput.replacementOffsetKwh ?? prevElectric.replacementOffsetKwh ?? 0),
@@ -2374,7 +2414,7 @@ export async function handleSettlementCenterApi(params: {
         unitRateVnd:
           wInput.unitRateVnd !== undefined
             ? Number(wInput.unitRateVnd)
-            : prevWater.unitRateVnd,
+            : Number(requestedContract?.waterRateVnd ?? prevWater.unitRateVnd ?? room.waterRateVnd ?? 25000),
         anomalyConfirmed: Boolean(wInput.anomalyConfirmed ?? body.confirmAnomaly ?? prevWater.anomalyConfirmed),
         inputSource: 'MANUAL_SETTLEMENT',
         reason: String(wInput.reason || body.reason || 'Nhập số khối nước tại Tổng hợp kỳ'),

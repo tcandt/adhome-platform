@@ -246,6 +246,27 @@ async function runBillingCutoffCronJobs() {
           },
         });
         console.log(`[Cron BILLING_PERIOD_CUTOFF] Tự động tổng hợp kỳ ${currentPeriodKey} thành công: ${compiledCount} phòng có hợp đồng.`);
+        const [year, month] = currentPeriodKey.split('-');
+        const adminMessage = `🔔 [AdHome] ĐÃ TỔNG HỢP KỲ HÓA ĐƠN THÁNG ${month}/${year} XONG!\n• Tổng số phòng: ${compiledCount} phòng có hợp đồng.\n• Trạng thái: Đã tự động chốt hóa đơn tháng cũ làm nháp.\n👉 Kính mời Quản trị viên kiểm tra và phát hành hóa đơn cho từng phòng/khách hàng tại: https://console.adhome.vn`;
+        try {
+          const zaloAdminKey = process.env.ADHOME_ZALO_BOT_ADMIN_API_KEY || '';
+          await fetch(`http://127.0.0.1:8081/internal/zalo-bot/${encodeURIComponent(job.orgId)}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${zaloAdminKey}`,
+            },
+            body: JSON.stringify({
+              action: 'notify_admin',
+              message: adminMessage,
+              eventKey: `admin:cron-compiled:${job.orgId}:${currentPeriodKey}:${Date.now()}`,
+            }),
+            signal: AbortSignal.timeout(10000),
+          });
+          console.log(`[Cron BILLING_PERIOD_CUTOFF] Đã gửi thông báo tổng hợp kỳ ${currentPeriodKey} tới nhóm Admin Zalo.`);
+        } catch (notifyErr: any) {
+          console.warn('[Cron BILLING_PERIOD_CUTOFF] Gửi thông báo Zalo nhóm Admin thất bại:', notifyErr?.message || notifyErr);
+        }
       })
       .catch((error) =>
         prisma.cronJobConfig.update({

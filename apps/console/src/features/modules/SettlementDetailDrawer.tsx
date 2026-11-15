@@ -17,6 +17,7 @@ import {
   ClipboardCheck,
   CreditCard,
   Droplets,
+  Edit2,
   History,
   Home,
   Lock,
@@ -27,6 +28,7 @@ import {
   RefreshCw,
   Send,
   ShieldCheck,
+  Sliders,
   Trash2,
   UserCheck,
   Users,
@@ -84,6 +86,12 @@ interface SettlementDetailDrawerProps {
     };
     feeItems?: FeeLineItem[];
     reason?: string;
+    updateRoomConfig?: {
+      electricRateVnd?: number | null;
+      waterRateVnd?: number | null;
+      waterBillingMethod?: string | null;
+      basePriceVnd?: number | null;
+    };
   }) => Promise<boolean>;
   onApproveObligation: (obligationKeys: string[], action: 'APPROVE' | 'REJECT', reason?: string) => Promise<boolean>;
   onIssueAndSend: (
@@ -150,6 +158,15 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
   const [paymentMethodInput, setPaymentMethodInput] = useState<string>('SEPAY');
   const [paymentNoteInput, setPaymentNoteInput] = useState<string>('');
 
+  // Room configuration modal & inline override states
+  const [showRoomConfigModal, setShowRoomConfigModal] = useState<boolean>(false);
+  const [cfgElectricRateVnd, setCfgElectricRateVnd] = useState<number>(3800);
+  const [cfgWaterMode, setCfgWaterMode] = useState<string>('PER_M3');
+  const [cfgWaterRateVnd, setCfgWaterRateVnd] = useState<number>(25000);
+  const [cfgRoomPriceVnd, setCfgRoomPriceVnd] = useState<number>(0);
+  const [isUpdatingConfig, setIsUpdatingConfig] = useState<boolean>(false);
+  const [showElectricManualEdit, setShowElectricManualEdit] = useState<boolean>(false);
+
   useEffect(() => {
     if (!row) return;
     setBaseMonthlyRentVnd(
@@ -176,6 +193,13 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
     setPaymentNoteInput(
       `Thanh toán hóa đơn ${row.invoice?.code || `phòng ${row.room.code}`} kỳ ${row.periodKey}`
     );
+
+    // Sync room configuration modal fields
+    setCfgElectricRateVnd(Math.round(row.electric.ratePerKwhVnd || 3800));
+    setCfgWaterMode(row.water.mode || 'PER_M3');
+    setCfgWaterRateVnd(Math.round(row.water.unitRateVnd || 25000));
+    setCfgRoomPriceVnd(Math.round(row.rent.baseMonthlyRentVnd || row.contract?.monthlyRentVnd || 0));
+    setShowElectricManualEdit(false);
   }, [row]);
 
   if (!row) return null;
@@ -247,6 +271,49 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
     });
   };
 
+  const handleSaveRoomConfig = async () => {
+    setIsUpdatingConfig(true);
+    try {
+      const ok = await onSaveRoomInput({
+        roomId: row.room.id,
+        contractId: row.contract?.id || '',
+        periodKey: row.periodKey,
+        updateRoomConfig: {
+          electricRateVnd: cfgElectricRateVnd,
+          waterBillingMethod: cfgWaterMode,
+          waterRateVnd: cfgWaterRateVnd,
+          basePriceVnd: cfgRoomPriceVnd > 0 ? cfgRoomPriceVnd : undefined,
+        },
+        rent: cfgRoomPriceVnd > 0 ? { baseMonthlyRentVnd: cfgRoomPriceVnd } : undefined,
+        electric: {
+          startKwh: startKwhInput.trim() !== '' ? Number(startKwhInput) : 0,
+          endKwh: endKwhInput.trim() !== '' ? Number(endKwhInput) : null,
+          ratePerKwhVnd: cfgElectricRateVnd,
+          anomalyConfirmed: confirmElectricAnomaly,
+          reason: 'Cập nhật cấu hình biểu giá phòng',
+        },
+        water: {
+          mode: cfgWaterMode,
+          consumptionM3: waterM3Input.trim() !== '' ? Number(waterM3Input) : null,
+          occupantCount: Number(waterOccupantsInput || 1),
+          unitRateVnd: cfgWaterRateVnd,
+          anomalyConfirmed: confirmWaterAnomaly,
+          reason: 'Cập nhật cấu hình biểu giá phòng',
+        },
+        feeItems: feeItemsDraft,
+        reason: 'Cập nhật cấu hình biểu giá phòng từ Drawer',
+      });
+      if (ok) {
+        setElectricRateVnd(cfgElectricRateVnd);
+        setWaterRateVnd(cfgWaterRateVnd);
+        if (cfgRoomPriceVnd > 0) setBaseMonthlyRentVnd(cfgRoomPriceVnd);
+        setShowRoomConfigModal(false);
+      }
+    } finally {
+      setIsUpdatingConfig(false);
+    }
+  };
+
   const tabs: Array<{ id: DrawerTabId; label: string; icon: React.ReactNode }> = [
     { id: 'OVERVIEW', label: '1. Tổng quan', icon: <ClipboardCheck className="w-3.5 h-3.5" /> },
     { id: 'FEES', label: '2. Chi tiết phí', icon: <Receipt className="w-3.5 h-3.5" /> },
@@ -256,7 +323,8 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
   ];
 
   return (
-    <Dialog.Root open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
+    <>
+      <Dialog.Root open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 z-50 bg-slate-950/50 backdrop-blur-[2px] transition-opacity" />
         <Dialog.Popup
@@ -582,197 +650,208 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                   </div>
                 )}
 
-                {/* Unified Inputs Section (Clean hairline dividers, side-by-side grids, MoneyInput thousand separators) */}
-                <div className="divide-y divide-slate-100 dark:divide-slate-800 space-y-3.5">
-                  {/* 0. Member Room Rent */}
-                  <div className="space-y-2 pb-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-800 dark:text-slate-200">
-                        <Home className="w-3.5 h-3.5 text-blue-600" />
-                        Tiền phòng ({row.tenant.fullName})
+                {/* Header Action: Cấu hình phòng & Biểu giá */}
+                <div className="flex items-center justify-between gap-2 p-2.5 rounded-xl border border-blue-200/90 dark:border-blue-900/60 bg-blue-50/50 dark:bg-blue-950/20">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="p-1.5 rounded-lg bg-blue-600 text-white shrink-0">
+                      <Sliders className="w-4 h-4" />
+                    </span>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                        Cấu hình biểu giá phòng {row.room.code}
+                      </div>
+                      <div className="text-[10.5px] text-slate-500 font-mono truncate">
+                        Điện: {formatVnd(electricRateVnd)}đ/kWh · Nước: {formatVnd(waterRateVnd)}đ · Phòng: {formatVnd(baseMonthlyRentVnd)}đ
+                      </div>
+                    </div>
+                  </div>
+                  {canManageSettlements && !isLockedOrFrozen && (
+                    <button
+                      type="button"
+                      onClick={() => setShowRoomConfigModal(true)}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold text-blue-700 hover:text-blue-800 dark:text-blue-300 bg-white dark:bg-slate-900 border border-blue-300 dark:border-blue-700 shadow-2xs transition-colors shrink-0"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                      <span>Sửa cấu hình phòng</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="space-y-2.5">
+                  {/* 1. Tiền thuê phòng */}
+                  <div className="p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="inline-flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-200">
+                        <Home className="w-4 h-4 text-blue-600 shrink-0" />
+                        <span>Tiền thuê phòng</span>
+                        <span className="text-[10.5px] font-normal text-slate-500 truncate">({row.tenant.fullName})</span>
                       </span>
-                      <span className="font-mono text-xs font-bold text-slate-900 dark:text-white">
+                      <span className="font-mono text-sm font-extrabold text-slate-900 dark:text-white shrink-0">
                         {formatVnd(row.totals.roomRentVnd)}
                       </span>
                     </div>
-                    <div className="grid grid-cols-2 gap-2.5 items-end text-xs">
-                      <div>
-                        <label className="block text-[10.5px] font-medium text-slate-500 mb-1">
-                          Giá thuê/tháng
-                        </label>
-                        <MoneyInput
-                          data-testid="drawer-input-member-rent"
-                          disabled={!canManageSettlements || isLockedOrFrozen}
-                          value={baseMonthlyRentVnd}
-                          onChange={(val) => setBaseMonthlyRentVnd(val)}
-                          className="!h-9 !py-0 !text-xs !font-mono !font-bold !rounded-lg"
-                        />
-                      </div>
-                      <div className="rounded-lg bg-slate-50 dark:bg-slate-800/60 px-2.5 py-1.5 text-[11px] text-slate-600 dark:text-slate-300 h-9 flex flex-col justify-center truncate">
-                        <span className="font-medium truncate">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs pt-1.5 border-t border-slate-100 dark:border-slate-800/80">
+                      <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300 text-[11.5px] min-w-0">
+                        <span className="px-1.5 py-0.5 rounded font-mono font-bold bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 text-[10.5px] shrink-0">
+                          {formatVnd(baseMonthlyRentVnd || row.rent.baseMonthlyRentVnd || row.contract?.monthlyRentVnd || 0)}/tháng
+                        </span>
+                        <span className="text-slate-400 shrink-0">·</span>
+                        <span className="text-slate-500 font-medium truncate">
                           {(row.sharedRoomInfo?.isSharedRoom || row.room.rentalModel === 'SHARED_ROOM')
                             ? 'Ở ghép: gán riêng từng người'
                             : row.rent.formulaNote}
                         </span>
                       </div>
+                      <span className="text-[10.5px] text-slate-400 font-mono shrink-0">
+                        HĐ: {row.contract?.code || 'N/A'}
+                      </span>
                     </div>
                   </div>
 
-                  {/* 1. Electric Input (3 columns aligned on same row) */}
-                  <div className="pt-3.5 space-y-2 pb-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-800 dark:text-slate-200">
-                        <Zap className="w-3.5 h-3.5 text-amber-500" />
-                        Tiền điện ({row.electric.method === 'HUNONIC_AUTO' ? 'Hunonic' : 'Công tơ'})
+                  {/* 2. Tiền điện */}
+                  <div className="p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="inline-flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-200">
+                        <Zap className="w-4 h-4 text-amber-500 shrink-0" />
+                        <span>Tiền điện</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300">
+                          {row.electric.method === 'HUNONIC_AUTO' ? 'Hunonic tự động' : 'Công tơ điện'}
+                        </span>
                       </span>
-                      <span className="font-mono text-xs font-bold text-slate-900 dark:text-white">
+                      <span className="font-mono text-sm font-extrabold text-slate-900 dark:text-white shrink-0">
                         {formatVnd(row.totals.electricVnd)}
                       </span>
                     </div>
-                    {(row.sharedRoomInfo?.isSharedRoom || row.room.rentalModel === 'SHARED_ROOM') && (
-                      <div className="rounded-lg bg-violet-50/70 dark:bg-violet-950/30 px-2.5 py-1.5 text-[11px] text-violet-800 dark:text-violet-200">
-                        Ở ghép: Điện &amp; nước chia đều{' '}
-                        <strong>{Math.max(siblingMembers.length, row.sharedRoomInfo?.totalMembers ?? 1)} thành viên</strong> (lưu sẽ đồng bộ cả phòng).
-                      </div>
-                    )}
-                    <div className="grid grid-cols-3 gap-2 text-xs">
+
+                    {/* Compact Metrics Row */}
+                    <div className="grid grid-cols-3 gap-2 p-2 rounded-lg bg-white dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 text-center">
                       <div>
-                        <label className="block text-[10.5px] font-medium text-slate-500 mb-1 truncate">
-                          Đầu kỳ (kWh)
-                        </label>
-                        <input
-                          type="number"
-                          step="0.1"
-                          data-testid="drawer-input-electric-start"
-                          disabled={!canInputReadings || isLockedOrFrozen}
-                          value={startKwhInput}
-                          onChange={(e) => setStartKwhInput(e.target.value)}
-                          className="h-9 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 font-mono text-xs font-bold text-slate-900 dark:text-white"
-                        />
+                        <div className="text-[10px] text-slate-400 font-medium">Đầu kỳ</div>
+                        <div className="font-mono text-xs font-bold text-slate-700 dark:text-slate-300">
+                          {row.electric.startKwh ?? 0} <span className="text-[9.5px] text-slate-400">kWh</span>
+                        </div>
                       </div>
                       <div>
-                        <label className="block text-[10.5px] font-medium text-slate-500 mb-1 truncate">
-                          Cuối kỳ (kWh)
-                        </label>
-                        <input
-                          type="number"
-                          step="0.1"
-                          placeholder="kWh..."
-                          data-testid="drawer-input-electric-end"
-                          disabled={!canInputReadings || isLockedOrFrozen}
-                          value={endKwhInput}
-                          onChange={(e) => setEndKwhInput(e.target.value)}
-                          className="h-9 w-full rounded-lg border border-blue-400 dark:border-blue-700 bg-white dark:bg-slate-900 px-2.5 font-mono text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        />
+                        <div className="text-[10px] text-slate-400 font-medium">Cuối kỳ</div>
+                        <div className="font-mono text-xs font-bold text-slate-900 dark:text-white">
+                          {row.electric.endKwh ?? 0} <span className="text-[9.5px] text-slate-400">kWh</span>
+                        </div>
                       </div>
                       <div>
-                        <label className="block text-[10.5px] font-medium text-slate-500 mb-1 truncate">
-                          Đơn giá / kWh
-                        </label>
-                        <MoneyInput
-                          disabled={!canManageSettlements || isLockedOrFrozen}
-                          value={electricRateVnd}
-                          onChange={(val) => setElectricRateVnd(val)}
-                          className="!h-9 !py-0 !text-xs !font-mono !font-bold !rounded-lg"
-                        />
+                        <div className="text-[10px] text-slate-400 font-medium">Đơn giá</div>
+                        <div className="font-mono text-xs font-bold text-blue-600 dark:text-blue-400">
+                          {formatVnd(electricRateVnd)} <span className="text-[9.5px] text-slate-400">/kWh</span>
+                        </div>
                       </div>
                     </div>
-                    <div className="text-[10.5px] text-slate-500 font-mono truncate">
-                      {row.electric.formulaNote}
+
+                    <div className="flex items-center justify-between text-[11px] text-slate-500 font-mono gap-2">
+                      <span className="truncate">{row.electric.formulaNote}</span>
+                      {canInputReadings && !isLockedOrFrozen && (
+                        <button
+                          type="button"
+                          onClick={() => setShowElectricManualEdit((v) => !v)}
+                          className="text-blue-600 hover:text-blue-700 font-sans font-semibold text-[11px] underline shrink-0"
+                        >
+                          {showElectricManualEdit ? 'Đóng chỉnh sửa' : 'Chỉnh số điện'}
+                        </button>
+                      )}
                     </div>
-                    {row.electric.status === 'ANOMALY' && (
-                      <label className="flex items-center gap-2 text-xs text-rose-600 dark:text-rose-400 font-semibold">
-                        <input
-                          type="checkbox"
-                          checked={confirmElectricAnomaly}
-                          onChange={(e) => setConfirmElectricAnomaly(e.target.checked)}
-                          className="rounded border-rose-300"
-                        />
-                        <span>Xác nhận chỉ số điện đột biến đúng thực tế</span>
-                      </label>
+
+                    {showElectricManualEdit && (
+                      <div className="pt-2 border-t border-slate-200 dark:border-slate-700 grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <label className="block text-[10px] text-slate-500 mb-0.5">Chỉ số cuối kỳ (kWh)</label>
+                          <input
+                            type="number"
+                            step="0.1"
+                            value={endKwhInput}
+                            onChange={(e) => setEndKwhInput(e.target.value)}
+                            className="h-8 w-full rounded border border-blue-300 dark:border-blue-700 px-2 font-mono text-xs font-bold bg-white dark:bg-slate-900"
+                            placeholder="Nhập kWh..."
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-slate-500 mb-0.5">Đơn giá điện (đ/kWh)</label>
+                          <MoneyInput
+                            value={electricRateVnd}
+                            onChange={(val) => setElectricRateVnd(val)}
+                            className="!h-8 !py-0 !text-xs !font-mono !font-bold"
+                          />
+                        </div>
+                      </div>
                     )}
                   </div>
 
-                  {/* 2. Water Input (2 columns aligned on same row) */}
-                  <div className="pt-3.5 space-y-2 pb-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-800 dark:text-slate-200">
-                        <Droplets className="w-3.5 h-3.5 text-cyan-500" />
-                        Tiền nước (
-                        {row.water.mode === 'PER_M3'
-                          ? 'Theo m³'
-                          : row.water.mode === 'PER_PERSON'
-                          ? 'Theo người'
-                          : 'Khoán phòng'}
-                        )
+                  {/* 3. Tiền nước */}
+                  <div className="p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="inline-flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-200">
+                        <Droplets className="w-4 h-4 text-cyan-500 shrink-0" />
+                        <span>Tiền nước</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold bg-cyan-100 dark:bg-cyan-950 text-cyan-800 dark:text-cyan-300">
+                          {row.water.mode === 'PER_M3' ? 'Theo m³ tiêu thụ' : row.water.mode === 'PER_PERSON' ? 'Theo đầu người' : 'Khoán phòng'}
+                        </span>
                       </span>
-                      <span className="font-mono text-xs font-bold text-cyan-600 dark:text-cyan-400">
+                      <span className="font-mono text-sm font-extrabold text-cyan-600 dark:text-cyan-400 shrink-0">
                         {row.water.status === 'NEED_M3_INPUT' ? 'Cần nhập m³' : formatVnd(row.totals.waterVnd)}
                       </span>
                     </div>
 
                     {row.water.mode === 'PER_M3' ? (
-                      <div className="grid grid-cols-2 gap-2.5 text-xs">
-                        <div>
-                          <label className="block text-[10.5px] font-medium text-slate-500 mb-1">
-                            Số khối tiêu thụ (m³)
-                          </label>
-                          <input
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            placeholder="VD: 12"
-                            data-testid="drawer-input-water-m3"
-                            disabled={!canInputReadings || isLockedOrFrozen}
-                            value={waterM3Input}
-                            onChange={(e) => setWaterM3Input(e.target.value)}
-                            className="h-9 w-full rounded-lg border border-cyan-400 dark:border-cyan-700 bg-white dark:bg-slate-900 px-2.5 font-mono text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-cyan-500"
-                          />
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-slate-500 text-[11px]">
+                            Đơn giá cấu hình phòng: <strong className="font-mono text-slate-800 dark:text-slate-200">{formatVnd(waterRateVnd)} đ/m³</strong>
+                          </span>
+                          {row.water.consumptionM3 !== null && (
+                            <span className="font-mono text-[11px] text-slate-700 dark:text-slate-300 font-bold">
+                              Tiêu thụ: {row.water.consumptionM3} m³
+                            </span>
+                          )}
                         </div>
-                        <div>
-                          <label className="block text-[10.5px] font-medium text-slate-500 mb-1">
-                            Đơn giá (đ/m³)
-                          </label>
-                          <MoneyInput
-                            disabled={!canManageSettlements || isLockedOrFrozen}
-                            value={waterRateVnd}
-                            onChange={(val) => setWaterRateVnd(val)}
-                            className="!h-9 !py-0 !text-xs !font-mono !font-bold !rounded-lg"
-                          />
+                        {canInputReadings && !isLockedOrFrozen && (
+                          <div className="flex items-center gap-2 pt-0.5">
+                            <div className="relative flex-1">
+                              <input
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                placeholder="Nhập số khối tiêu thụ (VD: 12)..."
+                                value={waterM3Input}
+                                onChange={(e) => setWaterM3Input(e.target.value)}
+                                className="h-8 w-full rounded-lg border border-cyan-400 dark:border-cyan-700 bg-white dark:bg-slate-900 px-2.5 font-mono text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                              />
+                              <span className="absolute right-2.5 top-1.5 text-[11px] font-bold text-slate-400">m³</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => void handleSaveAllChanges()}
+                              disabled={isSaving}
+                              className="h-8 px-3 rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white font-semibold text-xs transition-colors shrink-0 disabled:opacity-50"
+                            >
+                              {isSaving ? 'Đang lưu...' : 'Lưu số m³'}
+                            </button>
+                          </div>
+                        )}
+                        <div className="text-[10.5px] text-slate-500 font-mono truncate">
+                          {row.water.formulaNote}
                         </div>
                       </div>
                     ) : (
-                      <div className="grid grid-cols-2 gap-2.5 text-xs">
-                        <div>
-                          <label className="block text-[10.5px] font-medium text-slate-500 mb-1">
-                            Số người cư trú
-                          </label>
-                          <input
-                            type="number"
-                            min="1"
-                            disabled={!canManageSettlements || isLockedOrFrozen}
-                            value={waterOccupantsInput}
-                            onChange={(e) => setWaterOccupantsInput(e.target.value)}
-                            className="h-9 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 font-mono text-xs font-bold text-slate-900 dark:text-white"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[10.5px] font-medium text-slate-500 mb-1">
-                            Đơn giá ({row.water.mode === 'PER_PERSON' ? 'đ/người' : 'đ/phòng'})
-                          </label>
-                          <MoneyInput
-                            disabled={!canManageSettlements || isLockedOrFrozen}
-                            value={waterRateVnd}
-                            onChange={(val) => setWaterRateVnd(val)}
-                            className="!h-9 !py-0 !text-xs !font-mono !font-bold !rounded-lg"
-                          />
-                        </div>
+                      <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-300 pt-1 border-t border-slate-100 dark:border-slate-800/80">
+                        <span className="text-[11.5px] font-medium">
+                          {row.water.mode === 'PER_PERSON'
+                            ? `${row.water.occupantCount} người × ${formatVnd(waterRateVnd)}/người/tháng`
+                            : `Khoán phòng: ${formatVnd(waterRateVnd)}/tháng`}
+                        </span>
+                        <span className="font-mono text-[10.5px] text-slate-400">
+                          {row.water.formulaNote}
+                        </span>
                       </div>
                     )}
-                    <div className="text-[10.5px] text-slate-500 font-mono truncate">
-                      {row.water.formulaNote}
-                    </div>
                   </div>
+                </div>
 
                   {/* 3. Line-item Breakdown List (Flat hairline table) */}
                   <div className="pt-3.5 space-y-1.5">
@@ -899,7 +978,6 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                       </div>
                     </div>
                   )}
-                </div>
 
                 {/* Save & Recalculate CTA (Inline synchronized row) */}
                 {!isLockedOrFrozen && (canInputReadings || canManageSettlements) && (
@@ -1252,6 +1330,118 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
         </Dialog.Popup>
       </Dialog.Portal>
     </Dialog.Root>
+
+      {/* DIALOG CHỈNH SỬA CẤU HÌNH PHÒNG */}
+      <Dialog.Root open={showRoomConfigModal} onOpenChange={setShowRoomConfigModal}>
+        <Dialog.Portal>
+          <Dialog.Backdrop className="fixed inset-0 z-60 bg-slate-950/60 backdrop-blur-xs transition-opacity" />
+          <Dialog.Viewport className="fixed inset-0 z-60 flex items-center justify-center p-4">
+            <Dialog.Popup className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 shadow-2xl space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="p-2 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                    <Sliders className="w-5 h-5" />
+                  </span>
+                  <div>
+                    <Dialog.Title className="text-sm font-bold text-slate-900 dark:text-white">
+                      Cấu hình biểu giá phòng {row.room.code}
+                    </Dialog.Title>
+                    <Dialog.Description className="text-[11px] text-slate-500">
+                      Cập nhật trực tiếp cấu hình phòng và đồng bộ kỳ thanh toán này.
+                    </Dialog.Description>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowRoomConfigModal(false)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Đơn giá điện phòng (VND / kWh)
+                  </label>
+                  <MoneyInput
+                    value={cfgElectricRateVnd}
+                    onChange={(val) => setCfgElectricRateVnd(val)}
+                    placeholder="VD: 3.800"
+                    className="!h-9 !py-0 !text-xs !font-mono !font-bold"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">
+                    Áp dụng cho đồng hồ Hunonic và công tơ phòng {row.room.code}
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Phương thức tính tiền nước
+                  </label>
+                  <select
+                    value={cfgWaterMode}
+                    onChange={(e) => setCfgWaterMode(e.target.value)}
+                    className="w-full h-9 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 text-xs font-semibold text-slate-900 dark:text-white"
+                  >
+                    <option value="PER_PERSON">1. Theo đầu người (VND / người / tháng)</option>
+                    <option value="PER_M3">2. Theo đồng hồ nước (VND / m³ tiêu thụ)</option>
+                    <option value="FIXED_PER_ROOM">3. Khoán theo phòng (VND / phòng / tháng)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Đơn giá nước phòng (VND)
+                  </label>
+                  <MoneyInput
+                    value={cfgWaterRateVnd}
+                    onChange={(val) => setCfgWaterRateVnd(val)}
+                    placeholder="VD: 100.000 hoặc 25.000"
+                    className="!h-9 !py-0 !text-xs !font-mono !font-bold"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">
+                    {cfgWaterMode === 'PER_M3' ? 'Giá tính theo mỗi m³ nước tiêu thụ' : cfgWaterMode === 'PER_PERSON' ? 'Giá tính theo mỗi người cư trú/tháng' : 'Giá khoán trọn gói mỗi tháng'}
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Giá thuê phòng niêm yết (VND / tháng)
+                  </label>
+                  <MoneyInput
+                    value={cfgRoomPriceVnd}
+                    onChange={(val) => setCfgRoomPriceVnd(val)}
+                    placeholder="VD: 4.500.000"
+                    className="!h-9 !py-0 !text-xs !font-mono !font-bold"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowRoomConfigModal(false)}
+                  className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  Hủy
+                </button>
+                <SettlementShimmerButton
+                  type="button"
+                  isLoading={isUpdatingConfig}
+                  loadingText="Đang lưu cấu hình..."
+                  onClick={() => void handleSaveRoomConfig()}
+                  className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-colors"
+                >
+                  <span>Lưu cấu hình phòng &amp; Đồng bộ</span>
+                </SettlementShimmerButton>
+              </div>
+            </Dialog.Popup>
+          </Dialog.Viewport>
+        </Dialog.Portal>
+      </Dialog.Root>
+    </>
   );
 };
 

@@ -458,6 +458,12 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
     };
     feeItems?: FeeLineItem[];
     reason?: string;
+    updateRoomConfig?: {
+      electricRateVnd?: number | null;
+      waterRateVnd?: number | null;
+      waterBillingMethod?: string | null;
+      basePriceVnd?: number | null;
+    };
   }): Promise<boolean> => {
     setIsMutating(true);
     setFeedbackBanner(null);

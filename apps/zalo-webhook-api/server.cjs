@@ -58,6 +58,22 @@ async function adminConfig(req, res, orgId) {
     await pool.query('UPDATE zalo_bot_configs SET setup_code_hash = $2, setup_expires_at = now() + interval \'10 minutes\' WHERE org_id = $1', [orgId, digest(code)]);
     return reply(res, 200, { command: `/setadmin ${code}`, expiresInSeconds: 600 });
   }
+  if (body?.action === 'notify_admin') {
+    if (!existing || !group?.chat_id) return reply(res, 409, { error: 'admin_group_not_connected' });
+    const message = String(body.message || '').trim();
+    if (!message) return reply(res, 400, { error: 'empty_message' });
+    const eventKey = String(body.eventKey || `admin:notice:${Date.now()}`);
+    await pool.query(
+      `INSERT INTO zalo_bot_admin_outbox (bot_id, chat_id, event_key, event_type, message, delivery_status, created_at)
+       VALUES ($1, $2, $3, 'ADMIN_SETTLEMENT_COMPILED', $4, 'PENDING', now()) ON CONFLICT (event_key) DO NOTHING`,
+      [existing.bot_id, group.chat_id, eventKey, message]
+    );
+    const bot = await configuredBot(existing.bot_id);
+    if (bot) {
+      void sendPendingAdminMessages(pool, bot.token).catch((e) => console.error('Immediate flush admin failed:', e.message));
+    }
+    return reply(res, 200, { ok: true, sent: true });
+  }
   if (body?.action === 'templates') {
     if (!existing) return reply(res, 409, { error: 'bot_not_configured' });
     let templates;

@@ -4,7 +4,7 @@ const { Pool } = require('pg');
 const { processRegistration } = require('./registration.cjs');
 const { queueRegistrationReply } = require('./registration-reply.cjs');
 const { getPublicRooms } = require('./public-rooms.cjs');
-const { validSecret, receiveBotUpdate, sendPendingReplies, sendPendingAdminMessages, sendPendingResidentMessages } = require('./zalo-bot.cjs');
+const { validSecret, receiveBotUpdate, sendPendingReplies, sendPendingAdminMessages, sendPendingResidentMessages, isBotQuotaPaused } = require('./zalo-bot.cjs');
 const { seal, open, digest, randomSecret, randomSetupCode } = require('./bot-config.cjs');
 const { defaults, normalizeTemplates } = require('./message-templates.cjs');
 const { queueBusinessNotifications } = require('./business-notifications.cjs');
@@ -24,6 +24,9 @@ async function configuredBot(botId) {
 async function flushBotOutboxes() {
   const configs = await pool.query('SELECT org_id, bot_id, token_ciphertext, message_templates FROM zalo_bot_configs WHERE is_enabled = true');
   for (const row of configs.rows) {
+    if (isBotQuotaPaused(row.bot_id)) {
+      continue;
+    }
     const token = open(row.token_ciphertext);
     await queueBusinessNotifications(pool, row);
     await sendPendingReplies(pool, token);
@@ -69,7 +72,7 @@ async function adminConfig(req, res, orgId) {
       [existing.bot_id, group.chat_id, eventKey, message]
     );
     const bot = await configuredBot(existing.bot_id);
-    if (bot) {
+    if (bot && !isBotQuotaPaused(existing.bot_id)) {
       void sendPendingAdminMessages(pool, bot.token).catch((e) => console.error('Immediate flush admin failed:', e.message));
     }
     return reply(res, 200, { ok: true, sent: true });
@@ -154,9 +157,11 @@ async function handle(req, res) {
     try {
       const result = await receiveBotUpdate(pool, config.bot_id, event, config.org_id);
       setImmediate(() => (async () => {
-        await sendPendingReplies(pool, config.token);
-        await sendPendingResidentMessages(pool, config.token);
-        await sendPendingAdminMessages(pool, config.token);
+        if (!isBotQuotaPaused(config.bot_id)) {
+          await sendPendingReplies(pool, config.token);
+          await sendPendingResidentMessages(pool, config.token);
+          await sendPendingAdminMessages(pool, config.token);
+        }
       })().catch(error => console.error('Zalo Bot outbox failed:', error.message)));
       return reply(res, 200, result);
     } catch (error) {

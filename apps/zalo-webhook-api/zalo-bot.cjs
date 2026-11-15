@@ -25,11 +25,11 @@ function validSecret(provided, expected) {
 function resultMessage(status) {
   switch (status) {
     case 'VERIFIED': return 'AdHome đã xác minh đăng ký nhận thông báo cho phòng của bạn.';
-    case 'ALREADY_VERIFIED': return 'Tài khoản này đã đăng ký nhận thông báo cho hồ sơ cư dân đó.';
-    case 'CONFLICT': return 'Hồ sơ này đã liên kết với tài khoản khác hoặc tài khoản này đã đăng ký hồ sơ khác. Vui lòng liên hệ AdHome.';
-    case 'INVALID_FORMAT': return 'Cú pháp: DANGKY <mã phòng> <số điện thoại> [mã hợp đồng ghép].';
+    case 'ALREADY_VERIFIED': return 'Tài khoản của bạn đã được đăng ký nhận thông báo cho phòng này trước đó.';
+    case 'CONFLICT': return 'Tài khoản Zalo này đã được đăng ký nhận thông báo cho một phòng khác. Mỗi tài khoản Zalo chỉ được đăng ký 1 phòng duy nhất. Vui lòng liên hệ quản lý để được hỗ trợ.';
+    case 'INVALID_FORMAT': return 'Cú pháp không đúng. Vui lòng nhắn tin theo cú pháp:\nDANGKY <Số phòng> <Số điện thoại>\nVí dụ: DANGKY 2501 0567867889';
     case 'UNAVAILABLE': return 'Hệ thống tạm thời chưa thể xác minh. Vui lòng thử lại sau.';
-    default: return 'AdHome chưa tìm thấy hồ sơ hợp lệ khớp thông tin đã cung cấp. Vui lòng kiểm tra lại hoặc liên hệ quản lý.';
+    default: return 'AdHome chưa tìm thấy hợp đồng khớp với phòng và số điện thoại này. Vui lòng kiểm tra lại thông tin hoặc liên hệ quản lý tòa nhà.';
   }
 }
 
@@ -187,92 +187,201 @@ async function botApi(token, method, payload, fetchImpl = fetch) {
     body: JSON.stringify(payload),
     signal: AbortSignal.timeout(10000),
   });
-  const body = await response.json();
-  if (!response.ok || body?.ok === false || body?.success === false || body?.error_code) {
-    throw new Error(`Zalo Bot ${method} failed (${response.status})`);
+  const body = await response.json().catch(() => null);
+  if (!response.ok || body?.ok === false || body?.success === false || (body?.error_code !== undefined && body?.error_code !== 0)) {
+    const err = new Error(`Zalo Bot ${method} failed (${response.status})`);
+    err.status = response.status;
+    err.errorCode = body?.error_code || response.status;
+    err.description = body?.description || '';
+    err.body = body;
+    console.error(`[Zalo Bot API Error] ${method} (${response.status}):`, JSON.stringify(body));
+    throw err;
   }
   return body;
+}
+
+const quotaCooldownUntil = new Map();
+
+function isQuotaExceeded(error) {
+  const code = Number(error?.errorCode || error?.status || 0);
+  const desc = String(error?.description || error?.message || '').toLowerCase();
+  return code === 429 || desc.includes('quota exceeded') || desc.includes('limit has been reached');
+}
+
+function isFatalError(error, chatId) {
+  if (!chatId || typeof chatId !== 'string' || !chatId.trim()) return true;
+  if (!/^(\d+|[a-zA-Z0-9_-]{10,80})$/.test(chatId.trim())) return true;
+  const code = Number(error?.errorCode || error?.status || 0);
+  const desc = String(error?.description || error?.message || '').toLowerCase();
+  if ([400, 403, 404, 410, 422].includes(code)) return true;
+  if (desc.includes('chat_id is invaild') || desc.includes('chat_id is invalid') || desc.includes('not found') || desc.includes('blocked') || desc.includes('forbidden')) return true;
+  return false;
+}
+
+function getQuotaCooldownMs() {
+  const now = new Date();
+  const vnNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+  const midnight = new Date(vnNow);
+  midnight.setHours(24, 0, 5, 0);
+  const msUntilMidnight = midnight.getTime() - vnNow.getTime();
+  return Math.min(Math.max(30 * 60 * 1000, msUntilMidnight), 2 * 60 * 60 * 1000);
+}
+
+function isBotQuotaPaused(botId) {
+  const pausedUntil = quotaCooldownUntil.get(botId);
+  if (!pausedUntil) return false;
+  if (Date.now() < pausedUntil) return true;
+  quotaCooldownUntil.delete(botId);
+  return false;
+}
+
+function pauseBotQuota(botId, customDurationMs) {
+  const ms = customDurationMs || getQuotaCooldownMs();
+  const until = Date.now() + ms;
+  quotaCooldownUntil.set(botId, until);
+  console.warn(`[Zalo Bot Quota] Bot ${botId} quota paused until ${new Date(until).toISOString()} (${Math.round(ms / 60000)}m)`);
+}
+
+function resetQuotaCooldown(botId) {
+  if (botId) quotaCooldownUntil.delete(botId);
+  else quotaCooldownUntil.clear();
+}
+
+async function handleOutboxError(pool, table, row, botId, error) {
+  if (isQuotaExceeded(error)) {
+    pauseBotQuota(botId);
+    return 'PAUSE_QUOTA';
+  }
+  if (isFatalError(error, row.chat_id)) {
+    console.warn(`[Zalo Bot Outbox] Message ${row.id} in ${table} failed permanently (${error.errorCode || error.message}), marking FAILED`);
+    await pool.query(
+      `UPDATE ${table} SET delivery_status = 'FAILED', sent_at = now() WHERE id = $1`,
+      [row.id],
+    );
+    return 'FATAL';
+  }
+  console.error(`[Zalo Bot Outbox] Temporary error sending message ${row.id} in ${table}:`, error.message);
+  try {
+    const res = await pool.query(
+      `UPDATE ${table} SET retry_count = COALESCE(retry_count, 0) + 1,
+              delivery_status = CASE WHEN COALESCE(retry_count, 0) + 1 >= 5 THEN 'FAILED' ELSE delivery_status END,
+              sent_at = CASE WHEN COALESCE(retry_count, 0) + 1 >= 5 THEN now() ELSE sent_at END
+       WHERE id = $1 RETURNING delivery_status, retry_count`,
+      [row.id],
+    );
+    if (res.rows?.[0]?.delivery_status === 'FAILED') {
+      console.warn(`[Zalo Bot Outbox] Message ${row.id} in ${table} reached max retries, marked FAILED`);
+      return 'MAX_RETRIES';
+    }
+  } catch {
+    // Column might not exist in old test mock
+  }
+  return 'RETRY';
 }
 
 let sending = false;
 async function sendPendingReplies(pool, token, fetchImpl = fetch) {
   if (!token) return 0;
+  const botId = token.split(':')[0];
+  if (isBotQuotaPaused(botId)) return 0;
   if (sending) return 0;
   sending = true;
   try {
-  const pending = await pool.query(
-    `SELECT id, chat_id, message FROM zalo_bot_reply_outbox
-     WHERE delivery_status = 'PENDING' AND bot_id = $1 ORDER BY id LIMIT 10`,
-    [token.split(':')[0]],
-  );
-  let sent = 0;
-  for (const row of pending.rows) {
-    try {
-      const result = await botApi(token, 'sendMessage', { chat_id: row.chat_id, text: row.message }, fetchImpl);
-      await pool.query(
-        `UPDATE zalo_bot_reply_outbox SET delivery_status = 'SENT', sent_at = now(), provider_message_id = $2
-         WHERE id = $1 AND delivery_status = 'PENDING'`,
-        [row.id, String(result?.result?.message_id || '')],
-      );
-      sent++;
-    } catch (error) {
-      console.error('Zalo Bot reply failed:', error.message);
-      break;
+    const pending = await pool.query(
+      `SELECT id, chat_id, message FROM zalo_bot_reply_outbox
+       WHERE delivery_status = 'PENDING' AND bot_id = $1 ORDER BY id LIMIT 10`,
+      [botId],
+    );
+    let sent = 0;
+    for (const row of pending.rows) {
+      if (isBotQuotaPaused(botId)) break;
+      try {
+        const result = await botApi(token, 'sendMessage', { chat_id: row.chat_id, text: row.message }, fetchImpl);
+        await pool.query(
+          `UPDATE zalo_bot_reply_outbox SET delivery_status = 'SENT', sent_at = now(), provider_message_id = $2
+           WHERE id = $1 AND delivery_status = 'PENDING'`,
+          [row.id, String(result?.result?.message_id || '')],
+        );
+        sent++;
+      } catch (error) {
+        const action = await handleOutboxError(pool, 'zalo_bot_reply_outbox', row, botId, error);
+        if (action === 'PAUSE_QUOTA') break;
+        if (action === 'FATAL') continue;
+        break;
+      }
     }
-  }
-  return sent;
+    return sent;
   } finally {
     sending = false;
   }
 }
 
+const sendingAdmin = new Set();
 async function sendPendingAdminMessages(pool, token, fetchImpl = fetch) {
   if (!token) return 0;
-  const pending = await pool.query(
-    `SELECT id, chat_id, message FROM zalo_bot_admin_outbox
-     WHERE delivery_status = 'PENDING' AND bot_id = $1 ORDER BY id LIMIT 10`,
-    [token.split(':')[0]],
-  );
-  let sent = 0;
-  for (const row of pending.rows) {
-    try {
-      const result = await botApi(token, 'sendMessage', { chat_id: row.chat_id, text: row.message }, fetchImpl);
-      await pool.query(
-        `UPDATE zalo_bot_admin_outbox SET delivery_status = 'SENT', sent_at = now(), provider_message_id = $2
-         WHERE id = $1 AND delivery_status = 'PENDING'`,
-        [row.id, String(result?.result?.message_id || '')],
-      );
-      sent++;
-    } catch (error) {
-      console.error('Zalo Bot admin message failed:', error.message);
-      break;
+  const botId = token.split(':')[0];
+  if (isBotQuotaPaused(botId)) return 0;
+  if (sendingAdmin.has(botId)) return 0;
+  sendingAdmin.add(botId);
+  try {
+    const pending = await pool.query(
+      `SELECT id, chat_id, message FROM zalo_bot_admin_outbox
+       WHERE delivery_status = 'PENDING' AND bot_id = $1 ORDER BY id LIMIT 10`,
+      [botId],
+    );
+    let sent = 0;
+    for (const row of pending.rows) {
+      if (isBotQuotaPaused(botId)) break;
+      try {
+        const result = await botApi(token, 'sendMessage', { chat_id: row.chat_id, text: row.message }, fetchImpl);
+        await pool.query(
+          `UPDATE zalo_bot_admin_outbox SET delivery_status = 'SENT', sent_at = now(), provider_message_id = $2
+           WHERE id = $1 AND delivery_status = 'PENDING'`,
+          [row.id, String(result?.result?.message_id || '')],
+        );
+        sent++;
+      } catch (error) {
+        const action = await handleOutboxError(pool, 'zalo_bot_admin_outbox', row, botId, error);
+        if (action === 'PAUSE_QUOTA') break;
+        if (action === 'FATAL') continue;
+        break;
+      }
     }
+    return sent;
+  } finally {
+    sendingAdmin.delete(botId);
   }
-  return sent;
 }
 
 const sendingResidents = new Set();
 async function sendPendingResidentMessages(pool, token, fetchImpl = fetch) {
   if (!token) return 0;
   const botId = token.split(':')[0];
+  if (isBotQuotaPaused(botId)) return 0;
   if (sendingResidents.has(botId)) return 0;
   sendingResidents.add(botId);
   try {
-  const pending = await pool.query(`SELECT id, chat_id, message, media_url, media_caption FROM zalo_bot_resident_outbox
-    WHERE delivery_status = 'PENDING' AND bot_id = $1 ORDER BY id LIMIT 10`, [token.split(':')[0]]);
-  let sent = 0;
-  for (const row of pending.rows) {
-    try {
-      const result = row.media_url
-        ? await botApi(token, 'sendPhoto', { chat_id: row.chat_id, photo: row.media_url, caption: row.media_caption || row.message }, fetchImpl)
-        : await botApi(token, 'sendMessage', { chat_id: row.chat_id, text: row.message }, fetchImpl);
-      await pool.query(`UPDATE zalo_bot_resident_outbox SET delivery_status = 'SENT', sent_at = now(), provider_message_id = $2
-        WHERE id = $1 AND delivery_status = 'PENDING'`, [row.id, String(result?.result?.message_id || '')]);
-      sent++;
-    } catch (error) { console.error('Zalo Bot resident message failed:', error.message); break; }
-  }
-  return sent;
+    const pending = await pool.query(`SELECT id, chat_id, message, media_url, media_caption FROM zalo_bot_resident_outbox
+      WHERE delivery_status = 'PENDING' AND bot_id = $1 ORDER BY id LIMIT 10`, [botId]);
+    let sent = 0;
+    for (const row of pending.rows) {
+      if (isBotQuotaPaused(botId)) break;
+      try {
+        const result = row.media_url
+          ? await botApi(token, 'sendPhoto', { chat_id: row.chat_id, photo: row.media_url, caption: row.media_caption || row.message }, fetchImpl)
+          : await botApi(token, 'sendMessage', { chat_id: row.chat_id, text: row.message }, fetchImpl);
+        await pool.query(`UPDATE zalo_bot_resident_outbox SET delivery_status = 'SENT', sent_at = now(), provider_message_id = $2
+          WHERE id = $1 AND delivery_status = 'PENDING'`, [row.id, String(result?.result?.message_id || '')]);
+        sent++;
+      } catch (error) {
+        const action = await handleOutboxError(pool, 'zalo_bot_resident_outbox', row, botId, error);
+        if (action === 'PAUSE_QUOTA') break;
+        if (action === 'FATAL') continue;
+        break;
+      }
+    }
+    return sent;
   } finally { sendingResidents.delete(botId); }
 }
 
-module.exports = { normalizeUpdate, validSecret, receiveBotUpdate, sendPendingReplies, sendPendingAdminMessages, sendPendingResidentMessages, botApi };
+module.exports = { normalizeUpdate, validSecret, receiveBotUpdate, sendPendingReplies, sendPendingAdminMessages, sendPendingResidentMessages, botApi, isBotQuotaPaused, pauseBotQuota, resetQuotaCooldown };

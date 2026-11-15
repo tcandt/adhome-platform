@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeUpdate, validSecret, receiveBotUpdate, sendPendingReplies, sendPendingResidentMessages } = require('./zalo-bot.cjs');
+const { normalizeUpdate, validSecret, receiveBotUpdate, sendPendingReplies, sendPendingResidentMessages, sendPendingAdminMessages, isBotQuotaPaused, pauseBotQuota, resetQuotaCooldown } = require('./zalo-bot.cjs');
 const { queueBusinessNotifications } = require('./business-notifications.cjs');
 const { parseRegistration } = require('./registration.cjs');
 
@@ -184,3 +184,70 @@ test('captures group id but binds only with the setup code', async () => {
   assert.equal(result.groupConnected, true);
   assert.equal(calls.filter(call => call.sql.includes('INSERT INTO zalo_bot_admin_groups')).length, 1);
 });
+
+test('marks message as FAILED immediately upon fatal error (410 invalid chat_id)', async () => {
+  resetQuotaCooldown();
+  const calls = [];
+  const pool = {
+    async query(sql, params) {
+      calls.push({ sql, params });
+      if (sql.includes('SELECT id, chat_id, message FROM zalo_bot_reply_outbox')) {
+        return { rows: [{ id: 99, chat_id: 'invalid_chat_id', message: 'Hello' }] };
+      }
+      return { rowCount: 1, rows: [] };
+    },
+  };
+  const fatalFetch = async () => ({
+    ok: true,
+    status: 200,
+    async json() {
+      return { ok: false, description: 'The chat_id is invaild', error_code: 410 };
+    },
+  });
+  const sent = await sendPendingReplies(pool, '12345:token', fatalFetch);
+  assert.equal(sent, 0);
+  const failedUpdate = calls.find(c => c.sql.includes("delivery_status = 'FAILED'"));
+  assert.ok(failedUpdate, 'Expected message to be updated to FAILED');
+  assert.equal(failedUpdate.params[0], 99);
+});
+
+test('activates circuit breaker when daily quota exceeded (429)', async () => {
+  resetQuotaCooldown();
+  const botId = '55555';
+  const calls = [];
+  const pool = {
+    async query(sql, params) {
+      calls.push({ sql, params });
+      if (sql.includes('SELECT id, chat_id, message FROM zalo_bot_admin_outbox')) {
+        return { rows: [{ id: 101, chat_id: 'group_123456789', message: 'Alert' }] };
+      }
+      return { rowCount: 1, rows: [] };
+    },
+  };
+  let fetchCount = 0;
+  const quotaFetch = async () => {
+    fetchCount++;
+    return {
+      ok: true,
+      status: 200,
+      async json() {
+        return { ok: false, description: 'Quota exceeded. Your daily API limit has been reached.', error_code: 429 };
+      },
+    };
+  };
+
+  assert.equal(isBotQuotaPaused(botId), false);
+  const sent1 = await sendPendingAdminMessages(pool, `${botId}:token`, quotaFetch);
+  assert.equal(sent1, 0);
+  assert.equal(fetchCount, 1);
+  assert.equal(isBotQuotaPaused(botId), true);
+
+  // Subsequent calls should be blocked by circuit breaker without making any API request
+  const sent2 = await sendPendingAdminMessages(pool, `${botId}:token`, quotaFetch);
+  assert.equal(sent2, 0);
+  assert.equal(fetchCount, 1, 'API must not be called when circuit breaker is active');
+
+  resetQuotaCooldown(botId);
+  assert.equal(isBotQuotaPaused(botId), false);
+});
+

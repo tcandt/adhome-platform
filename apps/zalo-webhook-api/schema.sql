@@ -86,7 +86,8 @@ CREATE TABLE IF NOT EXISTS zalo_bot_reply_outbox (
   bot_id text NOT NULL,
   chat_id text NOT NULL,
   message text NOT NULL,
-  delivery_status text NOT NULL DEFAULT 'PENDING' CHECK (delivery_status IN ('PENDING', 'SENT')),
+  delivery_status text NOT NULL DEFAULT 'PENDING' CHECK (delivery_status IN ('PENDING', 'SENT', 'FAILED')),
+  retry_count int NOT NULL DEFAULT 0,
   provider_message_id text,
   created_at timestamptz NOT NULL DEFAULT now(),
   sent_at timestamptz
@@ -122,7 +123,8 @@ CREATE TABLE IF NOT EXISTS zalo_bot_admin_outbox (
   message text NOT NULL,
   media_url text,
   media_caption text,
-  delivery_status text NOT NULL DEFAULT 'PENDING' CHECK (delivery_status IN ('PENDING', 'SENT')),
+  delivery_status text NOT NULL DEFAULT 'PENDING' CHECK (delivery_status IN ('PENDING', 'SENT', 'FAILED')),
+  retry_count int NOT NULL DEFAULT 0,
   provider_message_id text,
   created_at timestamptz NOT NULL DEFAULT now(),
   sent_at timestamptz
@@ -154,7 +156,8 @@ CREATE TABLE IF NOT EXISTS zalo_bot_resident_outbox (
   event_key text NOT NULL UNIQUE,
   event_type text NOT NULL,
   message text NOT NULL,
-  delivery_status text NOT NULL DEFAULT 'PENDING' CHECK (delivery_status IN ('PENDING', 'SENT')),
+  delivery_status text NOT NULL DEFAULT 'PENDING' CHECK (delivery_status IN ('PENDING', 'SENT', 'FAILED')),
+  retry_count int NOT NULL DEFAULT 0,
   provider_message_id text,
   created_at timestamptz NOT NULL DEFAULT now(),
   sent_at timestamptz
@@ -163,3 +166,7 @@ GRANT SELECT, INSERT, UPDATE ON zalo_bot_resident_outbox TO adhome_app;
 GRANT USAGE, SELECT ON SEQUENCE zalo_bot_resident_outbox_id_seq TO adhome_app;
 ALTER TABLE zalo_bot_resident_outbox ADD COLUMN IF NOT EXISTS media_url text;
 ALTER TABLE zalo_bot_resident_outbox ADD COLUMN IF NOT EXISTS media_caption text;
+ALTER TABLE zalo_bot_reply_outbox ADD COLUMN IF NOT EXISTS retry_count int NOT NULL DEFAULT 0;
+ALTER TABLE zalo_bot_admin_outbox ADD COLUMN IF NOT EXISTS retry_count int NOT NULL DEFAULT 0;
+ALTER TABLE zalo_bot_resident_outbox ADD COLUMN IF NOT EXISTS retry_count int NOT NULL DEFAULT 0;
+

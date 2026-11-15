@@ -492,7 +492,7 @@ export const OperationalModuleWorkspace: React.FC<
   // Ledger Entry Modal state
   const [isLedgerModalOpen, setIsLedgerModalOpen] = useState(false);
   const [lgType, setLgType] = useState<'INCOME' | 'EXPENSE'>('INCOME');
-  const [lgCategory, setLgCategory] = useState('Tiền phòng & dịch vụ');
+  const [lgCategory, setLgCategory] = useState('Khác');
   const [lgBuildingId, setLgBuildingId] = useState('');
   const [lgAmountVnd, setLgAmountVnd] = useState(1500000);
   const [lgDescription, setLgDescription] = useState('');
@@ -1190,6 +1190,7 @@ export const OperationalModuleWorkspace: React.FC<
       }
       setIsLedgerModalOpen(false);
       setLgDescription('');
+      setLgCategory('Khác');
       await Promise.all([loadModuleData(), refreshPortfolio()]);
       notifySave(true, 'Đã lưu bút toán sổ quỹ');
     } catch {
@@ -2532,6 +2533,7 @@ export const OperationalModuleWorkspace: React.FC<
               canCreateLedger={hasCapability('canAccessFinance')}
               onOpenCreateLedger={() => {
                 setLgError(null);
+                setLgCategory('Khác');
                 setLgBuildingId(activeBuildings[0]?.id || '');
                 setIsLedgerModalOpen(true);
               }}
@@ -3358,7 +3360,7 @@ export const OperationalModuleWorkspace: React.FC<
               <div className="flex items-center justify-between border-b border-slate-100 p-4 dark:border-slate-800">
                 <Dialog.Title className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-white">
                   <Wallet className="h-4 w-4 text-brand-primary" />
-                  Ghi bút toán sổ quỹ tiền mặt / chuyển khoản
+                  Tạo thu chi
                 </Dialog.Title>
                 <Dialog.Close className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800">
                   <X className="h-4 w-4" />
@@ -3373,22 +3375,8 @@ export const OperationalModuleWorkspace: React.FC<
                     {lgError}
                   </div>
                 )}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="mb-1 block text-xs font-semibold">
-                      Loại bút toán
-                    </label>
-                    <select
-                      value={lgType}
-                      onChange={(e) =>
-                        setLgType(e.target.value as 'INCOME' | 'EXPENSE')
-                      }
-                      className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-bold dark:border-slate-700 dark:bg-slate-800"
-                    >
-                      <option value="INCOME">Phiếu thu (+)</option>
-                      <option value="EXPENSE">Phiếu chi (-)</option>
-                    </select>
-                  </div>
+                {/* HÀNG 1: TÒA NHÀ - DANH MỤC */}
+                <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
                   <div>
                     <label className="mb-1 block text-xs font-semibold">
                       Tòa nhà
@@ -3396,18 +3384,16 @@ export const OperationalModuleWorkspace: React.FC<
                     <select
                       value={lgBuildingId}
                       onChange={(e) => setLgBuildingId(e.target.value)}
-                      className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs dark:border-slate-700 dark:bg-slate-800"
+                      className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 px-2 sm:px-3 text-xs dark:border-slate-700 dark:bg-slate-800"
                     >
                       <option value="">Chung toàn tổ chức</option>
                       {activeBuildings.map((b) => (
                         <option key={b.id} value={b.id}>
-                          {b.code} — {b.name}
+                          {b.name || b.code}
                         </option>
                       ))}
                     </select>
                   </div>
-                </div>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
                     <label className="mb-1 block text-xs font-semibold">
                       Danh mục
@@ -3416,23 +3402,45 @@ export const OperationalModuleWorkspace: React.FC<
                       type="text"
                       value={lgCategory}
                       onChange={(e) => setLgCategory(e.target.value)}
-                      className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs dark:border-slate-700 dark:bg-slate-800"
+                      placeholder="VD: Khác, Sửa chữa..."
+                      className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 px-2.5 sm:px-3 text-xs dark:border-slate-700 dark:bg-slate-800"
                       required
                     />
                   </div>
+                </div>
+
+                {/* HÀNG 2: THU/CHI - SỐ TIỀN */}
+                <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold">
+                      Thu/chi
+                    </label>
+                    <select
+                      value={lgType}
+                      onChange={(e) =>
+                        setLgType(e.target.value as 'INCOME' | 'EXPENSE')
+                      }
+                      className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 px-2 sm:px-3 text-xs font-bold dark:border-slate-700 dark:bg-slate-800"
+                    >
+                      <option value="INCOME">Phiếu thu (+)</option>
+                      <option value="EXPENSE">Phiếu chi (-)</option>
+                    </select>
+                  </div>
                   <div data-testid="input-ledger-amount-wrap">
                     <MoneyInput
-                      label="Số tiền nguyên *"
+                      label="Số tiền *"
                       value={lgAmountVnd}
                       onChange={setLgAmountVnd}
                       min={1000}
-                      className="text-xs font-bold"
+                      className="h-9 text-xs font-bold rounded-xl bg-slate-50 border-slate-200 dark:bg-slate-800 dark:border-slate-700"
                     />
                   </div>
                 </div>
+
+                {/* HÀNG 3: MÔ TẢ */}
                 <div>
                   <label className="mb-1 block text-xs font-semibold">
-                    Diễn giải chi tiết *
+                    Mô tả *
                   </label>
                   <input
                     data-testid="input-ledger-description"
@@ -3444,6 +3452,7 @@ export const OperationalModuleWorkspace: React.FC<
                     required
                   />
                 </div>
+
                 <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
                   <button
                     type="button"
@@ -3456,10 +3465,10 @@ export const OperationalModuleWorkspace: React.FC<
                     data-testid="submit-create-ledger"
                     type="submit"
                     isLoading={isSavingLg}
-                    loadingText="Đang lưu bút toán..."
-                    className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-brand-primary px-4 text-xs font-bold text-white hover:bg-brand-hover disabled:opacity-50"
+                    loadingText="Đang lưu..."
+                    className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-brand-primary px-5 text-xs font-bold text-white hover:bg-brand-hover disabled:opacity-50"
                   >
-                    Lưu bút toán sổ quỹ
+                    Lưu
                   </SettlementShimmerButton>
                 </div>
               </form>

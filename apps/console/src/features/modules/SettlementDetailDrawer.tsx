@@ -49,6 +49,26 @@ import {
   getPaymentStatusBadge,
 } from './settlementTypes';
 
+function DrawerDetail({
+  label,
+  value,
+  wide = false,
+}: {
+  label: string;
+  value?: React.ReactNode;
+  wide?: boolean;
+}) {
+  if (value === undefined || value === null || value === '') return null;
+  return (
+    <div className={`min-w-0 ${wide ? 'col-span-2' : ''}`}>
+      <dt className="text-xs text-slate-500 dark:text-slate-400">{label}</dt>
+      <dd className="mt-0.5 break-words text-sm leading-5 font-medium text-slate-800 dark:text-slate-200">
+        {value}
+      </dd>
+    </div>
+  );
+}
+
 interface SettlementDetailDrawerProps {
   open: boolean;
   row: SettlementRow | null;
@@ -644,298 +664,281 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
             {activeTab === 'FEES' && (
               <div className="space-y-4" data-testid="drawer-panel-fees">
                 {isLockedOrFrozen && (
-                  <div className="rounded-lg border border-blue-200 bg-blue-50/80 dark:border-blue-900 dark:bg-blue-950/40 px-3 py-2 text-[11.5px] text-blue-800 dark:text-blue-200 flex items-center gap-2">
-                    <Lock className="w-3.5 h-3.5 shrink-0 text-blue-600" />
-                    <span>Hóa đơn đã phát hành/khóa sổ — số liệu đã đóng băng.</span>
-                  </div>
+                  <p role="status" className="rounded-lg bg-slate-100 dark:bg-slate-800/80 px-3 py-2 text-xs text-slate-600 dark:text-slate-300">
+                    Hóa đơn đã phát hành/khóa sổ — số liệu đã đóng băng.
+                  </p>
                 )}
 
-                {/* Header Action: Cấu hình phòng & Biểu giá */}
-                <div className="flex items-center justify-between gap-2 p-2.5 rounded-xl border border-blue-200/90 dark:border-blue-900/60 bg-blue-50/50 dark:bg-blue-950/20">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="p-1.5 rounded-lg bg-blue-600 text-white shrink-0">
-                      <Sliders className="w-4 h-4" />
-                    </span>
-                    <div className="min-w-0">
-                      <div className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                        Cấu hình biểu giá phòng {row.room.code}
-                      </div>
-                      <div className="text-[10.5px] text-slate-500 font-mono truncate">
-                        Điện: {formatVnd(electricRateVnd)}đ/kWh · Nước: {formatVnd(waterRateVnd)}đ · Phòng: {formatVnd(baseMonthlyRentVnd)}đ
-                      </div>
-                    </div>
+                {/* 1. Cấu hình biểu giá phòng (Khối trên cùng dạng container bo tròn như ảnh 2) */}
+                <div className="rounded-xl bg-slate-50 p-3.5 dark:bg-slate-800/60">
+                  <div className="mb-2.5 flex items-center justify-between gap-2">
+                    <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+                      Cấu hình biểu giá phòng {row.room.code}
+                    </h3>
+                    {canManageSettlements && !isLockedOrFrozen && (
+                      <button
+                        type="button"
+                        onClick={() => setShowRoomConfigModal(true)}
+                        className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                      >
+                        <Sliders className="w-3.5 h-3.5" />
+                        <span>Sửa cấu hình</span>
+                      </button>
+                    )}
                   </div>
-                  {canManageSettlements && !isLockedOrFrozen && (
-                    <button
-                      type="button"
-                      onClick={() => setShowRoomConfigModal(true)}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold text-blue-700 hover:text-blue-800 dark:text-blue-300 bg-white dark:bg-slate-900 border border-blue-300 dark:border-blue-700 shadow-2xs transition-colors shrink-0"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                      <span>Sửa cấu hình phòng</span>
-                    </button>
-                  )}
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
+                    <DrawerDetail label="Đơn giá điện" value={`${formatVnd(electricRateVnd)}/kWh`} />
+                    <DrawerDetail
+                      label="Phương thức tính nước"
+                      value={
+                        row.water.mode === 'PER_M3'
+                          ? 'Theo đồng hồ (m³)'
+                          : row.water.mode === 'PER_PERSON'
+                          ? 'Theo đầu người'
+                          : 'Khoán theo phòng'
+                      }
+                    />
+                    <DrawerDetail
+                      label="Đơn giá nước"
+                      value={
+                        row.water.mode === 'PER_M3'
+                          ? `${formatVnd(waterRateVnd)}/m³`
+                          : row.water.mode === 'PER_PERSON'
+                          ? `${formatVnd(waterRateVnd)}/người/tháng`
+                          : `${formatVnd(waterRateVnd)}/tháng`
+                      }
+                    />
+                    <DrawerDetail
+                      label="Giá niêm yết phòng"
+                      value={`${formatVnd(baseMonthlyRentVnd || row.rent.baseMonthlyRentVnd || 0)}/tháng`}
+                    />
+                  </dl>
                 </div>
 
-                <div className="space-y-2.5">
-                  {/* 1. Tiền thuê phòng */}
-                  <div className="p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="inline-flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-200">
-                        <Home className="w-4 h-4 text-blue-600 shrink-0" />
-                        <span>Tiền thuê phòng</span>
-                        <span className="text-[10.5px] font-normal text-slate-500 truncate">({row.tenant.fullName})</span>
-                      </span>
-                      <span className="font-mono text-sm font-extrabold text-slate-900 dark:text-white shrink-0">
-                        {formatVnd(row.totals.roomRentVnd)}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs pt-1.5 border-t border-slate-100 dark:border-slate-800/80">
-                      <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300 text-[11.5px] min-w-0">
-                        <span className="px-1.5 py-0.5 rounded font-mono font-bold bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 text-[10.5px] shrink-0">
-                          {formatVnd(baseMonthlyRentVnd || row.rent.baseMonthlyRentVnd || row.contract?.monthlyRentVnd || 0)}/tháng
-                        </span>
-                        <span className="text-slate-400 shrink-0">·</span>
-                        <span className="text-slate-500 font-medium truncate">
-                          {(row.sharedRoomInfo?.isSharedRoom || row.room.rentalModel === 'SHARED_ROOM')
-                            ? 'Ở ghép: gán riêng từng người'
-                            : row.rent.formulaNote}
-                        </span>
-                      </div>
-                      <span className="text-[10.5px] text-slate-400 font-mono shrink-0">
-                        HĐ: {row.contract?.code || 'N/A'}
-                      </span>
-                    </div>
+                {/* 2. Tiền thuê phòng */}
+                <section className="border-t border-slate-200 pt-3 dark:border-slate-700">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Tiền thuê phòng</h3>
+                    <span className="font-mono text-sm font-semibold text-slate-900 dark:text-white">
+                      {formatVnd(row.totals.roomRentVnd)}
+                    </span>
                   </div>
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
+                    <DrawerDetail label="Khách thuê" value={row.tenant.fullName} />
+                    <DrawerDetail label="Mã hợp đồng" value={row.contract?.code || 'Chưa có HĐ'} />
+                    <DrawerDetail
+                      label="Giá thuê theo hợp đồng"
+                      value={`${formatVnd(baseMonthlyRentVnd || row.contract?.monthlyRentVnd || 0)}/tháng`}
+                    />
+                    <DrawerDetail
+                      label="Thời gian tính tiền"
+                      value={`${row.rent.activeDays}/${row.rent.basisDays} ngày ${
+                        row.rent.activeDays < row.rent.basisDays ? '(Từ ngày dọn vào)' : '(Trọn kỳ)'
+                      }`}
+                    />
+                  </dl>
+                </section>
 
-                  {/* 2. Tiền điện */}
-                  <div className="p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="inline-flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-200">
-                        <Zap className="w-4 h-4 text-amber-500 shrink-0" />
-                        <span>Tiền điện</span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300">
-                          {row.electric.method === 'HUNONIC_AUTO' ? 'Hunonic tự động' : 'Công tơ điện'}
-                        </span>
-                      </span>
-                      <span className="font-mono text-sm font-extrabold text-slate-900 dark:text-white shrink-0">
-                        {formatVnd(row.totals.electricVnd)}
+                {/* 3. Tiền điện */}
+                <section className="border-t border-slate-200 pt-3 dark:border-slate-700">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Tiền điện</h3>
+                      <span className="text-xs text-slate-500 dark:text-slate-400">
+                        ({row.electric.method === 'HUNONIC_AUTO' ? 'Hunonic tự động' : 'Công tơ điện'})
                       </span>
                     </div>
-
-                    {/* Compact Metrics Row */}
-                    <div className="grid grid-cols-3 gap-2 p-2 rounded-lg bg-white dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 text-center">
-                      <div>
-                        <div className="text-[10px] text-slate-400 font-medium">Đầu kỳ</div>
-                        <div className="font-mono text-xs font-bold text-slate-700 dark:text-slate-300">
-                          {row.electric.startKwh ?? 0} <span className="text-[9.5px] text-slate-400">kWh</span>
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] text-slate-400 font-medium">Cuối kỳ</div>
-                        <div className="font-mono text-xs font-bold text-slate-900 dark:text-white">
-                          {row.electric.endKwh ?? 0} <span className="text-[9.5px] text-slate-400">kWh</span>
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] text-slate-400 font-medium">Đơn giá</div>
-                        <div className="font-mono text-xs font-bold text-blue-600 dark:text-blue-400">
-                          {formatVnd(electricRateVnd)} <span className="text-[9.5px] text-slate-400">/kWh</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between text-[11px] text-slate-500 font-mono gap-2">
-                      <span className="truncate">{row.electric.formulaNote}</span>
+                    <div className="flex items-center gap-3">
                       {canInputReadings && !isLockedOrFrozen && (
                         <button
                           type="button"
                           onClick={() => setShowElectricManualEdit((v) => !v)}
-                          className="text-blue-600 hover:text-blue-700 font-sans font-semibold text-[11px] underline shrink-0"
+                          className="text-xs font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400"
                         >
                           {showElectricManualEdit ? 'Đóng chỉnh sửa' : 'Chỉnh số điện'}
                         </button>
                       )}
+                      <span className="font-mono text-sm font-semibold text-slate-900 dark:text-white">
+                        {formatVnd(row.totals.electricVnd)}
+                      </span>
                     </div>
-
-                    {showElectricManualEdit && (
-                      <div className="pt-2 border-t border-slate-200 dark:border-slate-700 grid grid-cols-2 gap-2 text-xs">
-                        <div>
-                          <label className="block text-[10px] text-slate-500 mb-0.5">Chỉ số cuối kỳ (kWh)</label>
-                          <input
-                            type="number"
-                            step="0.1"
-                            value={endKwhInput}
-                            onChange={(e) => setEndKwhInput(e.target.value)}
-                            className="h-8 w-full rounded border border-blue-300 dark:border-blue-700 px-2 font-mono text-xs font-bold bg-white dark:bg-slate-900"
-                            placeholder="Nhập kWh..."
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] text-slate-500 mb-0.5">Đơn giá điện (đ/kWh)</label>
-                          <MoneyInput
-                            value={electricRateVnd}
-                            onChange={(val) => setElectricRateVnd(val)}
-                            className="!h-8 !py-0 !text-xs !font-mono !font-bold"
-                          />
-                        </div>
-                      </div>
-                    )}
                   </div>
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
+                    <DrawerDetail label="Chỉ số đầu kỳ" value={`${row.electric.startKwh ?? 0} kWh`} />
+                    <DrawerDetail label="Chỉ số cuối kỳ" value={`${row.electric.endKwh ?? 0} kWh`} />
+                    <DrawerDetail
+                      label="Số điện tiêu thụ"
+                      value={`${row.electric.consumptionKwh ?? Math.max(0, (row.electric.endKwh ?? 0) - (row.electric.startKwh ?? 0))} kWh`}
+                    />
+                    <DrawerDetail label="Đơn giá điện" value={`${formatVnd(electricRateVnd)}/kWh`} />
+                  </dl>
+                  {showElectricManualEdit && (
+                    <div className="mt-3 pt-2.5 border-t border-dashed border-slate-200 dark:border-slate-700 grid grid-cols-2 gap-3 text-xs">
+                      <div>
+                        <label className="block text-xs text-slate-500 mb-1">Chỉ số cuối kỳ (kWh)</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={endKwhInput}
+                          onChange={(e) => setEndKwhInput(e.target.value)}
+                          className="h-8 w-full rounded border border-slate-300 dark:border-slate-700 px-2 font-mono text-xs font-medium bg-white dark:bg-slate-900"
+                          placeholder="Nhập kWh..."
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-slate-500 mb-1">Đơn giá điện</label>
+                        <MoneyInput
+                          value={electricRateVnd}
+                          onChange={(val) => setElectricRateVnd(val)}
+                          className="!h-8 !py-0 !text-xs !font-mono !font-medium"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </section>
 
-                  {/* 3. Tiền nước */}
-                  <div className="p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="inline-flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-200">
-                        <Droplets className="w-4 h-4 text-cyan-500 shrink-0" />
-                        <span>Tiền nước</span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold bg-cyan-100 dark:bg-cyan-950 text-cyan-800 dark:text-cyan-300">
-                          {row.water.mode === 'PER_M3' ? 'Theo m³ tiêu thụ' : row.water.mode === 'PER_PERSON' ? 'Theo đầu người' : 'Khoán phòng'}
-                        </span>
+                {/* 4. Tiền nước */}
+                <section className="border-t border-slate-200 pt-3 dark:border-slate-700">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Tiền nước</h3>
+                      <span className="text-xs text-slate-500 dark:text-slate-400">
+                        ({row.water.mode === 'PER_M3' ? 'Theo đồng hồ m³' : row.water.mode === 'PER_PERSON' ? 'Theo đầu người' : 'Khoán theo phòng'})
                       </span>
-                      <span className="font-mono text-sm font-extrabold text-cyan-600 dark:text-cyan-400 shrink-0">
-                        {row.water.status === 'NEED_M3_INPUT' ? 'Cần nhập m³' : formatVnd(row.totals.waterVnd)}
+                    </div>
+                    <span
+                      className={`font-mono text-sm font-semibold ${
+                        row.water.status === 'NEED_M3_INPUT' ? 'text-amber-600' : 'text-slate-900 dark:text-white'
+                      }`}
+                    >
+                      {row.water.status === 'NEED_M3_INPUT' ? 'Cần nhập m³' : formatVnd(row.totals.waterVnd)}
+                    </span>
+                  </div>
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
+                    {row.water.mode === 'PER_M3' ? (
+                      <>
+                        <DrawerDetail label="Đơn giá nước" value={`${formatVnd(waterRateVnd)}/m³`} />
+                        <DrawerDetail
+                          label="Số khối tiêu thụ"
+                          value={row.water.consumptionM3 !== null ? `${row.water.consumptionM3} m³` : 'Chưa nhập'}
+                        />
+                      </>
+                    ) : row.water.mode === 'PER_PERSON' ? (
+                      <>
+                        <DrawerDetail label="Số nhân khẩu" value={`${row.water.occupantCount} người`} />
+                        <DrawerDetail label="Đơn giá nước" value={`${formatVnd(waterRateVnd)}/người/tháng`} />
+                      </>
+                    ) : (
+                      <>
+                        <DrawerDetail label="Hình thức tính" value="Khoán theo phòng" />
+                        <DrawerDetail label="Đơn giá khoán" value={`${formatVnd(waterRateVnd)}/tháng`} />
+                      </>
+                    )}
+                  </dl>
+                  {row.water.mode === 'PER_M3' && canInputReadings && !isLockedOrFrozen && (
+                    <div className="mt-3 flex items-center gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          placeholder="Nhập số khối tiêu thụ..."
+                          value={waterM3Input}
+                          onChange={(e) => setWaterM3Input(e.target.value)}
+                          className="h-8 w-full rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 font-mono text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                        <span className="absolute right-2.5 top-1.5 text-xs text-slate-400">m³</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void handleSaveAllChanges()}
+                        disabled={isSaving}
+                        className="h-8 px-3 rounded bg-slate-900 dark:bg-slate-700 hover:bg-slate-800 text-white font-medium text-xs transition-colors shrink-0 disabled:opacity-50"
+                      >
+                        {isSaving ? 'Đang lưu...' : 'Lưu số m³'}
+                      </button>
+                    </div>
+                  )}
+                </section>
+
+                {/* 5. Bảng kê chi phí hóa đơn */}
+                <section className="border-t border-slate-200 pt-3 dark:border-slate-700">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Bảng kê chi phí hóa đơn</h3>
+                    <span className="font-mono text-sm font-semibold text-blue-600 dark:text-blue-400">
+                      Tổng: {formatVnd(row.totals.totalPayableVnd)}
+                    </span>
+                  </div>
+                  <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+                    <div className="py-2 flex items-center justify-between">
+                      <span className="text-slate-600 dark:text-slate-300">Tiền thuê phòng</span>
+                      <span className="font-mono font-medium text-slate-900 dark:text-white">
+                        {formatVnd(row.totals.roomRentVnd)}
+                      </span>
+                    </div>
+                    <div className="py-2 flex items-center justify-between">
+                      <span className="text-slate-600 dark:text-slate-300">Tiền điện</span>
+                      <span className="font-mono font-medium text-slate-900 dark:text-white">
+                        {formatVnd(row.totals.electricVnd)}
+                      </span>
+                    </div>
+                    <div className="py-2 flex items-center justify-between">
+                      <span className="text-slate-600 dark:text-slate-300">Tiền nước</span>
+                      <span className="font-mono font-medium text-slate-900 dark:text-white">
+                        {formatVnd(row.totals.waterVnd)}
                       </span>
                     </div>
 
-                    {row.water.mode === 'PER_M3' ? (
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-slate-500 text-[11px]">
-                            Đơn giá cấu hình phòng: <strong className="font-mono text-slate-800 dark:text-slate-200">{formatVnd(waterRateVnd)} đ/m³</strong>
+                    {feeItemsDraft.map((item) => (
+                      <div key={item.id} className="py-2 flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <span className="text-slate-600 dark:text-slate-300">{item.name}</span>
+                          <span className="text-[10.5px] text-slate-400 ml-1">
+                            ({item.category === 'RECURRING_SERVICE'
+                              ? 'Định kỳ'
+                              : item.category === 'EXTRA_CHARGE'
+                              ? 'Phát sinh'
+                              : item.category === 'DISCOUNT'
+                              ? 'Giảm trừ'
+                              : 'Điều chỉnh'})
                           </span>
-                          {row.water.consumptionM3 !== null && (
-                            <span className="font-mono text-[11px] text-slate-700 dark:text-slate-300 font-bold">
-                              Tiêu thụ: {row.water.consumptionM3} m³
-                            </span>
-                          )}
                         </div>
-                        {canInputReadings && !isLockedOrFrozen && (
-                          <div className="flex items-center gap-2 pt-0.5">
-                            <div className="relative flex-1">
-                              <input
-                                type="number"
-                                step="0.1"
-                                min="0"
-                                placeholder="Nhập số khối tiêu thụ (VD: 12)..."
-                                value={waterM3Input}
-                                onChange={(e) => setWaterM3Input(e.target.value)}
-                                className="h-8 w-full rounded-lg border border-cyan-400 dark:border-cyan-700 bg-white dark:bg-slate-900 px-2.5 font-mono text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-cyan-500"
-                              />
-                              <span className="absolute right-2.5 top-1.5 text-[11px] font-bold text-slate-400">m³</span>
-                            </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span
+                            className={`font-mono font-medium ${
+                              item.category === 'DISCOUNT' || item.amountVnd < 0
+                                ? 'text-emerald-600'
+                                : 'text-slate-900 dark:text-white'
+                            }`}
+                          >
+                            {item.category === 'DISCOUNT' ? `-${formatVnd(Math.abs(item.amountVnd))}` : formatVnd(item.amountVnd)}
+                          </span>
+                          {canManageSettlements && !isLockedOrFrozen && (
                             <button
                               type="button"
-                              onClick={() => void handleSaveAllChanges()}
-                              disabled={isSaving}
-                              className="h-8 px-3 rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white font-semibold text-xs transition-colors shrink-0 disabled:opacity-50"
+                              onClick={() => handleRemoveFeeItem(item.id)}
+                              className="p-0.5 text-slate-400 hover:text-rose-600 rounded"
+                              title="Xóa khoản mục"
                             >
-                              {isSaving ? 'Đang lưu...' : 'Lưu số m³'}
+                              <Trash2 className="w-3.5 h-3.5" />
                             </button>
-                          </div>
-                        )}
-                        <div className="text-[10.5px] text-slate-500 font-mono truncate">
-                          {row.water.formulaNote}
+                          )}
                         </div>
                       </div>
-                    ) : (
-                      <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-300 pt-1 border-t border-slate-100 dark:border-slate-800/80">
-                        <span className="text-[11.5px] font-medium">
-                          {row.water.mode === 'PER_PERSON'
-                            ? `${row.water.occupantCount} người × ${formatVnd(waterRateVnd)}/người/tháng`
-                            : `Khoán phòng: ${formatVnd(waterRateVnd)}/tháng`}
-                        </span>
-                        <span className="font-mono text-[10.5px] text-slate-400">
-                          {row.water.formulaNote}
-                        </span>
-                      </div>
-                    )}
+                    ))}
                   </div>
-                </div>
+                </section>
 
-                  {/* 3. Line-item Breakdown List (Flat hairline table) */}
-                  <div className="pt-3.5 space-y-1.5">
-                    <div className="flex items-center justify-between text-xs pb-1">
-                      <span className="font-bold text-slate-800 dark:text-slate-200">
-                        Bảng kê chi phí hóa đơn
-                      </span>
-                      <span className="text-[10.5px] text-slate-400">
-                        Tổng: <strong className="font-mono text-blue-600">{formatVnd(row.totals.totalPayableVnd)}</strong>
-                      </span>
-                    </div>
-                    <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
-                      <div className="py-1.5 flex items-center justify-between">
-                        <span className="text-slate-600 dark:text-slate-300">Tiền thuê phòng</span>
-                        <span className="font-mono font-bold text-slate-900 dark:text-white">
-                          {formatVnd(row.totals.roomRentVnd)}
-                        </span>
-                      </div>
-                      <div className="py-1.5 flex items-center justify-between">
-                        <span className="text-slate-600 dark:text-slate-300">Tiền điện</span>
-                        <span className="font-mono font-bold text-slate-900 dark:text-white">
-                          {formatVnd(row.totals.electricVnd)}
-                        </span>
-                      </div>
-                      <div className="py-1.5 flex items-center justify-between">
-                        <span className="text-slate-600 dark:text-slate-300">Tiền nước</span>
-                        <span className="font-mono font-bold text-slate-900 dark:text-white">
-                          {formatVnd(row.totals.waterVnd)}
-                        </span>
-                      </div>
-
-                      {feeItemsDraft.map((item) => (
-                        <div key={item.id} className="py-1.5 flex items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="font-medium text-slate-900 dark:text-white flex items-center gap-1.5 truncate">
-                              <span className="truncate">{item.name}</span>
-                              <span className="text-[10px] text-slate-400 shrink-0">
-                                ({item.category === 'RECURRING_SERVICE'
-                                  ? 'Định kỳ'
-                                  : item.category === 'EXTRA_CHARGE'
-                                  ? 'Phát sinh'
-                                  : item.category === 'DISCOUNT'
-                                  ? 'Giảm trừ'
-                                  : 'Điều chỉnh'})
-                              </span>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <span
-                              className={`font-mono font-bold ${
-                                item.category === 'DISCOUNT' || item.amountVnd < 0
-                                  ? 'text-emerald-600'
-                                  : 'text-slate-900 dark:text-white'
-                              }`}
-                            >
-                              {item.category === 'DISCOUNT' ? `-${formatVnd(Math.abs(item.amountVnd))}` : formatVnd(item.amountVnd)}
-                            </span>
-                            {canManageSettlements && !isLockedOrFrozen && (
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveFeeItem(item.id)}
-                                className="p-0.5 text-slate-400 hover:text-rose-600 rounded"
-                                title="Xóa khoản mục"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* 4. Add Fee / Discount / Adjustment (Synchronized compact 2-row grid) */}
-                  {canManageSettlements && !isLockedOrFrozen && (
-                    <div className="pt-3.5 space-y-2">
-                      <div className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
-                        + Thêm khoản thu / giảm trừ
-                      </div>
+                {/* 6. Thêm khoản mục */}
+                {canManageSettlements && !isLockedOrFrozen && (
+                  <section className="border-t border-slate-200 pt-3 dark:border-slate-700">
+                    <h3 className="mb-2 text-sm font-semibold text-slate-900 dark:text-white">+ Thêm khoản mục</h3>
+                    <div className="space-y-2">
                       <div className="grid grid-cols-2 gap-2 text-xs">
                         <select
                           value={newFeeCategory}
                           onChange={(e) => setNewFeeCategory(e.target.value as FeeLineItem['category'])}
-                          className="h-9 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 text-xs font-semibold"
+                          className="h-8 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 text-xs font-medium"
                         >
                           <option value="EXTRA_CHARGE">Phí phát sinh (+)</option>
                           <option value="RECURRING_SERVICE">Dịch vụ định kỳ (+)</option>
@@ -948,46 +951,40 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                           min={newFeeCategory === 'ADJUSTMENT' ? -1_000_000_000 : 0}
                           value={newFeeAmountVnd}
                           onChange={(val) => setNewFeeAmountVnd(val)}
-                          className="!h-9 !py-0 !text-xs !font-mono !font-bold !rounded-lg"
+                          className="!h-8 !py-0 !text-xs !font-mono !rounded"
                         />
                       </div>
                       <div className="flex items-center gap-2 text-xs">
                         <input
                           type="text"
-                          placeholder="Tên khoản mục (VD: Gửi xe)..."
+                          placeholder="Tên khoản mục (VD: Gửi xe, Dọn phòng)..."
                           data-testid="drawer-input-new-fee-name"
                           value={newFeeName}
                           onChange={(e) => setNewFeeName(e.target.value)}
-                          className="h-9 flex-1 min-w-0 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 text-xs"
-                        />
-                        <input
-                          type="text"
-                          placeholder="Lý do..."
-                          value={newFeeReason}
-                          onChange={(e) => setNewFeeReason(e.target.value)}
-                          className="h-9 flex-1 min-w-0 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 text-xs hidden sm:block"
+                          className="h-8 flex-1 min-w-0 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 text-xs"
                         />
                         <button
                           type="button"
                           data-testid="drawer-btn-add-fee-item"
                           onClick={handleAddFeeItem}
-                          className="inline-flex h-9 items-center gap-1 rounded-lg bg-slate-900 dark:bg-slate-700 hover:bg-slate-800 text-white px-3 text-xs font-bold shrink-0"
+                          className="inline-flex h-8 items-center gap-1 rounded bg-slate-900 hover:bg-slate-800 text-white px-3 text-xs font-medium shrink-0"
                         >
                           <Plus className="w-3.5 h-3.5" /> Thêm
                         </button>
                       </div>
                     </div>
-                  )}
+                  </section>
+                )}
 
-                {/* Save & Recalculate CTA (Inline synchronized row) */}
+                {/* 7. Ghi chú & Lưu tính lại */}
                 {!isLockedOrFrozen && (canInputReadings || canManageSettlements) && (
-                  <div className="flex items-center gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
+                  <div className="flex items-center gap-2 pt-3 border-t border-slate-200 dark:border-slate-700">
                     <input
                       type="text"
                       value={editReason}
                       onChange={(e) => setEditReason(e.target.value)}
-                      placeholder="Ghi chú thay đổi..."
-                      className="h-9 flex-1 min-w-0 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 text-xs"
+                      placeholder="Ghi chú thay đổi (tùy chọn)..."
+                      className="h-8 flex-1 min-w-0 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 text-xs"
                     />
                     <SettlementShimmerButton
                       type="button"
@@ -995,7 +992,7 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                       isLoading={isSaving}
                       loadingText="Đang lưu..."
                       onClick={() => void handleSaveAllChanges()}
-                      className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-3.5 text-xs font-bold shadow-xs transition-colors disabled:opacity-50 shrink-0"
+                      className="inline-flex h-8 items-center justify-center gap-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white px-3.5 text-xs font-semibold shadow-xs transition-colors disabled:opacity-50 shrink-0"
                     >
                       <RefreshCw className="w-3.5 h-3.5" />
                       <span>Lưu &amp; Tính lại</span>

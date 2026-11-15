@@ -745,17 +745,17 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                     <div className="flex items-center gap-2">
                       <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Tiền điện</h3>
                       <span className="text-xs text-slate-500 dark:text-slate-400">
-                        ({row.electric.method === 'HUNONIC_AUTO' ? 'Hunonic tự động' : 'Công tơ điện'})
+                        ({row.electric.method === 'HUNONIC_AUTO' ? 'Hunonic tự động' : 'Công tơ cơ ghi thủ công'})
                       </span>
                     </div>
                     <div className="flex items-center gap-3">
-                      {canInputReadings && !isLockedOrFrozen && (
+                      {canInputReadings && !isLockedOrFrozen && row.electric.method !== 'HUNONIC_AUTO' && (
                         <button
                           type="button"
                           onClick={() => setShowElectricManualEdit((v) => !v)}
                           className="text-xs font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400"
                         >
-                          {showElectricManualEdit ? 'Đóng chỉnh sửa' : 'Chỉnh số điện'}
+                          {showElectricManualEdit ? 'Đóng chỉnh sửa' : 'Ghi số điện'}
                         </button>
                       )}
                       <span className="font-mono text-sm font-semibold text-slate-900 dark:text-white">
@@ -772,7 +772,7 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                     />
                     <DrawerDetail label="Đơn giá điện" value={`${formatVnd(electricRateVnd)}/kWh`} />
                   </dl>
-                  {showElectricManualEdit && (
+                  {row.electric.method !== 'HUNONIC_AUTO' && showElectricManualEdit && (
                     <div className="mt-3 pt-2.5 border-t border-dashed border-slate-200 dark:border-slate-700 grid grid-cols-2 gap-3 text-xs">
                       <div>
                         <label className="block text-xs text-slate-500 mb-1">Chỉ số cuối kỳ (kWh)</label>

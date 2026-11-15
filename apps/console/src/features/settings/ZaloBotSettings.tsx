@@ -17,6 +17,16 @@ const templateLabels: { key: TemplateKey; title: string; hint: string }[] = [
 ];
 const endpoint = '/api/v1/console/v2/settings/zalo-bot';
 
+const errorMessages: Record<string, string> = {
+  invalid_token: 'Định dạng token Zalo Bot không hợp lệ.',
+  invalid_bot_token: 'Token không hợp lệ hoặc không xác thực được với Zalo Bot API.',
+  bot_already_in_use: 'Bot này đang được liên kết với một tổ chức khác.',
+  webhook_registration_failed: 'Không thể đăng ký Webhook với Zalo Bot.',
+  admin_group_not_connected: 'Chưa kết nối nhóm Zalo quản trị.',
+  bot_not_configured: 'Chưa cấu hình Zalo Bot.',
+  bot_id_change_not_supported: 'Không hỗ trợ đổi Bot ID.',
+};
+
 export function ZaloBotSettings() {
   const [config, setConfig] = useState<State | null>(null);
   const [token, setToken] = useState('');
@@ -40,7 +50,9 @@ export function ZaloBotSettings() {
     try {
       const response = await fetch(endpoint, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', 'X-Requested-With': CONSOLE_CSRF_HEADER }, body: JSON.stringify(body) });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.message || data.error || 'Không thể lưu cấu hình.');
+      const errKey = String(data.error || '');
+      const errMsg = data.message || errorMessages[errKey] || errKey || 'Không thể lưu cấu hình.';
+      if (!response.ok) throw new Error(errMsg);
       if (data.command) setCommand(data.command);
       else if (body.action !== 'templates') setToken('');
       await load();

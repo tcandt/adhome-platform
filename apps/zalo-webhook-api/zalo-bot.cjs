@@ -155,6 +155,7 @@ async function receiveBotUpdate(pool, botId, body, orgId, lookup = lookupContrac
       }
       if (authorized) {
         authorizedGroup = true;
+        await client.query('DELETE FROM zalo_bot_admin_groups WHERE chat_id = $1', [update.chatId]);
         await client.query(
           `INSERT INTO zalo_bot_admin_groups (bot_id, chat_id, connected_by) VALUES ($1,$2,$3)
            ON CONFLICT (bot_id) DO UPDATE SET chat_id = EXCLUDED.chat_id, connected_by = EXCLUDED.connected_by, connected_at = now()`,

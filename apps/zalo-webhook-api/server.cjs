@@ -4,7 +4,7 @@ const { Pool } = require('pg');
 const { processRegistration } = require('./registration.cjs');
 const { queueRegistrationReply } = require('./registration-reply.cjs');
 const { getPublicRooms } = require('./public-rooms.cjs');
-const { validSecret, receiveBotUpdate, sendPendingReplies, sendPendingAdminMessages, sendPendingResidentMessages, isBotQuotaPaused } = require('./zalo-bot.cjs');
+const { validSecret, receiveBotUpdate, sendPendingReplies, sendPendingAdminMessages, sendPendingResidentMessages, isBotQuotaPaused, resetQuotaCooldown } = require('./zalo-bot.cjs');
 const { seal, open, digest, randomSecret, randomSetupCode } = require('./bot-config.cjs');
 const { defaults, normalizeTemplates } = require('./message-templates.cjs');
 const { queueBusinessNotifications } = require('./business-notifications.cjs');
@@ -49,7 +49,7 @@ async function readBody(req) {
 async function adminConfig(req, res, orgId) {
   if (!validSecret(req.headers.authorization?.replace(/^Bearer /, ''), process.env.ZALO_BOT_ADMIN_API_KEY || '')) return reply(res, 401, { error: 'unauthorized' });
   if (!/^[a-zA-Z0-9-]{1,80}$/.test(orgId)) return reply(res, 400, { error: 'invalid_org' });
-  const existing = (await pool.query('SELECT bot_id, webhook_secret_ciphertext, setup_expires_at, message_templates FROM zalo_bot_configs WHERE org_id = $1', [orgId])).rows[0];
+  const existing = (await pool.query('SELECT bot_id, token_ciphertext, webhook_secret_ciphertext, setup_expires_at, message_templates FROM zalo_bot_configs WHERE org_id = $1', [orgId])).rows[0];
   const group = existing ? (await pool.query('SELECT chat_id, connected_at FROM zalo_bot_admin_groups WHERE bot_id = $1', [existing.bot_id])).rows[0] : null;
   if (req.method === 'GET') return reply(res, 200, { botId: existing?.bot_id || null, groupId: group?.chat_id || null, connectedAt: group?.connected_at || null, setupPending: Boolean(existing?.setup_expires_at && new Date(existing.setup_expires_at) > new Date()), templates: { ...defaults, ...(existing?.message_templates || {}) } });
   if (req.method !== 'POST') return reply(res, 405, { error: 'method_not_allowed' });
@@ -87,14 +87,35 @@ async function adminConfig(req, res, orgId) {
   const token = String(body?.token || '').trim();
   if (!/^\d{10,25}:[A-Za-z0-9_-]{30,200}$/.test(token)) return reply(res, 400, { error: 'invalid_token' });
   const newBotId = token.split(':')[0];
-  if (existing && existing.bot_id !== newBotId) return reply(res, 409, { error: 'bot_id_change_not_supported' });
+  const inUse = (await pool.query('SELECT org_id FROM zalo_bot_configs WHERE bot_id = $1 AND org_id <> $2', [newBotId, orgId])).rows[0];
+  if (inUse) return reply(res, 409, { error: 'bot_already_in_use' });
   const me = await fetch(`https://bot-api.zaloplatforms.com/bot${token}/getMe`, { signal: AbortSignal.timeout(10000) }).then(r => r.json()).catch(() => null);
   if (!me?.ok || String(me?.result?.id) !== newBotId) return reply(res, 422, { error: 'invalid_bot_token' });
+  const isChangingBot = Boolean(existing && existing.bot_id !== newBotId);
   const webhookSecret = existing?.webhook_secret_ciphertext ? open(existing.webhook_secret_ciphertext) : randomSecret();
   const webhookUrl = 'https://api.adhome.vn/api/v1/zalo-bot/webhook';
-  await pool.query(`INSERT INTO zalo_bot_configs (org_id, bot_id, token_ciphertext, webhook_secret_ciphertext, webhook_secret_hash) VALUES ($1,$2,$3,$4,$5)
-    ON CONFLICT (org_id) DO UPDATE SET token_ciphertext = EXCLUDED.token_ciphertext, webhook_secret_ciphertext = EXCLUDED.webhook_secret_ciphertext,
-    webhook_secret_hash = EXCLUDED.webhook_secret_hash, updated_at = now(), is_enabled = true`, [orgId, newBotId, seal(token), seal(webhookSecret), digest(webhookSecret)]);
+  if (isChangingBot) {
+    if (existing.token_ciphertext) {
+      try {
+        const oldToken = open(existing.token_ciphertext);
+        void fetch(`https://bot-api.zaloplatforms.com/bot${oldToken}/deleteWebhook`, { method: 'POST', signal: AbortSignal.timeout(5000) }).catch(() => null);
+      } catch {}
+    }
+    await pool.query('DELETE FROM zalo_bot_admin_groups WHERE bot_id = $1', [existing.bot_id]);
+    resetQuotaCooldown(existing.bot_id);
+  }
+  resetQuotaCooldown(newBotId);
+  await pool.query(`INSERT INTO zalo_bot_configs (org_id, bot_id, token_ciphertext, webhook_secret_ciphertext, webhook_secret_hash, setup_code_hash, setup_expires_at, updated_at, is_enabled)
+    VALUES ($1,$2,$3,$4,$5, NULL, NULL, now(), true)
+    ON CONFLICT (org_id) DO UPDATE SET
+      bot_id = EXCLUDED.bot_id,
+      token_ciphertext = EXCLUDED.token_ciphertext,
+      webhook_secret_ciphertext = EXCLUDED.webhook_secret_ciphertext,
+      webhook_secret_hash = EXCLUDED.webhook_secret_hash,
+      setup_code_hash = NULL,
+      setup_expires_at = NULL,
+      updated_at = now(),
+      is_enabled = true`, [orgId, newBotId, seal(token), seal(webhookSecret), digest(webhookSecret)]);
   const registered = await fetch(`https://bot-api.zaloplatforms.com/bot${token}/setWebhook`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url: webhookUrl, secret_token: webhookSecret }), signal: AbortSignal.timeout(12000) }).then(r => r.json()).catch(() => null);
   if (!registered?.ok || registered?.result?.ok === false) return reply(res, 502, { error: 'webhook_registration_failed' });
   return reply(res, 200, { botId: newBotId, webhookUrl, webhookRegistered: true });

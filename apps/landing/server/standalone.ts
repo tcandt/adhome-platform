@@ -26,6 +26,53 @@ function toAsciiAccountName(name: string): string {
     .toUpperCase();
 }
 
+function buildRoomCodeCandidates(input: string): string[] {
+  const clean = (input || '').trim().toUpperCase();
+  const set = new Set<string>();
+  if (!clean) return [];
+  set.add(clean);
+  const withoutP = clean.startsWith('P') ? clean.slice(1) : clean;
+  set.add(withoutP);
+  set.add(`P${withoutP}`);
+
+  // e.g. 25.01, 25-01, P25-01, 25.1, P25.1, 25_01
+  const sepMatch = withoutP.match(/^(\d+)[-._](\d+)$/);
+  if (sepMatch) {
+    const bld = sepMatch[1];
+    const roomNum = parseInt(sepMatch[2], 10);
+    const roomPad = roomNum < 10 ? `0${roomNum}` : `${roomNum}`;
+    set.add(`P${bld}-${roomPad}`);
+    set.add(`P${bld}.${roomPad}`);
+    set.add(`P${bld}-${roomNum}`);
+    set.add(`P${bld}.${roomNum}`);
+    set.add(`${bld}-${roomPad}`);
+    set.add(`${bld}.${roomPad}`);
+    set.add(`${bld}${roomPad}`);
+    set.add(`${bld}-${roomNum}`);
+  }
+
+  // e.g. 2501 (4 digits) or 251 (3 digits)
+  const numMatch = withoutP.match(/^(\d{3,4})$/);
+  if (numMatch) {
+    const digits = numMatch[1];
+    const bld = digits.slice(0, 2);
+    const roomNum = parseInt(digits.slice(2), 10);
+    if (bld) {
+      const roomPad = roomNum < 10 ? `0${roomNum}` : `${roomNum}`;
+      set.add(`P${bld}-${roomPad}`);
+      set.add(`P${bld}.${roomPad}`);
+      set.add(`P${bld}-${roomNum}`);
+      set.add(`P${bld}.${roomNum}`);
+      set.add(`${bld}-${roomPad}`);
+      set.add(`${bld}.${roomPad}`);
+      set.add(`${bld}${roomPad}`);
+      set.add(`${bld}-${roomNum}`);
+    }
+  }
+
+  return Array.from(set);
+}
+
 const fallbackPaymentAccount = {
   bank: process.env.ADHOME_PAYMENT_FALLBACK_BANK?.trim() || 'BIDV',
   accountNumber: process.env.ADHOME_PAYMENT_FALLBACK_ACCOUNT?.trim() || '96247LK31',
@@ -71,17 +118,45 @@ async function internalBotApi(req: http.IncomingMessage, res: http.ServerRespons
     const phone = String(body.phone || '');
     const contractCode = String(body.contractCode || '');
     if (!/^[A-Za-z0-9-]{1,80}$/.test(orgId) || !roomCode || roomCode.length > 64 || !/^0\d{9}$/.test(phone)) { json(res, 400, { error: 'invalid_query' }); return true; }
-    const contracts = await prisma.contract.findMany({ where: { orgId, room: { code: { equals: roomCode, mode: 'insensitive' } },
-      tenant: { normalizedPhone: phone, isActive: true }, ...(contractCode ? { contractCode: { equals: contractCode, mode: 'insensitive' } } : {}), status: { in: ['DRAFT', 'ACTIVE', 'EXPIRING', 'EXTENDED'] } },
-      include: { tenant: true, room: { include: { building: true } }, invoices: { where: { status: { in: ['ISSUED', 'PARTIAL', 'OVERDUE'] } }, orderBy: { createdAt: 'desc' }, take: 1 } }, take: 3 });
+    const roomCandidates = buildRoomCodeCandidates(roomCode);
+    const contracts = await prisma.contract.findMany({
+      where: {
+        orgId,
+        room: {
+          code: { in: roomCandidates, mode: 'insensitive' },
+        },
+        tenant: { normalizedPhone: phone, isActive: true },
+        ...(contractCode ? { contractCode: { equals: contractCode, mode: 'insensitive' } } : {}),
+        status: { in: ['DRAFT', 'ACTIVE', 'EXPIRING', 'EXTENDED'] },
+      },
+      include: {
+        tenant: true,
+        room: { include: { building: true } },
+        invoices: { where: { status: { in: ['ISSUED', 'PARTIAL', 'OVERDUE'] } }, orderBy: { createdAt: 'desc' }, take: 1 },
+      },
+      take: 5,
+    });
     const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date());
-    const matches = contracts.filter(c => c.status === 'DRAFT' || c.startDate <= today && c.endDate >= today);
-    if (matches.length !== 1) { json(res, 200, { status: matches.length ? 'AMBIGUOUS' : 'NO_MATCH' }); return true; }
+    const matches = contracts.filter((c) => c.status === 'DRAFT' || (c.startDate <= today && c.endDate >= today));
+    if (matches.length !== 1) {
+      json(res, 200, { status: matches.length ? 'AMBIGUOUS' : 'NO_MATCH' });
+      return true;
+    }
     const contract = matches[0];
-    if (contract.room.rentalModel === 'SHARED_ROOM' && !contractCode) { json(res, 200, { status: 'NO_MATCH' }); return true; }
+    if (contract.room.rentalModel === 'SHARED_ROOM' && !contractCode) {
+      if (contracts.length > 1) {
+        json(res, 200, { status: 'AMBIGUOUS' });
+        return true;
+      }
+    }
     if (contract.room.rentalModel !== 'SHARED_ROOM') {
-      const representatives = await prisma.contract.count({ where: { id: contract.id, tenantId: contract.tenantId, rentalModel: 'ENTIRE_ROOM' } });
-      if (representatives !== 1) { json(res, 200, { status: 'NO_MATCH' }); return true; }
+      const representatives = await prisma.contract.count({
+        where: { id: contract.id, tenantId: contract.tenantId, rentalModel: 'ENTIRE_ROOM' },
+      });
+      if (representatives !== 1) {
+        json(res, 200, { status: 'NO_MATCH' });
+        return true;
+      }
     }
     const invoice = contract.invoices.find(i => i.totalAmountVnd > i.paidAmountVnd);
     const paymentConnections = await prisma.paymentProviderConnection.findMany({

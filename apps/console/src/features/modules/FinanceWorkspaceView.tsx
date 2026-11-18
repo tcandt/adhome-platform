@@ -21,6 +21,7 @@ import {
   downloadCsvFile,
   useResponsiveViewMode,
 } from '@/shared/ui/WorkspaceToolbarControls';
+import { formatVnDateTime } from '@/shared/tokens/designTokens';
 
 export interface LedgerEntryItem {
   id: string;
@@ -56,17 +57,7 @@ interface FinanceWorkspaceViewProps {
   onOpenCreateLedger: () => void;
 }
 
-const formatOccurredAt = (iso: string): string => {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleString('vi-VN', {
-    day: '2-digit',
-    month: '2-digit',
-    year: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-};
+const formatOccurredAt = (iso: string): string => formatVnDateTime(iso);
 
 export const FinanceWorkspaceView: React.FC<FinanceWorkspaceViewProps> = ({
   summary,

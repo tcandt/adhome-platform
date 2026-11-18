@@ -1,9 +1,17 @@
 import React, { useMemo, useState } from 'react';
-import { KeyRound, Plus, Wallet } from 'lucide-react';
+import {
+  ChevronDown,
+  Info,
+  KeyRound,
+  Layers,
+  Plus,
+  Wallet,
+} from 'lucide-react';
 import {
   WorkspaceSearchToolbar,
   useResponsiveViewMode,
 } from '@/shared/ui/WorkspaceToolbarControls';
+import { formatVnDate } from '@/shared/tokens/designTokens';
 
 export interface ReservationItem {
   id: string;
@@ -28,9 +36,25 @@ export interface DepositItem {
   forfeitedAmountVnd?: number;
   transferredAmountVnd?: number;
   transferredToDepositId?: string | null;
+  contractId?: string | null;
+  reservationId?: string | null;
   paymentStatus?: string;
+  paymentMethod?: string | null;
   status: string;
+  notes?: string | null;
   createdAt: string;
+}
+
+export interface EnrichedDepositItem extends DepositItem {
+  isTransferred: boolean;
+  effectivePaid: number;
+  remainingDue: number;
+  availableBalance: number;
+}
+
+export interface GroupedDepositItem extends EnrichedDepositItem {
+  transferredSources: EnrichedDepositItem[];
+  isTransferredToAnother: boolean;
 }
 
 interface DepositsWorkspaceViewProps {
@@ -38,6 +62,7 @@ interface DepositsWorkspaceViewProps {
   deposits: DepositItem[];
   canManageContracts: boolean;
   isLoading: boolean;
+  initialSearchQuery?: string;
   onRefresh: () => void;
   onOpenCreateReservation: () => void;
   onConvertReservationToContract: (reservation: ReservationItem) => void;
@@ -118,17 +143,40 @@ export const DepositsWorkspaceView: React.FC<DepositsWorkspaceViewProps> = ({
   deposits,
   canManageContracts,
   isLoading,
+  initialSearchQuery,
   onRefresh,
   onOpenCreateReservation,
   onConvertReservationToContract,
   onCancelReservation,
   onOpenDepositRefund,
 }) => {
-  const [subTab, setSubTab] = useState<'RESERVATIONS' | 'DEPOSITS'>('RESERVATIONS');
+  const [subTab, setSubTab] = useState<'RESERVATIONS' | 'DEPOSITS'>(
+    initialSearchQuery ? 'DEPOSITS' : 'RESERVATIONS'
+  );
   const [viewMode, setViewMode] = useResponsiveViewMode();
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery || '');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'CLOSED'>('ALL');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [expandedDepositIds, setExpandedDepositIds] = useState<Set<string>>(new Set());
+
+  React.useEffect(() => {
+    if (initialSearchQuery) {
+      setSubTab('DEPOSITS');
+      setSearchQuery(initialSearchQuery);
+    }
+  }, [initialSearchQuery]);
+
+  const toggleExpandDeposit = (id: string) => {
+    setExpandedDepositIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
 
   const activeFilterCount = statusFilter !== 'ALL' ? 1 : 0;
 
@@ -151,8 +199,9 @@ export const DepositsWorkspaceView: React.FC<DepositsWorkspaceViewProps> = ({
     });
   }, [reservations, searchQuery, statusFilter]);
 
-  const enrichedDeposits = useMemo(() => {
-    return deposits.map((d) => {
+  // Group booking deposits that transferred into contract deposits into a single unified item
+  const { groupedDeposits } = useMemo(() => {
+    const enriched: EnrichedDepositItem[] = deposits.map((d) => {
       const isTransferred =
         d.status === 'APPLIED_TO_CONTRACT' || d.paymentStatus === 'TRANSFERRED';
       const isTerminal =
@@ -180,26 +229,78 @@ export const DepositsWorkspaceView: React.FC<DepositsWorkspaceViewProps> = ({
         availableBalance,
       };
     });
+
+    const depositMap = new Map<string, EnrichedDepositItem>(
+      enriched.map((d) => [d.id, d])
+    );
+    const contractDepositByContractId = new Map<string, EnrichedDepositItem>(
+      enriched
+        .filter((d) => d.depositType === 'CONTRACT' && d.contractId)
+        .map((d) => [d.contractId!, d])
+    );
+
+    // Identify child booking deposits transferred into a contract deposit
+    const sourcesByParentId = new Map<string, EnrichedDepositItem[]>();
+    const childIds = new Set<string>();
+
+    for (const d of enriched) {
+      if (d.isTransferred) {
+        let parentId: string | null = null;
+        if (d.transferredToDepositId && depositMap.has(d.transferredToDepositId)) {
+          parentId = d.transferredToDepositId;
+        } else if (d.contractId && contractDepositByContractId.has(d.contractId)) {
+          const parent = contractDepositByContractId.get(d.contractId);
+          if (parent && parent.id !== d.id) {
+            parentId = parent.id;
+          }
+        }
+
+        if (parentId) {
+          childIds.add(d.id);
+          const list = sourcesByParentId.get(parentId) || [];
+          list.push(d);
+          sourcesByParentId.set(parentId, list);
+        }
+      }
+    }
+
+    const grouped: GroupedDepositItem[] = enriched
+      .filter((d) => !childIds.has(d.id))
+      .map((d) => ({
+        ...d,
+        transferredSources: sourcesByParentId.get(d.id) || [],
+        isTransferredToAnother: childIds.has(d.id),
+      }));
+
+    return { groupedDeposits: grouped };
   }, [deposits]);
 
   const filteredDeposits = useMemo(() => {
     const normalized = searchQuery.trim().toLocaleLowerCase('vi');
-    return enrichedDeposits.filter((d) => {
+    return groupedDeposits.filter((d) => {
       const isActive =
         d.status === 'HELD' || d.status === 'PARTIALLY_REFUNDED';
       if (statusFilter === 'ACTIVE' && !isActive) return false;
       if (statusFilter === 'CLOSED' && isActive) return false;
       if (!normalized) return true;
-      return [d.id, d.depositType, getDepositStatusBadge(d.status).label]
-        .filter(Boolean)
-        .some((v) => String(v).toLocaleLowerCase('vi').includes(normalized));
+      const childMatch = d.transferredSources.some((src) =>
+        [src.id, src.notes, src.depositType]
+          .filter(Boolean)
+          .some((v) => String(v).toLocaleLowerCase('vi').includes(normalized))
+      );
+      return (
+        childMatch ||
+        [d.id, d.depositType, d.notes, getDepositStatusBadge(d.status).label]
+          .filter(Boolean)
+          .some((v) => String(v).toLocaleLowerCase('vi').includes(normalized))
+      );
     });
-  }, [enrichedDeposits, searchQuery, statusFilter]);
+  }, [groupedDeposits, searchQuery, statusFilter]);
 
   const activeReservationCount = reservations.filter(
     (r) => r.status === 'CONFIRMED' || r.status === 'PENDING'
   ).length;
-  const totalHeldVnd = enrichedDeposits.reduce(
+  const totalHeldVnd = groupedDeposits.reduce(
     (sum, d) => sum + d.availableBalance,
     0
   );
@@ -236,7 +337,7 @@ export const DepositsWorkspaceView: React.FC<DepositsWorkspaceViewProps> = ({
             }`}
           >
             <Wallet className="h-3.5 w-3.5 text-emerald-600" />
-            <span>Sổ tiền cọc ({deposits.length})</span>
+            <span>Sổ tiền cọc ({groupedDeposits.length})</span>
           </button>
         </div>
 
@@ -390,7 +491,7 @@ export const DepositsWorkspaceView: React.FC<DepositsWorkspaceViewProps> = ({
 
                   <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-slate-100 pt-2.5 dark:border-slate-800">
                     <span className="text-[11px] text-slate-500">
-                      Dự kiến vào: {r.expectedMoveIn || '—'}
+                      Dự kiến vào: {formatVnDate(r.expectedMoveIn)}
                     </span>
                     {isActionable && (
                       <div className="flex items-center gap-1.5">
@@ -459,7 +560,7 @@ export const DepositsWorkspaceView: React.FC<DepositsWorkspaceViewProps> = ({
                           {r.holdAmountVnd.toLocaleString('vi-VN')} đ
                         </td>
                         <td className="px-3 py-3 whitespace-nowrap">
-                          {r.expectedMoveIn || '—'}
+                          {formatVnDate(r.expectedMoveIn)}
                         </td>
                         <td className="px-3 py-3 whitespace-nowrap">
                           <span className={`rounded-full px-2.5 py-0.5 text-[10.5px] font-bold ${badge.cls}`}>
@@ -512,14 +613,18 @@ export const DepositsWorkspaceView: React.FC<DepositsWorkspaceViewProps> = ({
               !d.isTransferred &&
               d.availableBalance > 0 &&
               (d.status === 'HELD' || d.status === 'PARTIALLY_REFUNDED');
+            const hasSources = (d.transferredSources?.length || 0) > 0;
+            const isExpanded = expandedDepositIds.has(d.id);
+            const displayId = `#${d.id.slice(0, 8).toUpperCase()}`;
+
             return (
               <div
                 key={d.id}
-                className="rounded-2xl border border-slate-200/90 bg-white p-3.5 dark:border-slate-800 dark:bg-[#111827]"
+                className="rounded-2xl border border-slate-200/90 bg-white p-3.5 dark:border-slate-800 dark:bg-[#111827] transition-all shadow-xs"
               >
                 <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="flex items-center gap-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-xs font-bold text-slate-900 dark:text-white">
                         {d.depositType === 'BOOKING'
                           ? 'Cọc giữ phòng'
@@ -530,12 +635,30 @@ export const DepositsWorkspaceView: React.FC<DepositsWorkspaceViewProps> = ({
                       <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${badge.cls}`}>
                         {badge.label}
                       </span>
+                      {hasSources && (
+                        <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
+                          Gộp cọc giữ chỗ ({d.transferredSources.length})
+                        </span>
+                      )}
                     </div>
-                    <div className="mt-0.5 font-mono text-[10.5px] text-slate-400">
-                      #{d.id.slice(0, 8).toUpperCase()}
+                    {/* Click into ID to view details / expand */}
+                    <div className="mt-1 flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => toggleExpandDeposit(d.id)}
+                        className="group inline-flex items-center gap-1 font-mono text-[11px] font-semibold text-brand-primary hover:text-brand-hover hover:underline transition-colors"
+                        title="Click vào ID để xem chi tiết khoản cọc"
+                      >
+                        <span>{displayId}</span>
+                        <ChevronDown
+                          className={`h-3.5 w-3.5 text-slate-400 group-hover:text-brand-primary transition-transform duration-200 ${
+                            isExpanded ? 'rotate-180 text-brand-primary' : ''
+                          }`}
+                        />
+                      </button>
                     </div>
                   </div>
-                  <div className="text-right">
+                  <div className="text-right shrink-0">
                     <div className="text-[10.5px] text-slate-400">Khả dụng</div>
                     <div className="text-sm font-extrabold text-emerald-600 tabular-nums dark:text-emerald-400">
                       {d.availableBalance.toLocaleString('vi-VN')} đ
@@ -564,22 +687,117 @@ export const DepositsWorkspaceView: React.FC<DepositsWorkspaceViewProps> = ({
                   </div>
                 </div>
 
-                <div className="mt-2.5 flex items-center justify-end border-t border-slate-100 pt-2 dark:border-slate-800">
-                  {d.isTransferred ? (
-                    <span className="rounded bg-blue-50 px-2 py-1 text-[10.5px] font-semibold text-blue-600 dark:bg-blue-950/40 dark:text-blue-400">
-                      Đã chuyển HĐ
-                    </span>
-                  ) : canRefund ? (
-                    <button
-                      type="button"
-                      onClick={() => onOpenDepositRefund(d, d.availableBalance)}
-                      className="h-7 whitespace-nowrap rounded-lg bg-slate-100 px-2.5 text-[11px] font-bold text-slate-800 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200"
-                    >
-                      Hoàn / Khấu trừ
-                    </button>
-                  ) : (
-                    <span className="text-[11px] text-slate-400">Hết số dư</span>
-                  )}
+                {/* EXPANDED BREAKDOWN ACCORDION */}
+                {isExpanded && (
+                  <div className="mt-2.5 rounded-xl border border-slate-200/80 bg-slate-50/80 p-2.5 dark:border-slate-800 dark:bg-slate-800/50 space-y-2 text-xs">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-slate-700 dark:text-slate-300 border-b border-slate-200/60 dark:border-slate-700/60 pb-1.5">
+                      <span className="flex items-center gap-1.5">
+                        <Layers className="h-3.5 w-3.5 text-brand-primary" />
+                        <span>Chi tiết cơ cấu nguồn cọc ({displayId})</span>
+                      </span>
+                      <span className="text-emerald-600 font-semibold tabular-nums">
+                        Tổng thu: {d.effectivePaid.toLocaleString('vi-VN')} đ
+                      </span>
+                    </div>
+
+                    <div className="space-y-1.5 divide-y divide-slate-200/50 dark:divide-slate-700/50">
+                      {d.transferredSources.map((src) => {
+                        const srcPaid =
+                          src.paidAmountVnd ??
+                          (src.paymentStatus === 'PAID'
+                            ? src.amountVnd
+                            : src.transferredAmountVnd ?? src.amountVnd);
+                        return (
+                          <div key={src.id} className="pt-1.5 first:pt-0 flex items-center justify-between text-[11px]">
+                            <div className="min-w-0 pr-2">
+                              <div className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                                <span>↳ Cọc giữ phòng</span>
+                                <span className="font-mono text-[10px] text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 px-1.5 py-0.2 rounded border border-blue-200/50 dark:border-blue-800/50">
+                                  #{src.id.slice(0, 8).toUpperCase()}
+                                </span>
+                              </div>
+                              <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                                Đã chuyển vào cọc hợp đồng {displayId}
+                              </div>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <span className="font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                                {srcPaid.toLocaleString('vi-VN')} đ
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {(() => {
+                        const transferredSum = d.transferredSources.reduce((sum, s) => {
+                          const amt =
+                            s.paidAmountVnd ??
+                            (s.paymentStatus === 'PAID'
+                              ? s.amountVnd
+                              : s.transferredAmountVnd ?? s.amountVnd);
+                          return sum + amt;
+                        }, 0);
+                        const directPaid = Math.max(0, d.effectivePaid - transferredSum);
+                        if (directPaid > 0) {
+                          return (
+                            <div className="pt-1.5 flex items-center justify-between text-[11px]">
+                              <div>
+                                <div className="font-semibold text-slate-800 dark:text-slate-200">
+                                  ↳ {hasSources ? 'Thu bổ sung / Thanh toán đợt 1' : 'Thanh toán cọc trực tiếp'}
+                                </div>
+                                <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                                  {hasSources ? 'Thu đủ khi ký hợp đồng' : 'Thu tiền cọc theo hợp đồng'}
+                                </div>
+                              </div>
+                              <div className="text-right shrink-0 font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                                {directPaid.toLocaleString('vi-VN')} đ
+                              </div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </div>
+
+                    {d.notes && (
+                      <div className="mt-1 pt-1.5 border-t border-slate-200/60 dark:border-slate-700/60 text-[10.5px] text-slate-500 dark:text-slate-400 italic">
+                        {d.notes}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="mt-2.5 flex items-center justify-between border-t border-slate-100 pt-2 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => toggleExpandDeposit(d.id)}
+                    className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
+                  >
+                    {isExpanded
+                      ? 'Thu gọn chi tiết'
+                      : hasSources
+                      ? `Xem chi tiết (${d.transferredSources.length + 1} khoản)`
+                      : 'Xem chi tiết'}
+                  </button>
+
+                  <div>
+                    {d.isTransferred ? (
+                      <span className="rounded bg-blue-50 px-2 py-1 text-[10.5px] font-semibold text-blue-600 dark:bg-blue-950/40 dark:text-blue-400">
+                        Đã chuyển HĐ
+                      </span>
+                    ) : canRefund ? (
+                      <button
+                        type="button"
+                        onClick={() => onOpenDepositRefund(d, d.availableBalance)}
+                        className="h-7 whitespace-nowrap rounded-lg bg-slate-100 px-2.5 text-[11px] font-bold text-slate-800 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200"
+                      >
+                        Hoàn / Khấu trừ
+                      </button>
+                    ) : (
+                      <span className="text-[11px] text-slate-400">Hết số dư</span>
+                    )}
+                  </div>
                 </div>
               </div>
             );
@@ -596,7 +814,7 @@ export const DepositsWorkspaceView: React.FC<DepositsWorkspaceViewProps> = ({
             <table className="w-full min-w-[760px] text-left text-xs">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50/70 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/40">
-                  <th className="px-4 py-3">Phân loại</th>
+                  <th className="px-4 py-3">Phân loại & Mã cọc</th>
                   <th className="px-3 py-3 text-right">Yêu cầu</th>
                   <th className="px-3 py-3 text-right">Đã thu</th>
                   <th className="px-3 py-3 text-right">Còn thu</th>
@@ -613,64 +831,181 @@ export const DepositsWorkspaceView: React.FC<DepositsWorkspaceViewProps> = ({
                     !d.isTransferred &&
                     d.availableBalance > 0 &&
                     (d.status === 'HELD' || d.status === 'PARTIALLY_REFUNDED');
+                  const hasSources = (d.transferredSources?.length || 0) > 0;
+                  const isExpanded = expandedDepositIds.has(d.id);
+                  const displayId = `#${d.id.slice(0, 8).toUpperCase()}`;
+
                   return (
-                    <tr key={d.id}>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <div className="font-semibold text-slate-800 dark:text-slate-200">
-                          {d.depositType === 'BOOKING'
-                            ? 'Cọc giữ phòng'
-                            : d.depositType === 'ADVANCE_RENT'
-                            ? 'Tiền trả trước'
-                            : 'Cọc hợp đồng'}
-                        </div>
-                        <div className="font-mono text-[10px] text-slate-400">
-                          #{d.id.slice(0, 8).toUpperCase()}
-                        </div>
-                      </td>
-                      <td className="px-3 py-3 whitespace-nowrap text-right font-bold tabular-nums">
-                        {d.amountVnd.toLocaleString('vi-VN')} đ
-                      </td>
-                      <td className="px-3 py-3 whitespace-nowrap text-right font-bold text-emerald-600 tabular-nums">
-                        {d.effectivePaid.toLocaleString('vi-VN')} đ
-                      </td>
-                      <td className="px-3 py-3 whitespace-nowrap text-right font-semibold tabular-nums">
-                        {d.remainingDue > 0 ? (
-                          <span className="text-rose-500 font-bold">
-                            {d.remainingDue.toLocaleString('vi-VN')} đ
+                    <React.Fragment key={d.id}>
+                      <tr className={isExpanded ? 'bg-slate-50/60 dark:bg-slate-800/30' : ''}>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => toggleExpandDeposit(d.id)}
+                              className="p-1 -ml-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded transition-colors"
+                              title="Click để mở rộng chi tiết"
+                            >
+                              <ChevronDown
+                                className={`h-3.5 w-3.5 transition-transform duration-200 ${
+                                  isExpanded ? 'rotate-180 text-brand-primary' : ''
+                                }`}
+                              />
+                            </button>
+                            <div>
+                              <div className="font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                                <span>
+                                  {d.depositType === 'BOOKING'
+                                    ? 'Cọc giữ phòng'
+                                    : d.depositType === 'ADVANCE_RENT'
+                                    ? 'Tiền trả trước'
+                                    : 'Cọc hợp đồng'}
+                                </span>
+                                {hasSources && (
+                                  <span className="rounded bg-blue-50 px-1.5 py-0.2 text-[9.5px] font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
+                                    Gộp giữ chỗ
+                                  </span>
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => toggleExpandDeposit(d.id)}
+                                className="font-mono text-[10.5px] text-brand-primary hover:underline text-left block"
+                                title="Click vào ID để xem chi tiết"
+                              >
+                                {displayId}
+                              </button>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-3 py-3 whitespace-nowrap text-right font-bold tabular-nums">
+                          {d.amountVnd.toLocaleString('vi-VN')} đ
+                        </td>
+                        <td className="px-3 py-3 whitespace-nowrap text-right font-bold text-emerald-600 tabular-nums">
+                          {d.effectivePaid.toLocaleString('vi-VN')} đ
+                        </td>
+                        <td className="px-3 py-3 whitespace-nowrap text-right font-semibold tabular-nums">
+                          {d.remainingDue > 0 ? (
+                            <span className="text-rose-500 font-bold">
+                              {d.remainingDue.toLocaleString('vi-VN')} đ
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">0 đ</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-3 whitespace-nowrap text-right text-slate-500 tabular-nums">
+                          {d.refundedVnd.toLocaleString('vi-VN')} đ
+                        </td>
+                        <td className="px-3 py-3 whitespace-nowrap text-right font-bold text-emerald-600 tabular-nums dark:text-emerald-400">
+                          {d.availableBalance.toLocaleString('vi-VN')} đ
+                        </td>
+                        <td className="px-3 py-3 whitespace-nowrap">
+                          <span className={`rounded-full px-2.5 py-0.5 text-[10.5px] font-bold ${badge.cls}`}>
+                            {badge.label}
                           </span>
-                        ) : (
-                          <span className="text-slate-400">0 đ</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-3 whitespace-nowrap text-right text-slate-500 tabular-nums">
-                        {d.refundedVnd.toLocaleString('vi-VN')} đ
-                      </td>
-                      <td className="px-3 py-3 whitespace-nowrap text-right font-bold text-emerald-600 tabular-nums dark:text-emerald-400">
-                        {d.availableBalance.toLocaleString('vi-VN')} đ
-                      </td>
-                      <td className="px-3 py-3 whitespace-nowrap">
-                        <span className={`rounded-full px-2.5 py-0.5 text-[10.5px] font-bold ${badge.cls}`}>
-                          {badge.label}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-right">
-                        {d.isTransferred ? (
-                          <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-2 py-1 text-[10.5px] font-semibold text-blue-600 dark:bg-blue-950/40 dark:text-blue-400">
-                            Đã chuyển HĐ
-                          </span>
-                        ) : canRefund ? (
-                          <button
-                            type="button"
-                            onClick={() => onOpenDepositRefund(d, d.availableBalance)}
-                            className="h-7 whitespace-nowrap rounded-lg bg-slate-100 px-2.5 text-[11px] font-bold text-slate-800 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200"
-                          >
-                            Hoàn / Khấu trừ
-                          </button>
-                        ) : (
-                          <span className="text-[11px] text-slate-400">Hết số dư</span>
-                        )}
-                      </td>
-                    </tr>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-right">
+                          {d.isTransferred ? (
+                            <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-2 py-1 text-[10.5px] font-semibold text-blue-600 dark:bg-blue-950/40 dark:text-blue-400">
+                              Đã chuyển HĐ
+                            </span>
+                          ) : canRefund ? (
+                            <button
+                              type="button"
+                              onClick={() => onOpenDepositRefund(d, d.availableBalance)}
+                              className="h-7 whitespace-nowrap rounded-lg bg-slate-100 px-2.5 text-[11px] font-bold text-slate-800 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200"
+                            >
+                              Hoàn / Khấu trừ
+                            </button>
+                          ) : (
+                            <span className="text-[11px] text-slate-400">Hết số dư</span>
+                          )}
+                        </td>
+                      </tr>
+
+                      {/* TABLE EXPANDED ROW */}
+                      {isExpanded && (
+                        <tr key={`${d.id}-expanded`} className="bg-slate-50/70 dark:bg-slate-800/40 border-b border-slate-100 dark:border-slate-800">
+                          <td colSpan={8} className="px-6 py-3">
+                            <div className="rounded-xl border border-slate-200/80 bg-white p-3 dark:border-slate-700 dark:bg-slate-900/80 space-y-2">
+                              <div className="flex items-center justify-between text-xs font-bold text-slate-800 dark:text-slate-200 border-b border-slate-100 dark:border-slate-800 pb-2">
+                                <span className="flex items-center gap-1.5">
+                                  <Layers className="h-4 w-4 text-brand-primary" />
+                                  <span>Chi tiết nguồn cơ cấu cọc ({displayId})</span>
+                                </span>
+                                <span className="text-emerald-600 dark:text-emerald-400 tabular-nums">
+                                  Tổng thực thu: {d.effectivePaid.toLocaleString('vi-VN')} đ
+                                </span>
+                              </div>
+
+                              <div className="space-y-1.5 text-xs">
+                                {d.transferredSources.map((src) => {
+                                  const srcPaid =
+                                    src.paidAmountVnd ??
+                                    (src.paymentStatus === 'PAID'
+                                      ? src.amountVnd
+                                      : src.transferredAmountVnd ?? src.amountVnd);
+                                  return (
+                                    <div key={src.id} className="flex items-center justify-between py-1 border-b border-slate-50 dark:border-slate-800/60 last:border-b-0">
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-semibold text-slate-800 dark:text-slate-200">
+                                          ↳ Cọc giữ phòng
+                                        </span>
+                                        <span className="font-mono text-[11px] text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 px-1.5 py-0.5 rounded border border-blue-200/50 dark:border-blue-800/50">
+                                          #{src.id.slice(0, 8).toUpperCase()}
+                                        </span>
+                                        <span className="text-slate-500 text-[11px]">
+                                          (Đã chuyển sang HĐ)
+                                        </span>
+                                      </div>
+                                      <div className="font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                                        {srcPaid.toLocaleString('vi-VN')} đ
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+
+                                {(() => {
+                                  const transferredSum = d.transferredSources.reduce((sum, s) => {
+                                    const amt =
+                                      s.paidAmountVnd ??
+                                      (s.paymentStatus === 'PAID'
+                                        ? s.amountVnd
+                                        : s.transferredAmountVnd ?? s.amountVnd);
+                                    return sum + amt;
+                                  }, 0);
+                                  const directPaid = Math.max(0, d.effectivePaid - transferredSum);
+                                  if (directPaid > 0) {
+                                    return (
+                                      <div className="flex items-center justify-between py-1 border-b border-slate-50 dark:border-slate-800/60 last:border-b-0">
+                                        <div className="flex items-center gap-2">
+                                          <span className="font-semibold text-slate-800 dark:text-slate-200">
+                                            ↳ {hasSources ? 'Thu bổ sung / Thanh toán đợt 1' : 'Thanh toán cọc trực tiếp'}
+                                          </span>
+                                          <span className="text-slate-500 text-[11px]">
+                                            ({hasSources ? 'Thu đủ khi ký hợp đồng' : 'Thu tiền cọc theo hợp đồng'})
+                                          </span>
+                                        </div>
+                                        <div className="font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                                          {directPaid.toLocaleString('vi-VN')} đ
+                                        </div>
+                                      </div>
+                                    );
+                                  }
+                                  return null;
+                                })()}
+                              </div>
+
+                              {d.notes && (
+                                <div className="mt-1 pt-2 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 italic">
+                                  {d.notes}
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   );
                 })}
               </tbody>
@@ -681,4 +1016,3 @@ export const DepositsWorkspaceView: React.FC<DepositsWorkspaceViewProps> = ({
     </div>
   );
 };
-

@@ -7,6 +7,8 @@ import { CalendarDays, Check, CheckCircle2, ChevronRight, Copy, Download, FileCh
 import { usePortfolio } from '../../app/providers/PortfolioContext';
 import { useNavigation } from '../../app/providers/NavigationContext';
 import { MoneyInput, formatCurrency as cash } from '../../shared/ui/MoneyInput';
+import { DateInput } from '../../shared/ui/DateInput';
+import { formatVnDate, getTodayIsoVn } from '../../shared/tokens/designTokens';
 import { IdentityQrScanner } from '../../shared/ui/IdentityQrScanner';
 import { ContractDocumentLink } from '../../shared/ui/ContractDocumentDialog';
 import { ContractIdentityDocuments } from '../../shared/ui/PrivateDocumentFields';
@@ -19,7 +21,7 @@ type Intent = 'HOLD' | 'DIRECT' | 'IMPORT';
 type Person = { fullName: string; phone: string; birthDate: string; gender: string; idNumber: string; address: string; emergencyContact?: string; relationship?: string; documentRole?: string; occupantId?: string; householdHeadOccupantId?: string };
 const personLabel = (p: Person) => p.documentRole === 'CO_REPRESENTATIVE' ? 'Đại diện HĐ' : 'Người cùng hộ';
 const blankPerson = (): Person => ({ fullName: '', phone: '', birthDate: '', gender: '', idNumber: '', address: '' });
-const day = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date());
+const day = () => getTodayIsoVn();
 const fieldClass = 'rental-input';
 const api = '/api/v1/console/v2';
 const requestId = () => typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : Array.from(crypto.getRandomValues(new Uint8Array(16)), n => n.toString(16).padStart(2, '0')).join('');
@@ -30,16 +32,13 @@ async function request(path: string, body?: any, key?: string) {
   return data;
 }
 function Field({ label, children, wide = false }: { label: string; children: React.ReactNode; wide?: boolean }) { return <label className={`grid gap-1 text-sm font-medium${wide ? ' rental-field-wide' : ''}`}>{label}{children}</label>; }
-function Amount({ label, value, onChange, placeholder }: { label: string; value: number; onChange: (n: number) => void; placeholder?: string }) {
-  return <Field label={label}><MoneyInput value={value} onChange={onChange} min={0} placeholder={placeholder} className={fieldClass} /></Field>;
+function Amount({ label, value, onChange, placeholder, helper }: { label: string; value: number; onChange: (n: number) => void; placeholder?: string; helper?: React.ReactNode }) {
+  return <Field label={label}><MoneyInput value={value} onChange={onChange} min={0} placeholder={placeholder} className={fieldClass} />{helper}</Field>;
 }
 function Line({ label, value, strong }: { label: string; value: number; strong?: boolean }) {
   return <div className={`flex flex-wrap justify-between gap-2 border-b border-slate-100 py-2 dark:border-slate-700 ${strong ? 'font-bold text-blue-700 dark:text-blue-300' : ''}`}><span>{label}</span><span className="tabular-nums">{cash(value)}</span></div>;
 }
-const formatRentalDate = (value: unknown) => {
-  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  return match ? `${match[3]}/${match[2]}/${match[1]}` : '—';
-};
+const formatRentalDate = (value: unknown) => formatVnDate(value as string);
 const invoiceStatusLabel = (status: unknown) => ({ DRAFT: 'Nháp', ISSUED: 'Chờ thu', PARTIAL: 'Thu một phần', PAID: 'Đã thanh toán', OVERDUE: 'Quá hạn', VOID: 'Đã hủy' } as Record<string, string>)[String(status)] || String(status || 'Chờ thu');
 const billingPolicyLabel = (policy: unknown, formula: string) => {
   const resolved = String(policy || '');
@@ -48,8 +47,52 @@ const billingPolicyLabel = (policy: unknown, formula: string) => {
   if (resolved === 'CUSTOM_FIRST_CYCLE' || formula.startsWith('Tùy chỉnh')) return 'Kỳ đầu tùy chỉnh';
   return 'Theo ngày thực tế';
 };
+const getTakeoverDatePresets = () => {
+  const todayStr = day();
+  const [ty, tm] = todayStr.split('-').map(Number);
+  const lastMonthEnd = new Date(Date.UTC(ty, tm - 1, 0));
+  const lastMonthEndStr = `${lastMonthEnd.getUTCFullYear()}-${String(lastMonthEnd.getUTCMonth() + 1).padStart(2, '0')}-${String(lastMonthEnd.getUTCDate()).padStart(2, '0')}`;
+  const thisMonthEnd = new Date(Date.UTC(ty, tm, 0));
+  const thisMonthEndStr = `${thisMonthEnd.getUTCFullYear()}-${String(thisMonthEnd.getUTCMonth() + 1).padStart(2, '0')}-${String(thisMonthEnd.getUTCDate()).padStart(2, '0')}`;
+  return { todayStr, lastMonthEndStr, thisMonthEndStr };
+};
 function PersonFields({ value, onChange, title, landlord = false, identityLocked = false, requiredErrors = {} }: { value: Person; onChange: (v: Person) => void; title: string; landlord?: boolean; identityLocked?: boolean; requiredErrors?: Partial<Record<'fullName' | 'phone' | 'idNumber', string>> }) {
-  const input = (key: keyof Person, label: string, type = 'text', placeholder?: string) => { const error = requiredErrors[key as 'fullName' | 'phone' | 'idNumber']; const numeric = key === 'idNumber' || key === 'phone'; return <Field label={label} wide={key === 'fullName' || key === 'address'}><input className={fieldClass} readOnly={identityLocked && ['fullName', 'phone', 'idNumber'].includes(key)} type={type} inputMode={numeric ? 'numeric' : undefined} pattern={numeric ? '[0-9]*' : undefined} maxLength={key === 'phone' ? 10 : key === 'idNumber' ? 12 : undefined} value={value[key] || ''} placeholder={error || placeholder} autoComplete={key === 'fullName' ? 'name' : key === 'phone' ? 'tel' : 'off'} aria-invalid={!!error || undefined} aria-label={error ? `${label}: ${error}` : undefined} onChange={e => onChange({ ...value, [key]: numeric ? e.target.value.replace(/\D/g, '').slice(0, key === 'phone' ? 10 : 12) : e.target.value })} /></Field>; };
+  const input = (key: keyof Person, label: string, type = 'text', placeholder?: string) => {
+    const error = requiredErrors[key as 'fullName' | 'phone' | 'idNumber'];
+    const numeric = key === 'idNumber' || key === 'phone';
+    if (type === 'date') {
+      return (
+        <Field label={label} wide={false}>
+          <DateInput
+            className={fieldClass}
+            value={value[key] || ''}
+            onChange={iso => onChange({ ...value, [key]: iso })}
+            placeholder={error || 'dd/mm/yyyy'}
+            error={error}
+            aria-label={label}
+          />
+        </Field>
+      );
+    }
+    return (
+      <Field label={label} wide={key === 'fullName' || key === 'address'}>
+        <input
+          className={fieldClass}
+          readOnly={identityLocked && ['fullName', 'phone', 'idNumber'].includes(key)}
+          type={type}
+          inputMode={numeric ? 'numeric' : undefined}
+          pattern={numeric ? '[0-9]*' : undefined}
+          maxLength={key === 'phone' ? 10 : key === 'idNumber' ? 12 : undefined}
+          value={value[key] || ''}
+          placeholder={error || placeholder}
+          autoComplete={key === 'fullName' ? 'name' : key === 'phone' ? 'tel' : 'off'}
+          aria-invalid={!!error || undefined}
+          aria-label={error ? `${label}: ${error}` : undefined}
+          onChange={e => onChange({ ...value, [key]: numeric ? e.target.value.replace(/\D/g, '').slice(0, key === 'phone' ? 10 : 12) : e.target.value })}
+        />
+      </Field>
+    );
+  };
   return <fieldset className="rental-person"><legend><Users size={16} /><span className="rental-person-title">{title}</span>{!identityLocked && <IdentityQrScanner onApply={details => onChange({ ...value, ...details })} />}</legend><div className="rental-fields">
     {input('fullName', 'Họ và tên', 'text', 'Nhập đầy đủ theo giấy tờ')}{input('phone', 'Số điện thoại', 'tel', 'Số điện thoại liên hệ')}
     {input('idNumber', 'Số định danh / giấy tờ', 'text', 'Số căn cước')}{input('birthDate', 'Ngày sinh', 'date')}
@@ -93,6 +136,8 @@ export function RentalOnboardingPage({ roomId, initialIntent, onClose, embedded 
   const [botStatus, setBotStatus] = useState<{ botConfigured: boolean; linked: boolean; registrationDeliveryStatus: string | null; invoiceDeliveryStatus: string | null; invoiceOutstandingVnd?: number | null; invoiceStatus?: string | null } | null>(null);
   const [botStatusError, setBotStatusError] = useState('');
   const [copiedCommand, setCopiedCommand] = useState(false);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current); }, []);
   const [invoiceDetailOpen, setInvoiceDetailOpen] = useState(false);
   const [error, setError] = useState('');
   const [tenantErrors, setTenantErrors] = useState<Partial<Record<'fullName' | 'phone' | 'idNumber', string>>>({});
@@ -122,8 +167,19 @@ export function RentalOnboardingPage({ roomId, initialIntent, onClose, embedded 
         initialized.current = true;
         const r = data.reservation, c = data.contract;
         setDocKind(r && !c ? 'HOLD' : 'CT01');
-        setTerms(t => ({ ...t, rentalModel: c?.rentalModel === 'SHARED_ROOM' || (!c && data.room.rentalModel === 'SHARED_ROOM') ? 'SHARED_ROOM' : 'ENTIRE_ROOM', monthlyRentVnd: Number(c?.monthlyRentVnd ?? 0), depositVnd: Number(c?.depositVnd ?? 0), startDate: c?.startDate || r?.expectedMoveIn || t.startDate, endDate: c?.endDate || t.endDate }));
+        const defaultRent = Number(c?.monthlyRentVnd ?? data.room.listPriceVnd ?? 0);
+        const defaultDeposit = Number(c?.depositVnd ?? data.room.listPriceVnd ?? 0);
+        setTerms(t => ({
+          ...t,
+          rentalModel: c?.rentalModel === 'SHARED_ROOM' || (!c && data.room.rentalModel === 'SHARED_ROOM') ? 'SHARED_ROOM' : 'ENTIRE_ROOM',
+          monthlyRentVnd: defaultRent,
+          depositVnd: defaultDeposit,
+          paidAmountVnd: initialIntent === 'IMPORT' ? defaultDeposit : Number(c?.paidAmountVnd ?? 0),
+          startDate: c?.startDate || r?.expectedMoveIn || t.startDate,
+          endDate: c?.endDate || t.endDate,
+        }));
         setProfile((p: any) => data.profile ? { ...p, ...data.profile, landlord: { ...p.landlord, ...data.profile.landlord }, tenant: { ...p.tenant, ...data.profile.tenant } } : { ...p, ...data.documentDefaults, rentalAddress: [data.room.building.streetAddress, data.room.building.ward, data.room.building.province].filter(Boolean).join(', '),
+          signedDate: initialIntent === 'IMPORT' ? (c?.startDate || r?.expectedMoveIn || day()) : (p.signedDate || day()),
           tenant: { ...p.tenant, fullName: r?.customerName || c?.tenant?.fullName || '', phone: r?.customerPhone || c?.tenant?.phone || '', idNumber: c?.tenant?.idNumber || '' } });
         if (r || c) setStage('record'); else if (initialIntent === 'IMPORT') setStage('details');
       }
@@ -146,7 +202,14 @@ export function RentalOnboardingPage({ roomId, initialIntent, onClose, embedded 
   useEffect(() => { if (closeRequestRef) closeRequestRef.current = close; return () => { if (closeRequestRef) closeRequestRef.current = null; }; }, [closeRequestRef, busy, dirty, onClose]);
   const scrollTop = () => { if (embedded) workspace.current?.querySelector('.rental-stage-body')?.scrollTo({ top: 0 }); else window.scrollTo({ top: 0, behavior: 'instant' }); };
   const move = (s: string) => { setError(''); setMessage(''); setStage(s); scrollTop(); };
-  const editTerms = (key: string, value: any) => { setTerms(t => ({ ...t, [key]: value })); setDirty(true); setQuote(null); };
+  const editTerms = (key: string, value: any) => {
+    setTerms(t => ({ ...t, [key]: value }));
+    if (key === 'startDate') {
+      setProfile((p: any) => ({ ...p, signedDate: value }));
+    }
+    setDirty(true);
+    setQuote(null);
+  };
   const editProfile = (key: string, value: any) => { setProfile((p: any) => ({ ...p, [key]: value })); setDirty(true); };
   const documentProfileSaved = (updated: any) => { setProfile(updated); setDirty(false); };
   const perform = async (path: string, body: any, next = 'record') => {
@@ -205,15 +268,23 @@ export function RentalOnboardingPage({ roomId, initialIntent, onClose, embedded 
     try {
       if (!profile.tenant.fullName.trim() || !profile.tenant.phone.trim()) throw new Error('Nhập họ tên và số điện thoại khách.');
       if (terms.monthlyRentVnd < 500000) throw new Error('Nhập giá thuê hàng tháng (tối thiểu 500.000 đ).');
-      if (intent === 'HOLD') { if (terms.paidAmountVnd > terms.depositVnd) throw new Error('Thực nhận không được vượt cọc thỏa thuận.'); setQuote(null); }
-      else setQuote(await request(`${base}/quote`, { ...terms, reservationId: converting ? reservation.id : undefined }));
+      if (intent === 'HOLD') {
+        if (terms.paidAmountVnd > terms.depositVnd) throw new Error('Thực nhận không được vượt cọc thỏa thuận.');
+        setQuote(null);
+      } else if (intent === 'IMPORT') {
+        if (!terms.takeoverDate) throw new Error('Vui lòng chọn ngày tiếp quản.');
+        if (!terms.paidThrough) throw new Error('Vui lòng chọn ngày khách đã trả tiền thuê đến.');
+        if (terms.paidThrough < terms.startDate) throw new Error('Ngày đã trả tiền thuê đến không thể trước ngày bắt đầu hợp đồng.');
+        if (terms.paidAmountVnd > terms.depositVnd) throw new Error('Cọc lịch sử đang giữ không được vượt cọc hợp đồng yêu cầu.');
+        setQuote(null);
+      } else setQuote(await request(`${base}/quote`, { ...terms, reservationId: converting ? reservation.id : undefined }));
       move('review');
     } catch (e: any) { setError(e.message); } finally { setBusy(false); }
   };
   const submit = () => editingDraft ? perform(`${base}/draft`, { ...terms, documentProfile: profile })
     : converting ? perform(`/reservations/${encodeURIComponent(reservation.id)}/convert-to-contract`, { ...terms, expectedBookingBalance: quote.bookingDepositB, documentProfile: profile,
     coOccupants: profile.members.map((p: Person) => ({ ...p, dateOfBirth: p.birthDate, relationToPrimary: p.documentRole === 'CO_REPRESENTATIVE' ? 'OTHER' : 'FAMILY' })) })
-    : perform(`${base}/start`, { ...terms, intent, ...(intent !== 'IMPORT' ? { customerSource: customerMode, ...(customerMode === 'EXISTING' ? { existingTenantId } : {}) } : {}), paidAmountVnd: intent === 'DIRECT' ? 0 : terms.paidAmountVnd, documentProfile: profile });
+    : perform(`${base}/start`, { ...terms, intent, ...(intent !== 'IMPORT' ? { customerSource: customerMode, ...(customerMode === 'EXISTING' ? { existingTenantId } : {}) } : {}), paidAmountVnd: intent === 'DIRECT' ? 0 : terms.paidAmountVnd, documentProfile: { ...profile, ...(intent === 'IMPORT' ? { signedDate: terms.startDate } : {}) } });
   const exportFile = async (kind: string, format: string, personIndex = 0) => {
     setBusy(true); setError('');
     try {
@@ -225,9 +296,45 @@ export function RentalOnboardingPage({ roomId, initialIntent, onClose, embedded 
     } catch (e: any) { setError(e.message); } finally { setBusy(false); }
   };
   const button = (label: string, onClick: () => void, secondary = false, disabled = false) => <Button type="button" disabled={busy || disabled} onClick={onClick} hoverScale={1} tapScale={0.98} className={`rental-button ${secondary ? 'rental-button-secondary' : 'rental-button-primary'}`}>{label}</Button>;
-  const input = (label: string, value: string, onChange: (v: string) => void, type = 'text') => <Field label={label}><input className={fieldClass} type={type} value={value || ''} onChange={e => onChange(e.target.value)} /></Field>;
+  const input = (label: string, value: string, onChange: (v: string) => void, type = 'text') => {
+    if (type === 'date') {
+      return (
+        <Field label={label}>
+          <DateInput className={fieldClass} value={value || ''} onChange={onChange} aria-label={label} />
+        </Field>
+      );
+    }
+    return (
+      <Field label={label}>
+        <input className={fieldClass} type={type} value={value || ''} onChange={e => onChange(e.target.value)} />
+      </Field>
+    );
+  };
   const flowStep = stage === 'intent' ? -1 : stage === 'details' ? detailStep === 'people' ? 0 : 1 : stage === 'review' ? 2 : -1;
   const registrationCommand = state?.room?.code && contract?.contractCode && profile.tenant.phone ? `DANGKY ${state.room.code} ${profile.tenant.phone.replace(/\D/g, '').replace(/^84/, '0')}${state.room.rentalModel === 'SHARED_ROOM' ? ` ${contract.contractCode}` : ''}` : '';
+  const copyCommand = async () => {
+    if (!registrationCommand) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(registrationCommand);
+      } else {
+        const input = document.createElement('textarea');
+        input.value = registrationCommand;
+        input.setAttribute('readonly', '');
+        input.style.cssText = 'position:fixed;left:-9999px;top:0';
+        document.body.appendChild(input);
+        input.select();
+        const success = document.execCommand('copy');
+        input.remove();
+        if (!success) throw new Error('Clipboard failed');
+      }
+      setCopiedCommand(true);
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+      copyTimeoutRef.current = setTimeout(() => { setCopiedCommand(false); }, 2500);
+    } catch {
+      setBotStatusError('Không sao chép được. Hãy chọn và sao chép lệnh thủ công.');
+    }
+  };
   const selectedPerson = [profile.tenant, ...profile.members][docPerson] || profile.tenant;
   const leasePersonIndex = docPerson > 0 && selectedPerson.documentRole !== 'CO_REPRESENTATIVE' ? 0 : docPerson;
   const ct01Head = selectedPerson.householdHeadOccupantId ? [profile.tenant, ...profile.members].find((person: Person) => person.occupantId === selectedPerson.householdHeadOccupantId) || profile.tenant
@@ -282,7 +389,11 @@ export function RentalOnboardingPage({ roomId, initialIntent, onClose, embedded 
   </section>;
   const personEditor = <>{existingTenantId && <p className="text-sm text-slate-500">Khách có sẵn · {profile.tenant.fullName}</p>}<PersonFields title="HĐ Chính" value={profile.tenant} identityLocked={!!existingTenantId && intent !== 'IMPORT'} requiredErrors={tenantErrors} onChange={p => { setTenantErrors(previous => ({ ...previous, ...(p.fullName.trim() ? { fullName: undefined } : {}), ...(p.phone.trim() ? { phone: undefined } : {}), ...(p.idNumber.trim() ? { idNumber: undefined } : {}) })); editProfile('tenant', p); }} />{intent !== 'HOLD' && terms.rentalModel !== 'SHARED_ROOM' && membersEditor}</>;
   return <section ref={workspace} className={`rental-workspace${embedded ? ' rental-embedded' : ''}`} data-testid="rental-onboarding-page" data-stage={stage} data-detail-step={stage === 'details' ? detailStep : undefined} aria-busy={busy}>
-    <header className="rental-page-heading"><div><h1 ref={heading} tabIndex={-1} className="outline-none">{titles[stage]}</h1><p>{stage === 'intent' ? 'Từ thông tin khách đến hợp đồng và hồ sơ cư trú.' : stage === 'details' && detailStep === 'people' ? 'Thông tin này sẽ được tự điền vào hợp đồng và CT01.' : stage === 'profile' ? 'Một bộ thông tin, đầy đủ giấy tờ cần dùng.' : 'Kiểm tra thông tin trước khi lưu giao dịch.'}</p></div><span className="rental-room-tag"><Home size={14} />{state?.room.code || '…'}</span></header>
+    {!embedded ? (
+      <header className="rental-page-heading"><div><h1 ref={heading} tabIndex={-1} className="outline-none">{titles[stage]}</h1><p>{stage === 'intent' ? 'Từ thông tin khách đến hợp đồng và hồ sơ cư trú.' : stage === 'details' && detailStep === 'people' ? 'Thông tin này sẽ được tự điền vào hợp đồng và CT01.' : stage === 'profile' ? 'Một bộ thông tin, đầy đủ giấy tờ cần dùng.' : 'Kiểm tra thông tin trước khi lưu giao dịch.'}</p></div><span className="rental-room-tag"><Home size={14} />{state?.room.code || '…'}</span></header>
+    ) : (
+      <h1 ref={heading} tabIndex={-1} className="sr-only">{titles[stage]}</h1>
+    )}
     {error && <div ref={feedback} tabIndex={-1} role="alert" className="rental-feedback rental-error">{error}</div>}{message && <p role="status" className="rental-feedback rental-success"><CheckCircle2 size={16} />{message}</p>}
     {busy && <p role="status" className="rental-loading"><span className="sr-only">Đang xử lý yêu cầu…</span><span aria-hidden="true"><ShimmeringText text="Đang xử lý yêu cầu…" /></span></p>}
     {!state && !busy && button('Tải lại', () => { setBusy(true); load().catch(e => setError(e.message)).finally(() => setBusy(false)); }, true)}
@@ -295,7 +406,19 @@ export function RentalOnboardingPage({ roomId, initialIntent, onClose, embedded 
           ['DIRECT', 'Thuê ở ngay', 'Lập hợp đồng mới, thu tiền và bàn giao.', Home],
           ['HOLD', 'Đặt cọc giữ phòng', 'Giữ phòng trước ngày khách nhận nhà.', Wallet],
           ['IMPORT', 'Đồng bộ dữ liệu', 'Tiếp quản khách đang ở và số dư đã có.', Users],
-        ] as const).map(([id, title, desc, Icon]) => <Collapsible.Root key={id} open={intent === id} className="min-w-0" data-testid={`rental-intent-${id}`}><label className={`rental-intent ${intent === id ? 'is-selected' : ''}`}><span className="rental-intent-icon"><Icon size={21} strokeWidth={1.7} /></span><span className="min-w-0 flex-1"><b>{title}</b><span className="rental-intent-description">{desc}</span></span><input type="radio" name="rental-intent" aria-label={title} checked={intent === id} onChange={() => setIntent(id)} /></label>
+        ] as const).map(([id, title, desc, Icon]) => <Collapsible.Root key={id} open={intent === id} className="min-w-0" data-testid={`rental-intent-${id}`}><label className={`rental-intent ${intent === id ? 'is-selected' : ''}`}><span className="rental-intent-icon"><Icon size={21} strokeWidth={1.7} /></span><span className="min-w-0 flex-1"><b>{title}</b><span className="rental-intent-description">{desc}</span></span><input type="radio" name="rental-intent" aria-label={title} checked={intent === id} onChange={() => {
+          setIntent(id);
+          if (id === 'IMPORT') {
+            setTerms(t => ({
+              ...t,
+              paidAmountVnd: t.paidAmountVnd || t.depositVnd,
+            }));
+            setProfile((p: any) => ({
+              ...p,
+              signedDate: terms.startDate,
+            }));
+          }
+        }} /></label>
         {id !== 'IMPORT' && intent === id && <Collapsible.Panel className="overflow-hidden"><section className="rental-customer-submenu" aria-label="Nguồn khách thuê">
           <fieldset className="rental-customer-modes"><legend className="sr-only">Khách thuê</legend>{([['EXISTING', 'Khách có sẵn'], ['NEW', 'Khách mới']] as const).map(([mode, label]) => <label key={mode} className={`rental-customer-mode ${customerMode === mode ? 'is-selected' : ''}`}><input type="radio" name="customer-mode" checked={customerMode === mode} onChange={() => { setCustomerMode(mode); setExistingTenantId(''); editProfile('tenant', blankPerson()); setTenantErrors({}); }} /><span>{label}</span></label>)}</fieldset>
           {customerMode === 'EXISTING' && <>
@@ -310,22 +433,121 @@ export function RentalOnboardingPage({ roomId, initialIntent, onClose, embedded 
       {stage === 'details' && <>
         {detailStep === 'people' ? <>{personEditor}<div className="rental-actions">{button('Quay lại', () => move(converting || editingDraft ? 'record' : 'intent'), true)}{button('Tiếp tục', goTerms)}</div></> : <>
           <div className="rental-customer-strip"><span className="rental-avatar">{profile.tenant.fullName?.slice(0, 1) || 'K'}</span><div><strong>{profile.tenant.fullName}</strong><span>{profile.tenant.phone}{profile.members.length ? ` và ${profile.members.length} người cùng ở` : ''}</span></div><button type="button" className="rental-text-button" onClick={() => setDetailStep('people')}>Sửa</button></div>
-          <section><div className="rental-section-heading"><div><h2>{intent === 'HOLD' ? 'Thỏa thuận giữ phòng' : 'Thời hạn & giá thuê'}</h2><p>Kiểm tra trước khi lập {intent === 'HOLD' ? 'phiếu đặt cọc' : 'hợp đồng'}.</p></div></div><div className="rental-fields">
+          <section><div className="rental-section-heading"><div><h2>{intent === 'HOLD' ? 'Thỏa thuận giữ phòng' : 'Thời hạn & giá thuê'}</h2><p>{intent === 'HOLD' ? 'Kiểm tra trước khi lập phiếu đặt cọc.' : intent === 'IMPORT' ? 'Kiểm tra thông tin hợp đồng đang thực hiện từ sổ sách.' : 'Kiểm tra trước khi lập hợp đồng.'}</p></div></div><div className="rental-fields">
             {input(intent === 'HOLD' ? 'Ngày dự kiến vào ở' : 'Ngày bắt đầu', terms.startDate, v => editTerms('startDate', v), 'date')}
             {intent !== 'HOLD' && input('Ngày kết thúc', terms.endDate, v => editTerms('endDate', v), 'date')}
             {intent !== 'HOLD' && <Field label="Hình thức thuê" wide><select className={fieldClass} value={terms.rentalModel} onChange={e => { editTerms('rentalModel', e.target.value); if (e.target.value === 'SHARED_ROOM') editProfile('members', []); }}><option value="ENTIRE_ROOM" disabled={Boolean(state?.contracts?.length && state.room.rentalModel === 'SHARED_ROOM')}>Thuê nguyên căn / nguyên phòng</option><option value="SHARED_ROOM" disabled={Boolean(state?.contracts?.length && state.room.rentalModel !== 'SHARED_ROOM')}>Ở ghép · mỗi khách một hợp đồng</option></select><span className="text-xs font-normal text-slate-500 dark:text-slate-400">Ở ghép: mỗi khách cần hợp đồng, hóa đơn và đăng ký Zalo riêng.</span></Field>}
             <Amount label="Giá thuê hàng tháng" value={terms.monthlyRentVnd} onChange={v => editTerms('monthlyRentVnd', v)} placeholder="" />
-            <Amount label={intent === 'HOLD' ? 'Cọc giữ phòng thỏa thuận' : 'Cọc hợp đồng yêu cầu'} value={terms.depositVnd} onChange={v => editTerms('depositVnd', v)} placeholder="" />
-            {intent === 'HOLD' ? <>{input('Giữ phòng trong (ngày, 1–30)', String(terms.holdDays), v => editTerms('holdDays', Number(v)), 'number')}<Amount label="Tiền cọc đã thực nhận" value={terms.paidAmountVnd} onChange={v => editTerms('paidAmountVnd', v)} /><Field label="Phương thức nhận tiền"><select className={fieldClass} value={terms.paymentMethod} onChange={e => editTerms('paymentMethod', e.target.value)}><option value="BANK_TRANSFER">Chuyển khoản</option><option value="CASH">Tiền mặt</option></select></Field></> : <Field label="Cách tính tiền thuê đầu kỳ"><select className={fieldClass} value={terms.firstPeriodBillingPolicy} onChange={e => editTerms('firstPeriodBillingPolicy', e.target.value)}><option value="CALENDAR_PRORATE">Theo ngày còn lại của tháng</option><option value="ANNIVERSARY_CYCLE">Một chu kỳ từ ngày bắt đầu</option><option value="FULL_FIRST_MONTH">Trọn tháng đầu</option></select></Field>}
+            <Amount label={intent === 'HOLD' ? 'Cọc giữ phòng thỏa thuận' : 'Cọc hợp đồng yêu cầu'} value={terms.depositVnd} onChange={v => {
+              setTerms(t => {
+                const next = { ...t, depositVnd: v };
+                if (intent === 'IMPORT' && (t.paidAmountVnd === 0 || t.paidAmountVnd === t.depositVnd)) {
+                  next.paidAmountVnd = v;
+                }
+                return next;
+              });
+              setDirty(true);
+              setQuote(null);
+            }} placeholder="" />
+            {intent === 'HOLD' ? <>{input('Giữ phòng trong (ngày, 1–30)', String(terms.holdDays), v => editTerms('holdDays', Number(v)), 'number')}<Amount label="Tiền cọc đã thực nhận" value={terms.paidAmountVnd} onChange={v => editTerms('paidAmountVnd', v)} /><Field label="Phương thức nhận tiền"><select className={fieldClass} value={terms.paymentMethod} onChange={e => editTerms('paymentMethod', e.target.value)}><option value="BANK_TRANSFER">Chuyển khoản</option><option value="CASH">Tiền mặt</option></select></Field></>
+              : intent === 'DIRECT' ? <Field label="Cách tính tiền thuê đầu kỳ"><select className={fieldClass} value={terms.firstPeriodBillingPolicy} onChange={e => editTerms('firstPeriodBillingPolicy', e.target.value)}><option value="CALENDAR_PRORATE">Theo ngày còn lại của tháng</option><option value="ANNIVERSARY_CYCLE">Một chu kỳ từ ngày bắt đầu</option><option value="FULL_FIRST_MONTH">Trọn tháng đầu</option></select></Field> : null}
           </div></section>
-          {intent === 'IMPORT' && <section><div className="rental-section-heading"><div><h2>Số dư tiếp quản</h2><p>Cọc cũ được tiếp nhận, không tạo thêm khoản thu.</p></div></div><div className="rental-fields">{input('Ngày tiếp quản', terms.takeoverDate, v => editTerms('takeoverDate', v), 'date')}{input('Đã trả tiền thuê đến ngày', terms.paidThrough, v => editTerms('paidThrough', v), 'date')}<Amount label="Cọc lịch sử đang giữ" value={terms.paidAmountVnd} onChange={v => editTerms('paidAmountVnd', v)} /><Amount label="Công nợ đầu kỳ" value={terms.openingDebtVnd} onChange={v => editTerms('openingDebtVnd', v)} /></div></section>}
+          {intent === 'IMPORT' && (() => {
+            const datePresets = getTakeoverDatePresets();
+            return <section className="rental-import-section"><div className="rental-section-heading"><div><h2>Số dư tiếp quản</h2><p>Cọc cũ được tiếp nhận vào quỹ cọc (HELD), không tạo thêm khoản thu tiền mặt vào sổ cái.</p></div></div><div className="rental-fields">
+              {input('Ngày tiếp quản', terms.takeoverDate, v => editTerms('takeoverDate', v), 'date')}
+              {input('Đã trả tiền thuê đến ngày', terms.paidThrough, v => editTerms('paidThrough', v), 'date')}
+              <div className="rental-field-wide -mt-1 rounded-xl bg-slate-50 dark:bg-slate-900/60 p-3 border border-slate-200/80 dark:border-slate-800">
+                <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 block mb-1.5 uppercase tracking-wider">
+                  Gợi ý chốt kỳ đóng tiền (paidThrough):
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    className={`text-xs px-2.5 py-1 rounded-md font-medium border transition-colors ${
+                      terms.paidThrough === datePresets.todayStr
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                        : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-750'
+                    }`}
+                    onClick={() => editTerms('paidThrough', datePresets.todayStr)}
+                  >
+                    Hôm nay ({formatRentalDate(datePresets.todayStr)})
+                  </button>
+                  <button
+                    type="button"
+                    className={`text-xs px-2.5 py-1 rounded-md font-medium border transition-colors ${
+                      terms.paidThrough === datePresets.lastMonthEndStr
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                        : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-750'
+                    }`}
+                    onClick={() => editTerms('paidThrough', datePresets.lastMonthEndStr)}
+                  >
+                    Hết tháng trước ({formatRentalDate(datePresets.lastMonthEndStr)})
+                  </button>
+                  <button
+                    type="button"
+                    className={`text-xs px-2.5 py-1 rounded-md font-medium border transition-colors ${
+                      terms.paidThrough === datePresets.thisMonthEndStr
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                        : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-750'
+                    }`}
+                    onClick={() => editTerms('paidThrough', datePresets.thisMonthEndStr)}
+                  >
+                    Hết tháng này ({formatRentalDate(datePresets.thisMonthEndStr)})
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
+                  Hóa đơn tiền phòng tiếp theo trên AdHome sẽ chỉ bắt đầu tính từ ngày sau mốc này.
+                </p>
+              </div>
+              <Amount label="Cọc lịch sử đang giữ" value={terms.paidAmountVnd} onChange={v => editTerms('paidAmountVnd', v)} helper={
+                <div className="mt-1 min-h-[20px]">
+                  {terms.depositVnd > 0 && terms.paidAmountVnd === terms.depositVnd ? (
+                    <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium inline-flex items-center gap-1">
+                      <CheckCircle2 size={13} /> Đã đủ 100% cọc
+                    </span>
+                  ) : terms.depositVnd > 0 && terms.paidAmountVnd !== terms.depositVnd ? (
+                    <button type="button" className="rental-text-button text-xs text-blue-600 dark:text-blue-400 font-semibold hover:underline inline-flex items-center gap-1 !min-h-0" onClick={() => editTerms('paidAmountVnd', terms.depositVnd)}>
+                      <Check size={13} /> Điền đủ ({cash(terms.depositVnd)})
+                    </button>
+                  ) : null}
+                  {terms.depositVnd > 0 && terms.paidAmountVnd < terms.depositVnd && (
+                    <span className="text-[11px] text-amber-600 dark:text-amber-400 block mt-0.5 font-medium">
+                      Còn thiếu: {cash(terms.depositVnd - terms.paidAmountVnd)}
+                    </span>
+                  )}
+                </div>
+              } />
+              <Amount label="Công nợ đầu kỳ" value={terms.openingDebtVnd} onChange={v => editTerms('openingDebtVnd', v)} helper={
+                <div className="mt-1 min-h-[20px]">
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400 block leading-tight">
+                    {terms.openingDebtVnd > 0
+                      ? `Tạo hóa đơn nợ: ${cash(terms.openingDebtVnd)}`
+                      : 'Nợ cũ tiền phòng/điện nước (nếu có)'}
+                  </span>
+                </div>
+              } />
+            </div></section>;
+          })()}
           <details className="rental-disclosure"><summary>Điện & nước <span>Theo cấu hình phòng</span></summary><p className="rental-help">Điện {cash(state.room.electricRateVnd ?? state.room.building.electricRateVnd)}/kWh. Chỉ số điện và nước được ghi khi bàn giao.</p></details>
           <div className="rental-actions">{button('Quay lại', () => setDetailStep('people'), true)}{button('Tiếp tục — xem lại', preview)}</div>
         </>}
       </>}
-      {stage === 'review' && <><p className="rental-review-person">{profile.tenant.fullName} · {profile.tenant.phone} · {terms.startDate}{intent !== 'HOLD' && ` → ${terms.endDate} · ${terms.rentalModel === 'SHARED_ROOM' ? 'Ở ghép' : 'Nguyên căn / phòng'}`}</p>
+      {stage === 'review' && <><p className="rental-review-person">{profile.tenant.fullName} · {profile.tenant.phone} · {formatRentalDate(terms.startDate)}{intent !== 'HOLD' && ` → ${formatRentalDate(terms.endDate)} · ${terms.rentalModel === 'SHARED_ROOM' ? 'Ở ghép' : 'Nguyên căn / phòng'}`}</p>
         {intent === 'HOLD' ? <><Line label="Cọc thỏa thuận" value={terms.depositVnd} /><Line label="Thực thu lần này" value={terms.paidAmountVnd} /><Line label="Cọc còn thiếu" value={terms.depositVnd - terms.paidAmountVnd} /></>
-          : intent === 'IMPORT' ? <><Line label="Cọc đang giữ từ trước" value={terms.paidAmountVnd} /><Line label="Công nợ đầu kỳ" value={terms.openingDebtVnd} /><p>Tiếp quản ngày {terms.takeoverDate}, đã thanh toán đến {terms.paidThrough}. Không tạo khoản thu mới cho tiền lịch sử.</p></>
+          : intent === 'IMPORT' ? <>
+              <Line label="Giá thuê hàng tháng" value={terms.monthlyRentVnd} />
+              <Line label="Cọc hợp đồng yêu cầu" value={terms.depositVnd} />
+              <Line label="Cọc lịch sử đang giữ" value={terms.paidAmountVnd} />
+              {terms.depositVnd > terms.paidAmountVnd && <Line label="Cọc còn thiếu" value={terms.depositVnd - terms.paidAmountVnd} />}
+              {terms.openingDebtVnd > 0 && <Line label="Công nợ đầu kỳ phải thu" value={terms.openingDebtVnd} strong />}
+              <div className="rounded-lg bg-blue-50/70 dark:bg-blue-950/30 p-3 text-xs text-blue-900 dark:text-blue-200 mt-2 space-y-1">
+                <p>• <strong>Trạng thái:</strong> Hợp đồng sẽ chuyển sang <strong>Đang ở (ACTIVE)</strong> ngay khi xác nhận.</p>
+                <p>• <strong>Cọc tiếp quản:</strong> Ghi nhận <strong>{cash(terms.paidAmountVnd)}</strong> vào quỹ cọc đang giữ (HELD), không tạo phiếu thu mới vào sổ cái.</p>
+                <p>• <strong>Kỳ tính tiền:</strong> Đã thanh toán đến hết ngày <strong>{formatRentalDate(terms.paidThrough)}</strong>. Hóa đơn mới của hệ thống sẽ chỉ phát sinh từ ngày sau đó.</p>
+                {terms.openingDebtVnd > 0 && <p>• <strong>Công nợ:</strong> Tạo hóa đơn thu nợ đầu kỳ {cash(terms.openingDebtVnd)} (hạn {formatRentalDate(terms.takeoverDate)}).</p>}
+              </div>
+            </>
           : quote && <><Line label="Cọc hợp đồng yêu cầu" value={quote.contractDepositRequiredC} /><Line label="Tiền thuê kỳ đầu" value={quote.rentFirstPeriodVnd} /><p className="text-xs text-slate-500">{quote.rent.formula}</p><Line label="Cọc giữ phòng khả dụng" value={quote.bookingDepositB} />
             {quote.surplusDepositVnd > 0 && <Field label="Xử lý cọc dư"><select className={fieldClass} value={terms.surplusAction} onChange={async e => { const value = e.target.value; editTerms('surplusAction', value); setBusy(true); try { setQuote(await request(`${base}/quote`, { ...terms, surplusAction: value, reservationId: converting ? reservation.id : undefined })); } catch (err: any) { setError(err.message); } finally { setBusy(false); } }}><option value="RENT_CREDIT">Trừ tiền thuê, bảo lưu phần còn lại</option><option value="REFUND">Hoàn phần dư riêng</option></select></Field>}
             <Line label="Chuyển vào cọc hợp đồng" value={quote.transferredDepositVnd} />{quote.appliedRentCreditVnd > 0 && <Line label="Trừ vào tiền thuê" value={quote.appliedRentCreditVnd} />}{quote.remainingSurplusCreditVnd > 0 && <Line label="Bảo lưu kỳ sau" value={quote.remainingSurplusCreditVnd} />}{quote.pendingRefundVnd > 0 && <Line label="Chờ hoàn riêng" value={quote.pendingRefundVnd} />}<Line label="Cần thu mới" value={quote.totalInitialInvoiceDue} strong /><p className="text-sm text-slate-500">Lập hợp đồng tạo trạng thái Chờ bàn giao. Thu tiền và bàn giao là các thao tác tiếp theo.</p></>}
@@ -340,7 +562,7 @@ export function RentalOnboardingPage({ roomId, initialIntent, onClose, embedded 
           {contract.status === 'DRAFT' && <div className="rental-registration" data-testid="rental-bot-registration">
             <h3 className="font-semibold">{!botStatus?.linked ? 'Đăng ký nhận tin Zalo Bot' : invoice && Number(botStatus.invoiceOutstandingVnd ?? due) === 0 ? 'Đã thanh toán' : botStatus.invoiceDeliveryStatus === 'SENT' ? 'Đang chờ thanh toán' : 'Đang gửi hóa đơn'}</h3>
             {!botStatus?.linked && <><p>Yêu cầu khách nhắn riêng cho Bot đúng cú pháp bên dưới. Bot đối chiếu mã phòng và số điện thoại trên hợp đồng nháp.</p>
-            <div className="rental-command"><code>{registrationCommand}</code><Button type="button" aria-label="Sao chép lệnh đăng ký Zalo" title="Sao chép lệnh" disabled={!registrationCommand} onClick={async () => { try { await navigator.clipboard.writeText(registrationCommand); setCopiedCommand(true); } catch { setBotStatusError('Không sao chép được. Hãy chọn và sao chép lệnh thủ công.'); } }}><Copy size={16} />{copiedCommand ? 'Đã sao chép' : 'Sao chép'}</Button></div></>}
+            <Button type="button" hoverScale={1} tapScale={0.98} className={`rental-command ${copiedCommand ? 'is-copied' : ''}`} aria-label={copiedCommand ? 'Đã sao chép cú pháp đăng ký Zalo' : 'Nhấn để sao chép cú pháp đăng ký Zalo'} title={copiedCommand ? 'Đã sao chép cú pháp' : 'Chạm để sao chép cú pháp'} disabled={!registrationCommand} onClick={copyCommand}><code>{registrationCommand}</code><span className="rental-command-status" aria-live="polite">{copiedCommand ? <><Check size={14} /><span>Đã sao chép</span></> : <Copy size={15} />}</span></Button></>}
             {botStatusError && <p role="alert">{botStatusError}</p>}
             {!botStatusError && botStatus && !botStatus.botConfigured && <p role="status">Zalo Bot chưa được kết nối. Hãy cấu hình trong Cài đặt trước khi yêu cầu khách đăng ký.</p>}
             {!botStatusError && botStatus?.botConfigured && !botStatus.linked && <p role="status" className="rental-bot-wait"><LoaderCircle size={16} className="animate-spin motion-reduce:animate-none" /><ShimmeringText text="Đang chờ khách đăng ký…" /></p>}

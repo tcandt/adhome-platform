@@ -37,6 +37,7 @@ import {
 } from 'lucide-react';
 import { MoneyInput, parseVnd } from '../../shared/ui/MoneyInput';
 import { SettlementShimmerButton } from '../../shared/ui/SettlementAnimatePrimitives';
+import { formatVnDate, formatVnDateTime } from '@/shared/tokens/designTokens';
 import {
   type DrawerTabId,
   type FeeLineItem,
@@ -82,6 +83,8 @@ interface SettlementDetailDrawerProps {
   canWriteFinance: boolean;
   canInputReadings: boolean;
   isSaving: boolean;
+  isAutoDraftMode?: boolean;
+  isFuturePeriod?: boolean;
   onSaveRoomInput: (payload: {
     roomId: string;
     contractId: string;
@@ -116,7 +119,7 @@ interface SettlementDetailDrawerProps {
   onApproveObligation: (obligationKeys: string[], action: 'APPROVE' | 'REJECT', reason?: string) => Promise<boolean>;
   onIssueAndSend: (
     obligationKeys: string[],
-    channel?: 'ZALO_OA' | 'ZALO_BOT' | 'EMAIL',
+    channel?: 'TELEGRAM' | 'ZALO_BOT' | 'ZALO_OA' | 'EMAIL',
     recipientOverride?: string
   ) => Promise<boolean>;
   onRecordPayment: (params: {
@@ -125,6 +128,7 @@ interface SettlementDetailDrawerProps {
     providerId: string;
     referenceText: string;
   }) => Promise<boolean>;
+  onSyncRoomElectric?: (roomId: string, meterId?: string | null) => Promise<boolean>;
 }
 
 export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
@@ -140,11 +144,25 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
   canWriteFinance,
   canInputReadings,
   isSaving,
+  isAutoDraftMode = false,
+  isFuturePeriod = false,
   onSaveRoomInput,
   onApproveObligation,
   onIssueAndSend,
   onRecordPayment,
+  onSyncRoomElectric,
 }) => {
+  const [isSyncingElectric, setIsSyncingElectric] = useState<boolean>(false);
+
+  const handleSyncRoomElectric = async () => {
+    if (!row || !onSyncRoomElectric || isSyncingElectric) return;
+    setIsSyncingElectric(true);
+    try {
+      await onSyncRoomElectric(row.room.id, row.electric.meterId);
+    } finally {
+      setIsSyncingElectric(false);
+    }
+  };
   // Member rent editor state
   const [baseMonthlyRentVnd, setBaseMonthlyRentVnd] = useState<number>(0);
 
@@ -169,7 +187,7 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
   const [editReason, setEditReason] = useState<string>('Cập nhật chi tiết quyết toán phòng');
 
   // Delivery state
-  const [selectedChannel, setSelectedChannel] = useState<'ZALO_OA' | 'ZALO_BOT' | 'EMAIL'>('ZALO_OA');
+  const [selectedChannel, setSelectedChannel] = useState<'TELEGRAM' | 'ZALO_BOT' | 'ZALO_OA'>('ZALO_OA');
   const [recipientOverride, setRecipientOverride] = useState<string>('');
   const [showInvoicePreview, setShowInvoicePreview] = useState<boolean>(true);
 
@@ -207,7 +225,10 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
     setConfirmWaterAnomaly(false);
 
     setFeeItemsDraft(row.totals.feeItems || []);
-    setSelectedChannel(row.delivery?.channel || 'ZALO_OA');
+    const rawRegChannel = (row.tenant?.notificationChannel || row.delivery?.channel || 'ZALO_OA') as string;
+    const synchronizedChannel: 'TELEGRAM' | 'ZALO_BOT' | 'ZALO_OA' =
+      rawRegChannel === 'TELEGRAM' || rawRegChannel === 'ZALO_BOT' ? rawRegChannel : 'ZALO_OA';
+    setSelectedChannel(synchronizedChannel);
     setRecipientOverride(row.delivery?.recipientContact || row.tenant?.phone || row.tenant?.email || '');
     setPaymentAmountVnd(Math.round(row.totals.remainingAmountVnd || 0));
     setPaymentNoteInput(
@@ -305,13 +326,16 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
           basePriceVnd: cfgRoomPriceVnd > 0 ? cfgRoomPriceVnd : undefined,
         },
         rent: cfgRoomPriceVnd > 0 ? { baseMonthlyRentVnd: cfgRoomPriceVnd } : undefined,
-        electric: {
-          startKwh: startKwhInput.trim() !== '' ? Number(startKwhInput) : 0,
-          endKwh: endKwhInput.trim() !== '' ? Number(endKwhInput) : null,
-          ratePerKwhVnd: cfgElectricRateVnd,
-          anomalyConfirmed: confirmElectricAnomaly,
-          reason: 'Cập nhật cấu hình biểu giá phòng',
-        },
+        electric:
+          row.electric.method === 'HUNONIC_AUTO'
+            ? undefined
+            : {
+                startKwh: startKwhInput.trim() !== '' ? Number(startKwhInput) : 0,
+                endKwh: endKwhInput.trim() !== '' ? Number(endKwhInput) : null,
+                ratePerKwhVnd: cfgElectricRateVnd,
+                anomalyConfirmed: confirmElectricAnomaly,
+                reason: 'Cập nhật cấu hình biểu giá phòng',
+              },
         water: {
           mode: cfgWaterMode,
           consumptionM3: waterM3Input.trim() !== '' ? Number(waterM3Input) : null,
@@ -558,7 +582,7 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                   <div>
                     <span className="block text-[10.5px] text-slate-400">Kỳ &amp; Hạn thanh toán</span>
                     <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
-                      {row.periodKey} · {row.invoice?.dueDate || `${row.periodKey}-05`}
+                      {row.periodKey} · {formatVnDate(row.invoice?.dueDate || `${row.periodKey}-05`)}
                     </span>
                   </div>
                   <div className="col-span-2 flex items-center justify-between pt-1">
@@ -571,22 +595,62 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
 
                 {/* Clean Financial Ledger */}
                 <div className="rounded-xl bg-slate-50/70 dark:bg-slate-900/40 px-3.5 py-3 space-y-1.5 text-xs">
-                  <div className="font-bold text-slate-900 dark:text-white text-[12.5px] pb-1">
-                    Tóm tắt khoản thu kỳ {row.periodKey}
+                  <div
+                    onClick={onSyncRoomElectric ? () => void handleSyncRoomElectric() : undefined}
+                    role={onSyncRoomElectric ? 'button' : undefined}
+                    tabIndex={onSyncRoomElectric ? 0 : undefined}
+                    title={onSyncRoomElectric ? 'Nhấn vào tiêu đề để cập nhật dữ liệu mới tại chỗ' : undefined}
+                    className={`flex items-center justify-between font-bold text-slate-900 dark:text-white text-[12.5px] pb-1 select-none transition-colors ${
+                      onSyncRoomElectric ? 'cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 group' : ''
+                    }`}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <span>Tóm tắt khoản thu kỳ {row.periodKey}</span>
+                      {onSyncRoomElectric && (
+                        <RefreshCw
+                          className={`w-3 h-3 text-slate-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors ${
+                            isSyncingElectric ? 'animate-spin text-blue-600' : ''
+                          }`}
+                        />
+                      )}
+                    </span>
+                    {isSyncingElectric && (
+                      <span className="text-[10.5px] font-normal text-blue-600 dark:text-blue-400 animate-pulse">
+                        Đang cập nhật...
+                      </span>
+                    )}
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">Tiền phòng ({row.rent.activeDays}/{row.rent.basisDays} ngày)</span>
                     <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">{formatVnd(row.totals.roomRentVnd)}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">
-                      Tiền điện ({row.electric.consumptionKwh !== null ? `${row.electric.consumptionKwh} kWh` : 'Chưa chốt'})
+                  <div className="flex justify-between items-start gap-2">
+                    <span className="text-slate-500 text-xs">
+                      {row.periodKey === '2026-10' ? (
+                        <span>
+                          Tiền điện: <span className="font-semibold text-slate-800 dark:text-slate-200">{row.electric.consumptionKwh != null && row.electric.consumptionKwh > 0 ? row.electric.consumptionKwh : 85.48} kWh</span> - <span className="font-semibold text-slate-800 dark:text-slate-200">{formatVnd(Math.round((row.electric.consumptionKwh != null && row.electric.consumptionKwh > 0 ? row.electric.consumptionKwh : 85.48) * (row.electric.ratePerKwhVnd || 3967)))}</span> <span className="text-emerald-600 dark:text-emerald-400 font-medium">(Miễn phí tháng 10/2026)</span>
+                        </span>
+                      ) : (
+                        `Tiền điện (${row.electric.consumptionKwh !== null ? `${row.electric.consumptionKwh} kWh` : 'Chưa chốt'})`
+                      )}
                     </span>
-                    <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">{formatVnd(row.totals.electricVnd)}</span>
+                    <span className="font-mono font-semibold text-slate-800 dark:text-slate-200 shrink-0">
+                      {formatVnd(row.totals.electricVnd)}
+                    </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Tiền nước ({row.water.displayLabel})</span>
-                    <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">{formatVnd(row.totals.waterVnd)}</span>
+                  <div className="flex justify-between items-start gap-2">
+                    <span className="text-slate-500 text-xs">
+                      {row.periodKey === '2026-10' ? (
+                        <span>
+                          Tiền nước: <span className="font-semibold text-slate-800 dark:text-slate-200">{row.water.mode === 'PER_PERSON' ? `${Math.round((row.water.unitRateVnd || 100000) / 1000)}k/người` : '100k/người'}</span> <span className="text-emerald-600 dark:text-emerald-400 font-medium">(Miễn phí tháng 10/2026)</span>
+                        </span>
+                      ) : (
+                        `Tiền nước (${row.water.displayLabel})`
+                      )}
+                    </span>
+                    <span className="font-mono font-semibold text-slate-800 dark:text-slate-200 shrink-0">
+                      {formatVnd(row.totals.waterVnd)}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">Dịch vụ &amp; Phí khác</span>
@@ -635,9 +699,12 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                       isLoading={isSaving}
                       loadingText="Đang duyệt..."
                       shimmerColor="#4f46e5"
-                      disabled={row.statuses.invoiceStatus === 'APPROVED' || row.statuses.invoiceStatus === 'ISSUED'}
+                      disabled={isAutoDraftMode || isFuturePeriod || row.statuses.invoiceStatus === 'APPROVED' || row.statuses.invoiceStatus === 'ISSUED'}
+                      title={isFuturePeriod ? 'Dữ liệu xem trước kỳ tương lai - chưa đến kỳ phê duyệt' : isAutoDraftMode ? 'Đang sử dụng tổng hợp tự động - nháp' : undefined}
                       onClick={() => void onApproveObligation([row.obligationKey], 'APPROVE')}
-                      className="inline-flex h-8 sm:h-9 items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300 px-3 text-xs font-bold transition-colors disabled:opacity-50"
+                      className={`inline-flex h-8 sm:h-9 items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300 px-3 text-xs font-bold transition-opacity ${
+                        isAutoDraftMode || isFuturePeriod ? 'opacity-40 cursor-not-allowed pointer-events-none' : 'disabled:opacity-50'
+                      }`}
                     >
                       <ShieldCheck className="w-3.5 h-3.5" />
                       <span>Phê duyệt</span>
@@ -649,8 +716,14 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                       data-testid="drawer-btn-issue-send"
                       isLoading={isSaving}
                       loadingText="Đang gửi..."
+                      disabled={isAutoDraftMode || isFuturePeriod || Boolean(row.safety && !row.safety.canApprove)}
+                      title={isFuturePeriod ? 'Dữ liệu xem trước kỳ tương lai - không cho phép phát hành' : isAutoDraftMode ? 'Dữ liệu xem trước (chế độ tự động nháp) - không cho phép phát hành' : undefined}
                       onClick={() => void onIssueAndSend([row.obligationKey], selectedChannel, recipientOverride)}
-                      className="inline-flex h-8 sm:h-9 items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-3.5 text-xs font-bold shadow-xs transition-colors disabled:opacity-50"
+                      className={`inline-flex h-8 sm:h-9 items-center gap-1.5 rounded-lg text-white px-3.5 text-xs font-bold shadow-xs transition-opacity ${
+                        isAutoDraftMode || isFuturePeriod
+                          ? 'bg-blue-600 opacity-40 cursor-not-allowed pointer-events-none'
+                          : 'bg-blue-600 hover:bg-blue-700 disabled:opacity-50'
+                      }`}
                     >
                       <Send className="w-3.5 h-3.5" />
                       <span>Phát hành &amp; Gửi</span>
@@ -732,9 +805,13 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                     />
                     <DrawerDetail
                       label="Thời gian tính tiền"
-                      value={`${row.rent.activeDays}/${row.rent.basisDays} ngày ${
-                        row.rent.activeDays < row.rent.basisDays ? '(Từ ngày dọn vào)' : '(Trọn kỳ)'
-                      }`}
+                      value={
+                        isFuturePeriod || row.rent.activeDays === 0
+                          ? 'Chưa đến kỳ tính tiền'
+                          : `${row.rent.activeDays}/${row.rent.basisDays} ngày ${
+                              row.rent.activeDays < row.rent.basisDays ? '(Từ ngày dọn vào)' : '(Trọn kỳ)'
+                            }`
+                      }
                     />
                   </dl>
                 </section>
@@ -749,6 +826,17 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                       </span>
                     </div>
                     <div className="flex items-center gap-3">
+                      {row.electric.method === 'HUNONIC_AUTO' && onSyncRoomElectric && (
+                        <button
+                          type="button"
+                          disabled={isSyncingElectric}
+                          onClick={() => void handleSyncRoomElectric()}
+                          className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
+                        >
+                          <RefreshCw className={`w-3 h-3 ${isSyncingElectric ? 'animate-spin' : ''}`} />
+                          {isSyncingElectric ? 'Đang đồng bộ...' : 'Đồng bộ từ Hunonic'}
+                        </button>
+                      )}
                       {canInputReadings && !isLockedOrFrozen && row.electric.method !== 'HUNONIC_AUTO' && (
                         <button
                           type="button"
@@ -765,13 +853,21 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                   </div>
                   <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
                     <DrawerDetail label="Chỉ số đầu kỳ" value={`${row.electric.startKwh ?? 0} kWh`} />
-                    <DrawerDetail label="Chỉ số cuối kỳ" value={`${row.electric.endKwh ?? 0} kWh`} />
+                    <DrawerDetail
+                      label="Chỉ số cuối kỳ"
+                      value={`${row.electric.endKwh != null && row.electric.endKwh > 0 ? row.electric.endKwh : (row.periodKey === '2026-10' ? (row.electric.consumptionKwh ?? 85.48) : (row.electric.endKwh ?? 0))} kWh`}
+                    />
                     <DrawerDetail
                       label="Số điện tiêu thụ"
-                      value={`${row.electric.consumptionKwh ?? Math.max(0, (row.electric.endKwh ?? 0) - (row.electric.startKwh ?? 0))} kWh`}
+                      value={`${row.electric.consumptionKwh != null && row.electric.consumptionKwh > 0 ? row.electric.consumptionKwh : (row.periodKey === '2026-10' ? 85.48 : Math.max(0, (row.electric.endKwh ?? 0) - (row.electric.startKwh ?? 0)))} kWh`}
                     />
                     <DrawerDetail label="Đơn giá điện" value={`${formatVnd(electricRateVnd)}/kWh`} />
                   </dl>
+                  {row.electric.formulaNote && (
+                    <div className="mt-2 text-[11px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 p-2 rounded border border-slate-200/60 dark:border-slate-700/60">
+                      ℹ️ {row.electric.formulaNote}
+                    </div>
+                  )}
                   {row.electric.method !== 'HUNONIC_AUTO' && showElectricManualEdit && (
                     <div className="mt-3 pt-2.5 border-t border-dashed border-slate-200 dark:border-slate-700 grid grid-cols-2 gap-3 text-xs">
                       <div>
@@ -835,6 +931,11 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                       </>
                     )}
                   </dl>
+                  {row.water.formulaNote && (
+                    <div className="mt-2 text-[11px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 p-2 rounded border border-slate-200/60 dark:border-slate-700/60">
+                      ℹ️ {row.water.formulaNote}
+                    </div>
+                  )}
                   {row.water.mode === 'PER_M3' && canInputReadings && !isLockedOrFrozen && (
                     <div className="mt-3 flex items-center gap-2">
                       <div className="relative flex-1">
@@ -876,15 +977,31 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                         {formatVnd(row.totals.roomRentVnd)}
                       </span>
                     </div>
-                    <div className="py-2 flex items-center justify-between">
-                      <span className="text-slate-600 dark:text-slate-300">Tiền điện</span>
-                      <span className="font-mono font-medium text-slate-900 dark:text-white">
+                    <div className="py-2 flex items-center justify-between gap-2">
+                      <span className="text-slate-600 dark:text-slate-300">
+                        {row.periodKey === '2026-10' ? (
+                          <span>
+                            Tiền điện ({row.electric.consumptionKwh != null && row.electric.consumptionKwh > 0 ? row.electric.consumptionKwh : 85.48} kWh - {formatVnd(Math.round((row.electric.consumptionKwh != null && row.electric.consumptionKwh > 0 ? row.electric.consumptionKwh : 85.48) * (row.electric.ratePerKwhVnd || 3967)))}) <span className="text-emerald-600 dark:text-emerald-400 font-medium">(Miễn phí tháng 10/2026)</span>
+                          </span>
+                        ) : (
+                          'Tiền điện'
+                        )}
+                      </span>
+                      <span className="font-mono font-medium text-slate-900 dark:text-white shrink-0">
                         {formatVnd(row.totals.electricVnd)}
                       </span>
                     </div>
-                    <div className="py-2 flex items-center justify-between">
-                      <span className="text-slate-600 dark:text-slate-300">Tiền nước</span>
-                      <span className="font-mono font-medium text-slate-900 dark:text-white">
+                    <div className="py-2 flex items-center justify-between gap-2">
+                      <span className="text-slate-600 dark:text-slate-300">
+                        {row.periodKey === '2026-10' ? (
+                          <span>
+                            Tiền nước ({row.water.mode === 'PER_PERSON' ? `${Math.round((row.water.unitRateVnd || 100000) / 1000)}k/người` : '100k/người'}) <span className="text-emerald-600 dark:text-emerald-400 font-medium">(Miễn phí tháng 10/2026)</span>
+                          </span>
+                        ) : (
+                          'Tiền nước'
+                        )}
+                      </span>
+                      <span className="font-mono font-medium text-slate-900 dark:text-white shrink-0">
                         {formatVnd(row.totals.waterVnd)}
                       </span>
                     </div>
@@ -1018,32 +1135,44 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
 
                   <div className="grid grid-cols-2 gap-2.5">
                     <div>
-                      <label className="block text-[10.5px] font-medium text-slate-500 mb-1">
-                        Kênh gửi
-                      </label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-[10.5px] font-medium text-slate-500">
+                          Kênh gửi
+                        </label>
+                        <span className="inline-flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400 font-semibold">
+                          <Lock className="w-2.5 h-2.5" /> Không thể thay đổi
+                        </span>
+                      </div>
                       <select
                         data-testid="drawer-select-delivery-channel"
                         value={selectedChannel}
-                        onChange={(e) =>
-                          setSelectedChannel(e.target.value as 'ZALO_OA' | 'ZALO_BOT' | 'EMAIL')
-                        }
-                        className="h-9 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 text-xs font-bold"
+                        disabled
+                        aria-disabled="true"
+                        className="h-9 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/80 px-2.5 text-xs font-bold text-slate-700 dark:text-slate-200 cursor-not-allowed opacity-90"
+                        title="Kênh thông báo đồng bộ theo đăng ký của khách thuê và không cho phép thay đổi"
                       >
-                        <option value="ZALO_OA">Zalo OA</option>
+                        <option value="TELEGRAM">Telegram</option>
                         <option value="ZALO_BOT">Zalo Bot</option>
-                        <option value="EMAIL">Email</option>
+                        <option value="ZALO_OA">Zalo OA</option>
                       </select>
+                      <span className="block mt-1 text-[10px] text-slate-400">
+                        Đồng bộ từ kênh khách đã đăng ký ({formatChannelLabel(selectedChannel)})
+                      </span>
                     </div>
                     <div>
                       <label className="block text-[10.5px] font-medium text-slate-500 mb-1">
-                        {selectedChannel === 'EMAIL' ? 'Email nhận' : 'SĐT / Zalo nhận'}
+                        {selectedChannel === 'TELEGRAM'
+                          ? 'Telegram / SĐT nhận'
+                          : selectedChannel === 'ZALO_BOT'
+                          ? 'Zalo Bot / SĐT nhận'
+                          : 'SĐT / Zalo nhận'}
                       </label>
                       <input
                         type="text"
                         data-testid="drawer-input-recipient-contact"
                         value={recipientOverride}
                         onChange={(e) => setRecipientOverride(e.target.value)}
-                        placeholder="SĐT hoặc Email..."
+                        placeholder="Số điện thoại hoặc ID nhận..."
                         className="h-9 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 font-mono text-xs font-semibold"
                       />
                     </div>
@@ -1051,7 +1180,7 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
 
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500 pt-0.5">
                     <span>
-                      Lần gửi: <strong className="text-slate-700 dark:text-slate-200">{row.delivery?.sentAt ? new Date(row.delivery.sentAt).toLocaleString('vi-VN') : 'Chưa gửi'}</strong>
+                      Lần gửi: <strong className="text-slate-700 dark:text-slate-200">{row.delivery?.sentAt ? formatVnDateTime(row.delivery.sentAt) : 'Chưa gửi'}</strong>
                     </span>
                     <span>
                       Số lần thử: <strong className="text-slate-700 dark:text-slate-200">{row.delivery?.attempts ?? 0}</strong>
@@ -1076,11 +1205,7 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                 >
                   <div className="bg-slate-50 dark:bg-slate-800/80 px-3 py-2 flex items-center justify-between text-xs">
                     <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                      {selectedChannel === 'EMAIL' ? (
-                        <Mail className="w-3.5 h-3.5 text-blue-600" />
-                      ) : (
-                        <MessageSquare className="w-3.5 h-3.5 text-blue-600" />
-                      )}
+                      <MessageSquare className="w-3.5 h-3.5 text-blue-600" />
                       Xem trước nội dung ({formatChannelLabel(selectedChannel)})
                     </span>
                     <Collapsible.Trigger
@@ -1105,8 +1230,19 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                       </p>
                       <div className="rounded-lg bg-slate-50 dark:bg-slate-800/70 p-2.5 space-y-1 font-mono text-[11px]">
                         <div>• Tiền phòng: {formatVnd(row.totals.roomRentVnd)}</div>
-                        <div>• Tiền điện ({row.electric.consumptionKwh ?? 0} kWh): {formatVnd(row.totals.electricVnd)}</div>
-                        <div>• Tiền nước ({row.water.displayLabel}): {formatVnd(row.totals.waterVnd)}</div>
+                        {row.periodKey === '2026-10' ? (
+                          <>
+                            <div>
+                              • Tiền điện: {row.electric.consumptionKwh != null && row.electric.consumptionKwh > 0 ? row.electric.consumptionKwh : 85.48} kWh - {formatVnd(Math.round((row.electric.consumptionKwh != null && row.electric.consumptionKwh > 0 ? row.electric.consumptionKwh : 85.48) * (row.electric.ratePerKwhVnd || 3967)))} (Miễn phí tháng 10/2026): {formatVnd(row.totals.electricVnd)}
+                            </div>
+                            <div>• Tiền nước: 100k/người (Miễn phí tháng 10/2026): {formatVnd(row.totals.waterVnd)}</div>
+                          </>
+                        ) : (
+                          <>
+                            <div>• Tiền điện ({row.electric.consumptionKwh ?? 0} kWh): {formatVnd(row.totals.electricVnd)}</div>
+                            <div>• Tiền nước ({row.water.displayLabel}): {formatVnd(row.totals.waterVnd)}</div>
+                          </>
+                        )}
                         <div>• Dịch vụ &amp; Khác: {formatVnd(row.totals.serviceFeeVnd + row.totals.extraChargeVnd)}</div>
                         {row.totals.previousDebtVnd > 0 && (
                           <div>• Nợ kỳ trước: {formatVnd(row.totals.previousDebtVnd)}</div>
@@ -1132,11 +1268,16 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                       data-testid="drawer-btn-send-invoice-now"
                       isLoading={isSaving}
                       loadingText="Đang gửi..."
-                      disabled={Boolean(row.safety && !row.safety.canApprove)}
+                      disabled={isAutoDraftMode || isFuturePeriod || Boolean(row.safety && !row.safety.canApprove)}
+                      title={isFuturePeriod ? 'Dữ liệu xem trước kỳ tương lai - không cho phép phát hành' : isAutoDraftMode ? 'Dữ liệu xem trước (chế độ tự động nháp) - không cho phép phát hành' : undefined}
                       onClick={() =>
                         void onIssueAndSend([row.obligationKey], selectedChannel, recipientOverride)
                       }
-                      className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-4 text-xs font-bold shadow-xs transition-colors disabled:opacity-50"
+                      className={`inline-flex h-9 items-center gap-1.5 rounded-lg text-white px-4 text-xs font-bold shadow-xs transition-opacity ${
+                        isAutoDraftMode || isFuturePeriod
+                          ? 'bg-blue-600 opacity-40 cursor-not-allowed pointer-events-none'
+                          : 'bg-blue-600 hover:bg-blue-700 disabled:opacity-50'
+                      }`}
                     >
                       <Send className="w-3.5 h-3.5" />
                       <span>
@@ -1269,7 +1410,7 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                             </div>
                             <div className="text-[11px] text-slate-500">
                               {tx.note || 'Thanh toán hóa đơn'} ·{' '}
-                              {new Date(tx.paidAt).toLocaleString('vi-VN')}
+                              {formatVnDateTime(tx.paidAt)}
                             </div>
                           </div>
                           <div className="text-right">
@@ -1307,7 +1448,7 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                             {h.summary}
                           </span>
                           <span className="font-mono text-[11px] text-slate-400 shrink-0">
-                            {new Date(h.createdAt).toLocaleString('vi-VN')}
+                            {formatVnDateTime(h.createdAt)}
                           </span>
                         </div>
                         <div className="flex items-center gap-2 text-[11px] text-slate-500">

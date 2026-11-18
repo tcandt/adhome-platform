@@ -24,12 +24,17 @@ import {
   Coins,
   Copy,
   CreditCard,
+  Download,
+  Eye,
   Edit3,
   FileSignature,
   FileSpreadsheet,
   FileText,
   ExternalLink,
   ImagePlus,
+  Gift,
+  Tag,
+  Percent,
   ShieldCheck,
   Users,
   Gauge,
@@ -61,6 +66,7 @@ import { CONSOLE_CSRF_HEADER, useAuth } from '@/app/providers/AuthContext';
 import { useNavigation } from '@/app/providers/NavigationContext';
 import { usePortfolio } from '@/app/providers/PortfolioContext';
 import { ContractCreationWizardModal } from './modals/ContractCreationWizardModal';
+import { ContractLiquidationModal } from './modals/ContractLiquidationModal';
 import { LegacyImportWizardModal } from './modals/LegacyImportWizardModal';
 import { HunonicSettingsModal } from './modals/HunonicSettingsModal';
 import { SettlementWorkspaceView } from './SettlementWorkspaceView';
@@ -76,12 +82,16 @@ import {
   ReportsWorkspaceView,
   type ReportBuildingBreakdown,
 } from './ReportsWorkspaceView';
+import type { RoomMatrixPayload } from './reportExcelExporter';
 import { DepositsWorkspaceView } from './DepositsWorkspaceView';
+import { DateInput } from '@/shared/ui/DateInput';
 import { SettlementShimmerButton } from '@/shared/ui/SettlementAnimatePrimitives';
 import { ActionMenu } from '@/shared/ui/ActionMenu';
 import { ContractDocumentLink } from '@/shared/ui/ContractDocumentDialog';
 import { MoneyInput } from '@/shared/ui/MoneyInput';
+import { CompactMonthPicker } from '@/shared/ui/CompactMonthPicker';
 import { formatWaterBillingLabel } from '@/shared/tokens/designTokens';
+import { EditContractModal } from '../buildings/modals/EditContractModal';
 
 function shiftPeriodKey(periodKey: string, deltaMonths: number): string {
   const match = periodKey.match(/^(\d{4})-(\d{2})$/);
@@ -114,6 +124,7 @@ export function getTodayIsoVn(): string {
 }
 
 function isInvoiceOverdue(status: string, remaining: number, dueDate?: string): boolean {
+  if (status === 'DRAFT') return false;
   if (remaining <= 0 || status === 'PAID') return false;
   if (status === 'OVERDUE') return true;
   if (dueDate && /^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
@@ -122,8 +133,24 @@ function isInvoiceOverdue(status: string, remaining: number, dueDate?: string): 
   return false;
 }
 
-function getInvoiceStatus(status: string, remaining: number, paidAmount: number, dueDate?: string) {
+function getInvoiceStatus(
+  status: string,
+  remaining: number,
+  paidAmount: number,
+  dueDate?: string,
+  periodKey?: string
+) {
+  const currentPeriod = getCurrentVnPeriodKey();
+  const isCurrentPeriod = Boolean(periodKey && periodKey === currentPeriod);
+
   if (remaining <= 0 || status === 'PAID') {
+    if (isCurrentPeriod) {
+      return {
+        code: 'PAID' as const,
+        label: 'Đã thu tiền phòng',
+        className: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-950/50 dark:text-emerald-300',
+      };
+    }
     return {
       code: 'PAID' as const,
       label: 'Đã thanh toán',
@@ -161,24 +188,82 @@ function getInvoiceFeeItems(inv: {
   serviceFeeVnd?: number;
   adjustmentVnd?: number;
   totalAmountVnd: number;
-}): Array<{ label: string; amountVnd: number }> {
+  paidAmountVnd?: number;
+  status?: string;
+  policySnapshot?: any;
+}): Array<{ label: string; amountVnd: number; isPaid: boolean }> {
+  const isPaidFull = inv.status === 'PAID' || Number(inv.paidAmountVnd || 0) >= Number(inv.totalAmountVnd || 0);
+  const paidVnd = Number(inv.paidAmountVnd || 0);
+  const isFirstCombined = inv.policySnapshot?.type === 'FIRST_COMBINED_INVOICE';
+
+  if (Array.isArray(inv.policySnapshot?.breakdown) && inv.policySnapshot.breakdown.length > 0) {
+    let runningPaid = paidVnd;
+    return inv.policySnapshot.breakdown.map((b: any) => {
+      const raw = String(b.label || b.name || '');
+      const shortLabel = raw.startsWith('Tiền phòng')
+        ? 'Phòng'
+        : raw.startsWith('Tiền cọc')
+          ? 'Cọc HĐ'
+          : raw.startsWith('Khấu trừ cọc')
+            ? 'Trừ cọc giữ chỗ'
+            : raw.startsWith('Tiền điện')
+              ? 'Điện'
+              : raw.startsWith('Tiền nước')
+                ? 'Nước'
+                : raw.length > 20
+                  ? raw.slice(0, 18) + '...'
+                  : raw;
+      const amt = Number(b.amountVnd || 0);
+      let isItemPaid = isPaidFull;
+      if (!isPaidFull) {
+        if (amt > 0 && runningPaid >= amt) {
+          isItemPaid = true;
+          runningPaid -= amt;
+        } else {
+          isItemPaid = false;
+        }
+      }
+      return {
+        label: shortLabel,
+        amountVnd: amt,
+        isPaid: isItemPaid,
+      };
+    });
+  }
+
   const rent = Number(inv.roomRentVnd || 0);
   const elec = Number(inv.electricVnd || 0);
   const water = Number(inv.waterVnd || 0);
   const svc = Number(inv.serviceFeeVnd || 0);
   const adj = Number(inv.adjustmentVnd || 0);
-  const items: Array<{ label: string; amountVnd: number }> = [];
-  if (rent !== 0) items.push({ label: 'Phòng', amountVnd: rent });
-  if (elec !== 0) items.push({ label: 'Điện', amountVnd: elec });
-  if (water !== 0) items.push({ label: 'Nước', amountVnd: water });
-  if (svc !== 0) items.push({ label: 'Dịch vụ', amountVnd: svc });
-  if (adj !== 0) items.push({ label: 'Điều chỉnh', amountVnd: adj });
+  const rawItems: Array<{ label: string; amountVnd: number }> = [];
+  if (rent !== 0) rawItems.push({ label: 'Phòng', amountVnd: rent });
+  if (elec !== 0) rawItems.push({ label: 'Điện', amountVnd: elec });
+  if (water !== 0) rawItems.push({ label: 'Nước', amountVnd: water });
+  if (svc !== 0) rawItems.push({ label: 'Dịch vụ', amountVnd: svc });
+  if (adj !== 0) rawItems.push({ label: isFirstCombined ? 'Cọc HĐ' : 'Điều chỉnh', amountVnd: adj });
   const represented = rent + elec + water + svc + adj;
   const diff = Number(inv.totalAmountVnd || 0) - represented;
   if (diff !== 0 && represented > 0) {
-    items.push({ label: 'Cọc/Khác', amountVnd: diff });
+    rawItems.push({ label: isFirstCombined ? 'Cọc HĐ' : 'Cọc/Khác', amountVnd: diff });
   }
-  return items;
+
+  let runningPaid = paidVnd;
+  return rawItems.map((item) => {
+    let isItemPaid = isPaidFull;
+    if (!isPaidFull) {
+      if (item.amountVnd > 0 && runningPaid >= item.amountVnd) {
+        isItemPaid = true;
+        runningPaid -= item.amountVnd;
+      } else {
+        isItemPaid = false;
+      }
+    }
+    return {
+      ...item,
+      isPaid: isItemPaid,
+    };
+  });
 }
 
 function getPaymentChannelMeta(providerId: string): {
@@ -317,6 +402,36 @@ export function computeEndDateIsoVn(
   return `${y}-${m}-${dd}`;
 }
 
+export function computeShortInvoiceLabel(
+  roomCode?: string | null,
+  invoiceCode?: string | null,
+  periodKey?: string | null,
+  fallbackPeriod?: string
+): string {
+  if (!roomCode && !invoiceCode) return '—';
+  let p = periodKey;
+  if (!p && invoiceCode) {
+    const m = invoiceCode.match(/INV-(\d{4})(\d{2})-/);
+    if (m) {
+      p = `${m[1]}-${m[2]}`;
+    }
+  }
+  if (!p) {
+    p = fallbackPeriod;
+  }
+  let monthSuffix = '';
+  if (p) {
+    const monthPart = p.split('-')[1];
+    if (monthPart) {
+      monthSuffix = ` (T${parseInt(monthPart, 10)})`;
+    }
+  }
+  if (roomCode) {
+    return `${roomCode}${monthSuffix}`;
+  }
+  return invoiceCode?.replace(/^INV-HD-/, '') || '—';
+}
+
 interface OperationalModuleWorkspaceProps {
   moduleId: Exclude<NavModuleId, 'overview' | 'buildings' | 'settings'>;
 }
@@ -406,6 +521,26 @@ export const OperationalModuleWorkspace: React.FC<
   const [invoicePaymentProofs, setInvoicePaymentProofs] = useState<Array<{ id: string; amountVnd: number; verifiedAt: string; proofUrl: string }>>([]);
   const [invoicePaymentCommittedId, setInvoicePaymentCommittedId] = useState('');
   const invoiceProofInput = useRef<HTMLInputElement>(null);
+  const secondaryProofInput = useRef<HTMLInputElement>(null);
+  const [secondaryProofTargetTxId, setSecondaryProofTargetTxId] = useState<string | null>(null);
+  const [isUploadingSecondaryProof, setIsUploadingSecondaryProof] = useState(false);
+  const [previewProofModal, setPreviewProofModal] = useState<{ url: string; title?: string; subtitle?: string } | null>(null);
+
+  // Billing Promotion Modal state
+  const [isPromotionModalOpen, setIsPromotionModalOpen] = useState(false);
+  const [promotionsList, setPromotionsList] = useState<any[]>([]);
+  const [isLoadingPromotions, setIsLoadingPromotions] = useState(false);
+  const [newPromoName, setNewPromoName] = useState('');
+  const [newPromoScope, setNewPromoScope] = useState<'ALL_ROOMS' | 'SELECTED_ROOMS' | 'ALL_EXCEPT_ROOMS'>('ALL_ROOMS');
+  const [newPromoRooms, setNewPromoRooms] = useState('');
+  const [newPromoElecDiscount, setNewPromoElecDiscount] = useState<number | ''>('');
+  const [newPromoWaterDiscount, setNewPromoWaterDiscount] = useState<number | ''>('');
+  const [newPromoRentDiscount, setNewPromoRentDiscount] = useState<number | ''>('');
+  const [newPromoFreeUtilities, setNewPromoFreeUtilities] = useState(false);
+  const [isSavingPromo, setIsSavingPromo] = useState(false);
+  const [promoError, setPromoError] = useState<string | null>(null);
+  const [depositSearchFilter, setDepositSearchFilter] = useState('');
+
   const invoicePaymentAttempt = useRef<{ payload: string; key: string } | null>(null);
   const [isBreakdownExpanded, setIsBreakdownExpanded] = useState(false);
   const [isSendingZalo, setIsSendingZalo] = useState(false);
@@ -434,18 +569,10 @@ export const OperationalModuleWorkspace: React.FC<
   }, []);
 
   // Contract Lifecycle Modals (Extend / Transfer / Terminate)
-  const [selectedContract, setSelectedContract] = useState<{
-    id: string;
-    contractCode: string;
-    roomCode: string;
-    roomId: string;
-    buildingCode: string;
-    tenantName: string;
-    endDate: string;
-    monthlyRentVnd: number;
-  } | null>(null);
+  const [selectedContract, setSelectedContract] = useState<ContractListItem | null>(null);
 
   const [isExtendModalOpen, setIsExtendModalOpen] = useState(false);
+  const [editingContract, setEditingContract] = useState<any | null>(null);
   const [extNewEndDate, setExtNewEndDate] = useState('');
   const [extNewRentVnd, setExtNewRentVnd] = useState<number | ''>('');
   const [extNotes, setExtNotes] = useState('');
@@ -503,43 +630,87 @@ export const OperationalModuleWorkspace: React.FC<
   const [paymentQuery, setPaymentQuery] = useState('');
   const [paymentView, setPaymentView] = useState<'ALL' | 'PENDING' | 'MATCHED' | 'INCOMING' | 'OUTGOING'>('ALL');
 
-  const loadModuleData = useCallback(async () => {
-    setIsLoading(true);
-    setErrorMsg(null);
+  const loadPromotions = useCallback(async () => {
+    setIsLoadingPromotions(true);
     try {
-      const params = new URLSearchParams();
-      params.set('module', moduleId);
-      params.set('period', selectedPeriod);
-      if (selectedBuildingIds.length > 0) {
-        params.set('buildings', selectedBuildingIds.join(','));
-      }
-      const res = await fetch(
-        `/api/v1/console/v2/module-data?${params.toString()}`,
-        {
-          method: 'GET',
-          credentials: 'include',
-          headers: { Accept: 'application/json' },
-        }
-      );
+      const res = await fetch(`/api/v1/console/v2/promotions?periodKey=${encodeURIComponent(selectedPeriod)}`, {
+        credentials: 'include',
+        headers: { 'X-Requested-With': CONSOLE_CSRF_HEADER },
+      });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok) {
-        setErrorMsg(
-          data.message || 'Không thể tải dữ liệu phân hệ từ PostgreSQL.'
-        );
-        setPayload(null);
-        return;
+      if (res.ok && data.ok) {
+        setPromotionsList(data.promotions || []);
       }
-      setPayload(data);
     } catch {
-      setErrorMsg('Lỗi kết nối máy chủ PostgreSQL.');
+      // non-fatal
     } finally {
-      setIsLoading(false);
+      setIsLoadingPromotions(false);
     }
-  }, [moduleId, selectedPeriod, selectedBuildingIds]);
+  }, [selectedPeriod]);
+
+  const loadModuleData = useCallback(
+    async (options?: boolean | { sync?: boolean; silent?: boolean }) => {
+      const sync = typeof options === 'boolean' ? options : Boolean(options?.sync);
+      const silent = typeof options === 'object' ? Boolean(options?.silent) : false;
+      if (!silent) {
+        setIsLoading(true);
+      }
+      setErrorMsg(null);
+      try {
+        const params = new URLSearchParams();
+        params.set('module', moduleId);
+        params.set('period', selectedPeriod);
+        if (sync) {
+          params.set('sync', '1');
+        }
+        if (selectedBuildingIds.length > 0) {
+          params.set('buildings', selectedBuildingIds.join(','));
+        }
+        const res = await fetch(
+          `/api/v1/console/v2/module-data?${params.toString()}`,
+          {
+            method: 'GET',
+            credentials: 'include',
+            headers: { Accept: 'application/json' },
+          }
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) {
+          if (!silent) {
+            setErrorMsg(
+              data.message || 'Không thể tải dữ liệu phân hệ từ PostgreSQL.'
+            );
+            setPayload(null);
+          }
+          return;
+        }
+        setPayload(data);
+        if (sync && moduleId === 'invoices') {
+          notifySave(
+            true,
+            'Đồng bộ hóa đơn thành công',
+            `Đã đồng bộ hóa đơn với hồ sơ cũ trong vòng 3 tháng gần nhất (kỳ ${formatPeriodDisplay(selectedPeriod)}).`
+          );
+        }
+      } catch {
+        if (!silent) {
+          setErrorMsg('Lỗi kết nối máy chủ PostgreSQL.');
+        }
+      } finally {
+        if (!silent) {
+          setIsLoading(false);
+        }
+      }
+    },
+    [moduleId, selectedPeriod, selectedBuildingIds]
+  );
 
   useEffect(() => {
     void loadModuleData();
-  }, [loadModuleData]);
+    if (moduleId === 'invoices') {
+      void loadPromotions();
+    }
+  }, [loadModuleData, moduleId, loadPromotions]);
 
   const openReservationModal = () => {
     const candidateRoom =
@@ -694,6 +865,11 @@ export const OperationalModuleWorkspace: React.FC<
       setInvoicePayError('Số tiền thu vượt số còn phải thu.');
       return;
     }
+    const isManualPay = invoicePayMethod === 'MANUAL_CASH' || invoicePayMethod === 'MANUAL_TRANSFER';
+    if (isManualPay && !invoiceProof && !invoicePaymentCommittedId) {
+      setInvoicePayError('Bắt buộc phải tải lên ảnh chứng từ thanh toán thành công (phiếu thu hoặc ủy nhiệm chi) đối với thanh toán thủ công để đối chiếu.');
+      return;
+    }
     if (invoiceHandover && amount === remaining &&
         ((invoiceHandover.electricRequired && invoiceElectricStart === '') || (invoiceHandover.waterRequired && invoiceWaterStart === ''))) {
       setInvoicePayError('Nhập chỉ số điện và nước đầu kỳ để tự động bàn giao sau khi thu đủ.'); return;
@@ -763,6 +939,129 @@ export const OperationalModuleWorkspace: React.FC<
       else setInvoicePayError('Lỗi kết nối máy chủ.');
     } finally {
       setIsSavingInvoicePay(false);
+    }
+  };
+
+  const fetchInvoiceDetails = useCallback(async (invoiceId: string) => {
+    try {
+      const response = await fetch(`/api/v1/console/v2/invoices/${encodeURIComponent(invoiceId)}`, { credentials: 'include' });
+      if (!response.ok) return;
+      const data = await response.json();
+      setInvoiceHandover(data.automaticHandover || null);
+      setInvoiceDetail(data.invoice || null);
+      setInvoiceVietQr(data.vietQr || null);
+      setInvoicePaymentProofs((data.invoice?.payments || []).filter((payment: any) => payment.proofUrl));
+    } catch {
+      // non-fatal
+    }
+  }, []);
+
+  const handleTriggerUploadProof = (txId: string) => {
+    setSecondaryProofTargetTxId(txId);
+    secondaryProofInput.current?.click();
+  };
+
+  const handleSecondaryProofSelected = async (file: File) => {
+    if (!secondaryProofTargetTxId) return;
+    if (file.size > 8 * 1024 * 1024) {
+      notifySave(false, 'Lỗi tệp chứng từ', 'Ảnh chứng từ phải nhỏ hơn 8 MB.');
+      return;
+    }
+    setIsUploadingSecondaryProof(true);
+    try {
+      const res = await fetch(`/api/v1/console/v2/payment-transactions/${encodeURIComponent(secondaryProofTargetTxId)}/proof`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': file.type,
+          'X-File-Name': encodeURIComponent(file.name),
+          'X-Requested-With': CONSOLE_CSRF_HEADER,
+        },
+        body: file,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok) {
+        notifySave(true, 'Đã tải lên chứng từ đối chiếu');
+        if (selectedInvoice) {
+          void fetchInvoiceDetails(selectedInvoice.id);
+        }
+        await loadModuleData();
+      } else {
+        notifySave(false, 'Không lưu được ảnh', data.message || 'Thử lại sau.');
+      }
+    } catch {
+      notifySave(false, 'Lỗi kết nối', 'Không thể gửi ảnh lên máy chủ.');
+    } finally {
+      setIsUploadingSecondaryProof(false);
+      setSecondaryProofTargetTxId(null);
+    }
+  };
+
+  const handleCreatePromotion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPromoName.trim()) {
+      setPromoError('Vui lòng nhập tên chương trình khuyến mãi.');
+      return;
+    }
+    setIsSavingPromo(true);
+    setPromoError(null);
+    try {
+      const targetRoomCodes = newPromoRooms
+        .split(/[,;\s]+/)
+        .map((s) => s.trim().toUpperCase())
+        .filter(Boolean);
+
+      const res = await fetch('/api/v1/console/v2/promotions', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': CONSOLE_CSRF_HEADER,
+        },
+        body: JSON.stringify({
+          campaignName: newPromoName.trim(),
+          periodKey: selectedPeriod,
+          scopeType: newPromoScope,
+          targetRoomCodes,
+          discountElectricVnd: newPromoElecDiscount === '' ? undefined : Number(newPromoElecDiscount),
+          discountWaterVnd: newPromoWaterDiscount === '' ? undefined : Number(newPromoWaterDiscount),
+          discountRoomVnd: newPromoRentDiscount === '' ? undefined : Number(newPromoRentDiscount),
+          freeAllUtilities: newPromoFreeUtilities,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        setPromoError(data.message || 'Không thể lưu đợt khuyến mãi.');
+        return;
+      }
+      notifySave(true, 'Đã tạo đợt khuyến mãi');
+      setNewPromoName('');
+      setNewPromoRooms('');
+      setNewPromoElecDiscount('');
+      setNewPromoWaterDiscount('');
+      setNewPromoRentDiscount('');
+      setNewPromoFreeUtilities(false);
+      await Promise.all([loadPromotions(), loadModuleData()]);
+    } catch {
+      setPromoError('Lỗi kết nối khi lưu khuyến mãi.');
+    } finally {
+      setIsSavingPromo(false);
+    }
+  };
+
+  const handleDeletePromotion = async (promoId: string) => {
+    try {
+      const res = await fetch(`/api/v1/console/v2/promotions/${encodeURIComponent(promoId)}`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: { 'X-Requested-With': CONSOLE_CSRF_HEADER },
+      });
+      if (res.ok) {
+        notifySave(true, 'Đã xóa đợt khuyến mãi');
+        await Promise.all([loadPromotions(), loadModuleData()]);
+      }
+    } catch {
+      // non-fatal
     }
   };
 
@@ -941,42 +1240,6 @@ export const OperationalModuleWorkspace: React.FC<
     }
   };
 
-  const handleTerminateSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedContract) return;
-    setIsSavingLifecycle(true);
-    setLifecycleError(null);
-    try {
-      const res = await fetch(
-        `/api/v1/console/v2/contracts/${encodeURIComponent(
-          selectedContract.id
-        )}/terminate`,
-        {
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Requested-With': CONSOLE_CSRF_HEADER,
-          },
-          body: JSON.stringify({
-            reason: termReason.trim(),
-            roomNextStatus: termRoomNextStatus,
-          }),
-        }
-      );
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok) {
-        setLifecycleError(data.message || 'Không thể thanh lý hợp đồng.');
-        return;
-      }
-      setIsTerminateModalOpen(false);
-      await Promise.all([loadModuleData(), refreshPortfolio()]);
-    } catch {
-      setLifecycleError('Lỗi kết nối máy chủ.');
-    } finally {
-      setIsSavingLifecycle(false);
-    }
-  };
 
   const openHandoverModal = (c: any) => {
     setSelectedHandoverContract(c);
@@ -1232,8 +1495,12 @@ export const OperationalModuleWorkspace: React.FC<
         forfeitedAmountVnd?: number;
         transferredAmountVnd?: number;
         transferredToDepositId?: string | null;
+        contractId?: string | null;
+        reservationId?: string | null;
         paymentStatus?: string;
+        paymentMethod?: string | null;
         status: string;
+        notes?: string | null;
         createdAt: string;
       }>)
     : [];
@@ -1297,28 +1564,41 @@ export const OperationalModuleWorkspace: React.FC<
         totalAmountVnd: number;
         paidAmountVnd: number;
         status: string;
-      }>)
+      }>).filter(inv => inv.status !== 'DRAFT')
     : [];
 
   const invoiceBreakdown = useMemo(() => {
-    if (!invoiceDetail) return [] as Array<{ label: string; amountVnd: number }>;
-    const rows = [
-      { label: 'Tiền phòng', amountVnd: Number(invoiceDetail.roomRentVnd || 0) },
-      { label: 'Tiền điện', amountVnd: Number(invoiceDetail.electricVnd || 0) },
-      { label: 'Tiền nước', amountVnd: Number(invoiceDetail.waterVnd || 0) },
-      { label: 'Phí dịch vụ', amountVnd: Number(invoiceDetail.serviceFeeVnd || 0) },
-      { label: 'Điều chỉnh', amountVnd: Number(invoiceDetail.adjustmentVnd || 0) },
+    const target = invoiceDetail || selectedInvoice;
+    if (!target) return [] as Array<{ label: string; amountVnd: number; depositId?: string | null; depositCode?: string | null }>;
+    if (Array.isArray(target.policySnapshot?.breakdown) && target.policySnapshot.breakdown.length > 0) {
+      return target.policySnapshot.breakdown.map((b: any) => ({
+        label: b.label || b.name,
+        amountVnd: Number(b.amountVnd || 0),
+        depositId: b.depositId || null,
+        depositCode: b.depositCode || null,
+      }));
+    }
+    const isFirstCombined = target.policySnapshot?.type === 'FIRST_COMBINED_INVOICE';
+    const rows: Array<{ label: string; amountVnd: number; depositId?: string | null; depositCode?: string | null }> = [
+      { label: 'Tiền phòng', amountVnd: Number(target.roomRentVnd || 0) },
+      { label: 'Tiền điện', amountVnd: Number(target.electricVnd || 0) },
+      { label: 'Tiền nước', amountVnd: Number(target.waterVnd || 0) },
+      { label: 'Phí dịch vụ', amountVnd: Number(target.serviceFeeVnd || 0) },
+      {
+        label: isFirstCombined ? 'Tiền cọc hợp đồng còn lại' : 'Điều chỉnh',
+        amountVnd: Number(target.adjustmentVnd || 0),
+      },
     ].filter(row => row.amountVnd !== 0);
     const represented = rows.reduce((sum, row) => sum + row.amountVnd, 0);
-    const difference = Number(invoiceDetail.totalAmountVnd || 0) - represented;
+    const difference = Number(target.totalAmountVnd || 0) - represented;
     if (difference !== 0) {
       rows.push({
-        label: invoiceDetail.policySnapshot?.type === 'FIRST_COMBINED_INVOICE' ? 'Tiền cọc / khoản đầu kỳ' : 'Khoản khác',
+        label: isFirstCombined ? 'Tiền cọc / khoản đầu kỳ' : 'Khoản khác',
         amountVnd: difference,
       });
     }
     return rows;
-  }, [invoiceDetail]);
+  }, [invoiceDetail, selectedInvoice]);
 
   const effectiveVietQr = useMemo(() => {
     if (!selectedInvoice) return null;
@@ -1433,6 +1713,7 @@ export const OperationalModuleWorkspace: React.FC<
         reconcileState: string;
         invoiceId?: string | null;
         invoiceCode: string | null;
+        periodKey?: string | null;
         buildingCode?: string | null;
         roomCode?: string | null;
         tenantName?: string | null;
@@ -1504,6 +1785,8 @@ export const OperationalModuleWorkspace: React.FC<
     ? (payload.breakdown as ReportBuildingBreakdown[])
     : [];
 
+  const reportRoomMatrixData = (payload?.roomMatrixData || null) as RoomMatrixPayload | null;
+
   return (
     <div
       className="operational-workspace space-y-4"
@@ -1544,6 +1827,7 @@ export const OperationalModuleWorkspace: React.FC<
               deposits={depositsList}
               canManageContracts={hasCapability('canManageContracts')}
               isLoading={isLoading}
+              initialSearchQuery={depositSearchFilter}
               onRefresh={() => void loadModuleData()}
               onOpenCreateReservation={openReservationModal}
               onConvertReservationToContract={handleConvertReservationToContract}
@@ -1567,6 +1851,7 @@ export const OperationalModuleWorkspace: React.FC<
               isLoading={isLoading}
               onRefresh={loadModuleData}
               onOpenHandover={(c) => openHandoverModal(c)}
+              onOpenEdit={(c) => setEditingContract(c)}
               onOpenExtend={(c) => {
                 setSelectedContract(c);
                 setExtNewEndDate(computeEndDateIsoVn(c.endDate, 6));
@@ -1618,61 +1903,72 @@ export const OperationalModuleWorkspace: React.FC<
                   </p>
                 </div>
 
-                <div className="flex flex-1 md:flex-initial items-center justify-between md:justify-end gap-2 min-w-0">
-                  <div className="flex min-w-0 flex-1 md:flex-initial items-center gap-1.5">
-                    <button
-                      type="button"
-                      aria-label="Kỳ trước"
-                      onClick={() => setSelectedPeriod(shiftPeriodKey(selectedPeriod, -1))}
-                      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200/80 bg-slate-50/70 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </button>
-                    <label className="relative flex min-w-0 flex-1 md:flex-initial md:min-w-[168px] cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-1.5 text-xs sm:text-sm font-bold text-slate-900 transition-colors hover:bg-slate-100/80 dark:border-slate-800 dark:bg-slate-900/60 dark:text-white">
-                      <Calendar className="h-3.5 w-3.5 shrink-0 text-brand-primary" />
-                      <span className="truncate">Kỳ {formatPeriodDisplay(selectedPeriod)}</span>
-                      <input
-                        data-testid="input-module-period"
-                        type="month"
-                        value={selectedPeriod}
-                        onChange={(event) => {
-                          if (/^\d{4}-\d{2}$/.test(event.target.value)) setSelectedPeriod(event.target.value);
-                        }}
-                        className="absolute inset-0 h-full w-full cursor-pointer opacity-0 z-10 [color-scheme:light] dark:[color-scheme:dark]"
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      aria-label="Kỳ kế tiếp"
-                      onClick={() => setSelectedPeriod(shiftPeriodKey(selectedPeriod, 1))}
-                      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200/80 bg-slate-50/70 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </button>
-                    {selectedPeriod !== getCurrentVnPeriodKey() && (
-                      <button
-                        type="button"
-                        onClick={() => setSelectedPeriod(getCurrentVnPeriodKey())}
-                        className="hidden lg:inline-flex h-9 items-center rounded-lg px-2 text-xs font-semibold text-brand-primary hover:bg-blue-50 dark:hover:bg-blue-950/40"
-                      >
-                        Kỳ này
-                      </button>
-                    )}
-                  </div>
+                <div className="flex flex-1 md:flex-initial items-center justify-between md:justify-end gap-1.5 sm:gap-2 min-w-0">
+                  <CompactMonthPicker
+                    value={selectedPeriod}
+                    onChange={setSelectedPeriod}
+                    testIdPrefix="input-module-period"
+                    className="flex-1 min-w-0 md:flex-initial"
+                  />
 
-                  <AnimatedButton
-                    type="button"
-                    data-testid="btn-module-refresh"
-                    onClick={() => void loadModuleData()}
-                    disabled={isLoading}
-                    title="Đồng bộ lại dữ liệu hóa đơn"
-                    aria-label={isLoading ? 'Đang đồng bộ hóa đơn' : 'Đồng bộ hóa đơn'}
-                    className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-slate-200/90 bg-white px-2.5 sm:px-3 text-xs font-bold text-slate-700 shadow-2xs transition-colors hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                  >
-                    <RefreshCw className={`h-3.5 w-3.5 text-brand-primary ${isLoading ? 'animate-spin' : ''}`} />
-                    <span className="hidden sm:inline">Đồng bộ</span>
-                  </AnimatedButton>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <AnimatedButton
+                      type="button"
+                      onClick={() => {
+                        setIsPromotionModalOpen(true);
+                        void loadPromotions();
+                      }}
+                      title="Khuyến mãi theo đợt"
+                      aria-label="Khuyến mãi theo đợt"
+                      className="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-rose-200/90 bg-rose-50/70 text-rose-700 shadow-2xs transition-all hover:bg-rose-100/80 active:scale-95 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-900/50"
+                    >
+                      <Gift className="h-4 w-4 text-rose-600 dark:text-rose-400" />
+                      {promotionsList.length > 0 && (
+                        <span className="absolute -top-1 -right-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[9px] font-bold text-white shadow-xs leading-none">
+                          {promotionsList.length}
+                        </span>
+                      )}
+                    </AnimatedButton>
+
+                    <AnimatedButton
+                      type="button"
+                      data-testid="btn-module-refresh"
+                      onClick={() => void loadModuleData(true)}
+                      disabled={isLoading}
+                      title="Đồng bộ lại dữ liệu hóa đơn"
+                      aria-label={isLoading ? 'Đang đồng bộ hóa đơn' : 'Đồng bộ hóa đơn'}
+                      className="inline-flex h-9 w-9 sm:w-auto shrink-0 items-center justify-center gap-1.5 rounded-xl border border-slate-200/90 bg-white px-0 sm:px-3 text-xs font-bold text-slate-700 shadow-2xs transition-all hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 text-blue-600 dark:text-blue-400 ${isLoading ? 'animate-spin' : ''}`} />
+                      <span className="hidden sm:inline">Đồng bộ</span>
+                    </AnimatedButton>
+                  </div>
                 </div>
+              </div>
+
+              {/* Linked Subtabs between Invoices and Payments */}
+              <div className="flex items-center gap-1.5 p-1 rounded-2xl bg-slate-200/60 dark:bg-slate-800/60 w-full sm:w-fit">
+                <button
+                  type="button"
+                  className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 rounded-xl bg-white px-3.5 py-1.5 text-xs font-bold text-blue-700 shadow-2xs dark:bg-slate-900 dark:text-blue-300 transition-all"
+                >
+                  <Receipt className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                  <span>Hóa đơn theo phòng</span>
+                  <span className="rounded-full bg-blue-100 dark:bg-blue-950 px-1.5 py-0.2 text-[10px] font-bold text-blue-700 dark:text-blue-300">
+                    {invoices.length}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveModule('payments')}
+                  className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 rounded-xl px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-all"
+                >
+                  <CreditCard className="h-3.5 w-3.5 text-slate-400" />
+                  <span>Dòng tiền & Đối soát</span>
+                  <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-1.5 py-0.2 text-[10px] font-semibold text-slate-500">
+                    {transactions.length}
+                  </span>
+                </button>
               </div>
 
               {/* Compact 3-KPI Summary Grid */}
@@ -1807,14 +2103,26 @@ export const OperationalModuleWorkspace: React.FC<
                 </div>
 
                 {invoices.length === 0 ? (
-                  <div className="px-4 py-10 text-center space-y-2">
+                  <div className="px-4 py-10 text-center space-y-3">
                     <Receipt className="w-8 h-8 text-slate-400 mx-auto" />
-                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                      Chưa phát hành hóa đơn cho kỳ {formatPeriodDisplay(selectedPeriod)}
-                    </h3>
-                    <p className="text-xs text-slate-500 max-w-md mx-auto">
-                      Hãy kiểm tra hợp đồng hiệu lực hoặc chuyển sang kỳ kế toán khác để xem danh sách hóa đơn.
-                    </p>
+                    <div className="space-y-1">
+                      <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                        Chưa phát hành hóa đơn cho kỳ {formatPeriodDisplay(selectedPeriod)}
+                      </h3>
+                      <p className="text-xs text-slate-500 max-w-md mx-auto">
+                        Hãy kiểm tra hợp đồng hiệu lực hoặc bấm Đồng bộ với hồ sơ cũ để lấy dữ liệu.
+                      </p>
+                    </div>
+                    <AnimatedButton
+                      type="button"
+                      data-testid="btn-sync-legacy-invoices-empty"
+                      onClick={() => void loadModuleData(true)}
+                      disabled={isLoading}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50/80 px-3.5 py-2 text-xs font-bold text-brand-primary hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300 transition-colors"
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+                      <span>Đồng bộ với hồ sơ cũ</span>
+                    </AnimatedButton>
                   </div>
                 ) : filteredInvoices.length === 0 ? (
                   <div className="px-4 py-10 text-center space-y-2">
@@ -1842,8 +2150,9 @@ export const OperationalModuleWorkspace: React.FC<
                     <div className="divide-y divide-slate-100 dark:divide-slate-800 md:hidden">
                       {filteredInvoices.map((inv) => {
                         const remaining = Math.max(0, inv.totalAmountVnd - inv.paidAmountVnd);
-                        const status = getInvoiceStatus(inv.status, remaining, inv.paidAmountVnd, inv.dueDate);
+                        const status = getInvoiceStatus(inv.status, remaining, inv.paidAmountVnd, inv.dueDate, inv.periodKey);
                         const feeItems = getInvoiceFeeItems(inv);
+                        const isCurrentPeriod = inv.periodKey === getCurrentVnPeriodKey();
                         return (
                           <div
                             key={inv.id}
@@ -1862,7 +2171,7 @@ export const OperationalModuleWorkspace: React.FC<
                                   </span>
                                 </div>
                                 <span className="mt-0.5 block truncate font-mono text-[10.5px] font-semibold text-slate-400 dark:text-slate-500" title={inv.invoiceCode}>
-                                  #{inv.roomCode ? `${inv.roomCode} (T11)` : inv.invoiceCode} · Hạn {formatInvoiceDate(inv.dueDate)}
+                                  #{inv.roomCode ? `${inv.roomCode} (T${parseInt(inv.periodKey.slice(5, 7), 10)})` : inv.invoiceCode} · Hạn {formatInvoiceDate(inv.dueDate)}
                                 </span>
                               </div>
                               <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-bold ring-1 ring-inset ${status.className}`}>
@@ -1876,10 +2185,19 @@ export const OperationalModuleWorkspace: React.FC<
                                 {feeItems.map((item) => (
                                   <span
                                     key={item.label}
-                                    className="inline-flex items-center gap-1 rounded-md border border-slate-200/80 bg-slate-50/80 px-2 py-0.5 text-[10.5px] text-slate-600 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-300"
+                                    className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10.5px] transition-colors ${
+                                      item.isPaid
+                                        ? 'border border-emerald-300/80 bg-emerald-50 text-emerald-800 dark:border-emerald-700/60 dark:bg-emerald-950/50 dark:text-emerald-200 font-medium'
+                                        : 'border border-slate-200/80 bg-slate-50/80 text-slate-600 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-300'
+                                    }`}
                                   >
-                                    <span className="text-slate-400">{item.label}:</span>
-                                    <strong className="font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+                                    {item.isPaid && (
+                                      <CheckCircle2 className="h-3 w-3 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                                    )}
+                                    <span className={item.isPaid ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-400'}>
+                                      {item.label}:
+                                    </span>
+                                    <strong className={`font-semibold tabular-nums ${item.isPaid ? 'text-emerald-900 dark:text-emerald-100' : 'text-slate-800 dark:text-slate-100'}`}>
                                       {item.amountVnd.toLocaleString('vi-VN')} đ
                                     </strong>
                                   </span>
@@ -1892,7 +2210,7 @@ export const OperationalModuleWorkspace: React.FC<
                               <div className="min-w-0 flex-1">
                                 <div className="flex flex-wrap items-baseline gap-x-2">
                                   <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                                    {remaining > 0 ? 'Còn thu' : 'Đã thu đủ'}
+                                    {remaining > 0 ? 'Còn thu' : isCurrentPeriod ? 'Đã thu đợt đầu' : 'Đã thu đủ'}
                                   </span>
                                   <strong className={`text-sm font-extrabold tabular-nums ${
                                     remaining > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'
@@ -1903,6 +2221,12 @@ export const OperationalModuleWorkspace: React.FC<
                                 {inv.paidAmountVnd > 0 && remaining > 0 && (
                                   <p className="text-[10.5px] text-emerald-600 tabular-nums">
                                     Đã thu {inv.paidAmountVnd.toLocaleString('vi-VN')}/{inv.totalAmountVnd.toLocaleString('vi-VN')} đ
+                                  </p>
+                                )}
+                                {remaining <= 0 && isCurrentPeriod && (
+                                  <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                                    <span>Điện, nước T{parseInt(inv.periodKey.slice(5, 7), 10)} đang phát sinh trong tháng</span>
                                   </p>
                                 )}
                               </div>
@@ -1952,7 +2276,7 @@ export const OperationalModuleWorkspace: React.FC<
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-950">
                           {filteredInvoices.map((inv) => {
                             const remaining = Math.max(0, inv.totalAmountVnd - inv.paidAmountVnd);
-                            const status = getInvoiceStatus(inv.status, remaining, inv.paidAmountVnd, inv.dueDate);
+                            const status = getInvoiceStatus(inv.status, remaining, inv.paidAmountVnd, inv.dueDate, inv.periodKey);
                             const feeItems = getInvoiceFeeItems(inv);
                             return (
                               <tr
@@ -1966,7 +2290,11 @@ export const OperationalModuleWorkspace: React.FC<
                                     title={`Mã hóa đơn đầy đủ: ${inv.invoiceCode}`}
                                     className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100/90 px-2.5 py-1 font-mono text-[11px] font-bold text-slate-800 hover:bg-blue-50 hover:text-brand-primary dark:bg-slate-800 dark:text-slate-200 transition-colors"
                                   >
-                                    <span>{inv.roomCode ? `#${inv.roomCode} (T11)` : inv.invoiceCode}</span>
+                                    <span>
+                                      {inv.roomCode
+                                        ? `#${computeShortInvoiceLabel(inv.roomCode, inv.invoiceCode, inv.periodKey, selectedPeriod)}`
+                                        : inv.invoiceCode}
+                                    </span>
                                   </button>
                                 </td>
                                 <td className="py-3 px-3 align-middle whitespace-nowrap">
@@ -1984,9 +2312,16 @@ export const OperationalModuleWorkspace: React.FC<
                                     {feeItems.map((item) => (
                                       <span
                                         key={item.label}
-                                        className="inline-flex items-center gap-1 rounded bg-slate-100/80 px-1.5 py-0.5 text-[10px] text-slate-600 dark:bg-slate-800 dark:text-slate-300 whitespace-nowrap"
+                                        className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] whitespace-nowrap transition-colors ${
+                                          item.isPaid
+                                            ? 'border border-emerald-300/80 bg-emerald-50 text-emerald-800 dark:border-emerald-700/60 dark:bg-emerald-950/50 dark:text-emerald-200 font-medium'
+                                            : 'bg-slate-100/80 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                                        }`}
                                       >
-                                        <span>{item.label}:</span>
+                                        {item.isPaid && (
+                                          <CheckCircle2 className="h-2.5 w-2.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                                        )}
+                                        <span className={item.isPaid ? 'text-emerald-700 dark:text-emerald-300' : ''}>{item.label}:</span>
                                         <strong className="tabular-nums">{item.amountVnd.toLocaleString('vi-VN')}</strong>
                                       </span>
                                     ))}
@@ -2067,47 +2402,13 @@ export const OperationalModuleWorkspace: React.FC<
                   </p>
                 </div>
 
-                <div className="flex flex-1 md:flex-initial items-center justify-between md:justify-end gap-2 min-w-0">
-                  <div className="flex min-w-0 flex-1 md:flex-initial items-center gap-1.5">
-                    <button
-                      type="button"
-                      aria-label="Kỳ trước"
-                      onClick={() => setSelectedPeriod(shiftPeriodKey(selectedPeriod, -1))}
-                      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200/80 bg-slate-50/70 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </button>
-                    <label className="relative flex min-w-0 flex-1 md:flex-initial md:min-w-[168px] cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-1.5 text-xs sm:text-sm font-bold text-slate-900 transition-colors hover:bg-slate-100/80 dark:border-slate-800 dark:bg-slate-900/60 dark:text-white">
-                      <Calendar className="h-3.5 w-3.5 shrink-0 text-brand-primary" />
-                      <span className="truncate">Kỳ {formatPeriodDisplay(selectedPeriod)}</span>
-                      <input
-                        data-testid="input-module-period"
-                        type="month"
-                        value={selectedPeriod}
-                        onChange={(event) => {
-                          if (/^\d{4}-\d{2}$/.test(event.target.value)) setSelectedPeriod(event.target.value);
-                        }}
-                        className="absolute inset-0 h-full w-full cursor-pointer opacity-0 z-10 [color-scheme:light] dark:[color-scheme:dark]"
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      aria-label="Kỳ kế tiếp"
-                      onClick={() => setSelectedPeriod(shiftPeriodKey(selectedPeriod, 1))}
-                      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200/80 bg-slate-50/70 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </button>
-                    {selectedPeriod !== getCurrentVnPeriodKey() && (
-                      <button
-                        type="button"
-                        onClick={() => setSelectedPeriod(getCurrentVnPeriodKey())}
-                        className="hidden lg:inline-flex h-9 items-center rounded-lg px-2 text-xs font-semibold text-brand-primary hover:bg-blue-50 dark:hover:bg-blue-950/40"
-                      >
-                        Kỳ này
-                      </button>
-                    )}
-                  </div>
+                <div className="flex flex-1 md:flex-initial items-center justify-between md:justify-end gap-1.5 sm:gap-2 min-w-0">
+                  <CompactMonthPicker
+                    value={selectedPeriod}
+                    onChange={setSelectedPeriod}
+                    testIdPrefix="reconciliation-period"
+                    className="flex-1 min-w-0 md:flex-initial"
+                  />
 
                   <AnimatedButton
                     type="button"
@@ -2116,12 +2417,37 @@ export const OperationalModuleWorkspace: React.FC<
                     title="Đồng bộ dữ liệu đối soát"
                     onClick={() => void loadModuleData()}
                     disabled={isLoading}
-                    className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-slate-200/90 bg-white px-2.5 sm:px-3 text-xs font-bold text-slate-700 shadow-2xs transition-colors hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                    className="inline-flex h-9 w-9 sm:w-auto shrink-0 items-center justify-center gap-1.5 rounded-xl border border-slate-200/90 bg-white px-0 sm:px-3 text-xs font-bold text-slate-700 shadow-2xs transition-all hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                   >
-                    <RefreshCw className={`h-3.5 w-3.5 text-brand-primary ${isLoading ? 'animate-spin' : ''}`} />
+                    <RefreshCw className={`h-3.5 w-3.5 text-blue-600 dark:text-blue-400 ${isLoading ? 'animate-spin' : ''}`} />
                     <span className="hidden sm:inline">Đồng bộ</span>
                   </AnimatedButton>
                 </div>
+              </div>
+
+              {/* Linked Subtabs between Invoices and Payments */}
+              <div className="flex items-center gap-1.5 p-1 rounded-2xl bg-slate-200/60 dark:bg-slate-800/60 w-full sm:w-fit">
+                <button
+                  type="button"
+                  onClick={() => setActiveModule('invoices')}
+                  className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 rounded-xl px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-all"
+                >
+                  <Receipt className="h-3.5 w-3.5 text-slate-400" />
+                  <span>Hóa đơn theo phòng</span>
+                  <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-1.5 py-0.2 text-[10px] font-semibold text-slate-500">
+                    {invoices.length}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 rounded-xl bg-white px-3.5 py-1.5 text-xs font-bold text-blue-700 shadow-2xs dark:bg-slate-900 dark:text-blue-300 transition-all"
+                >
+                  <CreditCard className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                  <span>Dòng tiền & Đối soát</span>
+                  <span className="rounded-full bg-blue-100 dark:bg-blue-950 px-1.5 py-0.2 text-[10px] font-bold text-blue-700 dark:text-blue-300">
+                    {transactions.length}
+                  </span>
+                </button>
               </div>
 
               {/* Compact 2x2 / 4-Column Cashflow & Reconciliation Summary */}
@@ -2300,7 +2626,7 @@ export const OperationalModuleWorkspace: React.FC<
                               : /^\d{6,}$/.test(tx.externalTxId || '')
                                 ? `#SP-${tx.externalTxId?.slice(-6)}`
                                 : `#${(tx.externalTxId || '').slice(-8)}`;
-                        const shortInvoice = tx.roomCode ? `${tx.roomCode} (T11)` : (tx.invoiceCode?.replace(/^INV-HD-/, '') || '—');
+                        const shortInvoice = computeShortInvoiceLabel(tx.roomCode, tx.invoiceCode, tx.periodKey, selectedPeriod);
                         const isNormalizedBankRef = /^P\d{2,4}[A-Z0-9]+$/i.test(tx.referenceText || '') && tx.roomCode;
                         const friendlyTitle = (tx.roomCode && (tx.payerName || tx.tenantName))
                           ? `Thu tiền phòng ${tx.roomCode} · ${tx.payerName || tx.tenantName}`
@@ -2420,7 +2746,7 @@ export const OperationalModuleWorkspace: React.FC<
                                   : /^\d{6,}$/.test(tx.externalTxId || '')
                                     ? `#SP-${tx.externalTxId?.slice(-6)}`
                                     : `#${(tx.externalTxId || '').slice(-8)}`;
-                            const shortInvoice = tx.roomCode ? `${tx.roomCode} (T11)` : (tx.invoiceCode?.replace(/^INV-HD-/, '') || '—');
+                            const shortInvoice = computeShortInvoiceLabel(tx.roomCode, tx.invoiceCode, tx.periodKey, selectedPeriod);
                             const isNormalizedBankRef = /^P\d{2,4}[A-Z0-9]+$/i.test(tx.referenceText || '') && tx.roomCode;
                             const friendlyTitle = isNormalizedBankRef
                               ? `Thu tiền phòng ${tx.roomCode} · ${tx.payerName || tx.tenantName || 'Khách thuê'}`
@@ -2542,6 +2868,7 @@ export const OperationalModuleWorkspace: React.FC<
           {moduleId === 'reports' && (
             <ReportsWorkspaceView
               breakdown={reportBreakdown}
+              roomMatrixData={reportRoomMatrixData}
               selectedPeriod={selectedPeriod}
               onChangePeriod={setSelectedPeriod}
               shiftPeriodKey={shiftPeriodKey}
@@ -2657,10 +2984,9 @@ export const OperationalModuleWorkspace: React.FC<
                       <label className="mb-1 block text-xs font-semibold">
                         Ngày dự kiến vào
                       </label>
-                      <input
-                        type="date"
+                      <DateInput
                         value={resvExpectedMoveIn}
-                        onChange={(e) => setResvExpectedMoveIn(e.target.value)}
+                        onChange={setResvExpectedMoveIn}
                         className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 px-2.5 text-xs dark:border-slate-700 dark:bg-slate-800"
                       />
                     </div>
@@ -2843,16 +3169,15 @@ export const OperationalModuleWorkspace: React.FC<
               <div className="text-xs text-slate-500">
                 Phòng: <b>{selectedContract.roomCode}</b> · Khách:{' '}
                 <b>{selectedContract.tenantName}</b> · Hạn cũ:{' '}
-                <b>{selectedContract.endDate}</b>
+                <b>{formatInvoiceDate(selectedContract.endDate)}</b>
               </div>
               <div>
                 <label className="block text-xs font-semibold mb-1">
                   Ngày kết thúc mới *
                 </label>
-                <input
-                  type="date"
+                <DateInput
                   value={extNewEndDate}
-                  onChange={(e) => setExtNewEndDate(e.target.value)}
+                  onChange={setExtNewEndDate}
                   className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl"
                   required
                 />
@@ -3124,11 +3449,10 @@ export const OperationalModuleWorkspace: React.FC<
                 <label className="block text-slate-600 dark:text-slate-300 font-semibold mb-1">
                   Ngày nhận phòng thực tế *
                 </label>
-                <input
-                  type="date"
+                <DateInput
                   required
                   value={handoverMoveInDate}
-                  onChange={(e) => setHandoverMoveInDate(e.target.value)}
+                  onChange={setHandoverMoveInDate}
                   className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
                 />
               </div>
@@ -3171,84 +3495,33 @@ export const OperationalModuleWorkspace: React.FC<
         </div>
       )}
 
-      {/* MODAL 5: TERMINATE CONTRACT */}
+      {/* MODAL 5: TERMINATE & LIQUIDATE CONTRACT */}
       {isTerminateModalOpen && selectedContract && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
-            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-              <h3 className="text-sm font-bold text-rose-600 flex items-center gap-2">
-                <Trash2 className="w-4 h-4" />
-                Thanh lý hợp đồng {selectedContract.contractCode}
-              </h3>
-              <button
-                type="button"
-                onClick={() => setIsTerminateModalOpen(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <form onSubmit={handleTerminateSubmit} className="p-5 space-y-4">
-              {lifecycleError && (
-                <div className="p-3 text-xs bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 rounded-xl">
-                  {lifecycleError}
-                </div>
-              )}
-              <div className="text-xs text-slate-500">
-                Khách thuê: <b>{selectedContract.tenantName}</b> · Phòng:{' '}
-                <b>{selectedContract.roomCode}</b>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold mb-1">
-                  Lý do thanh lý *
-                </label>
-                <input
-                  type="text"
-                  value={termReason}
-                  onChange={(e) => setTermReason(e.target.value)}
-                  className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold mb-1">
-                  Trạng thái phòng sau thanh lý
-                </label>
-                <select
-                  value={termRoomNextStatus}
-                  onChange={(e) =>
-                    setTermRoomNextStatus(
-                      e.target.value as 'AVAILABLE' | 'MAINTENANCE'
-                    )
-                  }
-                  className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-semibold"
-                >
-                  <option value="AVAILABLE">Phòng trống sẵn sàng (AVAILABLE)</option>
-                  <option value="MAINTENANCE">Cần dọn dẹp / Bảo trì (MAINTENANCE)</option>
-                </select>
-              </div>
-              <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsTerminateModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 rounded-xl"
-                >
-                  Hủy
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSavingLifecycle}
-                  className="px-4 py-2 text-xs font-bold bg-rose-600 text-white rounded-xl flex items-center gap-1.5 disabled:opacity-50"
-                >
-                  {isSavingLifecycle && (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  )}
-                  <span>Xác nhận thanh lý</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <ContractLiquidationModal
+          isOpen={isTerminateModalOpen}
+          contract={selectedContract}
+          onClose={() => setIsTerminateModalOpen(false)}
+          onSuccess={async () => {
+            setIsTerminateModalOpen(false);
+            notifySave(true, `Đã thanh lý & quyết toán hợp đồng ${selectedContract.contractCode}`);
+            await Promise.all([loadModuleData(), refreshPortfolio()]);
+          }}
+        />
+      )}
+
+      {/* MODAL: EDIT CONTRACT DETAILS */}
+      {editingContract && (
+        <EditContractModal
+          isOpen={Boolean(editingContract)}
+          contract={editingContract}
+          roomCode={editingContract.roomCode || ''}
+          onClose={() => setEditingContract(null)}
+          onSuccess={async () => {
+            setEditingContract(null);
+            await loadModuleData();
+            await refreshPortfolio();
+          }}
+        />
       )}
 
       {/* MODAL 7: MANUAL METER READING */}
@@ -3398,12 +3671,23 @@ export const OperationalModuleWorkspace: React.FC<
                     </label>
                     <input
                       type="text"
+                      list="ledger-category-presets"
                       value={lgCategory}
                       onChange={(e) => setLgCategory(e.target.value)}
-                      placeholder="VD: Khác, Sửa chữa..."
+                      placeholder="VD: Tiền điện, Tiền nước, Sửa chữa..."
                       className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 px-2.5 sm:px-3 text-xs dark:border-slate-700 dark:bg-slate-800"
                       required
                     />
+                    <datalist id="ledger-category-presets">
+                      <option value="Tiền điện" />
+                      <option value="Tiền nước" />
+                      <option value="Bảo trì & Vận hành" />
+                      <option value="Sửa chữa" />
+                      <option value="Vệ sinh & Tạp vụ" />
+                      <option value="Internet & Mạng" />
+                      <option value="Thu gom rác" />
+                      <option value="Khác" />
+                    </datalist>
                   </div>
                 </div>
 
@@ -3480,11 +3764,13 @@ export const OperationalModuleWorkspace: React.FC<
       {selectedInvoice && (() => {
         const modalRemaining = Math.max(0, selectedInvoice.totalAmountVnd - selectedInvoice.paidAmountVnd);
         const isPaidInFull = modalRemaining <= 0 || selectedInvoice.status === 'PAID';
+        const isCurrentPeriod = selectedInvoice.periodKey === getCurrentVnPeriodKey();
         const modalStatus = getInvoiceStatus(
           selectedInvoice.status,
           modalRemaining,
           selectedInvoice.paidAmountVnd,
           selectedInvoice.dueDate,
+          selectedInvoice.periodKey,
         );
 
         return (
@@ -3520,7 +3806,9 @@ export const OperationalModuleWorkspace: React.FC<
                       </Dialog.Title>
                       <Dialog.Description className="mt-0.5 text-xs text-slate-500">
                         {isPaidInFull
-                          ? 'Hóa đơn đã được thanh toán hoàn tất (Đã thu đủ 100%).'
+                          ? isCurrentPeriod
+                            ? 'Đã thu tiền phòng đợt đầu tháng. Chi phí điện, nước đang tiếp tục phát sinh.'
+                            : 'Hóa đơn đã được thanh toán hoàn tất (Đã thu đủ 100%).'
                           : 'Thông tin chi tiết hóa đơn, quét mã VietQR tự động hoặc ghi nhận thu tiền mặt.'}
                       </Dialog.Description>
                     </div>
@@ -3544,10 +3832,14 @@ export const OperationalModuleWorkspace: React.FC<
                           <CheckCircle2 className="h-7 w-7" />
                         </div>
                         <h3 className="mt-2.5 text-base font-extrabold text-slate-900 dark:text-white">
-                          Hóa đơn đã hoàn tất thanh toán
+                          {isCurrentPeriod
+                            ? 'Đã hoàn tất thanh toán đợt đầu (Tiền phòng)'
+                            : 'Hóa đơn đã hoàn tất thanh toán'}
                         </h3>
                         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                          Đã thanh toán đủ 100% · Kỳ {selectedInvoice.periodKey.slice(5, 7)}/{selectedInvoice.periodKey.slice(0, 4)} · Hạn TT {selectedInvoice.dueDate.split('-').reverse().join('/')}
+                          {isCurrentPeriod
+                            ? `Đã thu 100% tiền phòng kỳ ${selectedInvoice.periodKey.slice(5, 7)}/${selectedInvoice.periodKey.slice(0, 4)} · Điện, nước tháng này đang phát sinh và sẽ chốt cuối kỳ`
+                            : `Đã thanh toán đủ 100% · Kỳ ${selectedInvoice.periodKey.slice(5, 7)}/${selectedInvoice.periodKey.slice(0, 4)} · Hạn TT ${selectedInvoice.dueDate.split('-').reverse().join('/')}`}
                         </p>
 
                         {/* Metric Highlights */}
@@ -3607,26 +3899,62 @@ export const OperationalModuleWorkspace: React.FC<
 
                         {isBreakdownExpanded && (
                           <div className="p-3.5 space-y-2 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-950 text-xs">
-                            {invoiceBreakdown.map((row) => (
-                              <div key={row.label} className="flex items-center justify-between py-1 border-b border-slate-50 last:border-0 dark:border-slate-900">
-                                <span className="text-slate-600 dark:text-slate-300">{row.label}</span>
-                                <strong className="tabular-nums font-semibold text-slate-900 dark:text-white">
-                                  {row.amountVnd.toLocaleString('vi-VN')} đ
+                            {invoiceBreakdown.map((row: any) => (
+                              <div key={row.label} className="flex items-center justify-between py-1.5 border-b border-slate-50 last:border-0 dark:border-slate-900">
+                                <div className="flex items-center gap-1.5 min-w-0 pr-2">
+                                  <span className={row.amountVnd < 0 ? 'font-medium text-rose-600 dark:text-rose-400' : 'text-slate-600 dark:text-slate-300'}>
+                                    {row.label}
+                                  </span>
+                                  {isPaidInFull && (
+                                    <span className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 shrink-0">
+                                      <CheckCircle2 className="h-2.5 w-2.5" /> Đã thu
+                                    </span>
+                                  )}
+                                  {row.depositId && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setIsInvoicePaymentModalOpen(false);
+                                        setDepositSearchFilter(row.depositCode || `#${String(row.depositId).slice(0, 8).toUpperCase()}`);
+                                        setActiveModule('deposits');
+                                      }}
+                                      title="Xem chi tiết khoản cọc này trong phân hệ Đặt cọc"
+                                      className="inline-flex items-center gap-1 rounded bg-blue-50 px-1.5 py-0.5 font-mono text-[10.5px] font-bold text-brand-primary hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900/60 dark:text-blue-300 transition-colors shrink-0"
+                                    >
+                                      <span>{row.depositCode || `#${String(row.depositId).slice(0, 8).toUpperCase()}`}</span>
+                                      <ExternalLink size={10} />
+                                    </button>
+                                  )}
+                                </div>
+                                <strong className={`tabular-nums font-semibold shrink-0 ${row.amountVnd < 0 ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-slate-900 dark:text-white'}`}>
+                                  {row.amountVnd < 0 ? `- ${Math.abs(row.amountVnd).toLocaleString('vi-VN')} đ` : `${row.amountVnd.toLocaleString('vi-VN')} đ`}
                                 </strong>
                               </div>
                             ))}
+                            {isCurrentPeriod && (
+                              <div className="mt-2.5 rounded-lg bg-amber-50/80 p-2.5 text-[11px] text-amber-800 border border-amber-200/60 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/40 flex items-start gap-1.5">
+                                <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
+                                <span>Chỉ số điện, nước của Tháng {parseInt(selectedInvoice.periodKey.slice(5, 7), 10)} đang được ghi nhận thực tế và sẽ được chốt tổng hợp quyết toán vào cuối kỳ.</span>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
 
                       {/* Payment History with Channel & Description */}
                       {invoiceDetail?.payments?.length > 0 && (
-                        <div className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
-                          <div className="px-4 py-2.5 bg-slate-50/80 dark:bg-slate-900/60 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                            <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                              Lịch sử thanh toán ({invoiceDetail.payments.length})
+                        <div className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-2xs">
+                          <div className="px-4 py-2.5 bg-slate-50/90 dark:bg-slate-900/70 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Receipt className="h-3.5 w-3.5 text-slate-500" />
+                              <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                                Lịch sử thanh toán ({invoiceDetail.payments.length})
+                              </span>
+                            </div>
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10.5px] font-bold text-emerald-700 ring-1 ring-inset ring-emerald-600/20 dark:bg-emerald-950/50 dark:text-emerald-300">
+                              <CheckCircle2 className="h-3 w-3" />
+                              <span>Đã đối soát đủ</span>
                             </span>
-                            <span className="text-[10.5px] font-semibold text-emerald-600">Đã đối soát đủ</span>
                           </div>
                           <div className="p-3 space-y-2.5 bg-white dark:bg-slate-950">
                             {invoiceDetail.payments.map((p: any) => {
@@ -3641,45 +3969,87 @@ export const OperationalModuleWorkspace: React.FC<
                                       ? `#SP-${p.externalTxId?.slice(-6)}`
                                       : `#${(p.externalTxId || p.id || '').slice(-8)}`;
 
+                              const isCurrentTxUploading = secondaryProofTargetTxId === p.id && isUploadingSecondaryProof;
+
                               return (
                                 <div
                                   key={p.id}
-                                  className="rounded-xl border border-slate-100 bg-slate-50/50 p-3 dark:border-slate-800/80 dark:bg-slate-900/30"
+                                  className="rounded-xl border border-slate-200/90 bg-slate-50/50 p-3 shadow-2xs hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900/40 transition-all"
                                 >
-                                  <div className="flex items-start justify-between gap-3">
-                                    <div className="space-y-1 min-w-0">
-                                      <div className="flex flex-wrap items-center gap-1.5">
-                                        <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10.5px] font-bold ${channel.badgeClassName}`}>
-                                          <span className={`h-1.5 w-1.5 rounded-full ${channel.dotClassName}`} />
-                                          {channel.label}
-                                        </span>
-                                        <span className="font-mono text-[11px] font-bold text-slate-500">
-                                          {shortTx}
-                                        </span>
-                                      </div>
-                                      <p className="text-xs font-semibold text-slate-800 dark:text-slate-100">
-                                        {p.referenceText || `Thanh toán hóa đơn ${selectedInvoice.roomCode || ''}`}
-                                      </p>
-                                      <p className="text-[10.5px] text-slate-400">
-                                        {new Date(p.verifiedAt || p.occurredAt).toLocaleString('vi-VN')}
-                                      </p>
-                                    </div>
-                                    <div className="text-right shrink-0">
-                                      <span className="text-sm font-extrabold tabular-nums text-emerald-600 dark:text-emerald-400">
-                                        +{Number(p.amountVnd).toLocaleString('vi-VN')} đ
+                                  {/* Hàng 1: Chi tiết thanh toán gọn gàng cùng 1 hàng */}
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className={`inline-flex shrink-0 items-center gap-1 rounded-md border px-2 py-0.5 text-[10.5px] font-bold ${channel.badgeClassName}`}>
+                                        <span className={`h-1.5 w-1.5 rounded-full ${channel.dotClassName}`} />
+                                        {channel.label}
                                       </span>
-                                      {p.proofUrl && (
-                                        <div className="mt-1">
-                                          <a
-                                            href={p.proofUrl}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="inline-flex items-center gap-1 text-[10.5px] font-semibold text-blue-600 hover:underline"
+                                      <span className="shrink-0 font-mono text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                                        {shortTx}
+                                      </span>
+                                    </div>
+
+                                    {/* Số tiền thanh toán nằm bên phải */}
+                                    <strong className="shrink-0 text-sm sm:text-base font-extrabold tabular-nums text-emerald-600 dark:text-emerald-400">
+                                      +{Number(p.amountVnd).toLocaleString('vi-VN')} đ
+                                    </strong>
+                                  </div>
+
+                                  {/* Ghi chú thanh toán hiển thị đầy đủ, không bị cắt ngắn */}
+                                  {p.referenceText && (
+                                    <p className="mt-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 leading-relaxed break-words">
+                                      {p.referenceText}
+                                    </p>
+                                  )}
+
+                                  {/* Hàng 2: Thời gian nằm bên dưới + chứng từ sắp xếp phù hợp */}
+                                  <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-slate-100 pt-2 dark:border-slate-800/70">
+                                    <div className="flex items-center gap-1.5 text-[11px] text-slate-400 dark:text-slate-500">
+                                      <Clock className="h-3 w-3 shrink-0 text-slate-400" />
+                                      <span>{new Date(p.verifiedAt || p.occurredAt || p.createdAt).toLocaleString('vi-VN')}</span>
+                                    </div>
+
+                                    {/* Khu vực ảnh upload / xem chứng từ */}
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      {isCurrentTxUploading ? (
+                                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 dark:text-blue-400">
+                                          <Loader2 className="h-3 w-3 animate-spin" />
+                                          <span>Đang tải lên...</span>
+                                        </span>
+                                      ) : p.proofUrl ? (
+                                        <div className="flex items-center gap-2">
+                                          {/* Bấm xem popup ảnh chứng từ */}
+                                          <button
+                                            type="button"
+                                            onClick={() => setPreviewProofModal({
+                                              url: p.proofUrl,
+                                              title: `Chứng từ ${shortTx}`,
+                                              subtitle: `${channel.label} · +${Number(p.amountVnd).toLocaleString('vi-VN')} đ · ${new Date(p.verifiedAt || p.occurredAt || p.createdAt).toLocaleString('vi-VN')}`
+                                            })}
+                                            title="Bấm để xem ảnh chứng từ"
+                                            className="group inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50/80 px-2.5 py-1 text-[11px] font-bold text-blue-700 hover:bg-blue-100 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-300 transition-colors shadow-2xs"
                                           >
-                                            <ExternalLink className="h-3 w-3" />
+                                            <Eye className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
                                             <span>Xem chứng từ</span>
-                                          </a>
+                                          </button>
+
+                                          <button
+                                            type="button"
+                                            onClick={() => handleTriggerUploadProof(p.id)}
+                                            title="Đổi ảnh chứng từ khác"
+                                            className="text-[10.5px] font-medium text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 underline"
+                                          >
+                                            Đổi ảnh
+                                          </button>
                                         </div>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleTriggerUploadProof(p.id)}
+                                          className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:border-blue-400 hover:bg-blue-50/60 hover:text-blue-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:text-blue-400 transition-all shadow-2xs"
+                                        >
+                                          <ImagePlus className="h-3 w-3 text-slate-400" />
+                                          <span>Tải ảnh đối chiếu</span>
+                                        </button>
                                       )}
                                     </div>
                                   </div>
@@ -3700,6 +4070,19 @@ export const OperationalModuleWorkspace: React.FC<
                           Đóng
                         </AnimatedButton>
                       </div>
+
+                      <input
+                        ref={secondaryProofInput}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        className="sr-only"
+                        aria-label="Tải ảnh chứng từ đối chiếu"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          e.target.value = '';
+                          if (file) void handleSecondaryProofSelected(file);
+                        }}
+                      />
                     </div>
                   ) : (
                     /* CASE 2: UNPAID - CLEAR PAYMENT OPTIONS (VIETQR / ZALO QR / CASH) */
@@ -3768,11 +4151,30 @@ export const OperationalModuleWorkspace: React.FC<
 
                               {isBreakdownExpanded && (
                                 <div className="p-3.5 space-y-2 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-950 text-xs">
-                                  {invoiceBreakdown.map((row) => (
-                                    <div key={row.label} className="flex items-center justify-between py-1 border-b border-slate-50 last:border-0 dark:border-slate-900">
-                                      <span className="text-slate-600 dark:text-slate-300">{row.label}</span>
-                                      <strong className="tabular-nums font-semibold text-slate-900 dark:text-white">
-                                        {row.amountVnd.toLocaleString('vi-VN')} đ
+                                  {invoiceBreakdown.map((row: any) => (
+                                    <div key={row.label} className="flex items-center justify-between py-1.5 border-b border-slate-50 last:border-0 dark:border-slate-900">
+                                      <div className="flex items-center gap-1.5 min-w-0 pr-2">
+                                        <span className={row.amountVnd < 0 ? 'font-medium text-rose-600 dark:text-rose-400' : 'text-slate-600 dark:text-slate-300'}>
+                                          {row.label}
+                                        </span>
+                                        {row.depositId && (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setIsInvoicePaymentModalOpen(false);
+                                              setDepositSearchFilter(row.depositCode || `#${String(row.depositId).slice(0, 8).toUpperCase()}`);
+                                              setActiveModule('deposits');
+                                            }}
+                                            title="Xem chi tiết khoản cọc này trong phân hệ Đặt cọc"
+                                            className="inline-flex items-center gap-1 rounded bg-blue-50 px-1.5 py-0.5 font-mono text-[10.5px] font-bold text-brand-primary hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900/60 dark:text-blue-300 transition-colors shrink-0"
+                                          >
+                                            <span>{row.depositCode || `#${String(row.depositId).slice(0, 8).toUpperCase()}`}</span>
+                                            <ExternalLink size={10} />
+                                          </button>
+                                        )}
+                                      </div>
+                                      <strong className={`tabular-nums font-semibold shrink-0 ${row.amountVnd < 0 ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-slate-900 dark:text-white'}`}>
+                                        {row.amountVnd < 0 ? `- ${Math.abs(row.amountVnd).toLocaleString('vi-VN')} đ` : `${row.amountVnd.toLocaleString('vi-VN')} đ`}
                                       </strong>
                                     </div>
                                   ))}
@@ -3782,23 +4184,63 @@ export const OperationalModuleWorkspace: React.FC<
 
                             {/* Previous Payment History (if any) */}
                             {invoiceDetail?.payments?.length > 0 && (
-                              <div className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
-                                <div className="px-3.5 py-2 bg-slate-50/80 dark:bg-slate-900/60 border-b border-slate-100 dark:border-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200">
-                                  Đã thanh toán các đợt trước ({invoiceDetail.payments.length})
+                              <div className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-2xs">
+                                <div className="px-3.5 py-2 bg-slate-50/80 dark:bg-slate-900/60 border-b border-slate-100 dark:border-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center justify-between">
+                                  <span>Đã thanh toán các đợt trước ({invoiceDetail.payments.length})</span>
+                                  <span className="text-[10.5px] font-semibold text-amber-600">Thu 1 phần</span>
                                 </div>
                                 <div className="p-2.5 space-y-2 text-xs">
                                   {invoiceDetail.payments.map((p: any) => {
                                     const channel = getPaymentChannelMeta(p.providerId);
+                                    const shortTx = p.externalTxId?.startsWith('TX-')
+                                      ? `#TM-${p.externalTxId.slice(-4)}`
+                                      : p.externalTxId?.startsWith('SP-')
+                                        ? `#${p.externalTxId}`
+                                        : p.externalTxId?.startsWith('TM-')
+                                          ? `#${p.externalTxId}`
+                                          : /^\d{6,}$/.test(p.externalTxId || '')
+                                            ? `#SP-${p.externalTxId?.slice(-6)}`
+                                            : `#${(p.externalTxId || p.id || '').slice(-8)}`;
                                     return (
-                                      <div key={p.id} className="flex items-center justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-900">
-                                        <div>
-                                          <div className="flex items-center gap-1">
-                                            <span className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-bold ${channel.badgeClassName}`}>{channel.label}</span>
-                                            <span className="font-mono text-[10.5px] text-slate-400">#{p.externalTxId?.slice(-6) || p.id.slice(-6)}</span>
+                                      <div key={p.id} className="rounded-lg border border-slate-100 bg-slate-50/50 p-2.5 dark:border-slate-800 dark:bg-slate-800/40">
+                                        {/* Hàng 1: Chi tiết thanh toán gọn gàng cùng 1 hàng */}
+                                        <div className="flex items-center justify-between gap-2">
+                                          <div className="flex items-center gap-1.5 flex-wrap">
+                                            <span className={`inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold ${channel.badgeClassName}`}>
+                                              <span className={`h-1 w-1 rounded-full ${channel.dotClassName}`} />
+                                              {channel.label}
+                                            </span>
+                                            <span className="shrink-0 font-mono text-[10.5px] font-bold text-slate-500">{shortTx}</span>
                                           </div>
-                                          <p className="mt-0.5 text-[11px] text-slate-500">{new Date(p.verifiedAt || p.occurredAt).toLocaleDateString('vi-VN')}</p>
+                                          <strong className="shrink-0 tabular-nums text-emerald-600 font-bold">+{Number(p.amountVnd).toLocaleString('vi-VN')} đ</strong>
                                         </div>
-                                        <strong className="tabular-nums text-emerald-600">+{Number(p.amountVnd).toLocaleString('vi-VN')} đ</strong>
+                                        {/* Ghi chú thanh toán hiển thị đầy đủ, không bị cắt ngắn */}
+                                        {p.referenceText && (
+                                          <p className="mt-1 text-xs font-medium text-slate-700 dark:text-slate-300 leading-relaxed break-words">
+                                            {p.referenceText}
+                                          </p>
+                                        )}
+                                        {/* Hàng 2: Thời gian nằm bên dưới + Nút xem chứng từ */}
+                                        <div className="mt-1.5 flex items-center justify-between border-t border-slate-100 pt-1.5 dark:border-slate-800 text-[10.5px] text-slate-400">
+                                          <div className="flex items-center gap-1">
+                                            <Clock className="h-3 w-3 text-slate-400" />
+                                            <span>{new Date(p.verifiedAt || p.occurredAt || p.createdAt).toLocaleString('vi-VN')}</span>
+                                          </div>
+                                          {p.proofUrl && (
+                                            <button
+                                              type="button"
+                                              onClick={() => setPreviewProofModal({
+                                                url: p.proofUrl,
+                                                title: `Chứng từ ${shortTx}`,
+                                                subtitle: `${channel.label} · +${Number(p.amountVnd).toLocaleString('vi-VN')} đ`
+                                              })}
+                                              className="font-semibold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+                                            >
+                                              <Eye className="h-3 w-3" />
+                                              <span>Xem chứng từ</span>
+                                            </button>
+                                          )}
+                                        </div>
                                       </div>
                                     );
                                   })}
@@ -4106,13 +4548,17 @@ export const OperationalModuleWorkspace: React.FC<
                                   />
                                 </div>
 
-                                <div className="rounded-xl border border-dashed border-slate-300 p-2.5 dark:border-slate-700">
+                                <div className={`rounded-xl border border-dashed p-3 transition-colors ${
+                                  !invoiceProof
+                                    ? 'border-rose-400 bg-rose-50/50 dark:border-rose-900/60 dark:bg-rose-950/20'
+                                    : 'border-emerald-300 bg-emerald-50/40 dark:border-emerald-800 dark:bg-emerald-950/20'
+                                }`}>
                                   <input
                                     ref={invoiceProofInput}
                                     type="file"
                                     accept="image/jpeg,image/png,image/webp"
                                     className="sr-only"
-                                    aria-label="Ảnh biên nhận tiền mặt"
+                                    aria-label="Ảnh biên nhận tiền mặt hoặc ủy nhiệm chi"
                                     onChange={(e) => {
                                       const file = e.target.files?.[0] || null;
                                       e.target.value = '';
@@ -4126,18 +4572,34 @@ export const OperationalModuleWorkspace: React.FC<
                                   />
                                   <div className="flex items-center justify-between gap-2">
                                     <div className="min-w-0">
-                                      <p className="text-xs font-semibold">Ảnh biên nhận tiền mặt <span className="font-normal text-slate-500">(nếu có)</span></p>
-                                      <p className="truncate text-[10.5px] text-slate-400">{invoiceProof?.name || 'Chụp biên nhận viết tay hoặc phiếu thu'}</p>
+                                      <p className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                                        <span>Ảnh biên nhận / Phiếu thu</span>
+                                        <span className="rounded bg-rose-100 px-1 py-0.2 text-[10px] font-extrabold text-rose-700 dark:bg-rose-950/80 dark:text-rose-300">
+                                          Bắt buộc *
+                                        </span>
+                                      </p>
+                                      <p className="truncate text-[10.5px] text-slate-500 mt-0.5">
+                                        {invoiceProof ? invoiceProof.name : 'Chụp biên nhận viết tay, phiếu thu hoặc sao kê'}
+                                      </p>
                                     </div>
                                     <AnimatedButton
                                       type="button"
                                       onClick={() => invoiceProofInput.current?.click()}
-                                      className="flex min-h-8 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:text-slate-200 hover:bg-slate-50"
+                                      className={`flex min-h-8 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-semibold transition-colors ${
+                                        invoiceProof
+                                          ? 'border-emerald-300 bg-emerald-100/70 text-emerald-800 hover:bg-emerald-200/60 dark:border-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200'
+                                          : 'border-rose-300 bg-white text-rose-700 hover:bg-rose-50 dark:border-rose-800 dark:bg-slate-800 dark:text-rose-300'
+                                      }`}
                                     >
                                       <ImagePlus size={13} />
-                                      <span>{invoiceProof ? 'Đổi ảnh' : 'Tải ảnh'}</span>
+                                      <span>{invoiceProof ? 'Đổi ảnh' : 'Tải ảnh bắt buộc'}</span>
                                     </AnimatedButton>
                                   </div>
+                                  {!invoiceProof && (
+                                    <p className="mt-2 text-[10.5px] font-medium text-rose-600 dark:text-rose-400">
+                                      * Bắt buộc upload ảnh chứng từ thanh toán thành công để đối chiếu sổ sách.
+                                    </p>
+                                  )}
                                 </div>
                               </div>
                             )}
@@ -4158,7 +4620,12 @@ export const OperationalModuleWorkspace: React.FC<
 
                         <AnimatedButton
                           type="submit"
-                          disabled={isSavingInvoicePay || invoiceHandoverLoading || (invoicePayMethod === 'MANUAL_CASH' && cashPayMode === 'PARTIAL' && invoicePayAmount <= 0)}
+                          disabled={
+                            isSavingInvoicePay ||
+                            invoiceHandoverLoading ||
+                            (invoicePayMethod === 'MANUAL_CASH' && cashPayMode === 'PARTIAL' && invoicePayAmount <= 0) ||
+                            (invoicePayMethod === 'MANUAL_CASH' && !invoiceProof && !invoicePaymentCommittedId)
+                          }
                           className={`min-h-11 flex-[1.45] rounded-xl px-4 py-2 text-xs font-bold text-white shadow-sm disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors ${
                             invoicePayMethod === 'MANUAL_CASH'
                               ? cashPayMode === 'ALL'
@@ -4194,6 +4661,68 @@ export const OperationalModuleWorkspace: React.FC<
         );
       })()}
 
+      {/* Proof Image Lightbox Popup */}
+      {previewProofModal && (
+        <Dialog.Root
+          open={Boolean(previewProofModal)}
+          onOpenChange={(open) => {
+            if (!open) setPreviewProofModal(null);
+          }}
+        >
+          <Dialog.Portal>
+            <Dialog.Backdrop className="fixed inset-0 z-[160] bg-slate-950/80 backdrop-blur-sm transition-opacity" />
+            <Dialog.Viewport className="fixed inset-0 z-[161] flex items-center justify-center p-3 sm:p-6">
+              <Dialog.Popup
+                from="bottom"
+                className="relative flex flex-col max-h-[92vh] max-w-2xl w-full overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 shadow-2xl outline-none"
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between border-b border-slate-800/80 px-4 py-3 bg-slate-900/90 text-white">
+                  <div className="min-w-0 pr-3">
+                    <Dialog.Title className="text-sm font-bold truncate flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-brand-primary shrink-0" />
+                      <span>{previewProofModal.title || 'Chứng từ thanh toán'}</span>
+                    </Dialog.Title>
+                    {previewProofModal.subtitle && (
+                      <Dialog.Description className="text-xs text-slate-400 truncate mt-0.5">
+                        {previewProofModal.subtitle}
+                      </Dialog.Description>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <a
+                      href={previewProofModal.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      download
+                      title="Tải ảnh gốc về máy"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"
+                    >
+                      <Download className="h-4 w-4" />
+                    </a>
+                    <Dialog.Close
+                      aria-label="Đóng cửa sổ"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"
+                    >
+                      <X className="h-4 w-4" />
+                    </Dialog.Close>
+                  </div>
+                </div>
+
+                {/* Image Container */}
+                <div className="relative flex-1 min-h-[240px] max-h-[75vh] overflow-auto flex items-center justify-center p-2 sm:p-4 bg-slate-950/90">
+                  <img
+                    src={previewProofModal.url}
+                    alt="Chứng từ đối chiếu thanh toán"
+                    className="max-h-[70vh] max-w-full rounded-lg object-contain shadow-lg"
+                  />
+                </div>
+              </Dialog.Popup>
+            </Dialog.Viewport>
+          </Dialog.Portal>
+        </Dialog.Root>
+      )}
+
       {/* Legacy Data Import Wizard Modal (C4-IMPORT-01/02) */}
       <LegacyImportWizardModal
         isOpen={isImportModalOpen}
@@ -4209,6 +4738,316 @@ export const OperationalModuleWorkspace: React.FC<
         onClose={() => setIsHunonicModalOpen(false)}
         onSyncTriggered={() => loadModuleData()}
       />
+
+      {/* Billing Promotions Management Modal */}
+      <Dialog.Root
+        open={isPromotionModalOpen}
+        onOpenChange={(open) => {
+          if (!open && !isSavingPromo) setIsPromotionModalOpen(false);
+        }}
+      >
+        <Dialog.Portal>
+          <Dialog.Backdrop className="fixed inset-0 z-[120] bg-slate-950/60 backdrop-blur-[2px]" />
+          <Dialog.Viewport className="fixed inset-0 z-[121] flex items-end justify-center sm:items-center sm:p-4">
+            <Dialog.Popup
+              from="bottom"
+              className="flex max-h-[calc(100dvh-0.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-t-3xl border border-slate-200 bg-white shadow-2xl outline-none dark:border-slate-800 dark:bg-[#111827] sm:max-h-[calc(100dvh-2rem)] sm:rounded-2xl"
+            >
+              {/* Modal Header */}
+              <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-slate-800">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-rose-50 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400">
+                    <Gift size={20} />
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-bold text-slate-900 dark:text-white">
+                      Khuyến mãi theo đợt · Kỳ {formatPeriodDisplay(selectedPeriod)}
+                    </h2>
+                    <p className="text-xs text-slate-500">
+                      Cấu hình giảm giá phòng, điện, nước cho từng phòng hoặc toàn bộ
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsPromotionModalOpen(false)}
+                  className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="min-h-0 flex-1 overflow-y-auto p-5 space-y-6">
+                {promoError && (
+                  <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300">
+                    {promoError}
+                  </div>
+                )}
+
+                {/* Form: Tạo khuyến mãi mới */}
+                <form onSubmit={handleCreatePromotion} className="space-y-4 rounded-2xl border border-slate-200/90 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-900/40">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                    Tạo đợt khuyến mãi mới
+                  </h3>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Tên chương trình / Lý do giảm giá *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="VD: Hỗ trợ tiền điện nước tháng 10, Ưu đãi tân gia..."
+                      value={newPromoName}
+                      onChange={(e) => setNewPromoName(e.target.value)}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium dark:border-slate-700 dark:bg-slate-800"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Phạm vi áp dụng
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setNewPromoScope('ALL_ROOMS')}
+                        className={`rounded-xl border p-2 text-xs font-bold transition-all ${
+                          newPromoScope === 'ALL_ROOMS'
+                            ? 'border-brand-primary bg-blue-50 text-brand-primary ring-1 ring-brand-primary dark:bg-blue-950/40'
+                            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                        }`}
+                      >
+                        Tất cả phòng
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setNewPromoScope('SELECTED_ROOMS')}
+                        className={`rounded-xl border p-2 text-xs font-bold transition-all ${
+                          newPromoScope === 'SELECTED_ROOMS'
+                            ? 'border-brand-primary bg-blue-50 text-brand-primary ring-1 ring-brand-primary dark:bg-blue-950/40'
+                            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                        }`}
+                      >
+                        Chỉ định phòng
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setNewPromoScope('ALL_EXCEPT_ROOMS')}
+                        className={`rounded-xl border p-2 text-xs font-bold transition-all ${
+                          newPromoScope === 'ALL_EXCEPT_ROOMS'
+                            ? 'border-brand-primary bg-blue-50 text-brand-primary ring-1 ring-brand-primary dark:bg-blue-950/40'
+                            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                        }`}
+                      >
+                        Tất cả trừ...
+                      </button>
+                    </div>
+                  </div>
+
+                  {(newPromoScope === 'SELECTED_ROOMS' || newPromoScope === 'ALL_EXCEPT_ROOMS') && (
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                        {newPromoScope === 'SELECTED_ROOMS' ? 'Danh sách mã phòng áp dụng' : 'Danh sách mã phòng loại trừ'}
+                        <span className="font-normal text-slate-400"> (ngăn cách bằng dấu phẩy)</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="VD: P25-02, P25-03"
+                        value={newPromoRooms}
+                        onChange={(e) => setNewPromoRooms(e.target.value)}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium dark:border-slate-700 dark:bg-slate-800"
+                      />
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                        Giảm tiền điện (đ)
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          placeholder="VD: 100.000"
+                          value={newPromoElecDiscount === '' || newPromoElecDiscount === 0 ? '' : Number(newPromoElecDiscount).toLocaleString('vi-VN')}
+                          onChange={(e) => {
+                            const digits = e.target.value.replace(/\D/g, '');
+                            setNewPromoElecDiscount(digits ? parseInt(digits, 10) : '');
+                          }}
+                          disabled={newPromoFreeUtilities}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 pr-7 text-xs font-medium disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800"
+                        />
+                        <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5 text-xs font-semibold text-slate-400 select-none">
+                          đ
+                        </span>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                        Giảm tiền nước (đ)
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          placeholder="VD: 100.000"
+                          value={newPromoWaterDiscount === '' || newPromoWaterDiscount === 0 ? '' : Number(newPromoWaterDiscount).toLocaleString('vi-VN')}
+                          onChange={(e) => {
+                            const digits = e.target.value.replace(/\D/g, '');
+                            setNewPromoWaterDiscount(digits ? parseInt(digits, 10) : '');
+                          }}
+                          disabled={newPromoFreeUtilities}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 pr-7 text-xs font-medium disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800"
+                        />
+                        <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5 text-xs font-semibold text-slate-400 select-none">
+                          đ
+                        </span>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                        Giảm tiền phòng (đ)
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          placeholder="VD: 500.000"
+                          value={newPromoRentDiscount === '' || newPromoRentDiscount === 0 ? '' : Number(newPromoRentDiscount).toLocaleString('vi-VN')}
+                          onChange={(e) => {
+                            const digits = e.target.value.replace(/\D/g, '');
+                            setNewPromoRentDiscount(digits ? parseInt(digits, 10) : '');
+                          }}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 pr-7 text-xs font-medium dark:border-slate-700 dark:bg-slate-800"
+                        />
+                        <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5 text-xs font-semibold text-slate-400 select-none">
+                          đ
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <label className="flex items-center gap-2 cursor-pointer p-2.5 rounded-xl border border-blue-200/80 bg-blue-50/50 dark:border-blue-900/50 dark:bg-blue-950/20">
+                    <input
+                      type="checkbox"
+                      checked={newPromoFreeUtilities}
+                      onChange={(e) => setNewPromoFreeUtilities(e.target.checked)}
+                      className="rounded border-slate-300 text-brand-primary focus:ring-brand-primary"
+                    />
+                    <span className="text-xs font-semibold text-blue-900 dark:text-blue-300">
+                      Miễn phí 100% toàn bộ tiền điện &amp; nước tháng này
+                    </span>
+                  </label>
+
+                  <div className="flex justify-end pt-2">
+                    <AnimatedButton
+                      type="submit"
+                      disabled={isSavingPromo}
+                      className="rounded-xl bg-brand-primary px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-brand-hover disabled:opacity-50"
+                    >
+                      {isSavingPromo ? 'Đang lưu...' : '+ Thêm đợt khuyến mãi'}
+                    </AnimatedButton>
+                  </div>
+                </form>
+
+                {/* List: Danh sách khuyến mãi hiện hành */}
+                <div className="space-y-3">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                    <span>Các đợt khuyến mãi đang áp dụng ({promotionsList.length})</span>
+                    {isLoadingPromotions && <Loader2 size={13} className="animate-spin text-slate-400" />}
+                  </h3>
+
+                  {promotionsList.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center dark:border-slate-800">
+                      <Gift size={24} className="mx-auto text-slate-300 mb-1.5" />
+                      <p className="text-xs font-medium text-slate-500">Chưa có khuyến mãi nào trong kỳ {selectedPeriod}.</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">Tạo khuyến mãi ở trên để tự động trừ tiền khi phát hành hóa đơn.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {promotionsList.map((p) => {
+                        const scopeLabel =
+                          p.scopeType === 'ALL_ROOMS'
+                            ? 'Tất cả các phòng'
+                            : p.scopeType === 'SELECTED_ROOMS'
+                              ? `Phòng: ${(p.targetRoomCodes || []).join(', ')}`
+                              : `Tất cả trừ: ${(p.targetRoomCodes || []).join(', ')}`;
+
+                        return (
+                          <div
+                            key={p.id}
+                            className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3.5 shadow-2xs dark:border-slate-800 dark:bg-slate-900"
+                          >
+                            <div className="min-w-0 space-y-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-xs text-slate-900 dark:text-white truncate">
+                                  {p.campaignName}
+                                </span>
+                                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10.5px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                                  {scopeLabel}
+                                </span>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                                {p.freeAllUtilities ? (
+                                  <span className="font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded">
+                                    Miễn phí 100% điện nước
+                                  </span>
+                                ) : (
+                                  <>
+                                    {p.discountElectricVnd > 0 && (
+                                      <span className="font-semibold text-rose-600 bg-rose-50 dark:bg-rose-950/50 px-1.5 py-0.5 rounded">
+                                        Điện: -{Number(p.discountElectricVnd).toLocaleString('vi-VN')} đ
+                                      </span>
+                                    )}
+                                    {p.discountWaterVnd > 0 && (
+                                      <span className="font-semibold text-cyan-600 bg-cyan-50 dark:bg-cyan-950/50 px-1.5 py-0.5 rounded">
+                                        Nước: -{Number(p.discountWaterVnd).toLocaleString('vi-VN')} đ
+                                      </span>
+                                    )}
+                                  </>
+                                )}
+                                {p.discountRoomVnd > 0 && (
+                                  <span className="font-semibold text-purple-600 bg-purple-50 dark:bg-purple-950/50 px-1.5 py-0.5 rounded">
+                                    Tiền phòng: -{Number(p.discountRoomVnd).toLocaleString('vi-VN')} đ
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => void handleDeletePromotion(p.id)}
+                              title="Xóa khuyến mãi này"
+                              className="rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50 transition-colors"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="border-t border-slate-100 p-4 dark:border-slate-800 flex justify-end">
+                <AnimatedButton
+                  type="button"
+                  onClick={() => setIsPromotionModalOpen(false)}
+                  className="rounded-xl bg-slate-100 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
+                >
+                  Đóng
+                </AnimatedButton>
+              </div>
+            </Dialog.Popup>
+          </Dialog.Viewport>
+        </Dialog.Portal>
+      </Dialog.Root>
     </div>
   );
 };

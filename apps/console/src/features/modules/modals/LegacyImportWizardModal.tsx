@@ -19,6 +19,8 @@ import {
 } from 'lucide-react';
 import { usePortfolio } from '../../../app/providers/PortfolioContext';
 import { MoneyInput } from '../../../shared/ui/MoneyInput';
+import { DateInput } from '../../../shared/ui/DateInput';
+import { formatVnDate } from '../../../shared/tokens/designTokens';
 
 interface Props {
   isOpen: boolean;
@@ -471,12 +473,11 @@ export const LegacyImportWizardModal: React.FC<Props> = ({
                         <label className="block text-[11px] font-medium text-slate-500 mb-1">
                           Ngày bắt đầu
                         </label>
-                        <input
-                          type="date"
+                        <DateInput
                           value={row.startDate}
-                          onChange={(e) => {
+                          onChange={(val) => {
                             const newRows = [...rows];
-                            newRows[idx].startDate = e.target.value;
+                            newRows[idx].startDate = val;
                             setRows(newRows);
                           }}
                           className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
@@ -486,12 +487,11 @@ export const LegacyImportWizardModal: React.FC<Props> = ({
                         <label className="block text-[11px] font-medium text-blue-600 dark:text-blue-400 font-bold mb-1">
                           Đã đóng đến (paidThrough)
                         </label>
-                        <input
-                          type="date"
+                        <DateInput
                           value={row.paidThrough}
-                          onChange={(e) => {
+                          onChange={(val) => {
                             const newRows = [...rows];
-                            newRows[idx].paidThrough = e.target.value;
+                            newRows[idx].paidThrough = val;
                             setRows(newRows);
                           }}
                           className="w-full px-2.5 py-1.5 rounded-lg border border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-950/20 text-blue-900 dark:text-blue-200 font-semibold"
@@ -585,7 +585,7 @@ export const LegacyImportWizardModal: React.FC<Props> = ({
                             {r.contract.depositVnd.toLocaleString('vi-VN')} đ
                           </td>
                           <td className="px-3 py-2.5 font-semibold text-emerald-600 dark:text-emerald-400">
-                            {r.contract.paidThrough}
+                            {formatVnDate(r.contract.paidThrough)}
                           </td>
                           <td className="px-3 py-2.5 text-center">
                             {r.status === 'VALID' ? (

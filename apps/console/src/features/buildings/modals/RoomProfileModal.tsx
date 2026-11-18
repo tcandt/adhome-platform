@@ -36,10 +36,14 @@ import { IdentityQrScanner } from "../../../shared/ui/IdentityQrScanner";
 import { ContractRepresentativeSwitch } from "../../../shared/ui/ContractRepresentativeSwitch";
 import { MoneyInput } from "../../../shared/ui/MoneyInput";
 import { RelationshipCombobox } from "../../../shared/ui/RelationshipCombobox";
+import { DateInput } from "../../../shared/ui/DateInput";
+import { formatVnDate } from "../../../shared/tokens/designTokens";
 import {
   ConsoleRoomDto,
   RoomOccupantDto,
 } from "../../../shared/types/portfolio";
+import { EditResidentModal } from "./EditResidentModal";
+import { EditContractModal } from "./EditContractModal";
 
 interface Props {
   rentalContent?: React.ReactNode;
@@ -107,6 +111,8 @@ export const RoomProfileModal: React.FC<Props> = ({
   const [documentPerson, setDocumentPerson] = useState<{ personIndex?: number; occupantId?: string }>({});
   const [invoiceDetailId, setInvoiceDetailId] = useState<string | null>(null);
   const [depositDetailId, setDepositDetailId] = useState<string | null>(null);
+  const [editingResident, setEditingResident] = useState<any | null>(null);
+  const [editingContract, setEditingContract] = useState<any | null>(null);
 
   // New occupant form state
   const [isAddingOccupant, setIsAddingOccupant] = useState<boolean>(false);
@@ -339,9 +345,13 @@ export const RoomProfileModal: React.FC<Props> = ({
   };
   const residentRows = pendingPeople.length > 0
     ? pendingPeople.map((person: any, index: number) => ({
+        ...person,
         id: `pending-${index}-${person.fullName || 'guest'}`,
         fullName: person.fullName || 'Chưa nhập tên',
         phone: person.phone || '',
+        idNumber: person.idNumber || '',
+        dateOfBirth: person.birthDate || person.dateOfBirth || '',
+        gender: person.gender || '',
         contractId: pendingContract?.id || null,
         personIndex: index,
         relationToPrimary: index === 0 ? 'PRIMARY' : person.documentRole === 'CO_REPRESENTATIVE' ? 'OTHER' : 'FAMILY',
@@ -837,8 +847,26 @@ export const RoomProfileModal: React.FC<Props> = ({
                           <legend className="px-1 text-[11px] font-semibold text-blue-900 dark:text-blue-200">Thông tin bổ sung hợp đồng phụ</legend>
                           <label className="grid grid-cols-[1fr_7rem] items-center gap-2 font-semibold text-slate-600 dark:text-slate-300"><span>Thời hạn thuê *</span><select aria-label="Thời hạn thuê" value={occDurationMonths} onChange={e => setOccDurationMonths(Number(e.target.value) as 6 | 12)} className="supplementary-contract-control border-slate-200 bg-white font-normal dark:border-slate-700 dark:bg-slate-800"><option value={6}>6 tháng</option><option value={12}>1 năm</option></select></label>
                           <div className="grid grid-cols-2 gap-2.5">
-                            <label className="flex min-w-0 flex-col gap-1 font-semibold text-slate-600 dark:text-slate-300"><span>Ngày vào ở *</span><input required type="date" aria-label="Ngày vào ở" value={occStartDate} onChange={e => setOccStartDate(e.target.value)} className="supplementary-contract-control border-slate-200 bg-white font-normal dark:border-slate-700 dark:bg-slate-800" /></label>
-                            <label className="flex min-w-0 flex-col gap-1 font-semibold text-slate-600 dark:text-slate-300"><span>Ngày kết thúc</span><input type="date" aria-label="Ngày kết thúc" value={computeContractEndDate(occStartDate, occDurationMonths)} readOnly className="supplementary-contract-control border-slate-200 bg-slate-100 font-normal text-slate-500 dark:border-slate-700 dark:bg-slate-800/60" /></label>
+                            <label className="flex min-w-0 flex-col gap-1 font-semibold text-slate-600 dark:text-slate-300">
+                              <span>Ngày vào ở *</span>
+                              <DateInput
+                                required
+                                aria-label="Ngày vào ở"
+                                value={occStartDate}
+                                onChange={setOccStartDate}
+                                className="supplementary-contract-control border-slate-200 bg-white font-normal dark:border-slate-700 dark:bg-slate-800"
+                              />
+                            </label>
+                            <label className="flex min-w-0 flex-col gap-1 font-semibold text-slate-600 dark:text-slate-300">
+                              <span>Ngày kết thúc</span>
+                              <DateInput
+                                readOnly
+                                aria-label="Ngày kết thúc"
+                                value={computeContractEndDate(occStartDate, occDurationMonths)}
+                                onChange={() => {}}
+                                className="supplementary-contract-control border-slate-200 bg-slate-100 font-normal text-slate-500 dark:border-slate-700 dark:bg-slate-800/60"
+                              />
+                            </label>
                           </div>
                           <div className="grid grid-cols-2 gap-2.5">
                             <label className="flex min-w-0 flex-col gap-1 font-semibold text-slate-600 dark:text-slate-300"><span>Tiền thuê / tháng *</span><MoneyInput aria-label="Tiền thuê hàng tháng" value={occMonthlyRentVnd} min={0} onChange={setOccMonthlyRentVnd} className="supplementary-contract-money-control" /></label>
@@ -872,7 +900,16 @@ export const RoomProfileModal: React.FC<Props> = ({
                           inputMode="numeric" maxLength={12} required
                           className="p-2 text-xs font-normal rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
                         /></label>
-                        <label className="flex flex-col gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300"><span>Ngày sinh *</span><input required type="date" aria-label="Ngày sinh" value={occBirthDate} onChange={e => setOccBirthDate(e.target.value)} className="p-2 text-xs font-normal rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800" /></label>
+                        <label className="flex flex-col gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300">
+                          <span>Ngày sinh *</span>
+                          <DateInput
+                            required
+                            aria-label="Ngày sinh"
+                            value={occBirthDate}
+                            onChange={setOccBirthDate}
+                            className="p-2 text-xs font-normal rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                          />
+                        </label>
                         <label className="flex flex-col gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300"><span>Giới tính *</span><select required aria-label="Giới tính" value={occGender} onChange={e => setOccGender(e.target.value)} className="p-2 text-xs font-normal rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"><option value="">Chọn giới tính</option><option>Nam</option><option>Nữ</option><option>Khác</option></select></label>
                         {occRelation === 'FAMILY' && <><label className="flex flex-col gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300"><span>Người đại diện hộ *</span><select required value={occHouseholdHeadId} onChange={e => setOccHouseholdHeadId(e.target.value)} className="p-2 text-xs font-normal rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"><option value="">Chọn người đại diện</option>{householdHeadOptions.map(person => <option key={person.id} value={person.id}>{person.fullName}</option>)}</select></label><label className="flex flex-col gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300"><span>Mối quan hệ *</span><RelationshipCombobox required value={occRelationship} onChange={setOccRelationship} /></label></>}
                         <label className="col-span-2 flex flex-col gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300"><span>Địa chỉ thường trú *</span><textarea required placeholder="Số nhà, đường, phường/xã, tỉnh/thành" value={occAddress} onChange={e => setOccAddress(e.target.value)} className="min-h-16 p-2 text-xs font-normal rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800" /></label>
@@ -918,7 +955,7 @@ export const RoomProfileModal: React.FC<Props> = ({
                           <td className="break-all px-2 py-2.5 tabular-nums text-slate-600 dark:text-slate-300">{resident.phone || '—'}</td>
                           <td className="px-1 py-1 text-center">{canManageContracts && <ActionMenu ariaLabel={`Hành động cho ${resident.fullName}`} contextTitle={resident.fullName} contextSubtitle={resident.phone || 'Chưa có SĐT'} items={[
                             { label: 'Xem PDF hợp đồng', icon: <FileText size={16} />, disabled: !resident.contractId || !['PRIMARY', 'OTHER'].includes(resident.relationToPrimary), onClick: () => { if (resident.contractId) { setDocumentPerson(resident.personIndex !== undefined ? { personIndex: resident.personIndex } : { occupantId: resident.id }); setDocumentContractId(resident.contractId); } } },
-                            { label: 'Chỉnh sửa thông tin', icon: <Pencil size={16} />, onClick: () => onAddRental?.(room.id), disabled: !onAddRental },
+                            { label: 'Chỉnh sửa thông tin', icon: <Pencil size={16} />, onClick: () => setEditingResident(resident) },
                             { label: 'Xóa khỏi danh sách lưu trú', icon: <Trash2 size={16} />, variant: 'danger', hidden: resident.personIndex !== undefined || !['FAMILY', 'OTHER'].includes(resident.relationToPrimary) || room.rentalModel === 'SHARED_ROOM', onClick: () => void handleRemoveOccupant(resident.id) }
                           ]} />}</td>
                         </tr>)}</tbody>
@@ -1017,6 +1054,15 @@ export const RoomProfileModal: React.FC<Props> = ({
                       {contractExpiryNotice && <div role="status" className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs leading-5 text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span>{contractExpiryNotice}</span></div>}
                       {pendingInvoice && pendingInvoiceDue > 0 && <p className="text-xs text-amber-700 dark:text-amber-300">Hóa đơn {pendingInvoice.invoiceCode} · Còn phải thu {pendingInvoiceDue.toLocaleString('vi-VN')} đ. Thu tiền tại mục Hóa đơn.</p>}
                       <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex items-center justify-end gap-2 flex-wrap">
+                        {canManageContracts && (
+                          <button
+                            type="button"
+                            onClick={() => setEditingContract(pendingContract)}
+                            className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 inline-flex items-center gap-1"
+                          >
+                            <Pencil className="w-3.5 h-3.5" /> Sửa thời hạn & giá
+                          </button>
+                        )}
                         {pendingContract.status === 'DRAFT' && onAddRental && <Button type="button" onClick={() => onAddRental(room.id)} className="min-h-11 text-xs text-blue-700 dark:text-blue-300">Xem hồ sơ nháp</Button>}
                         {pendingContract.status !== 'DRAFT' && onOpenExtendModal && (
                           <button
@@ -1128,6 +1174,43 @@ export const RoomProfileModal: React.FC<Props> = ({
             )}
 
             {documentContractId && <ContractDocumentDialog contractId={documentContractId} {...documentPerson} onClose={() => setDocumentContractId(null)} />}
+
+            {editingResident && (
+              <EditResidentModal
+                isOpen={Boolean(editingResident)}
+                resident={editingResident}
+                contract={pendingContract}
+                roomCode={room.code}
+                roomId={room.id}
+                householdHeadOptions={householdHeadOptions}
+                pendingContractId={pendingContract?.id || pendingReservation?.id}
+                workflowProfile={workflow?.profile}
+                onClose={() => setEditingResident(null)}
+                onSuccess={async () => {
+                  setEditingResident(null);
+                  await loadOccupants();
+                  if (room) await loadWorkflow(room.id);
+                  await refreshPortfolio();
+                  setActionFeedback("Đã cập nhật thông tin khách hàng thành công.");
+                }}
+              />
+            )}
+
+            {editingContract && (
+              <EditContractModal
+                isOpen={Boolean(editingContract)}
+                contract={editingContract}
+                roomCode={room.code}
+                onClose={() => setEditingContract(null)}
+                onSuccess={async () => {
+                  setEditingContract(null);
+                  await loadOccupants();
+                  if (room) await loadWorkflow(room.id);
+                  await refreshPortfolio();
+                  setActionFeedback("Đã cập nhật hợp đồng và thời hạn thuê thành công.");
+                }}
+              />
+            )}
 
             {detailDeposit && <Dialog.Root open={Boolean(depositDetailId)} onOpenChange={open => { if (!open) setDepositDetailId(null); }}>
               <Dialog.Portal>

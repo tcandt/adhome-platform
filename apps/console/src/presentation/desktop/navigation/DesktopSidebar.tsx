@@ -10,6 +10,7 @@ import {
 } from '@/app/providers/NavigationContext';
 import { usePortfolio } from '@/app/providers/PortfolioContext';
 import { BrandLogo } from '@/shared/ui/BrandLogo';
+import { formatVnTime } from '@/shared/tokens/designTokens';
 import {
   Sidebar,
   SidebarContent,
@@ -216,7 +217,7 @@ export const DesktopSidebar: React.FC = () => {
             </TooltipTrigger>
             <TooltipContent className="z-50 rounded-lg border border-slate-700/80 bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-white shadow-lg">
               {lastSyncedAt
-                ? `Đồng bộ PostgreSQL lúc ${new Date(lastSyncedAt).toLocaleTimeString('vi-VN')} (Nhấn để làm mới)`
+                ? `Đồng bộ PostgreSQL lúc ${formatVnTime(lastSyncedAt)} (Nhấn để làm mới)`
                 : 'Đang kết nối PostgreSQL...'}
             </TooltipContent>
           </Tooltip>

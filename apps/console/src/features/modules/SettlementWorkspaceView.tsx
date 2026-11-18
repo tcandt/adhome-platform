@@ -40,6 +40,8 @@ import { notifySave } from '@/shared/ui/SaveToast';
 import {
   SettlementShimmerButton,
 } from '@/shared/ui/SettlementAnimatePrimitives';
+import { MoneyInput } from '@/shared/ui/MoneyInput';
+import { DateInput } from '@/shared/ui/DateInput';
 import { SettlementDetailDrawer } from './SettlementDetailDrawer';
 import {
   type AutomationMode,
@@ -64,7 +66,7 @@ interface SettlementWorkspaceViewProps {
   shiftPeriodKey: (period: string, deltaMonths: number) => string;
   payload: Record<string, unknown> | null;
   isLoading: boolean;
-  onRefresh: () => Promise<void>;
+  onRefresh: (options?: { silent?: boolean }) => Promise<void>;
 }
 
 type SortField = 'ROOM_CODE' | 'TOTAL_PAYABLE' | 'STATUS';
@@ -146,6 +148,49 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
   const [lockModalOpen, setLockModalOpen] = useState<boolean>(false);
   const [unlockReason, setUnlockReason] = useState<string>('');
 
+  // Manual Reconcile & Payment Confirmation Modal state
+  const [reconcileModalOpen, setReconcileModalOpen] = useState<boolean>(false);
+  const [reconcileTargetRow, setReconcileTargetRow] = useState<SettlementRow | null>(null);
+  const [confirmPaymentAmountVnd, setConfirmPaymentAmountVnd] = useState<number>(0);
+  const [confirmPaymentMethod, setConfirmPaymentMethod] = useState<string>('MANUAL_CASH');
+  const [confirmReferenceText, setConfirmReferenceText] = useState<string>('');
+  const [confirmPaymentDate, setConfirmPaymentDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [isSubmittingReconcile, setIsSubmittingReconcile] = useState<boolean>(false);
+
+  const openReconcileConfirmModal = (row: SettlementRow) => {
+    setReconcileTargetRow(row);
+    setConfirmPaymentAmountVnd(Math.round(row.totals.remainingAmountVnd || row.totals.totalPayableVnd || 0));
+    setConfirmPaymentMethod('MANUAL_CASH');
+    setConfirmReferenceText(
+      `Thanh toán hóa đơn ${row.invoice?.code || `phòng ${row.room.code}`} kỳ ${row.periodKey}`
+    );
+    setConfirmPaymentDate(new Date().toISOString().slice(0, 10));
+    setReconcileModalOpen(true);
+  };
+
+  const handleConfirmReconcileSubmit = async () => {
+    if (!reconcileTargetRow || !reconcileTargetRow.invoice) return;
+    if (confirmPaymentAmountVnd <= 0) {
+      alert('Vui lòng nhập số tiền thu hợp lệ lớn hơn 0.');
+      return;
+    }
+    setIsSubmittingReconcile(true);
+    try {
+      const ok = await handleRecordPayment({
+        invoiceId: reconcileTargetRow.invoice.id,
+        amountVnd: confirmPaymentAmountVnd,
+        providerId: confirmPaymentMethod,
+        referenceText: confirmReferenceText.trim(),
+      });
+      if (ok) {
+        setReconcileModalOpen(false);
+        setReconcileTargetRow(null);
+      }
+    } finally {
+      setIsSubmittingReconcile(false);
+    }
+  };
+
   // Action loading states
   const [isMutating, setIsMutating] = useState<boolean>(false);
   const [feedbackBanner, setFeedbackBanner] = useState<{
@@ -169,9 +214,17 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
     const p = (payload?.automationPolicy || {}) as Record<string, any>;
     return {
       mode: (p.mode as AutomationMode) || 'AUTO_DRAFT_WAIT_APPROVAL',
-      defaultChannel: (p.defaultChannel as 'ZALO_OA' | 'ZALO_BOT' | 'EMAIL') || 'ZALO_OA',
+      defaultChannel: (p.defaultChannel as 'TELEGRAM' | 'ZALO_BOT' | 'ZALO_OA' | 'EMAIL') || 'ZALO_OA',
     };
   }, [payload]);
+
+  const isAutoDraftMode = automationPolicy.mode === 'AUTO_DRAFT_WAIT_APPROVAL' || automationPolicy.mode === 'AUTO_FULL';
+
+  const currentVnPeriod = useMemo(() => {
+    const now = new Date(Date.now() + 7 * 3600 * 1000);
+    return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+  }, []);
+  const isFuturePeriod = selectedPeriod > currentVnPeriod;
 
   const billingPeriods = useMemo(() => {
     return Array.isArray(payload?.billingPeriods)
@@ -276,9 +329,16 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
       sentCount: baseScopedRows.filter((r) =>
         ['SENT', 'DELIVERED'].includes(r.statuses.deliveryStatus)
       ).length,
-      paidCount: baseScopedRows.filter((r) => r.statuses.paymentStatus === 'PAID').length,
-      unpaidCount: baseScopedRows.filter((r) =>
-        ['UNPAID', 'PARTIAL', 'OVERDUE'].includes(r.statuses.paymentStatus)
+      paidCount: baseScopedRows.filter(
+        (r) =>
+          r.statuses.paymentStatus === 'PAID' ||
+          r.statuses.paymentStatus === 'OVERPAID' ||
+          (r.totals.remainingAmountVnd === 0 && r.totals.paidAmountVnd > 0)
+      ).length,
+      unpaidCount: baseScopedRows.filter(
+        (r) =>
+          ['UNPAID', 'PARTIAL', 'OVERDUE'].includes(r.statuses.paymentStatus) &&
+          r.totals.remainingAmountVnd > 0
       ).length,
     };
   }, [baseScopedRows]);
@@ -308,9 +368,16 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
         case 'SENT':
           return ['SENT', 'DELIVERED'].includes(r.statuses.deliveryStatus);
         case 'UNPAID':
-          return ['UNPAID', 'PARTIAL', 'OVERDUE'].includes(r.statuses.paymentStatus);
+          return (
+            ['UNPAID', 'PARTIAL', 'OVERDUE'].includes(r.statuses.paymentStatus) &&
+            r.totals.remainingAmountVnd > 0
+          );
         case 'PAID':
-          return r.statuses.paymentStatus === 'PAID';
+          return (
+            r.statuses.paymentStatus === 'PAID' ||
+            r.statuses.paymentStatus === 'OVERPAID' ||
+            (r.totals.remainingAmountVnd === 0 && r.totals.paidAmountVnd > 0)
+          );
         default:
           return true;
       }
@@ -490,7 +557,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
         type: 'SUCCESS',
         message: `Đã lưu & tính lại thành công phòng ${data.row?.room?.code || ''}: Tổng cần thanh toán ${formatVnd(data.row?.totals?.totalPayableVnd || 0)}.`,
       });
-      await onRefresh();
+      await onRefresh({ silent: true });
       return true;
     } catch {
       setFeedbackBanner({
@@ -609,7 +676,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
 
   const handleIssueAndSend = async (
     keys: string[],
-    channel?: 'ZALO_OA' | 'ZALO_BOT' | 'EMAIL',
+    channel?: 'TELEGRAM' | 'ZALO_BOT' | 'ZALO_OA' | 'EMAIL',
     recipientOverride?: string
   ): Promise<boolean> => {
     setIsMutating(true);
@@ -695,7 +762,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
         type: 'SUCCESS',
         message: `Đã ghi nhận thanh toán ${formatVnd(params.amountVnd)} cho hóa đơn ${data.invoice?.invoiceCode || ''}.`,
       });
-      await onRefresh();
+      await onRefresh({ silent: true });
       return true;
     } catch {
       setFeedbackBanner({
@@ -802,6 +869,63 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
     }
   };
 
+  const handleRefreshWithSync = async () => {
+    setIsMutating(true);
+    try {
+      const syncParams = new URLSearchParams();
+      if (buildingFilter && buildingFilter !== 'ALL') {
+        syncParams.append('buildings', buildingFilter);
+      }
+      const syncQuery = syncParams.toString() ? `?${syncParams.toString()}` : '';
+      await fetch(`/api/v1/console/v2/hunonic/sync${syncQuery}`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': CONSOLE_CSRF_HEADER,
+        },
+      }).catch((err) => console.warn('Hunonic sync warning:', err));
+
+      await onRefresh();
+      notifySave(true, 'Đã đồng bộ chỉ số điện và làm mới dữ liệu');
+    } finally {
+      setIsMutating(false);
+    }
+  };
+
+  const handleSyncRoomElectric = async (roomId: string, meterId?: string | null): Promise<boolean> => {
+    try {
+      const syncParams = new URLSearchParams();
+      if (roomId) syncParams.append('roomId', roomId);
+      if (meterId) syncParams.append('meterId', meterId);
+      const res = await fetch(`/api/v1/console/v2/hunonic/sync?${syncParams.toString()}`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': CONSOLE_CSRF_HEADER,
+        },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok) {
+        notifySave(true, 'Đã cập nhật dữ liệu tại chỗ');
+        await onRefresh({ silent: true });
+        return true;
+      }
+      setFeedbackBanner({
+        type: 'ERROR',
+        message: data.message || 'Không thể đồng bộ chỉ số điện từ Hunonic',
+      });
+      return false;
+    } catch (err: any) {
+      setFeedbackBanner({
+        type: 'ERROR',
+        message: err?.message || 'Lỗi kết nối khi đồng bộ Hunonic',
+      });
+      return false;
+    }
+  };
+
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
       setSortDirection((d) => (d === 'ASC' ? 'DESC' : 'ASC'));
@@ -880,7 +1004,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
               <button
                 type="button"
                 data-testid="btn-settlement-refresh"
-                onClick={() => void onRefresh()}
+                onClick={() => void handleRefreshWithSync()}
                 disabled={isLoading || isMutating}
                 className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors whitespace-nowrap"
               >
@@ -895,9 +1019,12 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                   isLoading={isMutating}
                   loadingText="Đang duyệt..."
                   shimmerColor="#4f46e5"
-                  disabled={dynamicProgress.completeDataCount === 0}
+                  disabled={isAutoDraftMode || isFuturePeriod || dynamicProgress.completeDataCount === 0}
+                  title={isFuturePeriod ? 'Dữ liệu xem trước kỳ tương lai - chưa đến kỳ phê duyệt' : isAutoDraftMode ? 'Đang sử dụng tổng hợp tự động - nháp' : undefined}
                   onClick={() => void handleApproveObligations(selectedKeys, 'APPROVE')}
-                  className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/90 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 px-3 py-1.5 text-xs font-bold transition-colors disabled:opacity-50"
+                  className={`inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/90 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 px-3 py-1.5 text-xs font-bold transition-opacity ${
+                    isAutoDraftMode || isFuturePeriod ? 'opacity-40 cursor-not-allowed pointer-events-none' : 'disabled:opacity-50'
+                  }`}
                 >
                   <ShieldCheck className="w-3.5 h-3.5" />
                   <span>
@@ -914,9 +1041,12 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                   isLoading={isMutating}
                   loadingText="Đang gửi..."
                   shimmerColor="#059669"
-                  disabled={dynamicKpis.readyInvoicesCount === 0}
+                  disabled={isAutoDraftMode || isFuturePeriod || dynamicKpis.readyInvoicesCount === 0}
+                  title={isFuturePeriod ? 'Dữ liệu xem trước kỳ tương lai - không cho phép phát hành' : isAutoDraftMode ? 'Đang sử dụng tổng hợp tự động - nháp' : undefined}
                   onClick={() => void handleIssueAndSend(selectedKeys)}
-                  className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/90 dark:bg-emerald-950/60 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 px-3 py-1.5 text-xs font-bold transition-colors disabled:opacity-50"
+                  className={`inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/90 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 px-3 py-1.5 text-xs font-bold transition-opacity ${
+                    isAutoDraftMode || isFuturePeriod ? 'opacity-40 cursor-not-allowed pointer-events-none' : 'hover:bg-emerald-100 disabled:opacity-50'
+                  }`}
                 >
                   <Send className="w-3.5 h-3.5" />
                   <span>
@@ -932,8 +1062,12 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                   data-testid="btn-settlement-compile-primary"
                   isLoading={isMutating}
                   loadingText="Đang tổng hợp..."
+                  disabled={isFuturePeriod}
+                  title={isFuturePeriod ? 'Kỳ tương lai - chưa đến kỳ tổng hợp' : undefined}
                   onClick={() => void handleCompilePeriod()}
-                  className="inline-flex min-h-9 items-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-1.5 text-xs font-extrabold shadow-xs transition-colors disabled:opacity-50"
+                  className={`inline-flex min-h-9 items-center gap-1.5 rounded-xl bg-blue-600 text-white px-3.5 py-1.5 text-xs font-extrabold shadow-xs transition-opacity ${
+                    isFuturePeriod ? 'opacity-40 cursor-not-allowed pointer-events-none' : 'hover:bg-blue-700 disabled:opacity-50'
+                  }`}
                 >
                   <ClipboardCheck className="w-3.5 h-3.5" />
                   <span>Tổng hợp kỳ</span>
@@ -1077,8 +1211,12 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                 data-testid="mobile-btn-compile"
                 isLoading={isMutating}
                 loadingText="Đang tính..."
+                disabled={isFuturePeriod}
+                title={isFuturePeriod ? 'Kỳ tương lai - chưa đến kỳ tổng hợp' : undefined}
                 onClick={() => void handleCompilePeriod()}
-                className="inline-flex h-9 shrink-0 items-center gap-1 rounded-xl bg-blue-600 hover:bg-blue-700 text-white px-2.5 text-xs font-extrabold shadow-xs disabled:opacity-50"
+                className={`inline-flex h-9 shrink-0 items-center gap-1 rounded-xl bg-blue-600 text-white px-2.5 text-xs font-extrabold shadow-xs transition-opacity ${
+                  isFuturePeriod ? 'opacity-40 cursor-not-allowed pointer-events-none' : 'hover:bg-blue-700 disabled:opacity-50'
+                }`}
               >
                 <ClipboardCheck className="w-3.5 h-3.5" />
                 <span>Tổng hợp</span>
@@ -1090,15 +1228,16 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                 {
                   label: 'Làm mới dữ liệu',
                   icon: <RefreshCw className="w-4 h-4 text-slate-600" />,
-                  onClick: () => void onRefresh(),
+                  onClick: () => void handleRefreshWithSync(),
                 },
                 ...(canManageSettlements
                   ? [
                       {
                         label: `Phê duyệt hàng loạt${selectedKeys.length > 0 ? ` (${selectedKeys.length})` : ''}`,
                         icon: <ShieldCheck className="w-4 h-4 text-indigo-600" />,
+                        disabled: isAutoDraftMode || dynamicProgress.completeDataCount === 0,
                         onClick: () => {
-                          if (dynamicProgress.completeDataCount > 0) {
+                          if (!isAutoDraftMode && dynamicProgress.completeDataCount > 0) {
                             void handleApproveObligations(selectedKeys, 'APPROVE');
                           }
                         },
@@ -1110,8 +1249,9 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                       {
                         label: `Phát hành & gửi${selectedKeys.length > 0 ? ` (${selectedKeys.length})` : ''}`,
                         icon: <Send className="w-4 h-4 text-emerald-600" />,
+                        disabled: isAutoDraftMode || dynamicKpis.readyInvoicesCount === 0,
                         onClick: () => {
-                          if (dynamicKpis.readyInvoicesCount > 0) {
+                          if (!isAutoDraftMode && dynamicKpis.readyInvoicesCount > 0) {
                             void handleIssueAndSend(selectedKeys);
                           }
                         },
@@ -1797,8 +1937,12 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                                       {
                                         label: 'Phê duyệt hóa đơn này',
                                         icon: <ShieldCheck className="w-4 h-4 text-indigo-600" />,
-                                        onClick: () =>
-                                          void handleApproveObligations([row.obligationKey], 'APPROVE'),
+                                        disabled: isAutoDraftMode,
+                                        onClick: () => {
+                                          if (!isAutoDraftMode) {
+                                            void handleApproveObligations([row.obligationKey], 'APPROVE');
+                                          }
+                                        },
                                       },
                                     ]
                                   : []),
@@ -1811,12 +1955,26 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                                             ? 'Gửi lại hóa đơn cho khách'
                                             : 'Phát hành & Gửi hóa đơn',
                                         icon: <Send className="w-4 h-4 text-emerald-600" />,
-                                        onClick: () => void handleIssueAndSend([row.obligationKey]),
+                                        disabled: isAutoDraftMode,
+                                        onClick: () => {
+                                          if (!isAutoDraftMode) {
+                                            void handleIssueAndSend([row.obligationKey]);
+                                          }
+                                        },
+                                      },
+                                    ]
+                                  : []),
+                                ...(row.statuses.paymentStatus !== 'PAID' && row.statuses.paymentStatus !== 'OVERPAID' && row.totals.remainingAmountVnd > 0
+                                  ? [
+                                      {
+                                        label: 'Thu tiền / Đối soát',
+                                        icon: <Banknote className="w-4 h-4 text-emerald-600" />,
+                                        onClick: () => openReconcileConfirmModal(row),
                                       },
                                     ]
                                   : []),
                                 {
-                                  label: 'Ghi nhận / Xem thanh toán',
+                                  label: 'Xem lịch sử thanh toán',
                                   icon: <CreditCard className="w-4 h-4 text-emerald-600" />,
                                   onClick: () => openDrawerForRow(row, 'PAYMENT'),
                                 },
@@ -2111,7 +2269,12 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                                       {
                                         label: `Phê duyệt tất cả ${group.totalMembersCount} HĐ phòng này`,
                                         icon: <ShieldCheck className="w-4 h-4 text-indigo-600" />,
-                                        onClick: () => void handleApproveObligations(groupKeys, 'APPROVE'),
+                                        disabled: isAutoDraftMode,
+                                        onClick: () => {
+                                          if (!isAutoDraftMode) {
+                                            void handleApproveObligations(groupKeys, 'APPROVE');
+                                          }
+                                        },
                                       },
                                     ]
                                   : []),
@@ -2120,7 +2283,12 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                                       {
                                         label: `Phát hành & Gửi tất cả ${group.totalMembersCount} HĐ`,
                                         icon: <Send className="w-4 h-4 text-emerald-600" />,
-                                        onClick: () => void handleIssueAndSend(groupKeys),
+                                        disabled: isAutoDraftMode,
+                                        onClick: () => {
+                                          if (!isAutoDraftMode) {
+                                            void handleIssueAndSend(groupKeys);
+                                          }
+                                        },
                                       },
                                     ]
                                   : []),
@@ -2380,7 +2548,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                     {/* Hàng 2: Trạng thái tinh gọn (Dạng Pill badge, không dùng bullet rườm rà) */}
                     <div className="flex items-center gap-1.5 flex-wrap">
                       {/* Badge trạng thái Hóa đơn / Thanh toán */}
-                      {row.statuses.paymentStatus === 'PAID' ? (
+                      {row.statuses.paymentStatus === 'PAID' || row.statuses.paymentStatus === 'OVERPAID' || (row.totals.remainingAmountVnd === 0 && row.totals.paidAmountVnd > 0) ? (
                         <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 text-[10.5px] font-bold text-emerald-700 dark:text-emerald-300">
                           <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
                           Đã thanh toán
@@ -2477,33 +2645,49 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                       ) : row.statuses.invoiceStatus === 'PENDING_APPROVAL' || row.statuses.invoiceStatus === 'DRAFT' ? (
                         <button
                           type="button"
+                          disabled={isAutoDraftMode || isFuturePeriod}
+                          title={isFuturePeriod ? 'Dữ liệu xem trước kỳ tương lai - chưa đến kỳ phê duyệt' : isAutoDraftMode ? 'Đang sử dụng tổng hợp tự động - nháp' : undefined}
                           onClick={() => void handleApproveObligations([row.obligationKey], 'APPROVE')}
-                          className="flex-1 h-8 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11.5px] font-bold flex items-center justify-center gap-1.5 shadow-xs"
+                          className={`flex-1 h-8 rounded-lg text-white text-[11.5px] font-bold flex items-center justify-center gap-1.5 shadow-xs transition-opacity ${
+                            isAutoDraftMode || isFuturePeriod
+                              ? 'bg-indigo-600 opacity-40 cursor-not-allowed pointer-events-none'
+                              : 'bg-indigo-600 hover:bg-indigo-700'
+                          }`}
                         >
                           <ShieldCheck className="w-3.5 h-3.5" /> Phê duyệt
                         </button>
                       ) : row.statuses.deliveryStatus !== 'SENT' && row.statuses.deliveryStatus !== 'DELIVERED' ? (
                         <button
                           type="button"
+                          disabled={isAutoDraftMode || isFuturePeriod}
+                          title={isFuturePeriod ? 'Dữ liệu xem trước kỳ tương lai - không cho phép gửi' : isAutoDraftMode ? 'Dữ liệu xem trước (chế độ tự động nháp) - không cho phép gửi' : undefined}
                           onClick={() => void handleIssueAndSend([row.obligationKey])}
-                          className="flex-1 h-8 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11.5px] font-bold flex items-center justify-center gap-1.5 shadow-xs"
+                          className={`flex-1 h-8 rounded-lg text-white text-[11.5px] font-bold flex items-center justify-center gap-1.5 shadow-xs transition-opacity ${
+                            isAutoDraftMode || isFuturePeriod
+                              ? 'bg-blue-600 opacity-40 cursor-not-allowed pointer-events-none'
+                              : 'bg-blue-600 hover:bg-blue-700'
+                          }`}
                         >
                           <Send className="w-3.5 h-3.5" /> Gửi hóa đơn
                         </button>
-                      ) : (
+                      ) : row.statuses.paymentStatus !== 'PAID' && row.statuses.paymentStatus !== 'OVERPAID' && row.totals.remainingAmountVnd > 0 ? (
                         <button
                           type="button"
-                          onClick={() => openDrawerForRow(row, 'PAYMENT')}
+                          onClick={() => openReconcileConfirmModal(row)}
                           className="flex-1 h-8 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11.5px] font-bold flex items-center justify-center gap-1.5 shadow-xs"
                         >
                           <Banknote className="w-3.5 h-3.5" /> Thu tiền / Đối soát
                         </button>
-                      )}
+                      ) : null}
 
                       <button
                         type="button"
                         onClick={() => openDrawerForRow(row, 'OVERVIEW')}
-                        className="h-8 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-[11.5px] font-bold text-slate-700 dark:text-slate-200 shrink-0 hover:bg-slate-100 dark:hover:bg-slate-700"
+                        className={`h-8 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-[11.5px] font-bold text-slate-700 dark:text-slate-200 shrink-0 hover:bg-slate-100 dark:hover:bg-slate-700 ${
+                          row.statuses.paymentStatus === 'PAID' || row.statuses.paymentStatus === 'OVERPAID' || row.totals.remainingAmountVnd === 0
+                            ? 'w-full flex items-center justify-center'
+                            : ''
+                        }`}
                       >
                         Chi tiết
                       </button>
@@ -2680,7 +2864,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                                   {formatVnd(member.totals.totalPayableVnd)}
                                 </div>
                                 <div className="mt-0.5">
-                                  {member.statuses.paymentStatus === 'PAID' ? (
+                                  {member.statuses.paymentStatus === 'PAID' || member.statuses.paymentStatus === 'OVERPAID' || (member.totals.remainingAmountVnd === 0 && member.totals.paidAmountVnd > 0) ? (
                                     <span className="inline-flex items-center gap-1 rounded bg-emerald-100 dark:bg-emerald-950 px-1.5 py-0.2 text-[9.5px] font-bold text-emerald-700 dark:text-emerald-300">
                                       Đã thanh toán
                                     </span>
@@ -3247,6 +3431,185 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
       </Dialog.Root>
 
       {/* =====================================================================
+          CONFIRMATION MODAL: THU TIỀN VÀ ĐỐI SOÁT THỦ CÔNG
+         ===================================================================== */}
+      <Dialog.Root open={reconcileModalOpen} onOpenChange={setReconcileModalOpen}>
+        <Dialog.Portal>
+          <Dialog.Backdrop className="fixed inset-0 z-50 bg-slate-950/50 backdrop-blur-[2px]" />
+          <Dialog.Viewport className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+            <Dialog.Popup className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-4 sm:p-6 text-slate-900 dark:text-slate-100 my-auto">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                <Dialog.Title className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Banknote className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                  Xác nhận Thu tiền & Đối soát
+                </Dialog.Title>
+                <button
+                  type="button"
+                  onClick={() => setReconcileModalOpen(false)}
+                  className="rounded-lg p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {reconcileTargetRow && (
+                <div className="space-y-4 py-3 text-xs">
+                  {/* Card thông tin phòng & khách */}
+                  <div className="rounded-xl bg-slate-50 dark:bg-slate-800/60 p-3 border border-slate-200/80 dark:border-slate-800 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-sm text-slate-900 dark:text-white">
+                        Phòng {reconcileTargetRow.room.code} · {reconcileTargetRow.building.name || reconcileTargetRow.building.code}
+                      </span>
+                      <span className="font-mono text-[11px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-800">
+                        {reconcileTargetRow.invoice?.code || 'Chưa tạo HĐ'}
+                      </span>
+                    </div>
+                    <div className="text-slate-600 dark:text-slate-300 flex items-center justify-between">
+                      <span>Khách: <strong className="text-slate-900 dark:text-white">{reconcileTargetRow.tenant?.fullName || 'Chưa có'}</strong></span>
+                      <span>SĐT: <strong className="font-mono">{reconcileTargetRow.tenant?.phone || '—'}</strong></span>
+                    </div>
+                    <div className="text-[11px] text-slate-500">
+                      Kỳ quyết toán: <strong>Tháng {reconcileTargetRow.periodKey}</strong>
+                    </div>
+                  </div>
+
+                  {/* Chi tiết các khoản thanh toán */}
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+                    <div className="bg-slate-100 dark:bg-slate-800/80 px-3 py-1.5 font-bold text-[11.5px] text-slate-700 dark:text-slate-300">
+                      Chi tiết các khoản thu kỳ này
+                    </div>
+                    <div className="divide-y divide-slate-100 dark:divide-slate-800/60 text-[11.5px] p-2 space-y-1">
+                      <div className="flex justify-between py-0.5 px-1">
+                        <span className="text-slate-500">Tiền phòng ({reconcileTargetRow.rent.activeDays}/{reconcileTargetRow.rent.basisDays || 30} ngày):</span>
+                        <span className="font-mono font-bold">{formatVnd(reconcileTargetRow.totals.roomRentVnd)}</span>
+                      </div>
+                      <div className="flex justify-between py-0.5 px-1">
+                        <span className="text-slate-500">Tiền điện {reconcileTargetRow.periodKey === '2026-10' ? '(Miễn phí T10/2026)' : ''}:</span>
+                        <span className="font-mono font-bold">{formatVnd(reconcileTargetRow.totals.electricVnd)}</span>
+                      </div>
+                      <div className="flex justify-between py-0.5 px-1">
+                        <span className="text-slate-500">Tiền nước {reconcileTargetRow.periodKey === '2026-10' ? '(Miễn phí T10/2026)' : ''}:</span>
+                        <span className="font-mono font-bold">{formatVnd(reconcileTargetRow.totals.waterVnd)}</span>
+                      </div>
+                      {reconcileTargetRow.totals.serviceFeeVnd > 0 && (
+                        <div className="flex justify-between py-0.5 px-1">
+                          <span className="text-slate-500">Phí dịch vụ:</span>
+                          <span className="font-mono font-bold">{formatVnd(reconcileTargetRow.totals.serviceFeeVnd)}</span>
+                        </div>
+                      )}
+                      {reconcileTargetRow.totals.adjustmentVnd !== 0 && (
+                        <div className="flex justify-between py-0.5 px-1">
+                          <span className="text-slate-500">Cọc HĐ / Khoản điều chỉnh:</span>
+                          <span className="font-mono font-bold">{formatVnd(reconcileTargetRow.totals.adjustmentVnd)}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between py-1 px-1 bg-slate-50/70 dark:bg-slate-800/50 rounded font-bold text-slate-900 dark:text-white">
+                        <span>Tổng cần thanh toán:</span>
+                        <span className="font-mono text-blue-600 dark:text-blue-400">{formatVnd(reconcileTargetRow.totals.totalPayableVnd)}</span>
+                      </div>
+                      {reconcileTargetRow.totals.paidAmountVnd > 0 && (
+                        <div className="flex justify-between py-0.5 px-1 text-emerald-600 dark:text-emerald-400">
+                          <span>Đã thu các đợt trước:</span>
+                          <span className="font-mono font-bold">-{formatVnd(reconcileTargetRow.totals.paidAmountVnd)}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between py-1 px-1 bg-rose-50/70 dark:bg-rose-950/40 rounded font-bold text-rose-700 dark:text-rose-300">
+                        <span>Còn lại cần thu:</span>
+                        <span className="font-mono text-sm">{formatVnd(reconcileTargetRow.totals.remainingAmountVnd)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Form nhập chứng từ đối soát */}
+                  <div className="space-y-3 pt-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                          Số tiền thu lần này (VND) *
+                        </label>
+                        <MoneyInput
+                          value={confirmPaymentAmountVnd}
+                          onChange={(val) => setConfirmPaymentAmountVnd(val)}
+                          className="!h-9 !py-0 !text-xs !font-mono !font-bold !rounded-lg w-full"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                          Hình thức thanh toán *
+                        </label>
+                        <select
+                          value={confirmPaymentMethod}
+                          onChange={(e) => setConfirmPaymentMethod(e.target.value)}
+                          className="h-9 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 text-xs font-bold text-slate-900 dark:text-white"
+                        >
+                          <option value="MANUAL_CASH">Tiền mặt (Trực tiếp)</option>
+                          <option value="BANK_TRANSFER">Chuyển khoản ngân hàng</option>
+                          <option value="SEPAY">SePay · VietQR</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                          Ngày thu tiền
+                        </label>
+                        <DateInput
+                          value={confirmPaymentDate}
+                          onChange={setConfirmPaymentDate}
+                          className="h-9 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 text-xs font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                          Nội dung / Mã giao dịch
+                        </label>
+                        <input
+                          type="text"
+                          value={confirmReferenceText}
+                          onChange={(e) => setConfirmReferenceText(e.target.value)}
+                          placeholder="Nội dung chứng từ..."
+                          className="h-9 w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 text-xs"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/40 p-2.5 border border-emerald-200 dark:border-emerald-800 text-[11px] text-emerald-800 dark:text-emerald-300 flex items-start gap-2">
+                      <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600" />
+                      <span>
+                        Xác nhận sẽ tạo chứng từ thu tiền trong tab <strong>Đối soát</strong> và đồng bộ trạng thái hóa đơn sang <strong>Đã thanh toán</strong>. Nút thu tiền sẽ được ẩn sau khi hoàn tất.
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setReconcileModalOpen(false)}
+                  disabled={isSubmittingReconcile}
+                  className="flex-1 h-9 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  Hủy bỏ
+                </button>
+                <SettlementShimmerButton
+                  type="button"
+                  onClick={handleConfirmReconcileSubmit}
+                  isLoading={isSubmittingReconcile}
+                  loadingText="Đang ghi nhận..."
+                  disabled={confirmPaymentAmountVnd <= 0}
+                  className="flex-1 h-9 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm"
+                >
+                  Xác nhận & Lưu vào Đối soát
+                </SettlementShimmerButton>
+              </div>
+            </Dialog.Popup>
+          </Dialog.Viewport>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+      {/* =====================================================================
           5-TAB RIGHT-SIDE DETAIL DRAWER (Section 10)
          ===================================================================== */}
       <SettlementDetailDrawer
@@ -3265,7 +3628,10 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
         onSaveRoomInput={handleSaveRoomInput}
         onApproveObligation={handleApproveObligations}
         onIssueAndSend={handleIssueAndSend}
+        isAutoDraftMode={isAutoDraftMode}
+        isFuturePeriod={isFuturePeriod}
         onRecordPayment={handleRecordPayment}
+        onSyncRoomElectric={handleSyncRoomElectric}
       />
     </div>
   );

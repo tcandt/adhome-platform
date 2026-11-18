@@ -6,6 +6,7 @@ import { CONSOLE_CSRF_HEADER } from '@/app/providers/AuthContext';
 import { usePortfolio } from '@/app/providers/PortfolioContext';
 import { SettingsDialog } from '@/shared/ui/SettingsDialog';
 import { FieldInfoHint } from '@/shared/ui/FieldInfoHint';
+import { formatVnDateTime } from '@/shared/tokens/designTokens';
 import { type WebhookConnection, type WebhookGuide } from './PaymentWebhookPanel';
 
 type Provider = { id: string; name: string; description: string; docsUrl: string; canTest: boolean; environments: string[]; fields: { key: string; label: string; secret: boolean; optional?: boolean }[]; testReference: boolean; webhook: WebhookGuide };
@@ -360,7 +361,7 @@ export function PaymentIntegrationHub() {
                     {c.lastTestMessage && (
                       <p className="text-xs text-slate-500 bg-slate-50 dark:bg-slate-800/40 p-2 rounded-lg">
                         {c.lastTestMessage}{' '}
-                        {c.lastTestedAt && `(${new Date(c.lastTestedAt).toLocaleString('vi-VN')})`}
+                        {c.lastTestedAt && `(${formatVnDateTime(c.lastTestedAt)})`}
                       </p>
                     )}
                   </div>
@@ -389,7 +390,7 @@ export function PaymentIntegrationHub() {
           </div>
         )
       )}
-      {auditLogs.length > 0 && <details className="rounded-xl border border-slate-200 p-4 dark:border-slate-800"><summary className="cursor-pointer text-sm font-bold">Nhật ký tích hợp · 20 thao tác gần nhất</summary><ul className="mt-3 space-y-3">{auditLogs.map(log => <li key={log.id} className="break-words border-t border-slate-100 pt-2 text-xs dark:border-slate-800"><p>{log.summary}</p><p className="mt-1 text-slate-500">{log.actorEmail} · {new Date(log.createdAt).toLocaleString('vi-VN')}</p></li>)}</ul></details>}
+      {auditLogs.length > 0 && <details className="rounded-xl border border-slate-200 p-4 dark:border-slate-800"><summary className="cursor-pointer text-sm font-bold">Nhật ký tích hợp · 20 thao tác gần nhất</summary><ul className="mt-3 space-y-3">{auditLogs.map(log => <li key={log.id} className="break-words border-t border-slate-100 pt-2 text-xs dark:border-slate-800"><p>{log.summary}</p><p className="mt-1 text-slate-500">{log.actorEmail} · {formatVnDateTime(log.createdAt)}</p></li>)}</ul></details>}
     </>}
     {draft && provider && <SettingsDialog title={draft.id ? 'Sửa kết nối thanh toán' : 'Thêm kết nối thanh toán'} description="Cấu hình kết nối và tài khoản nhận tiền." busy={!!busy} onClose={() => setDraft(null)}>
       <form className="space-y-4" onSubmit={e => { e.preventDefault(); void run('save', () => request(draft.id ? `/${draft.id}` : '', draft.id ? 'PATCH' : 'POST', draft), 'Đã lưu cấu hình và danh sách tài khoản. Kết nối đang tắt, chưa xác thực.', true); }}>

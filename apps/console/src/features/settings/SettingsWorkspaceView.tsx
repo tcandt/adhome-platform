@@ -32,6 +32,7 @@ import { SETTINGS_TABS_CONFIG } from '@/app/navigation/navigationConfig';
 import { CONSOLE_CSRF_HEADER, useAuth } from '@/app/providers/AuthContext';
 import { useNavigation } from '@/app/providers/NavigationContext';
 import { usePortfolio } from '@/app/providers/PortfolioContext';
+import { formatVnDateTime } from '@/shared/tokens/designTokens';
 import { AccountManagementView } from './AccountManagementView';
 import { PaymentIntegrationHub } from './PaymentIntegrationHub';
 import { ZaloBotSettings } from './ZaloBotSettings';
@@ -1379,8 +1380,8 @@ export const SettingsWorkspaceView: React.FC = () => {
                 {[
                   ['Trạng thái', hunonicIntegration.isEnabled ? 'Đang bật' : 'Đang tắt'],
                   ['Thông tin xác thực', hunonicIntegration.hasCredentials ? 'Đã lưu bảo mật' : 'Chưa lưu'],
-                  ['Xác minh gần nhất', hunonicIntegration.lastTestedAt ? new Date(hunonicIntegration.lastTestedAt).toLocaleString('vi-VN') : 'Chưa có'],
-                  ['Đồng bộ gần nhất', hunonicIntegration.lastSyncedAt ? new Date(hunonicIntegration.lastSyncedAt).toLocaleString('vi-VN') : 'Chưa có'],
+                  ['Xác minh gần nhất', hunonicIntegration.lastTestedAt ? formatVnDateTime(hunonicIntegration.lastTestedAt) : 'Chưa có'],
+                  ['Đồng bộ gần nhất', hunonicIntegration.lastSyncedAt ? formatVnDateTime(hunonicIntegration.lastSyncedAt) : 'Chưa có'],
                   ['Phiên bản API', hunonicIntegration.apiVersion || 'Mặc định'],
                   ['Phạm vi', hunonicIntegration.buildingScopeId ? 'Một tòa nhà' : 'Toàn tổ chức'],
                   ['Khả năng', `${hunonicIntegration.capabilities.length} chức năng`],
@@ -1745,7 +1746,7 @@ export const SettingsWorkspaceView: React.FC = () => {
                           {log.summary}
                         </div>
                         <div className="text-[11px] text-slate-500 font-mono">
-                          {new Date(log.createdAt).toLocaleString('vi-VN')} ·{' '}
+                          {formatVnDateTime(log.createdAt)} ·{' '}
                           {log.actorEmail} ({log.actorRole}) · {log.action}
                         </div>
                       </div>
@@ -1770,7 +1771,7 @@ export const SettingsWorkspaceView: React.FC = () => {
                           {item.emailAttempted}
                         </div>
                         <div className="text-[11px] text-slate-400">
-                          {new Date(item.createdAt).toLocaleString('vi-VN')} ·
+                          {formatVnDateTime(item.createdAt)} ·
                           IP {item.clientIp}
                         </div>
                       </div>

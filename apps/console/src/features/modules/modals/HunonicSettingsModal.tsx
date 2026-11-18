@@ -24,6 +24,7 @@ import { CONSOLE_CSRF_HEADER, useAuth } from "@/app/providers/AuthContext";
 import { usePortfolio } from "@/app/providers/PortfolioContext";
 import { MoneyInput } from "@/shared/ui/MoneyInput";
 import { NumberInput } from "@/shared/ui/NumberInput";
+import { formatVnDateTime } from "@/shared/tokens/designTokens";
 
 type Tab = "api" | "meters" | "tariff" | "schedule" | "history";
 interface Meter {
@@ -92,7 +93,7 @@ const tabs = [
   { id: "history", label: "Lịch sử", icon: Activity },
 ] as const;
 const dateLabel = (value?: string | null) =>
-  value ? new Date(value).toLocaleString("vi-VN") : "Chưa có";
+  value ? formatVnDateTime(value) : "Chưa có";
 
 async function request(path: string, method = "GET", body?: unknown) {
   const response = await fetch(`/api/v1/console/integrations/hunonic/${path}`, {

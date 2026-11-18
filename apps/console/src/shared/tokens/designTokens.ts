@@ -168,3 +168,119 @@ export function formatWaterBillingLabel(method: string): string {
       return method || '';
   }
 }
+
+/**
+ * Format date or timestamp to standard Vietnamese date: DD/MM/YYYY in GMT+7 (Asia/Ho_Chi_Minh)
+ */
+export function formatVnDate(dateInput?: string | number | Date | null): string {
+  if (!dateInput) return '—';
+  if (typeof dateInput === 'string') {
+    const clean = dateInput.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) {
+      const [y, m, d] = clean.split('-');
+      return `${d}/${m}/${y}`;
+    }
+  }
+  try {
+    const d = new Date(dateInput);
+    if (isNaN(d.getTime())) return String(dateInput);
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Ho_Chi_Minh',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(d);
+    const day = parts.find((p) => p.type === 'day')?.value || '01';
+    const month = parts.find((p) => p.type === 'month')?.value || '01';
+    const year = parts.find((p) => p.type === 'year')?.value || '2026';
+    return `${day}/${month}/${year}`;
+  } catch {
+    return String(dateInput);
+  }
+}
+
+/**
+ * Format timestamp to standard Vietnamese date & time: DD/MM/YYYY HH:mm in GMT+7 (Asia/Ho_Chi_Minh)
+ */
+export function formatVnDateTime(dateInput?: string | number | Date | null): string {
+  if (!dateInput) return '—';
+  try {
+    const d = new Date(dateInput);
+    if (isNaN(d.getTime())) return String(dateInput);
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Ho_Chi_Minh',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(d);
+    const day = parts.find((p) => p.type === 'day')?.value || '01';
+    const month = parts.find((p) => p.type === 'month')?.value || '01';
+    const year = parts.find((p) => p.type === 'year')?.value || '2026';
+    const hour = parts.find((p) => p.type === 'hour')?.value || '00';
+    const minute = parts.find((p) => p.type === 'minute')?.value || '00';
+    return `${day}/${month}/${year} ${hour}:${minute}`;
+  } catch {
+    return String(dateInput);
+  }
+}
+
+/**
+ * Format timestamp to HH:mm in GMT+7 (Asia/Ho_Chi_Minh)
+ */
+export function formatVnTime(dateInput?: string | number | Date | null): string {
+  if (!dateInput) return '—';
+  try {
+    const d = new Date(dateInput);
+    if (isNaN(d.getTime())) return String(dateInput);
+    return new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Ho_Chi_Minh',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(d);
+  } catch {
+    return String(dateInput);
+  }
+}
+
+/**
+ * Get current ISO date (YYYY-MM-DD) in GMT+7 (Asia/Ho_Chi_Minh)
+ */
+export function getTodayIsoVn(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+}
+
+/**
+ * Parse standard Vietnamese DD/MM/YYYY date string into ISO YYYY-MM-DD
+ */
+export function parseVnDateToIso(vnDate: string): string | null {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(vnDate.trim());
+  if (!match) return null;
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const year = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31 || year < 1900 || year > 2100) {
+    return null;
+  }
+  const iso = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  const dt = new Date(`${iso}T00:00:00Z`);
+  if (
+    Number.isNaN(dt.getTime()) ||
+    dt.getUTCFullYear() !== year ||
+    dt.getUTCMonth() + 1 !== month ||
+    dt.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return iso;
+}
+
+

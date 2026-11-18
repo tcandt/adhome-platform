@@ -7,6 +7,7 @@ import { Archive, Download, MoreHorizontal, RotateCcw, Trash2, X } from 'lucide-
 import { CONSOLE_CSRF_HEADER } from '@/app/providers/AuthContext';
 import { usePortfolio } from '@/app/providers/PortfolioContext';
 import { notifySave } from '@/shared/ui/SaveToast';
+import { formatVnDateTime } from '@/shared/tokens/designTokens';
 
 type Backup = { id: string; name: string; sizeBytes: number; createdAt: string; createdBy: string; digest: string; counts: Record<string, number> };
 type Action = { kind: 'RESTORE' | 'DELETE'; scope?: 'CUSTOMERS' | 'BUILDINGS'; backup?: Backup; counts: Record<string, number>; current?: Record<string, number>; phrase: string };
@@ -152,7 +153,7 @@ export function DataManagement() {
               <td className="px-3 py-2"><input type="checkbox" checked={selectedIds.has(backup.id)} disabled={busy} onChange={() => toggleBackup(backup.id)} aria-label={`Chọn ${backup.name}`} className="h-4 w-4 accent-blue-600" /></td>
               <td className="px-2 py-2 tabular-nums">{index + 1}</td>
               <td className="px-2 py-2"><span className="block font-semibold text-slate-900 dark:text-slate-100">{backup.name}</span><span className="mt-0.5 block text-[11px] text-slate-500">{summary(backup.counts)}</span></td>
-              <td className="whitespace-nowrap px-2 py-2 tabular-nums">{new Date(backup.createdAt).toLocaleString('vi-VN')}</td>
+              <td className="whitespace-nowrap px-2 py-2 tabular-nums">{formatVnDateTime(backup.createdAt)}</td>
               <td className="whitespace-nowrap px-2 py-2 tabular-nums">{formatSize(backup.sizeBytes)}</td>
               <td className="px-2 py-2 text-center"><Menu.Root><Menu.Trigger disabled={busy} aria-label={`Hành động với ${backup.name}`} className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-lg hover:bg-slate-100 disabled:opacity-50 dark:hover:bg-slate-700"><MoreHorizontal size={18} /></Menu.Trigger><Menu.Portal><Menu.Positioner side="bottom" align="end" sideOffset={6} className="z-[120]"><Menu.Popup className="min-w-40 rounded-xl border border-slate-200 bg-white p-1 shadow-xl dark:border-slate-700 dark:bg-slate-900">
                 <Menu.Item onClick={() => { window.location.href = `${base}/backups/${backup.id}/download`; }} className="flex min-h-10 cursor-pointer items-center gap-2 rounded-lg px-3 text-xs hover:bg-slate-100 dark:hover:bg-slate-800"><Download size={14} />Tải bản mã hóa</Menu.Item>

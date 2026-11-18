@@ -2,6 +2,11 @@ const crypto = require('node:crypto');
 const { parseRegistration } = require('./registration.cjs');
 const { defaults, renderTemplate } = require('./message-templates.cjs');
 
+const formatVnDate = val => {
+  const m = String(val || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : (val || '—');
+};
+
 const API_BASE = 'https://bot-api.zaloplatforms.com';
 
 function normalizeUpdate(body) {
@@ -27,7 +32,7 @@ function resultMessage(status) {
     case 'VERIFIED': return 'AdHome đã xác minh đăng ký nhận thông báo cho phòng của bạn.';
     case 'ALREADY_VERIFIED': return 'Tài khoản của bạn đã được đăng ký nhận thông báo cho phòng này trước đó.';
     case 'CONFLICT': return 'Tài khoản Zalo này đã được đăng ký nhận thông báo cho một phòng khác. Mỗi tài khoản Zalo chỉ được đăng ký 1 phòng duy nhất. Vui lòng liên hệ quản lý để được hỗ trợ.';
-    case 'INVALID_FORMAT': return 'Cú pháp không đúng. Vui lòng nhắn tin theo cú pháp:\nDANGKY <Số phòng> <Số điện thoại>\nVí dụ: DANGKY 2501 0567867889';
+    case 'INVALID_FORMAT': return 'Cú pháp đăng ký chưa đúng.\nVui lòng nhắn theo mẫu:\nDK <SĐT> <MÃ PHÒNG>\n\nVí dụ: DK 0567867889 LK31.06\nhoặc: DK 0567867889,0329484353 31.06';
     case 'UNAVAILABLE': return 'Hệ thống tạm thời chưa thể xác minh. Vui lòng thử lại sau.';
     default: return 'AdHome chưa tìm thấy hợp đồng khớp với phòng và số điện thoại này. Vui lòng kiểm tra lại thông tin hoặc liên hệ quản lý tòa nhà.';
   }
@@ -61,7 +66,15 @@ async function register(client, botId, orgId, update, inboxId, lookup, exists) {
   let tenantId = null;
   let roomCode = null;
   let invoice = null;
-  if (input) {
+  if (!input) {
+    const alreadyLinked = await client.query(
+      'SELECT l.tenant_id FROM zalo_bot_resident_links l WHERE l.bot_id = $1 AND (l.chat_id = $2 OR l.user_id = $3) LIMIT 1',
+      [botId, update.chatId, update.userId],
+    );
+    if (alreadyLinked?.rows?.[0]?.tenant_id && (await exists(orgId, alreadyLinked.rows[0].tenant_id))) {
+      status = 'ALREADY_VERIFIED';
+    }
+  } else {
     const match = await lookup(orgId, input);
     status = match.status;
     if (status === 'MATCHED') {
@@ -69,10 +82,10 @@ async function register(client, botId, orgId, update, inboxId, lookup, exists) {
       roomCode = match.roomCode;
       invoice = match.invoice;
       const linked = await client.query(
-        'SELECT id, tenant_id, chat_id, user_id FROM zalo_bot_resident_links WHERE bot_id = $1 AND (chat_id = $2 OR tenant_id = $3 OR user_id = $4) FOR UPDATE',
-        [botId, update.chatId, tenantId, update.userId],
+        'SELECT id, tenant_id, chat_id, user_id FROM zalo_bot_resident_links WHERE bot_id = $1 AND (chat_id = $2 OR user_id = $3) FOR UPDATE',
+        [botId, update.chatId, update.userId],
       );
-      const exact = linked.rows.some(row => row.chat_id === update.chatId && row.tenant_id === tenantId);
+      const exact = linked.rows.some(row => (row.chat_id === update.chatId || row.user_id === update.userId) && row.tenant_id === tenantId);
       if (exact) status = 'ALREADY_VERIFIED';
       else {
         const conflicts = [];
@@ -83,7 +96,7 @@ async function register(client, botId, orgId, update, inboxId, lookup, exists) {
         if (conflicts.length) status = 'CONFLICT';
         else {
           const inserted = await client.query(
-            'INSERT INTO zalo_bot_resident_links (bot_id, chat_id, user_id, tenant_id) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING RETURNING id',
+            'INSERT INTO zalo_bot_resident_links (bot_id, chat_id, user_id, tenant_id) VALUES ($1,$2,$3,$4) ON CONFLICT (bot_id, chat_id) DO NOTHING RETURNING id',
             [botId, update.chatId, update.userId, tenantId],
           );
           status = inserted.rowCount ? 'VERIFIED' : 'CONFLICT';
@@ -106,9 +119,9 @@ async function register(client, botId, orgId, update, inboxId, lookup, exists) {
     if (row) await client.query(
       `INSERT INTO zalo_bot_resident_outbox (bot_id, chat_id, tenant_id, event_key, event_type, message, media_url, media_caption)
        VALUES ($1,$2,$3,$4,'INVOICE_ISSUED',$5,$6,$7) ON CONFLICT (event_key) DO NOTHING`,
-      [botId, update.chatId, tenantId, `invoice-payment-v9:${botId}:${row.id}`,
+      [botId, update.chatId, tenantId, `invoice-payment-v9:${botId}:${row.id}:${update.chatId}`,
         renderTemplate(templates.INVOICE_ISSUED, { roomCode, invoiceCode: row.invoiceCode,
-          amount: Number(row.amountVnd).toLocaleString('vi-VN'), dueDate: row.dueDate }),
+          amount: Number(row.amountVnd).toLocaleString('vi-VN'), dueDate: formatVnDate(row.dueDate) }),
         row.qrUrl || null,
         row.qrUrl ? [`Hóa đơn cho: ${roomCode} · ${row.tenantName}`,
           ...(row.items || []).map(item => `- ${item.label}: ${Number(item.amountVnd).toLocaleString('vi-VN')}đ`),
@@ -168,7 +181,7 @@ async function receiveBotUpdate(pool, botId, body, orgId, lookup = lookupContrac
         );
         await client.query('UPDATE zalo_bot_configs SET setup_code_hash = NULL, setup_expires_at = NULL WHERE bot_id = $1', [botId]);
       }
-    } else if (update.chatType === 'private' && /^DANGKY(?:\s|$)/i.test(update.text)) {
+    } else if (update.chatType === 'private') {
       registration = await register(client, botId, orgId, update, inserted.rows[0].id, lookup, exists);
     }
     await client.query('COMMIT');

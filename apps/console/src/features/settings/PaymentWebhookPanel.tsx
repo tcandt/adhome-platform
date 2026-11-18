@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Button } from '@animate-ui/react/primitives/buttons/button';
 import { ShimmeringText } from '@animate-ui/react/primitives/texts/shimmering';
 import { ExternalLink } from 'lucide-react';
+import { formatVnDateTime } from '@/shared/tokens/designTokens';
 
 export type WebhookGuide = { label: string; docsUrl: string; authentication: string; response: string; steps: string[] };
 export type WebhookConnection = {
@@ -32,8 +33,8 @@ export function PaymentWebhookPanel({ connection: c, guide, busy, onToggle, onRe
     <p className="text-xs"><strong>Xác thực:</strong> {guide.authentication}{c.providerId === 'SEPAY' && <span className="mt-1 block">Đang chọn: {c.webhookAuth === 'API_KEY' ? 'API Key · Authorization: Apikey …' : 'HMAC-SHA256 · X-SePay-Signature + X-SePay-Timestamp'}.</span>}</p>
     <p className="break-words text-xs"><strong>Phản hồi sau khi lưu bền:</strong> {guide.response}</p>
     <div className="flex flex-wrap gap-2"><Button className={button} disabled={!!busy || (!c.webhookEnabled && !c.webhookUrl)} onClick={onToggle}>{busy === `webhook-${c.id}` ? <ShimmeringText text="Đang cập nhật…" /> : c.webhookEnabled ? 'Tắt nhận webhook' : 'Bật nhận webhook'}</Button>{c.providerId === 'PAYOS' && <Button className={button} disabled={!!busy || !c.webhookEnabled || !c.webhookUrl} onClick={onRegister}>{busy === `register-${c.id}` ? <ShimmeringText text="Đang chờ payOS xác nhận…" /> : 'Đăng ký URL với payOS'}</Button>}</div>
-    <p className="text-xs text-slate-500">{c.webhookLastReceivedAt ? `Đã nhận callback hợp lệ lần gần nhất: ${new Date(c.webhookLastReceivedAt).toLocaleString('vi-VN')}.` : 'Chưa nhận callback hợp lệ với cấu hình hiện tại.'} {c.webhookRegisteredAt && `payOS xác nhận đăng ký: ${new Date(c.webhookRegisteredAt).toLocaleString('vi-VN')}.`} Sự kiện được lưu chờ đối soát; chưa tự ghi thu.</p>
+    <p className="text-xs text-slate-500">{c.webhookLastReceivedAt ? `Đã nhận callback hợp lệ lần gần nhất: ${formatVnDateTime(c.webhookLastReceivedAt)}.` : 'Chưa nhận callback hợp lệ với cấu hình hiện tại.'} {c.webhookRegisteredAt && `payOS xác nhận đăng ký: ${formatVnDateTime(c.webhookRegisteredAt)}.`} Sự kiện được lưu chờ đối soát; chưa tự ghi thu.</p>
     <details><summary className="cursor-pointer text-xs font-semibold">Cách cấu hình tại nhà cung cấp</summary><ol className="mt-2 list-decimal space-y-2 pl-5 text-xs">{guide.steps.map((step, i) => <li key={i}>{step}</li>)}</ol><a className="mt-3 inline-flex items-center gap-1 text-xs text-blue-700 dark:text-blue-300" href={guide.docsUrl} target="_blank" rel="noreferrer">Tài liệu webhook chính thức <ExternalLink size={12} /></a></details>
-    {!!c.webhookEvents?.length && <details><summary className="cursor-pointer text-xs font-semibold">Sự kiện gần nhất ({c.webhookEvents.length})</summary><ul className="mt-2 space-y-2 text-xs">{c.webhookEvents.map(e => <li key={e.id} className="break-words">{new Date(e.receivedAt).toLocaleString('vi-VN')} · {e.eventType} · {e.amountVnd === null ? '—' : `${e.amountVnd.toLocaleString('vi-VN')}đ`} · {e.status === 'TEST_RECEIVED' ? 'Mẫu thử đã nhận' : 'Đã lưu, chờ đối soát'}</li>)}</ul></details>}
+    {!!c.webhookEvents?.length && <details><summary className="cursor-pointer text-xs font-semibold">Sự kiện gần nhất ({c.webhookEvents.length})</summary><ul className="mt-2 space-y-2 text-xs">{c.webhookEvents.map(e => <li key={e.id} className="break-words">{formatVnDateTime(e.receivedAt)} · {e.eventType} · {e.amountVnd === null ? '—' : `${e.amountVnd.toLocaleString('vi-VN')}đ`} · {e.status === 'TEST_RECEIVED' ? 'Mẫu thử đã nhận' : 'Đã lưu, chờ đối soát'}</li>)}</ul></details>}
   </div>;
 }

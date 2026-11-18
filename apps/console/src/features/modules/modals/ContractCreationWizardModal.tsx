@@ -22,6 +22,8 @@ import { usePortfolio } from '../../../app/providers/PortfolioContext';
 import { ConsoleRoomDto, ConsoleTenantDto } from '../../../shared/types/portfolio';
 import { MoneyInput } from '../../../shared/ui/MoneyInput';
 import { NumberInput } from '../../../shared/ui/NumberInput';
+import { DateInput } from '../../../shared/ui/DateInput';
+import { formatVnDate } from '../../../shared/tokens/designTokens';
 
 interface Props {
   isOpen: boolean;
@@ -97,10 +99,21 @@ export const ContractCreationWizardModal: React.FC<Props> = ({
   const [endDate, setEndDate] = useState<string>(() => computeEndDateIsoVn(getTodayIsoVn(), 12));
   const [monthlyRentVnd, setMonthlyRentVnd] = useState<number>(4500000);
   const [requiredDepositVnd, setRequiredDepositVnd] = useState<number>(4500000);
+  const [billingCycle, setBillingCycle] = useState<
+    'MONTHLY' | 'BI_MONTHLY' | 'QUARTERLY' | 'BIANNUAL' | 'ANNUAL'
+  >('MONTHLY');
   const [firstPeriodBillingPolicy, setFirstPeriodBillingPolicy] = useState<
     'CALENDAR_PRORATE' | 'ANNIVERSARY_CYCLE' | 'FULL_FIRST_MONTH'
   >('CALENDAR_PRORATE');
   const [coOccupants, setCoOccupants] = useState<CoOccupantItem[]>([]);
+
+  const cycleMonths = useMemo(() => {
+    if (billingCycle === 'QUARTERLY') return 3;
+    if (billingCycle === 'BIANNUAL') return 6;
+    if (billingCycle === 'ANNUAL') return 12;
+    if (billingCycle === 'BI_MONTHLY') return 2;
+    return 1;
+  }, [billingCycle]);
 
   // Step 5: Surplus handling
   const [surplusAction, setSurplusAction] = useState<'RENT_CREDIT' | 'REFUND'>('RENT_CREDIT');
@@ -198,8 +211,8 @@ export const ContractCreationWizardModal: React.FC<Props> = ({
   const firstRentCalc = useMemo(() => {
     if (!startDate || !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
       return {
-        rentVnd: monthlyRentVnd,
-        formula: `${monthlyRentVnd.toLocaleString('vi-VN')} đ/tháng`,
+        rentVnd: monthlyRentVnd * cycleMonths,
+        formula: `Mặc định (${cycleMonths} tháng): ${(monthlyRentVnd * cycleMonths).toLocaleString('vi-VN')} đ`,
         billedDays: 30,
         daysInMonth: 30,
       };
@@ -207,37 +220,59 @@ export const ContractCreationWizardModal: React.FC<Props> = ({
     const [y, m, d] = startDate.split('-').map(Number);
     const daysInMonth = new Date(y, m, 0).getDate();
     if (firstPeriodBillingPolicy === 'FULL_FIRST_MONTH') {
+      const rentVnd = monthlyRentVnd * cycleMonths;
       return {
-        rentVnd: monthlyRentVnd,
-        formula: `Trọn tháng dương lịch ${y}-${String(m).padStart(2, '0')}: ${monthlyRentVnd.toLocaleString('vi-VN')} đ`,
+        rentVnd,
+        formula:
+          cycleMonths > 1
+            ? `Chu kỳ trọn ${cycleMonths} tháng (${monthlyRentVnd.toLocaleString('vi-VN')} đ × ${cycleMonths} tháng): ${rentVnd.toLocaleString('vi-VN')} đ`
+            : `Trọn tháng dương lịch ${y}-${String(m).padStart(2, '0')}: ${monthlyRentVnd.toLocaleString('vi-VN')} đ`,
         billedDays: daysInMonth,
         daysInMonth,
       };
     }
     if (firstPeriodBillingPolicy === 'ANNIVERSARY_CYCLE') {
+      const rentVnd = monthlyRentVnd * cycleMonths;
       return {
-        rentVnd: monthlyRentVnd,
-        formula: `Chu kỳ tròn 1 tháng từ ${startDate}: ${monthlyRentVnd.toLocaleString('vi-VN')} đ`,
+        rentVnd,
+        formula:
+          cycleMonths > 1
+            ? `Chu kỳ tròn ${cycleMonths} tháng (${monthlyRentVnd.toLocaleString('vi-VN')} đ × ${cycleMonths} tháng): ${rentVnd.toLocaleString('vi-VN')} đ`
+            : `Chu kỳ tròn 1 tháng từ ${startDate}: ${monthlyRentVnd.toLocaleString('vi-VN')} đ`,
         billedDays: daysInMonth,
         daysInMonth,
       };
     }
     // CALENDAR_PRORATE
     const billedDays = daysInMonth - d + 1;
-    const rentVnd =
+    const firstMonthRent =
       billedDays === daysInMonth
         ? monthlyRentVnd
         : Math.round((monthlyRentVnd * billedDays) / daysInMonth);
-    return {
-      rentVnd,
-      formula:
+    const remainingMonthsRent = (cycleMonths - 1) * monthlyRentVnd;
+    const rentVnd = firstMonthRent + remainingMonthsRent;
+
+    let formula = '';
+    if (cycleMonths > 1) {
+      if (billedDays === daysInMonth) {
+        formula = `Chu kỳ ${cycleMonths} tháng (${monthlyRentVnd.toLocaleString('vi-VN')} đ/tháng): ${rentVnd.toLocaleString('vi-VN')} đ`;
+      } else {
+        formula = `${billedDays}/${daysInMonth} ngày tháng đầu (${firstMonthRent.toLocaleString('vi-VN')} đ) + ${cycleMonths - 1} tháng sau (${remainingMonthsRent.toLocaleString('vi-VN')} đ) = ${rentVnd.toLocaleString('vi-VN')} đ`;
+      }
+    } else {
+      formula =
         billedDays === daysInMonth
           ? `Trọn tháng (${billedDays}/${daysInMonth} ngày): ${monthlyRentVnd.toLocaleString('vi-VN')} đ`
-          : `${monthlyRentVnd.toLocaleString('vi-VN')} đ × (${billedDays}/${daysInMonth} ngày: ${startDate} → ${y}-${String(m).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}) = ${rentVnd.toLocaleString('vi-VN')} đ`,
+          : `${monthlyRentVnd.toLocaleString('vi-VN')} đ × (${billedDays}/${daysInMonth} ngày: ${formatVnDate(startDate)} → ${String(daysInMonth).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y}) = ${rentVnd.toLocaleString('vi-VN')} đ`;
+    }
+
+    return {
+      rentVnd,
+      formula,
       billedDays,
       daysInMonth,
     };
-  }, [startDate, monthlyRentVnd, firstPeriodBillingPolicy]);
+  }, [startDate, monthlyRentVnd, firstPeriodBillingPolicy, cycleMonths]);
 
   // Financial Transfer Math
   const financialSummary = useMemo(() => {
@@ -377,6 +412,7 @@ export const ContractCreationWizardModal: React.FC<Props> = ({
               depositVnd: requiredDepositVnd,
               occupantsCount: coOccupants.length + 1,
               rentalModel,
+              billingCycle,
               surplusAction,
               firstPeriodBillingPolicy,
               coOccupants: coOccupants.filter((co) => co.fullName.trim()),
@@ -403,6 +439,7 @@ export const ContractCreationWizardModal: React.FC<Props> = ({
             depositVnd: requiredDepositVnd,
             occupantsCount: coOccupants.length + 1,
             rentalModel,
+            billingCycle,
             firstPeriodBillingPolicy,
             coOccupants: coOccupants.filter((co) => co.fullName.trim()),
           }),
@@ -817,13 +854,12 @@ export const ContractCreationWizardModal: React.FC<Props> = ({
                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                       Ngày dự kiến nhận phòng
                     </label>
-                    <input
-                      type="date"
+                    <DateInput
                       value={expectedMoveIn}
-                      onChange={(e) => {
-                        setExpectedMoveIn(e.target.value);
-                        setStartDate(e.target.value);
-                        setEndDate(computeEndDateIsoVn(e.target.value, durationMonths));
+                      onChange={(val) => {
+                        setExpectedMoveIn(val);
+                        setStartDate(val);
+                        setEndDate(computeEndDateIsoVn(val, durationMonths));
                       }}
                       className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
                     />
@@ -892,11 +928,10 @@ export const ContractCreationWizardModal: React.FC<Props> = ({
                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                       Ngày bắt đầu hợp đồng *
                     </label>
-                    <input
+                    <DateInput
                       data-testid="wizard-start-date"
-                      type="date"
                       value={startDate}
-                      onChange={(e) => handleStartDateChange(e.target.value)}
+                      onChange={(val) => handleStartDateChange(val)}
                       className="w-full text-xs p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
                     />
                   </div>
@@ -920,10 +955,11 @@ export const ContractCreationWizardModal: React.FC<Props> = ({
                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                       Ngày kết thúc (tự tính)
                     </label>
-                    <input
-                      type="date"
+                    <DateInput
                       value={endDate}
                       disabled
+                      readOnly
+                      onChange={() => {}}
                       className="w-full text-xs p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/50 text-slate-500 font-mono"
                     />
                   </div>
@@ -954,25 +990,55 @@ export const ContractCreationWizardModal: React.FC<Props> = ({
                   </div>
                 </div>
 
-                {/* C4-BILL-01 Prorate Billing Policy and Preview */}
-                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      Chính sách tính tiền kỳ đầu (Prorate)
-                    </label>
-                    <select
-                      data-testid="select-first-period-policy"
-                      value={firstPeriodBillingPolicy}
-                      onChange={(e: any) => setFirstPeriodBillingPolicy(e.target.value)}
-                      className="text-xs p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium"
-                    >
-                      <option value="CALENDAR_PRORATE">Theo ngày thực tế trong tháng (Prorate lịch dương)</option>
-                      <option value="ANNIVERSARY_CYCLE">Chu kỳ tròn tháng (Anniversary 30 ngày)</option>
-                      <option value="FULL_FIRST_MONTH">Thu trọn tháng đầu</option>
-                    </select>
+                {/* C4-BILL-01 Chu kỳ đóng tiền & Chính sách Prorate kỳ đầu */}
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                        Chu kỳ đóng tiền
+                      </label>
+                      <select
+                        data-testid="select-billing-cycle"
+                        value={billingCycle}
+                        onChange={(e: any) => setBillingCycle(e.target.value)}
+                        className="w-full text-xs p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium"
+                      >
+                        <option value="MONTHLY">1 tháng / lần (Mặc định)</option>
+                        <option value="BI_MONTHLY">2 tháng / lần</option>
+                        <option value="QUARTERLY">3 tháng / lần (Theo quý)</option>
+                        <option value="BIANNUAL">6 tháng / lần (Nửa năm)</option>
+                        <option value="ANNUAL">12 tháng / lần (1 năm)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                        Chính sách tính tiền kỳ đầu
+                      </label>
+                      <select
+                        data-testid="select-first-period-policy"
+                        value={firstPeriodBillingPolicy}
+                        onChange={(e: any) => setFirstPeriodBillingPolicy(e.target.value)}
+                        className="w-full text-xs p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-medium"
+                      >
+                        <option value="CALENDAR_PRORATE">Theo ngày thực tế trong tháng (Prorate)</option>
+                        <option value="ANNIVERSARY_CYCLE">Chu kỳ tròn tháng (Anniversary)</option>
+                        <option value="FULL_FIRST_MONTH">Thu trọn tháng đầu</option>
+                      </select>
+                    </div>
                   </div>
+
+                  {cycleMonths > 1 && (
+                    <div className="flex items-start gap-2 p-2.5 rounded-lg bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200/60 dark:border-blue-900/40 text-[11px] text-blue-800 dark:text-blue-300">
+                      <Sparkles className="w-4 h-4 shrink-0 text-blue-600 dark:text-blue-400 mt-0.5" />
+                      <div>
+                        <b>Cơ chế chu kỳ {cycleMonths} tháng:</b> Tiền phòng kỳ đầu sẽ thu liền {cycleMonths} tháng ({firstRentCalc.rentVnd.toLocaleString('vi-VN')} đ). Trong {cycleMonths - 1} tháng tiếp theo, hóa đơn tự động trôi tiền thuê phòng về <b>0 đ</b> và chỉ tính tiền điện nước, phí dịch vụ phát sinh.
+                      </div>
+                    </div>
+                  )}
+
                   <div className="text-[11px] text-slate-600 dark:text-slate-400 bg-white dark:bg-slate-900/60 p-2.5 rounded-lg border border-slate-100 dark:border-slate-800">
-                    <span className="font-semibold text-brand-primary">Dự kiến tiền thuê kỳ đầu:</span>{' '}
+                    <span className="font-semibold text-brand-primary">Dự kiến tiền thuê kỳ đầu ({cycleMonths} tháng):</span>{' '}
                     <span className="font-mono font-bold text-slate-900 dark:text-white">
                       {firstRentCalc.rentVnd.toLocaleString('vi-VN')} đ
                     </span>
@@ -1123,9 +1189,16 @@ export const ContractCreationWizardModal: React.FC<Props> = ({
 
                   <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
                     <div className="py-2 flex items-center justify-between">
-                      <span>1. Tiền thuê tháng đầu</span>
+                      <div>
+                        <span>1. Tiền thuê chu kỳ đầu ({cycleMonths > 1 ? `${cycleMonths} tháng` : 'tháng đầu'})</span>
+                        {cycleMonths > 1 && (
+                          <div className="text-[10.5px] text-slate-400 font-mono">
+                            {firstRentCalc.formula}
+                          </div>
+                        )}
+                      </div>
                       <span className="font-bold tabular-nums">
-                        {monthlyRentVnd.toLocaleString('vi-VN')} đ
+                        {firstRentCalc.rentVnd.toLocaleString('vi-VN')} đ
                       </span>
                     </div>
                     <div className="py-2 flex items-center justify-between">
@@ -1186,12 +1259,21 @@ export const ContractCreationWizardModal: React.FC<Props> = ({
                   <div className="flex items-center justify-between">
                     <span className="text-slate-500">Thời hạn hợp đồng:</span>
                     <b>
-                      {startDate} → {endDate} ({durationMonths} tháng)
+                      {formatVnDate(startDate)} → {formatVnDate(endDate)} ({durationMonths} tháng)
                     </b>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-slate-500">Người cùng lưu trú:</span>
                     <b>{coOccupants.length} người</b>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500">Chu kỳ đóng tiền:</span>
+                    <b className="text-brand-primary">
+                      {billingCycle === 'QUARTERLY' ? '3 tháng / lần (Theo quý)' :
+                       billingCycle === 'BIANNUAL' ? '6 tháng / lần (Nửa năm)' :
+                       billingCycle === 'ANNUAL' ? '12 tháng / lần (1 năm)' :
+                       billingCycle === 'BI_MONTHLY' ? '2 tháng / lần' : '1 tháng / lần (Mặc định)'}
+                    </b>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-slate-500">Hình thức:</span>
@@ -1238,6 +1320,14 @@ export const ContractCreationWizardModal: React.FC<Props> = ({
                     {monthlyRentVnd.toLocaleString('vi-VN')} đ
                   </b>
                 </div>
+                {cycleMonths > 1 && (
+                  <div className="flex items-center justify-between text-blue-600 dark:text-blue-400">
+                    <span>Chu kỳ đóng tiền:</span>
+                    <b className="font-semibold tabular-nums">
+                      {cycleMonths} tháng / lần
+                    </b>
+                  </div>
+                )}
                 <div className="flex items-center justify-between text-slate-600 dark:text-slate-400">
                   <span>Cọc yêu cầu:</span>
                   <b className="text-slate-900 dark:text-white tabular-nums">

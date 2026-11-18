@@ -1,44 +1,26 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useId, type ReactNode } from 'react';
 import type { BuildingLandlord } from '@/shared/types/portfolio';
+import { DateInput } from '@/shared/ui/DateInput';
 
 export const emptyBuildingLandlord: BuildingLandlord = {
   fullName: '', birthDate: '', address: '', idNumber: '', phone: '', accountNumber: '', bank: '', accountName: '',
 };
 
-const displayDate = (iso: string) => /^\d{4}-\d{2}-\d{2}$/.test(iso) ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : iso;
-const formatDateDraft = (input: string) => {
-  const digits = input.replace(/\D/g, '').slice(0, 8);
-  if (digits.length <= 2) return digits;
-  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
-  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
-};
-const parseDate = (display: string) => {
-  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(display);
-  if (!match) return null;
-  const iso = `${match[3]}-${match[2]}-${match[1]}`;
-  const date = new Date(`${iso}T00:00:00Z`);
-  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === iso ? iso : null;
-};
-
 function LandlordBirthDate({ id, value, onChange }: { id: string; value: string; onChange: (iso: string) => void }) {
-  const [draft, setDraft] = useState(() => displayDate(value));
-  const input = useRef<HTMLInputElement>(null);
-  useEffect(() => { setDraft(displayDate(value)); input.current?.setCustomValidity(''); }, [value]);
-  const update = (raw: string) => {
-    const next = formatDateDraft(raw);
-    setDraft(next);
-    const iso = next ? parseDate(next) : '';
-    const isComplete = next.length === 10;
-    input.current?.setCustomValidity(next && (!isComplete || iso === null) ? 'Nhập đủ ngày sinh hợp lệ theo định dạng dd/mm/yyyy.' : '');
-    if (iso !== null) onChange(iso);
-  };
-  return <div className="min-w-0">
-    <label htmlFor={id} className="mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-300">Ngày sinh chủ nhà</label>
-    <input ref={input} id={id} data-testid="input-landlord-birthDate" type="text" inputMode="numeric" autoComplete="bday"
-      placeholder="dd/mm/yyyy" maxLength={10} value={draft} onChange={e => update(e.target.value)}
-      onBlur={() => { if (draft && !parseDate(draft)) input.current?.reportValidity(); }}
-      className="building-landlord-input block w-full min-w-0 rounded-lg border border-slate-200 bg-slate-50 px-3 text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100" />
-  </div>;
+  return (
+    <div className="min-w-0">
+      <label htmlFor={id} className="mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-300">
+        Ngày sinh chủ nhà
+      </label>
+      <DateInput
+        id={id}
+        data-testid="input-landlord-birthDate"
+        value={value}
+        onChange={onChange}
+        className="building-landlord-input block w-full min-w-0 rounded-lg border border-slate-200 bg-slate-50 px-3 text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100"
+      />
+    </div>
+  );
 }
 
 export function BuildingLandlordFields({ value, onChange, actions }: {

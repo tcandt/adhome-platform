@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Dialog } from '@animate-ui/react/primitives/base-ui/dialog';
 import {
   AlertCircle,
+  Bell,
   Building2,
   Calendar,
   CheckCircle2,
@@ -25,6 +26,7 @@ import { usePortfolio } from '@/app/providers/PortfolioContext';
 import type { ConsoleTenantDto } from '@/shared/types/portfolio';
 import { tenantDirectory } from '@/shared/data/tenantDirectory';
 import { Button } from '@animate-ui/react/primitives/buttons/button';
+import { formatVnDate, formatVnDateTime } from '@/shared/tokens/designTokens';
 
 export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void }> = ({ onOpenRoom }) => {
   const { hasCapability } = useAuth();
@@ -37,6 +39,7 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
     activeBuildings,
     updateTenant,
     deleteTenant,
+    refreshPortfolio,
   } = usePortfolio();
   const tenants = useMemo(() => tenantDirectory(tenantProfiles, rooms), [tenantProfiles, rooms]);
   const isOccupantOnly = (tenant: ConsoleTenantDto) => tenant.id.startsWith('occupant:');
@@ -66,8 +69,32 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
   const [currentRoomId, setCurrentRoomId] = useState<string>('');
   const [emergencyContact, setEmergencyContact] = useState('');
   const [notes, setNotes] = useState('');
+  const [notificationChannel, setNotificationChannel] = useState<
+    'TELEGRAM' | 'ZALO_BOT' | 'ZALO_OA'
+  >('ZALO_OA');
   const [isSaving, setIsSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  const renderNotifChannelBadge = (channel?: string) => {
+    const ch =
+      channel === 'TELEGRAM' ? 'Telegram' : channel === 'ZALO_BOT' ? 'Zalo Bot' : 'Zalo OA';
+    const colorClasses =
+      channel === 'TELEGRAM'
+        ? 'border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300'
+        : channel === 'ZALO_BOT'
+        ? 'border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300'
+        : 'border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300';
+
+    return (
+      <span
+        data-testid="badge-notification-channel"
+        className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-bold border ${colorClasses}`}
+      >
+        <Bell className="w-3 h-3 shrink-0" />
+        <span>{ch}</span>
+      </span>
+    );
+  };
 
   // Delete confirmation modal state (zero window.confirm / alert)
   const [deletingTenant, setDeletingTenant] = useState<ConsoleTenantDto | null>(
@@ -136,6 +163,11 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
     setCurrentRoomId(tenant.currentRoomId || '');
     setEmergencyContact(tenant.emergencyContact || '');
     setNotes(tenant.notes || '');
+    setNotificationChannel(
+      tenant.notificationChannel === 'TELEGRAM' || tenant.notificationChannel === 'ZALO_BOT'
+        ? tenant.notificationChannel
+        : 'ZALO_OA'
+    );
     setFormError(null);
     setIsFormOpen(true);
   };
@@ -152,18 +184,62 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
       email: email.trim() || undefined,
       idNumber: idNumber.trim() || undefined,
       residenceRegStatus,
+      notificationChannel,
       primaryBuildingId: primaryBuildingId || null,
       currentRoomId: currentRoomId || null,
       emergencyContact: emergencyContact.trim() || undefined,
       notes: notes.trim() || undefined,
     };
 
-    const res = await updateTenant(editingTenant.id, payload);
+    let res: any;
+    if (editingTenant.id.startsWith('occupant:')) {
+      const occId = editingTenant.id.replace('occupant:', '');
+      try {
+        const occRes = await fetch(`/api/v1/console/v2/occupants/${encodeURIComponent(occId)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'AdHome-Console' },
+          body: JSON.stringify({
+            fullName: fullName.trim(),
+            phone: phone.trim() || null,
+            idNumber: idNumber.trim() || null,
+            residenceRegStatus,
+            notes: notes.trim() || undefined,
+          }),
+        });
+        const data = await occRes.json().catch(() => ({}));
+        if (!occRes.ok) {
+          res = { ok: false, message: data.message || 'Không thể lưu hồ sơ người lưu trú.' };
+        } else {
+          await refreshPortfolio();
+          res = { ok: true };
+        }
+      } catch (err: any) {
+        res = { ok: false, message: err?.message || 'Lỗi kết nối khi lưu hồ sơ.' };
+      }
+    } else {
+      res = await updateTenant(editingTenant.id, payload);
+    }
     setIsSaving(false);
 
     if (!res.ok) {
       setFormError(res.message || 'Không thể lưu hồ sơ khách thuê.');
       return;
+    }
+
+    if (detailTenant && detailTenant.id === editingTenant.id) {
+      setDetailTenant({
+        ...detailTenant,
+        fullName: fullName.trim(),
+        phone: phone.trim(),
+        email: email.trim(),
+        idNumber: idNumber.trim(),
+        residenceRegStatus,
+        notificationChannel,
+        primaryBuildingId: primaryBuildingId || null,
+        currentRoomId: currentRoomId || null,
+        emergencyContact: emergencyContact.trim(),
+        notes: notes.trim(),
+      });
     }
 
     setIsFormOpen(false);
@@ -359,6 +435,9 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
                     <div className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500 font-mono">
                       <Phone className="w-3 h-3 shrink-0" /> {t.phone || '—'}
                     </div>
+                    <div className="mt-1">
+                      {renderNotifChannelBadge(t.notificationChannel)}
+                    </div>
                   </div>
                   <div className="shrink-0">{renderRegBadge(t.residenceRegStatus)}</div>
                 </div>
@@ -384,18 +463,17 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
                   </div>
                 </div>
 
-                {canManageTenants && (isOccupantOnly(t) ? (
-                  <div className="flex justify-end border-t border-slate-100 dark:border-slate-800 pt-2">
-                    <Button
-                      type="button"
-                      className="inline-flex h-8 items-center gap-1 whitespace-nowrap text-xs font-semibold text-blue-600"
-                      onClick={() => t.currentRoomId && onOpenRoom?.(t.currentRoomId)}
-                    >
-                      <Home size={13} /> Hồ sơ lưu trú
-                    </Button>
-                  </div>
-                ) : (
+                {canManageTenants && (
                   <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                    {isOccupantOnly(t) && t.currentRoomId && (
+                      <Button
+                        type="button"
+                        className="inline-flex h-8 items-center gap-1 whitespace-nowrap text-xs font-semibold text-blue-600"
+                        onClick={() => onOpenRoom?.(t.currentRoomId!)}
+                      >
+                        <Home size={13} /> Hồ sơ lưu trú
+                      </Button>
+                    )}
                     <button
                       type="button"
                       onClick={() => openEditModal(t)}
@@ -414,7 +492,7 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
                       <Trash2 className="w-3 h-3" /> Xóa
                     </button>
                   </div>
-                ))}
+                )}
               </div>
             );
           })}
@@ -435,6 +513,7 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
                   <th className="px-4 py-3">CCCD / Định danh</th>
                   <th className="px-4 py-3">Tòa nhà &amp; Phòng</th>
                   <th className="px-4 py-3">Hợp đồng hiện tại</th>
+                  <th className="px-4 py-3">Kênh nhận thông báo</th>
                   <th className="px-4 py-3">Tạm trú</th>
                   <th className="px-4 py-3 text-right">Thao tác</th>
                 </tr>
@@ -525,19 +604,23 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
                         )}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
+                        {renderNotifChannelBadge(t.notificationChannel)}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
                         {renderRegBadge(t.residenceRegStatus)}
                       </td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">
-                        {canManageTenants && (isOccupantOnly(t) ? (
-                          <Button
-                            type="button"
-                            className="inline-flex h-8 items-center gap-1 whitespace-nowrap text-xs font-semibold text-blue-600"
-                            onClick={() => t.currentRoomId && onOpenRoom?.(t.currentRoomId)}
-                          >
-                            <Home size={13} /> Hồ sơ lưu trú
-                          </Button>
-                        ) : (
+                        {canManageTenants && (
                           <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                            {isOccupantOnly(t) && t.currentRoomId && (
+                              <Button
+                                type="button"
+                                className="inline-flex h-8 items-center gap-1 whitespace-nowrap text-xs font-semibold text-blue-600"
+                                onClick={() => onOpenRoom?.(t.currentRoomId!)}
+                              >
+                                <Home size={13} /> Hồ sơ lưu trú
+                              </Button>
+                            )}
                             <button
                               type="button"
                               data-testid={`btn-edit-tenant-${t.phone}`}
@@ -558,7 +641,7 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
                               <Trash2 className="w-3 h-3" /> Xóa
                             </button>
                           </div>
-                        ))}
+                        )}
                       </td>
                     </tr>
                   );
@@ -743,6 +826,43 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
               </div>
 
               <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                  Kênh nhận thông báo (Telegram / ZaloBot / ZaloOA — Chỉ chọn 1) *
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: 'ZALO_OA', label: 'Zalo OA', desc: 'Tài khoản OA' },
+                    { id: 'ZALO_BOT', label: 'Zalo Bot', desc: 'Bot cư dân' },
+                    { id: 'TELEGRAM', label: 'Telegram', desc: 'Telegram Bot' },
+                  ].map((opt) => (
+                    <label
+                      key={opt.id}
+                      data-testid={`radio-channel-${opt.id}`}
+                      className={`flex flex-col items-center justify-center p-2.5 rounded-xl border cursor-pointer transition-all ${
+                        notificationChannel === opt.id
+                          ? 'border-brand-primary bg-blue-50/80 dark:bg-blue-950/40 text-brand-primary dark:text-blue-300 font-bold ring-1 ring-brand-primary'
+                          : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="notificationChannel"
+                        value={opt.id}
+                        checked={notificationChannel === opt.id}
+                        onChange={() => setNotificationChannel(opt.id as any)}
+                        className="sr-only"
+                      />
+                      <span className="text-xs font-bold">{opt.label}</span>
+                      <span className="text-[10px] text-slate-400 dark:text-slate-400 mt-0.5">{opt.desc}</span>
+                    </label>
+                  ))}
+                </div>
+                <p className="mt-1 text-[10.5px] text-slate-400">
+                  Hệ thống sẽ đồng bộ kênh thông báo này sang mục 3 của tổng hợp chi tiết và cố định không cho phép thay đổi.
+                </p>
+              </div>
+
+              <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   Ghi chú hồ sơ nội bộ
                 </label>
@@ -856,6 +976,7 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
                               : 'Người cùng hộ'}
                           </span>
                         )}
+                        {renderNotifChannelBadge(detailTenant.notificationChannel)}
                       </div>
                       <Dialog.Title className="text-base font-bold text-slate-900 dark:text-white truncate">
                         {detailTenant.fullName}
@@ -899,6 +1020,17 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
                           {detailTenant.emergencyContact || 'Chưa cập nhật'}
                         </span>
                       </div>
+                      <div className="col-span-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                        <span className="text-[11px] text-slate-400 block mb-1">
+                          Kênh nhận thông báo (Telegram / ZaloBot / ZaloOA)
+                        </span>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {renderNotifChannelBadge(detailTenant.notificationChannel)}
+                          <span className="text-[10.5px] text-slate-500 dark:text-slate-400">
+                            • Chỉ gửi 1 trong 3 kênh khách đã đăng ký
+                          </span>
+                        </div>
+                      </div>
                     </div>
 
                     {/* Room & Contract */}
@@ -932,7 +1064,7 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
                           <span className="text-[11px] text-slate-400 block">Ngày hết hạn HĐ</span>
                           <span className="text-slate-700 dark:text-slate-200 inline-flex items-center gap-1 mt-0.5">
                             <Calendar className="w-3 h-3 text-slate-400" />
-                            {new Date(detailTenant.activeContractEndDate).toLocaleDateString('vi-VN')}
+                            {formatVnDate(detailTenant.activeContractEndDate)}
                           </span>
                         </div>
                       )}
@@ -961,8 +1093,8 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
                                 {h.contractCode ? ` (${h.contractCode})` : ''}
                               </div>
                               <div className="text-slate-500 font-mono">
-                                {new Date(h.moveInDate).toLocaleDateString('vi-VN')}
-                                {h.moveOutDate ? ` → ${new Date(h.moveOutDate).toLocaleDateString('vi-VN')}` : ' → Hiện tại'}
+                                {formatVnDate(h.moveInDate)}
+                                {h.moveOutDate ? ` → ${formatVnDate(h.moveOutDate)}` : ' → Hiện tại'}
                               </div>
                             </div>
                           ))}
@@ -982,8 +1114,8 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
                           </div>
                         )}
                         <div className="text-[10.5px] text-slate-400 flex items-center justify-between pt-1">
-                          <span>Tạo: {new Date(detailTenant.createdAt).toLocaleDateString('vi-VN')}</span>
-                          <span>Cập nhật: {new Date(detailTenant.updatedAt).toLocaleDateString('vi-VN')}</span>
+                          <span>Tạo: {formatVnDateTime(detailTenant.createdAt)}</span>
+                          <span>Cập nhật: {formatVnDateTime(detailTenant.updatedAt)}</span>
                         </div>
                       </div>
                     )}
@@ -1004,7 +1136,7 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
                         <span>Xem phòng</span>
                       </button>
                     )}
-                    {canManageTenants && !isOccupantOnly(detailTenant) && (
+                    {canManageTenants && (
                       <button
                         type="button"
                         data-testid="btn-detail-edit-tenant"

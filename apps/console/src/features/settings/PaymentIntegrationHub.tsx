@@ -313,14 +313,18 @@ export function PaymentIntegrationHub() {
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span
                               className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                c.status === 'VERIFIED'
-                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
-                                : c.status === 'ERROR'
-                                ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300'
-                                : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                                c.environment !== 'LIVE'
+                                  ? 'bg-amber-50 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
+                                  : c.status === 'VERIFIED'
+                                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                                  : c.status === 'ERROR'
+                                  ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300'
+                                  : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
                               }`}
                             >
-                              {c.status === 'VERIFIED'
+                              {c.environment !== 'LIVE'
+                                ? 'Thử nghiệm'
+                                : c.status === 'VERIFIED'
                                 ? 'Đã kiểm tra API'
                                 : c.status === 'ERROR'
                                 ? 'Kiểm tra thất bại'
@@ -380,8 +384,9 @@ export function PaymentIntegrationHub() {
                                 setReference('');
                                 setTestTarget(c);
                               }}
+                              title={c.environment !== 'LIVE' ? 'Xem hướng dẫn kiểm thử Webhook' : 'Kiểm tra API đọc dữ liệu'}
                             >
-                              Kiểm tra
+                              {c.environment !== 'LIVE' ? 'HD kiểm thử' : 'Kiểm tra'}
                             </Button>
                           )}
                         </div>
@@ -432,14 +437,18 @@ export function PaymentIntegrationHub() {
                       <div className="flex flex-wrap gap-1.5 text-xs shrink-0">
                         <span
                           className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                            c.status === 'VERIFIED'
+                            c.environment !== 'LIVE'
+                              ? 'bg-amber-50 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
+                              : c.status === 'VERIFIED'
                               ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
                               : c.status === 'ERROR'
                               ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300'
                               : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
                           }`}
                         >
-                          {c.status === 'VERIFIED'
+                          {c.environment !== 'LIVE'
+                            ? 'Chế độ Thử nghiệm'
+                            : c.status === 'VERIFIED'
                             ? 'Đã kiểm tra API'
                             : c.status === 'ERROR'
                             ? 'Kiểm tra thất bại'
@@ -525,8 +534,9 @@ export function PaymentIntegrationHub() {
                           setReference('');
                           setTestTarget(c);
                         }}
+                        title={c.environment !== 'LIVE' ? 'Xem hướng dẫn kiểm thử Webhook cho môi trường thử nghiệm' : 'Kiểm tra quyền truy cập API'}
                       >
-                        Kiểm tra API
+                        {c.environment !== 'LIVE' ? 'HD kiểm thử' : 'Kiểm tra API'}
                       </Button>
                     )}
                   </div>
@@ -669,7 +679,7 @@ export function PaymentIntegrationHub() {
         </fieldset>
         {formError && <p role="alert" className="text-sm text-rose-600">{formError}</p>}
         <div className="sticky bottom-0 flex flex-wrap justify-end gap-2 border-t border-slate-200 bg-white pt-3 dark:border-slate-800 dark:bg-[#111827]">
-          {draft.id && <Button type="button" className={buttonClass} disabled={!!busy || !provider.canTest} onClick={() => { const target = connections.find(c => c.id === draft.id); if (target) { setDraft(null); setError(''); setReference(''); setTestTarget(target); } }}>Kiểm tra API</Button>}
+          {draft.id && <Button type="button" className={buttonClass} disabled={!!busy || !provider.canTest} onClick={() => { const target = connections.find(c => c.id === draft.id); if (target) { setDraft(null); setError(''); setReference(''); setTestTarget(target); } }}>{draft.environment !== 'LIVE' ? 'HD kiểm thử' : 'Kiểm tra API'}</Button>}
           {draft.id && (
             <Button
               type="button"
@@ -687,10 +697,70 @@ export function PaymentIntegrationHub() {
         </div>
       </form>
     </SettingsDialog>}
-    {testTarget && <SettingsDialog title={`Kiểm tra API ${testTarget.name}`} description="Chỉ đọc dữ liệu từ nhà cung cấp, không tạo thanh toán hoặc ghi thu." busy={!!busy} onClose={() => setTestTarget(null)}><form className="space-y-4" onSubmit={e => { e.preventDefault(); void run('test', () => request(`/${testTarget.id}/test`, 'POST', { version: testTarget.version, reference }), 'Đã kiểm tra API.'); }}>
-      {testTarget.providerId === 'PAYOS' ? <label className="block text-sm">Mã đơn hàng / ID link payOS đã tồn tại<input required maxLength={100} pattern="[A-Za-z0-9_-]+" className={inputClass} value={reference} disabled={!!busy} onChange={e => setReference(e.target.value)} /><span className="mt-1 block text-xs text-slate-500">Phép kiểm tra xác nhận Client ID/API Key có quyền đọc link này. Không xác minh Checksum Key.</span></label> : <p className="text-sm text-slate-500">SePay sẽ được gọi để kiểm tra quyền đọc danh sách tài khoản. Phép kiểm tra không xác nhận webhook hoặc tài khoản khai báo thủ công.</p>}
-      {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
-      <div className="flex flex-wrap justify-end gap-2"><Button type="button" className={buttonClass} disabled={!!busy} onClick={() => setTestTarget(null)}>Đóng</Button><Button type="submit" className={primaryClass} disabled={!!busy}>{busy === 'test' ? <ShimmeringText text="Đang chờ phản hồi API…" /> : 'Kiểm tra ngay'}</Button></div>
-    </form></SettingsDialog>}
+    {testTarget && <SettingsDialog
+      title={testTarget.environment !== 'LIVE' ? `Kiểm thử kết nối ${testTarget.name}` : `Kiểm tra API ${testTarget.name}`}
+      description={testTarget.environment !== 'LIVE' ? `Chế độ Thử nghiệm (${testTarget.environment}) · Nhận và xác thực Webhook` : 'Chỉ đọc dữ liệu từ nhà cung cấp, không tạo thanh toán hoặc ghi thu.'}
+      busy={!!busy}
+      onClose={() => { setTestTarget(null); setError(''); }}
+    >
+      {testTarget.environment !== 'LIVE' ? (
+        <div className="space-y-4">
+          <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-4 dark:border-amber-900/60 dark:bg-amber-950/30 text-amber-900 dark:text-amber-200 space-y-2.5">
+            <div className="flex items-center gap-2 font-bold text-sm">
+              <span className="text-base">ℹ️</span>
+              <span>Phép kiểm tra API chỉ áp dụng cho môi trường Thực tế (LIVE)</span>
+            </div>
+            <p className="text-xs leading-relaxed text-amber-800 dark:text-amber-300">
+              Ở môi trường Thử nghiệm ({testTarget.environment}), nhà cung cấp không cấp API Token đọc tài khoản thực tế. Kết nối này được thiết kế để nhận và kiểm tra biến động số dư qua <strong>Webhook mô phỏng</strong>.
+            </p>
+            <div className="pt-2 border-t border-amber-200/70 dark:border-amber-900/40">
+              <p className="text-xs font-semibold text-amber-950 dark:text-amber-200 mb-1.5">Các bước kiểm thử đề xuất:</p>
+              <ol className="list-decimal list-inside text-xs text-amber-800 dark:text-amber-300 space-y-1.5">
+                <li>Bấm <strong>Mở cấu hình Webhook</strong> bên dưới để lấy URL và cài đặt mã bảo mật (HMAC / API Key).</li>
+                <li>Dán URL webhook vào trang quản trị của <strong>{testTarget.name}</strong> (chế độ Test mode).</li>
+                <li>Sử dụng tính năng <em>Mô phỏng giao dịch</em> hoặc <em>Gửi thử webhook</em> từ trang quản trị {testTarget.name}.</li>
+                <li>Hệ thống AdHome sẽ tự động xác thực chữ ký và ghi nhận sự kiện vào bảng <em>Nhật ký tích hợp</em>.</li>
+              </ol>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+            <Button type="button" className={buttonClass} disabled={!!busy} onClick={() => { setTestTarget(null); setError(''); }}>
+              Đóng
+            </Button>
+            <Button
+              type="button"
+              className={primaryClass}
+              disabled={!!busy}
+              onClick={() => {
+                const target = testTarget;
+                setTestTarget(null);
+                setError('');
+                edit(target);
+              }}
+            >
+              Mở cấu hình Webhook
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <form className="space-y-4" onSubmit={e => { e.preventDefault(); void run('test', () => request(`/${testTarget.id}/test`, 'POST', { version: testTarget.version, reference }), 'Đã kiểm tra API.'); }}>
+          {testTarget.providerId === 'PAYOS' ? (
+            <label className="block text-sm">
+              Mã đơn hàng / ID link payOS đã tồn tại
+              <input required maxLength={100} pattern="[A-Za-z0-9_-]+" className={inputClass} value={reference} disabled={!!busy} onChange={e => setReference(e.target.value)} />
+              <span className="mt-1 block text-xs text-slate-500">Phép kiểm tra xác nhận Client ID/API Key có quyền đọc link này. Không xác minh Checksum Key.</span>
+            </label>
+          ) : (
+            <p className="text-sm text-slate-500">SePay sẽ được gọi để kiểm tra quyền đọc danh sách tài khoản. Phép kiểm tra không xác nhận webhook hoặc tài khoản khai báo thủ công.</p>
+          )}
+          {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button type="button" className={buttonClass} disabled={!!busy} onClick={() => { setTestTarget(null); setError(''); }}>Đóng</Button>
+            <Button type="submit" className={primaryClass} disabled={!!busy}>{busy === 'test' ? <ShimmeringText text="Đang chờ phản hồi API…" /> : 'Kiểm tra ngay'}</Button>
+          </div>
+        </form>
+      )}
+    </SettingsDialog>}
   </section>;
 }

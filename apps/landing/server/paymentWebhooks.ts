@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { decryptSecret, encryptSecret } from './cryptoVault';
 import { allocateInitialReceipt } from './rentalFinance';
+import { formatTransferContent, DEFAULT_TRANSFER_SYNTAX } from './transferContentFormatter';
 
 class WebhookError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -65,7 +66,17 @@ export function normalizeTransferReference(value: unknown): string {
     .replace(/[^A-Za-z0-9]/g, '').toUpperCase();
 }
 
-function invoiceTransferReference(invoice: any): string {
+function invoiceTransferReference(invoice: any, syntax?: string): string {
+  if (syntax) {
+    const formatted = formatTransferContent(syntax, {
+      roomCode: invoice.room?.code,
+      buildingCode: invoice.room?.building?.code || invoice.building?.code,
+      tenantName: invoice.tenant?.fullName,
+      periodKey: invoice.periodKey,
+      invoiceCode: invoice.invoiceCode,
+    });
+    return normalizeTransferReference(formatted);
+  }
   const tenant = normalizeTransferReference(invoice.tenant?.fullName);
   const period = `${String(invoice.periodKey).slice(5, 7)}${String(invoice.periodKey).slice(0, 4)}`;
   return normalizeTransferReference(`${invoice.room?.code || ''}${tenant}${period}`);
@@ -79,18 +90,62 @@ async function settleVerifiedSepayCredit(tx: any, connection: any, verified: Nor
   const reference = normalizeTransferReference(verified.referenceText);
   if (!reference) return 'REFERENCE_MISSING';
 
+  let configuredSyntax = DEFAULT_TRANSFER_SYNTAX;
+  if (connection.credentialsEncrypted) {
+    const plaintext = decryptSecret(connection.credentialsEncrypted);
+    if (plaintext) {
+      try {
+        const creds = JSON.parse(plaintext);
+        if (typeof creds.transferSyntax === 'string' && creds.transferSyntax.trim()) {
+          configuredSyntax = creds.transferSyntax.trim();
+        }
+      } catch {}
+    }
+  }
+
   const invoices = await tx.invoice.findMany({
     where: {
       orgId: connection.orgId,
       ...(connection.buildingId ? { buildingId: connection.buildingId } : {}),
       status: { in: ['ISSUED', 'PARTIAL', 'OVERDUE'] },
     },
-    include: { room: true, tenant: true },
+    include: { room: { include: { building: true } }, tenant: true },
     take: 500,
   });
-  const matches = invoices.filter((invoice: any) =>
-    BigInt(invoice.totalAmountVnd) > BigInt(invoice.paidAmountVnd) && invoiceTransferReference(invoice) === reference
-  );
+  const matches = invoices.filter((invoice: any) => {
+    if (BigInt(invoice.totalAmountVnd) <= BigInt(invoice.paidAmountVnd)) return false;
+
+    // 1. Check against configured syntax
+    const refConfigured = invoiceTransferReference(invoice, configuredSyntax);
+    if (refConfigured && (reference === refConfigured || (refConfigured.length >= 6 && reference.includes(refConfigured)))) {
+      return true;
+    }
+    // 2. Check against default room + tenant + period (e.g. P3101NGUYENDUCTINH112026)
+    const refRoomTenant = invoiceTransferReference(invoice);
+    if (refRoomTenant && (reference === refRoomTenant || (refRoomTenant.length >= 6 && reference.includes(refRoomTenant)))) {
+      return true;
+    }
+    // 3. Check against room + period (e.g. P3101112026)
+    const period = `${String(invoice.periodKey).slice(5, 7)}${String(invoice.periodKey).slice(0, 4)}`;
+    const refRoomPeriod = normalizeTransferReference(`${invoice.room?.code || ''}${period}`);
+    if (refRoomPeriod && (reference === refRoomPeriod || (refRoomPeriod.length >= 6 && reference.includes(refRoomPeriod)))) {
+      return true;
+    }
+    // 4. Check against invoiceCode or unique hash suffix (e.g. 7B053EC5)
+    const refCode = normalizeTransferReference(invoice.invoiceCode);
+    if (refCode && (reference === refCode || (refCode.length >= 6 && reference.includes(refCode)))) {
+      return true;
+    }
+    const cleanRawCode = String(invoice.invoiceCode || '').trim();
+    if (cleanRawCode.includes('-')) {
+      const parts = cleanRawCode.split('-').filter(Boolean);
+      const last = normalizeTransferReference(parts[parts.length - 1]);
+      if (last.length >= 6 && (reference === last || reference.includes(last))) {
+        return true;
+      }
+    }
+    return false;
+  });
   if (matches.length !== 1) return matches.length ? 'AMBIGUOUS_REFERENCE' : 'UNMATCHED_REFERENCE';
 
   const invoice = matches[0];

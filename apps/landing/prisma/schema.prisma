@@ -223,6 +223,8 @@ model Tenant {
   idNumber           String?  @map("id_number")
   /// PENDING | REGISTERED | EXPIRED
   residenceRegStatus String   @default("PENDING") @map("residence_reg_status")
+  /// TELEGRAM | ZALO_BOT | ZALO_OA | UNREGISTERED
+  notificationChannel String   @default("UNREGISTERED") @map("notification_channel")
   emergencyContact   String?  @map("emergency_contact")
   notes              String?
   isActive           Boolean  @default(true) @map("is_active")
@@ -328,6 +330,8 @@ model Contract {
   handoverWaterM3    Float?    @map("handover_water_m3")
   /// DRAFT | ACTIVE | EXPIRING | EXTENDED | TERMINATED | EXPIRED
   status             String    @default("DRAFT")
+  /// MONTHLY | BI_MONTHLY | QUARTERLY | BIANNUAL | ANNUAL
+  billingCycle       String    @default("MONTHLY") @map("billing_cycle")
   notes              String?
   createdAt          DateTime  @default(now()) @map("created_at")
   updatedAt          DateTime  @updatedAt @map("updated_at")

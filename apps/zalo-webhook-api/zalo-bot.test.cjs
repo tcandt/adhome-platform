@@ -4,18 +4,24 @@ const { normalizeUpdate, validSecret, receiveBotUpdate, sendPendingReplies, send
 const { queueBusinessNotifications } = require('./business-notifications.cjs');
 const { parseRegistration } = require('./registration.cjs');
 
-test('shared registration keeps its individual contract code', () => {
+test('shared registration keeps its individual contract code and parses multiple formats', () => {
   assert.deepEqual(parseRegistration('DANGKY P24.01 0567867889 GHEP-02'), {
-    roomCode: 'P24.01', phone: '0567867889', contractCode: 'GHEP-02',
+    roomCode: 'P24.01', phone: '0567867889', phones: ['0567867889'], contractCode: 'GHEP-02',
   });
   assert.deepEqual(parseRegistration('DANGKY P24.01 0567867889'), {
-    roomCode: 'P24.01', phone: '0567867889',
+    roomCode: 'P24.01', phone: '0567867889', phones: ['0567867889'],
+  });
+  assert.deepEqual(parseRegistration('DK 0567867889 LK31.06'), {
+    roomCode: 'LK31.06', phone: '0567867889', phones: ['0567867889'],
+  });
+  assert.deepEqual(parseRegistration('DK 0567867889,0329484353 31.06'), {
+    roomCode: '31.06', phone: '0567867889', phones: ['0567867889', '0329484353'],
   });
 });
 
 test('accepts a private text update and rejects group messages', () => {
-  assert.deepEqual(normalizeUpdate({ event_name: 'message.text.received', message: { message_id: 'm1', chat: { id: 2, chat_type: 'PRIVATE' }, from: { id: 3 }, text: 'DANGKY P24.01 0567867889' } }), {
-    chatId: '2', userId: '3', updateId: 'm1', text: 'DANGKY P24.01 0567867889', chatType: 'private',
+  assert.deepEqual(normalizeUpdate({ event_name: 'message.text.received', message: { message_id: 'm1', chat: { id: 2, chat_type: 'PRIVATE' }, from: { id: 3 }, text: 'DK 0567867889 LK31.06' } }), {
+    chatId: '2', userId: '3', updateId: 'm1', text: 'DK 0567867889 LK31.06', chatType: 'private',
   });
   assert.equal(validSecret('same', 'same'), true);
   assert.equal(validSecret('other', 'same'), false);
@@ -37,12 +43,35 @@ test('stores one registration attempt using the authoritative lookup', async () 
     release() {},
   };
   const pool = { async connect() { return client; } };
-  const event = { event_name: 'message.text.received', message: { message_id: 'm1', chat: { id: 2, chat_type: 'PRIVATE' }, from: { id: 3 }, text: 'DANGKY P24.01 0567867889' } };
-  const lookup = async (orgId, input) => { assert.equal(orgId, 'org-one'); assert.deepEqual(input, { roomCode: 'P24.01', phone: '0567867889' }); return { status: 'NO_MATCH' }; };
+  const event = { event_name: 'message.text.received', message: { message_id: 'm1', chat: { id: 2, chat_type: 'PRIVATE' }, from: { id: 3 }, text: 'DK 0567867889 LK31.06' } };
+  const lookup = async (orgId, input) => {
+    assert.equal(orgId, 'org-one');
+    assert.deepEqual(input, { roomCode: 'LK31.06', phone: '0567867889', phones: ['0567867889'] });
+    return { status: 'NO_MATCH' };
+  };
   assert.deepEqual(await receiveBotUpdate(pool, 'bot', event, 'org-one', lookup), { status: 'received', registration: 'NO_MATCH' });
   assert.deepEqual(await receiveBotUpdate(pool, 'bot', event, 'org-one', lookup), { status: 'duplicate' });
   assert.equal(calls.filter(call => call.sql.includes('INSERT INTO zalo_bot_resident_links')).length, 0);
   assert.equal(calls.filter(call => call.sql.includes('INSERT INTO zalo_bot_reply_outbox')).length, 1);
+});
+
+test('returns custom format guide when registration syntax is invalid', async () => {
+  const calls = [];
+  const client = {
+    async query(sql, params) {
+      calls.push({ sql, params });
+      if (sql.includes('INSERT INTO zalo_bot_inbox')) return { rowCount: 1, rows: [{ id: 8 }] };
+      return { rowCount: 1, rows: [] };
+    },
+    release() {},
+  };
+  const pool = { async connect() { return client; } };
+  const event = { event_name: 'message.text.received', message: { message_id: 'm-err', chat: { id: 2, chat_type: 'PRIVATE' }, from: { id: 3 }, text: 'DK' } };
+  const result = await receiveBotUpdate(pool, 'bot', event, 'org-one');
+  assert.equal(result.registration, 'INVALID_FORMAT');
+  const reply = calls.find(call => call.sql.includes('INSERT INTO zalo_bot_reply_outbox'));
+  assert.ok(reply);
+  assert.equal(reply.params[3], 'Cú pháp đăng ký chưa đúng.\nVui lòng nhắn theo mẫu:\nDK <SĐT> <MÃ PHÒNG>\n\nVí dụ: DK 0567867889 LK31.06\nhoặc: DK 0567867889,0329484353 31.06');
 });
 
 test('verified draft registration queues one initial invoice and sends only after provider success', async () => {
@@ -140,6 +169,66 @@ test('business reminders are queued from issued invoices and expiring contracts'
   assert.equal(queued.length, 3);
   assert.deepEqual(queued.slice(0, 2).map(call => call.params[4]), ['RENT_NOTICE', 'METER_NOTICE']);
   assert.match(queued[1].params[5], /điện 200\.000đ, nước 50\.000đ/);
+});
+
+test('formats admin payment notifications with clean standardized layout', async () => {
+  const calls = [];
+  const pool = { async query(sql, params) {
+    calls.push({ sql, params });
+    if (sql.includes('SELECT tenant_id, chat_id')) return { rows: [] };
+    if (sql.includes('SELECT chat_id FROM zalo_bot_admin_groups')) return { rows: [{ chat_id: 'admin-group-1' }] };
+    return { rowCount: 1 };
+  } };
+  const previous = process.env.ZALO_BOT_ADMIN_API_KEY;
+  process.env.ZALO_BOT_ADMIN_API_KEY = 'test-key';
+  try {
+    await queueBusinessNotifications(pool, { bot_id: 'bot', org_id: 'org', message_templates: {} }, async () => ({
+      ok: true,
+      async json() {
+        return {
+          payments: [
+            {
+              id: 'p1', amountVnd: 3600000, providerId: 'SEPAY',
+              buildingName: 'LK08-25', roomCode: 'P25-01', payerName: 'Trần Thị Mai',
+              referenceText: 'P2501TRANTHIMAI112026',
+              invoiceCode: 'INV-HD-P25-01-NOV2026', invoiceStatus: 'PAID', remainingVnd: 0
+            },
+            {
+              id: 'p2', amountVnd: 2000000, providerId: 'SEPAY',
+              buildingName: 'Tòa LK08-24', roomCode: 'P24-02', payerName: 'Đỗ Hoàng Long',
+              referenceText: 'P2402DOHOANGLONG112026',
+              invoiceCode: 'INV-HD-P24-02-NOV2026', invoiceStatus: 'PARTIAL', remainingVnd: 2500000
+            },
+            {
+              id: 'p3', amountVnd: 4500000, providerId: 'MANUAL_CASH',
+              buildingName: 'Toà LK08-25', roomCode: 'P25-02', payerName: 'Nguyễn Đức Cường',
+              invoiceCode: 'INV-HD-P25-02-NOV2026', invoiceStatus: 'PAID', remainingVnd: 0
+            },
+            {
+              id: 'p4', amountVnd: 4800000, providerId: 'SEPAY',
+              payerName: 'MBBank Mobile App',
+              referenceText: 'NGUYEN VAN A TIEN PHONG'
+            }
+          ]
+        };
+      }
+    }));
+  } finally {
+    if (previous === undefined) delete process.env.ZALO_BOT_ADMIN_API_KEY;
+    else process.env.ZALO_BOT_ADMIN_API_KEY = previous;
+  }
+  const adminAlerts = calls.filter(call => call.sql.includes('INSERT INTO zalo_bot_admin_outbox'));
+  assert.equal(adminAlerts.length, 4);
+
+  const expected1 = `💰 [SEPAY] +3.600.000đ\n- Tòa LK08-25 · Phòng P25-01\n- Khách nộp: Trần Thị Mai\n- Nội dung CK: P2501TRANTHIMAI112026\n- Hóa đơn hoàn tất: INV-HD-P25-01-NOV2026 (100% PAID)`;
+  const expected2 = `💰 [SEPAY] +2.000.000đ\n- Tòa LK08-24 · Phòng P24-02\n- Khách nộp: Đỗ Hoàng Long\n- Nội dung CK: P2402DOHOANGLONG112026\n- Khớp hóa đơn: INV-HD-P24-02-NOV2026 (Thanh toán 1 phần)\n- Số dư còn thiếu: 2.500.000đ`;
+  const expected3 = `💵 [TIỀN MẶT] +4.500.000đ\n- Toà LK08-25 · Phòng P25-02\n- Khách nộp: Nguyễn Đức Cường\n- Hóa đơn hoàn tất: INV-HD-P25-02-NOV2026 (Đã thu đủ 100%)`;
+  const expected4 = `💰 [SEPAY] +4.800.000đ\n- Phòng: Chưa xác định\n- Khách nộp: MBBank Mobile App\n- Nội dung CK: NGUYEN VAN A TIEN PHONG\n- Khớp hóa đơn: Chưa khớp hóa đơn (Cần kiểm tra)`;
+
+  assert.equal(adminAlerts[0].params[3], expected1);
+  assert.equal(adminAlerts[1].params[3], expected2);
+  assert.equal(adminAlerts[2].params[3], expected3);
+  assert.equal(adminAlerts[3].params[3], expected4);
 });
 
 test('marks a reply sent only after provider success', async () => {

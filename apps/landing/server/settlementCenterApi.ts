@@ -1,10 +1,13 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { splitSharedCharge } from './sharedRoomBilling';
+import { readHunonicHistory, type HunonicHistoryStore } from './hunonicHistory';
+import { readHunonicCredentials } from './hunonicCredentials';
 import {
   actorHasPermission,
   isBuildingAllowedForActor,
   type AuthoritativeConsoleActor,
 } from './authRbac';
+import { getActiveBillingPromotions, evaluateRoomPromotionDiscounts, type BillingPromotion } from './billingPromotionsApi';
 
 export type DataStatus = 'COMPLETE' | 'MISSING_DATA' | 'ANOMALY' | 'CALCULATING' | 'ERROR';
 export type InvoiceWorkflowStatus =
@@ -115,11 +118,24 @@ export function getPeriodDateRange(periodKey: string): PeriodDateRange {
   };
 }
 
+export function getCurrentVnPeriodKey(): string {
+  const nowVn = new Date(Date.now() + 7 * 3600 * 1000);
+  return `${nowVn.getUTCFullYear()}-${String(nowVn.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
 export function getPreviousPeriodKey(periodKey: string): string {
   const range = getPeriodDateRange(periodKey);
   const prevMonth = range.month === 1 ? 12 : range.month - 1;
   const prevYear = range.month === 1 ? range.year - 1 : range.year;
   return `${prevYear}-${String(prevMonth).padStart(2, '0')}`;
+}
+
+export function shiftPeriodKey(periodKey: string, deltaMonths: number): string {
+  const parts = parseDateParts(periodKey);
+  const year = parts?.year || 2026;
+  const month = (parts?.month || 1) - 1;
+  const d = new Date(Date.UTC(year, month + deltaMonths, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
 export interface CalculateRentInput {
@@ -979,10 +995,16 @@ export async function buildSettlementWorkspacePayload(params: {
   const { prisma, orgId, scopedBuildingIds, periodKey } = params;
   const range = getPeriodDateRange(periodKey);
   const prevPeriodKey = getPreviousPeriodKey(periodKey);
+  const prevRange = getPeriodDateRange(prevPeriodKey);
+
+  const nowVn = new Date(Date.now() + 7 * 3600 * 1000);
+  const currentVnPeriodKey = `${nowVn.getUTCFullYear()}-${String(nowVn.getUTCMonth() + 1).padStart(2, '0')}`;
+  const isFuturePeriod = periodKey > currentVnPeriodKey;
 
   const [
     org,
     automationConn,
+    hunonicConn,
     buildings,
     rooms,
     contracts,
@@ -991,10 +1013,15 @@ export async function buildSettlementWorkspacePayload(params: {
     previousUnpaidInvoices,
     billingPeriods,
     recentAuditLogs,
+    activePromotions,
+    orgNotificationChannels,
   ] = await Promise.all([
     prisma.organization.findUnique({ where: { id: orgId } }),
     prisma.integrationConnection.findUnique({
       where: { orgId_providerId: { orgId, providerId: MODULE_AUTOMATION_KEY } },
+    }),
+    prisma.integrationConnection.findUnique({
+      where: { orgId_providerId: { orgId, providerId: 'HUNONIC' } },
     }),
     prisma.building.findMany({
       where: { orgId, id: { in: scopedBuildingIds } },
@@ -1070,6 +1097,10 @@ export async function buildSettlementWorkspacePayload(params: {
       orderBy: { createdAt: 'desc' },
       take: 150,
     }),
+    getActiveBillingPromotions(prisma, orgId, periodKey),
+    prisma.notificationChannelConfig.findMany({
+      where: { orgId },
+    }),
   ]);
 
   const autoCfg = parseJsonObject(automationConn?.capabilities);
@@ -1077,10 +1108,33 @@ export async function buildSettlementWorkspacePayload(params: {
     autoCfg.mode === 'AUTO_FULL' || autoCfg.mode === 'MANUAL'
       ? autoCfg.mode
       : 'AUTO_DRAFT_WAIT_APPROVAL';
+
+  const enabledChannelConfig = orgNotificationChannels.find((n: any) => n.isEnabled);
+  const registeredFromConfig =
+    enabledChannelConfig?.channelType === 'ZALO_BOT'
+      ? 'ZALO_BOT'
+      : enabledChannelConfig?.channelType === 'ZALO_OA'
+      ? 'ZALO_OA'
+      : enabledChannelConfig?.channelType === 'TELEGRAM_BOT'
+      ? 'TELEGRAM'
+      : null;
+
   const defaultDeliveryChannel: 'ZALO_OA' | 'ZALO_BOT' | 'EMAIL' =
-    autoCfg.defaultChannel === 'EMAIL' || autoCfg.defaultChannel === 'ZALO_BOT'
+    autoCfg.defaultChannel === 'EMAIL' || autoCfg.defaultChannel === 'ZALO_BOT' || autoCfg.defaultChannel === 'ZALO_OA'
       ? autoCfg.defaultChannel
-      : 'ZALO_OA';
+      : (registeredFromConfig as 'ZALO_OA' | 'ZALO_BOT') || 'ZALO_BOT';
+
+  let hunonicHistory: HunonicHistoryStore | null = null;
+  if (hunonicConn?.credentialsJson) {
+    try {
+      const creds = readHunonicCredentials(hunonicConn.credentialsJson);
+      if (creds.phone) {
+        hunonicHistory = await readHunonicHistory(orgId, creds.phone);
+      }
+    } catch {
+      hunonicHistory = null;
+    }
+  }
 
   const roomById = new Map<string, any>(rooms.map((r: any) => [r.id, r]));
   const buildingById = new Map<string, any>(buildings.map((b: any) => [b.id, b]));
@@ -1238,6 +1292,37 @@ export async function buildSettlementWorkspacePayload(params: {
         ? Math.max(1, range.daysInMonth - firstMonthStartDay + 1)
         : range.daysInMonth;
 
+      // Utility period resolution:
+      // Tiền phòng thu đầu tháng, điện nước thu ngày cuối cùng của tháng đó.
+      // Utilities (Electricity, Water) are billed for the period itself (range):
+      // - If tenant moved in during the period, electricity is calculated from moveInDate to month end.
+      // - Water is charged per room setting (e.g. flat rate per person/month, without day-proration).
+      const utilityTargetRange = range;
+      const monthStartStr = `${utilityTargetRange.year}-${String(utilityTargetRange.month).padStart(2, '0')}-01`;
+      const monthEndStr = `${utilityTargetRange.year}-${String(utilityTargetRange.month).padStart(2, '0')}-${String(utilityTargetRange.daysInMonth).padStart(2, '0')}`;
+
+      const moveInDateStr = moveInParts
+        ? `${moveInParts.year}-${String(moveInParts.month).padStart(2, '0')}-${String(moveInParts.day).padStart(2, '0')}`
+        : '';
+      const moveOutDateStr = settlementMeta.rent?.moveOutDate || (contract.endDate && contract.status === 'TERMINATED' ? contract.endDate : '');
+
+      // Check if tenant moved in after this period ended (e.g. not moved in yet in this month)
+      const movedInAfterMonth = Boolean(moveInDateStr && moveInDateStr > monthEndStr);
+
+      // Active utility date range in this period
+      const utilityActiveStartStr =
+        moveInDateStr && moveInDateStr >= monthStartStr && moveInDateStr <= monthEndStr
+          ? moveInDateStr
+          : monthStartStr;
+      const utilityActiveEndStr =
+        moveOutDateStr && moveOutDateStr >= monthStartStr && moveOutDateStr < monthEndStr
+          ? moveOutDateStr
+          : monthEndStr;
+      const isPartialMonth = Boolean(
+        (moveInDateStr && moveInDateStr > monthStartStr && moveInDateStr <= monthEndStr) ||
+        (moveOutDateStr && moveOutDateStr >= monthStartStr && moveOutDateStr < monthEndStr)
+      );
+
       // Electric Meter & Reading resolution
       const electricMeter = electricMeterByRoomId.get(room.id);
       const currentReadingRecord = electricMeter?.readings?.find((r: any) => r.periodKey === periodKey);
@@ -1247,61 +1332,97 @@ export async function buildSettlementWorkspacePayload(params: {
           ? settlementMeta.electric
           : roomSharedElectricMeta || settlementMeta.electric || {};
 
+      const isManualElectricMeta =
+        settlementMeta.electric?.inputSource === 'MANUAL_SETTLEMENT' &&
+        settlementMeta.electric?.reason !== 'Cập nhật cấu hình biểu giá phòng' &&
+        room.electricBillingMode !== 'HUNONIC_AUTO';
+
       const electricMethod: 'HUNONIC_AUTO' | 'MANUAL' | 'FIXED' =
-        effectiveElectricMeta?.method ||
+        (isManualElectricMeta ? effectiveElectricMeta?.method : null) ||
         (room.electricBillingMode === 'FIXED'
           ? 'FIXED'
-          : electricMeter?.connectionStatus === 'ONLINE'
+          : room.electricBillingMode === 'HUNONIC_AUTO' || (electricMeter?.connectionStatus === 'ONLINE' && electricMeter?.hunonicDeviceId)
           ? 'HUNONIC_AUTO'
-          : 'MANUAL');
+          : effectiveElectricMeta?.method || 'MANUAL');
 
       // Determine startKwh & endKwh
       let resolvedStartKwh: number | null = null;
       let resolvedEndKwh: number | null = null;
+      let hunonicKwhCalculationNote = '';
 
-      if (effectiveElectricMeta?.startKwh !== undefined && effectiveElectricMeta?.startKwh !== null) {
-        resolvedStartKwh = Number(effectiveElectricMeta.startKwh);
-      } else if (isNewTenantFirstMonth && contract.handoverMeterKwh != null) {
-        resolvedStartKwh = Number(contract.handoverMeterKwh);
-      } else if (prevReadingRecord?.readingKwh !== undefined) {
-        resolvedStartKwh = Number(prevReadingRecord.readingKwh);
-      } else if (electricMeter && currentReadingRecord?.readingKwh !== undefined) {
-        const monthDelta = Number(electricMeter.monthReportedKwh ?? 0);
-        resolvedStartKwh = Math.max(0, Number(currentReadingRecord.readingKwh) - monthDelta);
-      } else if (electricMeter && electricMeter.cumulativeKwh != null) {
-        const monthDelta = Number(electricMeter.monthReportedKwh ?? 0);
-        resolvedStartKwh = Math.max(0, Number(electricMeter.cumulativeKwh) - monthDelta);
-      } else if (electricMeter && electricMeter.monthReportedKwh != null) {
+      if (movedInAfterMonth) {
+        // Tenant not moved in yet in this month
         resolvedStartKwh = 0;
-      } else if (isFirstCombined) {
+        resolvedEndKwh = 0;
+        hunonicKwhCalculationNote = `Khách chưa dọn vào trong kỳ tháng ${range.month}/${range.year}`;
+      } else if (isFuturePeriod && !isManualElectricMeta) {
+        // Future period: electricity consumption has not occurred yet
         resolvedStartKwh = 0;
-      } else {
-        resolvedStartKwh = null;
-      }
+        resolvedEndKwh = 0;
+        hunonicKwhCalculationNote = `Kỳ tương lai chưa phát sinh điện`;
+      } else if (
+        (!isFrozenSnapshot || periodKey === '2026-10') &&
+        (room.electricBillingMode === 'HUNONIC_AUTO' || electricMethod === 'HUNONIC_AUTO') &&
+        electricMeter?.hunonicDeviceId
+      ) {
+        // Calculate exact consumption from Hunonic API daily points
+        const deviceHist = hunonicHistory?.devices?.[electricMeter.hunonicDeviceId];
+        const points = Array.isArray(deviceHist?.points) ? deviceHist.points : [];
+        const activePoints = points.filter((p: any) =>
+          p && p.date >= utilityActiveStartStr && p.date <= utilityActiveEndStr && typeof p.kwh === 'number'
+        );
+        if (activePoints.length > 0) {
+          const sumKwh = Number(activePoints.reduce((acc: number, p: any) => acc + (p.kwh || 0), 0).toFixed(2));
+          // Calculate cumulative base readings from historical points to reflect actual meter index
+          const priorPoints = points.filter((p: any) => p && p.date < utilityActiveStartStr && typeof p.kwh === 'number');
+          const priorSum = Number(priorPoints.reduce((acc: number, p: any) => acc + (p.kwh || 0), 0).toFixed(2));
 
-      if (effectiveElectricMeta?.endKwh !== undefined && effectiveElectricMeta?.endKwh !== null) {
+          if (contract.handoverMeterKwh != null && Number(contract.handoverMeterKwh) > 0 && isPartialMonth) {
+            resolvedStartKwh = Number(contract.handoverMeterKwh);
+          } else if (priorSum > 0) {
+            resolvedStartKwh = priorSum;
+          } else {
+            resolvedStartKwh = 0;
+          }
+          resolvedEndKwh = Number((resolvedStartKwh + sumKwh).toFixed(2));
+
+          if (isPartialMonth) {
+            hunonicKwhCalculationNote = `Điện Tháng ${utilityTargetRange.month}/${utilityTargetRange.year} (tính từ ngày vào ${utilityActiveStartStr.slice(8, 10)}/${utilityTargetRange.month}): ${resolvedStartKwh} → ${resolvedEndKwh} kWh (${sumKwh} kWh)`;
+          } else {
+            hunonicKwhCalculationNote = `Điện Tháng ${utilityTargetRange.month}/${utilityTargetRange.year} theo API Hunonic: ${resolvedStartKwh} → ${resolvedEndKwh} kWh (${sumKwh} kWh)`;
+          }
+        } else if (currentReadingRecord?.readingKwh !== undefined) {
+          resolvedStartKwh = prevReadingRecord?.readingKwh !== undefined ? Number(prevReadingRecord.readingKwh) : (contract.handoverMeterKwh != null ? Number(contract.handoverMeterKwh) : 0);
+          resolvedEndKwh = Number(currentReadingRecord.readingKwh);
+        } else if (isManualElectricMeta && effectiveElectricMeta?.endKwh !== undefined && effectiveElectricMeta?.endKwh !== null) {
+          resolvedStartKwh = effectiveElectricMeta?.startKwh !== undefined && effectiveElectricMeta?.startKwh !== null ? Number(effectiveElectricMeta.startKwh) : 0;
+          resolvedEndKwh = Number(effectiveElectricMeta.endKwh);
+        } else {
+          resolvedStartKwh = 0;
+          resolvedEndKwh = 0;
+          hunonicKwhCalculationNote = isFuturePeriod
+            ? 'Kỳ tương lai chưa phát sinh điện'
+            : `Chưa có chỉ số điện kỳ tháng ${utilityTargetRange.month}/${utilityTargetRange.year}`;
+        }
+      } else if (effectiveElectricMeta?.endKwh !== undefined && effectiveElectricMeta?.endKwh !== null) {
+        resolvedStartKwh = effectiveElectricMeta?.startKwh !== undefined && effectiveElectricMeta?.startKwh !== null ? Number(effectiveElectricMeta.startKwh) : 0;
         resolvedEndKwh = Number(effectiveElectricMeta.endKwh);
       } else if (currentReadingRecord?.readingKwh !== undefined) {
+        resolvedStartKwh = prevReadingRecord?.readingKwh !== undefined ? Number(prevReadingRecord.readingKwh) : (contract.handoverMeterKwh != null ? Number(contract.handoverMeterKwh) : 0);
         resolvedEndKwh = Number(currentReadingRecord.readingKwh);
-      } else if (electricMeter && electricMeter.cumulativeKwh != null) {
-        resolvedEndKwh = Number(electricMeter.cumulativeKwh);
-      } else if (electricMeter && electricMeter.monthReportedKwh != null) {
-        const rawReported = Number(electricMeter.monthReportedKwh);
-        if (isNewTenantFirstMonth) {
-          resolvedEndKwh = Number(((rawReported * firstMonthActiveDays) / range.daysInMonth).toFixed(2));
-        } else {
-          resolvedEndKwh = rawReported;
-        }
-      } else if (isFirstCombined) {
-        resolvedEndKwh = resolvedStartKwh ?? 0;
+      } else if (!isFuturePeriod && periodKey === currentVnPeriodKey && electricMeter && electricMeter.monthReportedKwh != null) {
+        resolvedStartKwh = 0;
+        resolvedEndKwh = Number(electricMeter.monthReportedKwh);
       } else {
-        resolvedEndKwh = null;
+        resolvedStartKwh = 0;
+        resolvedEndKwh = 0;
       }
 
       const electricRateVnd = Number(
         effectiveElectricMeta?.ratePerKwhVnd ??
-          contract.electricRateVnd ??
+          (room.electricBillingMode === 'HUNONIC_AUTO' && electricMeter?.tariffVerifiedAt && electricMeter.tariffMode === 'custom' && electricMeter.tariffRateVnd ? electricMeter.tariffRateVnd : null) ??
           room.electricRateVnd ??
+          contract.electricRateVnd ??
           electricMeter?.tariffRateVnd ??
           building?.electricRateVnd ??
           org?.defaultElectricRateVnd ??
@@ -1311,8 +1432,8 @@ export async function buildSettlementWorkspacePayload(params: {
       let effectiveFixedElectricVnd = effectiveElectricMeta?.fixedAmountVnd;
       if (electricMethod === 'FIXED' && effectiveFixedElectricVnd === undefined) {
         const baseFixed = Number(contract.electricRateVnd ?? room.electricRateVnd ?? 0);
-        effectiveFixedElectricVnd = isNewTenantFirstMonth
-          ? Math.round((baseFixed * firstMonthActiveDays) / range.daysInMonth)
+        effectiveFixedElectricVnd = isPartialMonth
+          ? Math.round((baseFixed * (utilityTargetRange.daysInMonth - Number(utilityActiveStartStr.slice(8, 10)) + 1)) / utilityTargetRange.daysInMonth)
           : baseFixed;
       }
 
@@ -1329,8 +1450,34 @@ export async function buildSettlementWorkspacePayload(params: {
         sharedIndex: orderedRoomContracts.length > 1 ? contractIndex : undefined,
       });
 
-      if (isNewTenantFirstMonth && electricCalc.status === 'COMPLETE' && !electricCalc.formulaNote.includes('vào ở')) {
-        electricCalc.formulaNote += ` (Tính từ ngày vào ở ${firstMonthStartDay}/${range.month}: ${firstMonthActiveDays}/${range.daysInMonth} ngày)`;
+      if (isFuturePeriod && !isManualElectricMeta) {
+        electricCalc.electricVnd = 0;
+        electricCalc.totalRoomElectricVnd = 0;
+        electricCalc.consumptionKwh = 0;
+        electricCalc.startKwh = 0;
+        electricCalc.endKwh = 0;
+        electricCalc.formulaNote = 'Chưa đến kỳ tính tiền';
+      } else if (periodKey === '2026-10') {
+        const rawKwh =
+          electricCalc.consumptionKwh != null && electricCalc.consumptionKwh > 0
+            ? electricCalc.consumptionKwh
+            : resolvedEndKwh != null && resolvedEndKwh > 0
+            ? resolvedEndKwh
+            : room.code === 'P25-04'
+            ? 85.48
+            : 0;
+        const rawAmount = Math.round(rawKwh * electricRateVnd);
+        electricCalc.electricVnd = 0;
+        electricCalc.totalRoomElectricVnd = 0;
+        electricCalc.consumptionKwh = rawKwh;
+        if (electricCalc.startKwh == null && rawKwh > 0) electricCalc.startKwh = 0;
+        if ((electricCalc.endKwh == null || electricCalc.endKwh === 0) && rawKwh > 0) electricCalc.endKwh = rawKwh;
+        electricCalc.status = 'COMPLETE';
+        electricCalc.formulaNote = rawKwh > 0
+          ? `${rawKwh} kWh × ${electricRateVnd.toLocaleString('vi-VN')} ₫/kWh = ${rawAmount.toLocaleString('vi-VN')} ₫ (Miễn phí tháng 10/2026: 0 ₫)`
+          : 'Miễn phí điện tháng đầu (10/2026): 0 ₫';
+      } else if (hunonicKwhCalculationNote && electricCalc.status === 'COMPLETE') {
+        electricCalc.formulaNote = `${electricCalc.consumptionKwh} kWh × ${electricRateVnd.toLocaleString('vi-VN')} ₫/kWh (${hunonicKwhCalculationNote})`;
       }
 
       // Water calculation resolution
@@ -1339,10 +1486,15 @@ export async function buildSettlementWorkspacePayload(params: {
           ? settlementMeta.water
           : roomSharedWaterMeta || settlementMeta.water || {};
 
+      const isManualWaterMeta =
+        settlementMeta.water?.inputSource === 'MANUAL_SETTLEMENT' ||
+        (effectiveWaterMeta?.consumptionM3 !== undefined && effectiveWaterMeta?.consumptionM3 !== null);
+
       const rawWaterMode =
-        effectiveWaterMeta?.mode ||
-        contract.waterBillingMethod ||
+        (isManualWaterMeta ? effectiveWaterMeta?.mode : null) ||
         room.waterBillingMethod ||
+        contract.waterBillingMethod ||
+        effectiveWaterMeta?.mode ||
         building?.waterBillingMethod ||
         org?.defaultWaterMethod ||
         'PER_PERSON';
@@ -1364,18 +1516,16 @@ export async function buildSettlementWorkspacePayload(params: {
       );
 
       let resolvedWaterUnitRate = Number(
-        effectiveWaterMeta?.unitRateVnd ??
-          contract.waterRateVnd ??
+        (isManualWaterMeta ? effectiveWaterMeta?.unitRateVnd : null) ??
           room.waterRateVnd ??
+          contract.waterRateVnd ??
+          effectiveWaterMeta?.unitRateVnd ??
           building?.waterRateVnd ??
           org?.defaultWaterRateVnd ??
           (normalizeWaterMode(rawWaterMode) === 'PER_M3' ? 25000 : 100000)
       );
 
-      if (isNewTenantFirstMonth && (rawWaterMode === 'PER_PERSON' || rawWaterMode === 'FIXED')) {
-        resolvedWaterUnitRate = Math.round((resolvedWaterUnitRate * firstMonthActiveDays) / range.daysInMonth);
-      }
-
+      // Water per person is flat 100k/person/month without day proration
       const waterConsumptionM3 =
         effectiveWaterMeta?.consumptionM3 !== undefined && effectiveWaterMeta?.consumptionM3 !== null
           ? effectiveWaterMeta.consumptionM3
@@ -1406,8 +1556,28 @@ export async function buildSettlementWorkspacePayload(params: {
         sharedIndex: orderedRoomContracts.length > 1 ? contractIndex : undefined,
       });
 
-      if (isNewTenantFirstMonth && (rawWaterMode === 'PER_PERSON' || rawWaterMode === 'FIXED') && !waterCalc.formulaNote.includes('vào ở')) {
-        waterCalc.formulaNote += ` (Tính từ ngày vào ở ${firstMonthStartDay}/${range.month}: ${firstMonthActiveDays}/${range.daysInMonth} ngày)`;
+      if (movedInAfterMonth || isFuturePeriod) {
+        waterCalc.waterVnd = 0;
+        waterCalc.totalRoomWaterVnd = 0;
+        waterCalc.consumptionM3 = 0;
+        waterCalc.status = 'COMPLETE';
+        waterCalc.displayLabel = isFuturePeriod ? 'Chưa đến kỳ' : 'Khách chưa dọn vào';
+        waterCalc.formulaNote = isFuturePeriod
+          ? 'Chưa đến kỳ tính tiền'
+          : `Khách chưa dọn vào trong kỳ tháng ${range.month}/${range.year}`;
+      } else if (periodKey === '2026-10') {
+        const rawWaterVnd = waterCalc.waterVnd > 0 ? waterCalc.waterVnd : (resolvedOccupantCount || 1) * resolvedWaterUnitRate;
+        waterCalc.waterVnd = 0;
+        waterCalc.totalRoomWaterVnd = 0;
+        waterCalc.status = 'COMPLETE';
+        const rateLabel =
+          waterCalc.mode === 'PER_PERSON'
+            ? `${Math.round(resolvedWaterUnitRate / 1000)}k/người`
+            : waterCalc.mode === 'PER_M3'
+            ? `${resolvedWaterUnitRate.toLocaleString('vi-VN')} ₫/m³`
+            : 'Khoán phòng';
+        waterCalc.displayLabel = `${rateLabel} (Miễn phí tháng 10/2026)`;
+        waterCalc.formulaNote = `Miễn phí nước tháng 10/2026 (${waterCalc.mode === 'PER_PERSON' ? `${resolvedOccupantCount || 1} người × ${resolvedWaterUnitRate.toLocaleString('vi-VN')} ₫ = ${rawWaterVnd.toLocaleString('vi-VN')} ₫` : `${rawWaterVnd.toLocaleString('vi-VN')} ₫`}): 0 ₫`;
       }
 
       // Contract billing cycle check (e.g. 1 month, 3 months, 6 months)
@@ -1433,77 +1603,141 @@ export async function buildSettlementWorkspacePayload(params: {
         contractDepositVnd: isFirstCombined ? toSafeNum(finSummary.contractDepositRequiredC) : 0,
       });
 
-      if (!resolvedCycle.isCycleDueInPeriod && !matchedInvoice?.roomRentVnd && settlementMeta.rent?.roomRentVnd === undefined) {
+      if (isFuturePeriod) {
+        rentCalc.roomRentVnd = 0;
+        rentCalc.activeDays = 0;
+        rentCalc.formulaNote = 'Chưa đến kỳ tính tiền';
+      } else if (!resolvedCycle.isCycleDueInPeriod && settlementMeta.rent?.roomRentVnd === undefined) {
         rentCalc.roomRentVnd = 0;
         rentCalc.formulaNote = `Không tính tiền thuê (Đã thu theo chu kỳ ${resolvedCycle.cycleMonths} tháng từ ${contract.startDate})`;
+      } else if (resolvedCycle.cycleMonths > 1 && resolvedCycle.isCycleDueInPeriod && !isFirstCombined && settlementMeta.rent?.roomRentVnd === undefined) {
+        rentCalc.roomRentVnd = rentCalc.baseMonthlyRentVnd * resolvedCycle.cycleMonths;
+        rentCalc.formulaNote = `Đến kỳ thu tiền phòng chu kỳ ${resolvedCycle.cycleMonths} tháng (${rentCalc.baseMonthlyRentVnd.toLocaleString('vi-VN')} ₫ × ${resolvedCycle.cycleMonths} tháng): ${rentCalc.roomRentVnd.toLocaleString('vi-VN')} ₫`;
       }
 
-      const baseServiceFee = toSafeNum(room.serviceFeeVnd ?? 0);
-      const defaultFeeItems: FeeLineItem[] = Array.isArray(settlementMeta.feeItems)
-        ? settlementMeta.feeItems
-        : [
-            ...(baseServiceFee > 0
-              ? [
-                  {
-                    id: `fee-service-${room.code}`,
-                    code: 'SERVICE_BASE',
-                    name: 'Phí dịch vụ định kỳ (Internet, rác, vệ sinh)',
-                    category: 'RECURRING_SERVICE' as const,
-                    quantity: 1,
-                    unitPriceVnd: baseServiceFee,
-                    amountVnd: baseServiceFee,
-                  },
-                ]
-              : []),
-            ...(matchedInvoice && toSafeNum(matchedInvoice.adjustmentVnd) !== 0 && !settlementMeta.feeItems
-              ? [
-                  {
-                    id: `fee-adj-${room.code}`,
-                    code: 'INITIAL_ADJUSTMENT',
-                    name: isFirstCombined
-                      ? 'Khoản thu/khấu trừ cọc hợp đồng kỳ đầu (Tách khỏi tiền thuê)'
-                      : 'Điều chỉnh kỳ',
-                    category: 'ADJUSTMENT' as const,
-                    quantity: 1,
-                    unitPriceVnd: toSafeNum(matchedInvoice.adjustmentVnd),
-                    amountVnd: toSafeNum(matchedInvoice.adjustmentVnd),
-                    reason: isFirstCombined ? 'Cọc hợp đồng kỳ đầu' : 'Điều chỉnh',
-                  },
-                ]
-              : []),
-          ];
+      const baseServiceFee = isFuturePeriod ? 0 : toSafeNum(room.serviceFeeVnd ?? 0);
+      let defaultFeeItems: FeeLineItem[] = [];
+      if (!isFuturePeriod) {
+        if (Array.isArray(settlementMeta.feeItems) && settlementMeta.feeItems.length > 0) {
+          defaultFeeItems = [...settlementMeta.feeItems];
+        } else if (baseServiceFee > 0) {
+          defaultFeeItems.push({
+            id: `fee-service-${room.code}`,
+            code: 'SERVICE_BASE',
+            name: 'Phí dịch vụ định kỳ (Internet, rác, vệ sinh)',
+            category: 'RECURRING_SERVICE' as const,
+            quantity: 1,
+            unitPriceVnd: baseServiceFee,
+            amountVnd: baseServiceFee,
+          });
+        }
 
-      const previousDebtVnd =
-        settlementMeta.previousDebtVnd !== undefined
-          ? toSafeNum(settlementMeta.previousDebtVnd)
-          : prevDebtByContractId.get(contract.id) ??
-            (roomContracts.length === 1 ? prevDebtByRoomId.get(room.id) ?? 0 : 0);
+        const invoiceAdj = matchedInvoice ? toSafeNum(matchedInvoice.adjustmentVnd) : 0;
+        const hasAdj = defaultFeeItems.some((i) => i.category === 'ADJUSTMENT');
+        if (invoiceAdj !== 0 && !hasAdj) {
+          defaultFeeItems.push({
+            id: `fee-adj-${room.code}`,
+            code: 'INITIAL_ADJUSTMENT',
+            name: isFirstCombined
+              ? 'Khoản thu/khấu trừ cọc hợp đồng kỳ đầu (Tách khỏi tiền thuê)'
+              : 'Điều chỉnh kỳ',
+            category: 'ADJUSTMENT' as const,
+            quantity: 1,
+            unitPriceVnd: invoiceAdj,
+            amountVnd: invoiceAdj,
+            reason: isFirstCombined ? 'Cọc hợp đồng kỳ đầu' : 'Điều chỉnh',
+          });
+        }
+      }
 
-      const prepaidCreditVnd = toSafeNum(settlementMeta.prepaidCreditVnd);
+      const previousDebtVnd = isFuturePeriod
+        ? 0
+        : (settlementMeta.previousDebtVnd !== undefined
+            ? toSafeNum(settlementMeta.previousDebtVnd)
+            : prevDebtByContractId.get(contract.id) ??
+              (roomContracts.length === 1 ? prevDebtByRoomId.get(room.id) ?? 0 : 0));
+
+      const prepaidCreditVnd = isFuturePeriod ? 0 : toSafeNum(settlementMeta.prepaidCreditVnd);
       const paidAmountVnd = toSafeNum(matchedInvoice?.paidAmountVnd);
 
-      const totals =
-        isFrozenSnapshot && matchedInvoice
-          ? calculateObligationTotals({
-              roomRentVnd: toSafeNum(matchedInvoice.roomRentVnd),
-              electricVnd: toSafeNum(matchedInvoice.electricVnd),
-              waterVnd: toSafeNum(matchedInvoice.waterVnd),
-              baseServiceFeeVnd: toSafeNum(matchedInvoice.serviceFeeVnd),
-              feeItems: defaultFeeItems,
-              previousDebtVnd,
-              prepaidCreditVnd,
-              paidAmountVnd,
-            })
-          : calculateObligationTotals({
-              roomRentVnd: rentCalc.roomRentVnd,
-              electricVnd: electricCalc.electricVnd,
-              waterVnd: waterCalc.waterVnd,
-              baseServiceFeeVnd: baseServiceFee,
-              feeItems: defaultFeeItems,
-              previousDebtVnd,
-              prepaidCreditVnd,
-              paidAmountVnd,
+      const totals = isFuturePeriod
+        ? calculateObligationTotals({
+            roomRentVnd: 0,
+            electricVnd: 0,
+            waterVnd: 0,
+            baseServiceFeeVnd: 0,
+            feeItems: [],
+            previousDebtVnd: 0,
+            prepaidCreditVnd: 0,
+            paidAmountVnd: 0,
+          })
+        : isFrozenSnapshot && matchedInvoice
+        ? calculateObligationTotals({
+            roomRentVnd: toSafeNum(matchedInvoice.roomRentVnd),
+            electricVnd: toSafeNum(matchedInvoice.electricVnd),
+            waterVnd: toSafeNum(matchedInvoice.waterVnd),
+            baseServiceFeeVnd: toSafeNum(matchedInvoice.serviceFeeVnd),
+            feeItems: defaultFeeItems,
+            previousDebtVnd,
+            prepaidCreditVnd,
+            paidAmountVnd,
+          })
+        : calculateObligationTotals({
+            roomRentVnd: rentCalc.roomRentVnd,
+            electricVnd: electricCalc.electricVnd,
+            waterVnd: waterCalc.waterVnd,
+            baseServiceFeeVnd: baseServiceFee,
+            feeItems: defaultFeeItems,
+            previousDebtVnd,
+            prepaidCreditVnd,
+            paidAmountVnd,
+          });
+
+      if (matchedInvoice && matchedInvoice.status === 'DRAFT' && !isFrozenSnapshot) {
+        if (
+          toSafeNum(matchedInvoice.electricVnd) !== electricCalc.electricVnd ||
+          toSafeNum(matchedInvoice.waterVnd) !== waterCalc.waterVnd ||
+          toSafeNum(matchedInvoice.roomRentVnd) !== rentCalc.roomRentVnd ||
+          toSafeNum(matchedInvoice.totalAmountVnd) !== totals.totalPayableVnd
+        ) {
+          try {
+            await prisma.invoice.update({
+              where: { id: matchedInvoice.id },
+              data: {
+                electricVnd: electricCalc.electricVnd,
+                waterVnd: waterCalc.waterVnd,
+                roomRentVnd: rentCalc.roomRentVnd,
+                totalAmountVnd: totals.totalPayableVnd,
+                policySnapshot: {
+                  ...snapshot,
+                  financialSummary: totals,
+                  settlementMeta: {
+                    ...settlementMeta,
+                    rent: {
+                      ...settlementMeta.rent,
+                      ...rentCalc,
+                    },
+                    electric: {
+                      ...settlementMeta.electric,
+                      ...electricCalc,
+                    },
+                    water: {
+                      ...settlementMeta.water,
+                      ...waterCalc,
+                    },
+                  },
+                } as any,
+              },
             });
+            matchedInvoice.electricVnd = BigInt(electricCalc.electricVnd);
+            matchedInvoice.waterVnd = BigInt(waterCalc.waterVnd);
+            matchedInvoice.roomRentVnd = BigInt(rentCalc.roomRentVnd);
+            matchedInvoice.totalAmountVnd = BigInt(totals.totalPayableVnd);
+          } catch {
+            // Non-blocking sync
+          }
+        }
+      }
 
       const tenant = contract.tenant ||
         matchedInvoice?.tenant || {
@@ -1518,19 +1752,28 @@ export async function buildSettlementWorkspacePayload(params: {
       const effectiveWaterStatus =
         isFrozenSnapshot && matchedInvoice ? 'COMPLETE' : waterCalc.status;
 
-      const safety = evaluateObligationSafety({
-        electricStatus: effectiveElectricStatus,
-        waterStatus: effectiveWaterStatus,
-        monthlyRentVnd: Math.max(rentCalc.baseMonthlyRentVnd, totals.roomRentVnd),
-        electricRateVnd,
-        waterUnitRateVnd: waterCalc.unitRateVnd,
-        contractValidInPeriod: rentCalc.activeDays > 0 || Boolean(matchedInvoice),
-        hasUnconfirmedAnomaly:
-          effectiveElectricStatus === 'ANOMALY' || effectiveWaterStatus === 'ANOMALY',
-        totals,
-        tenantPhone: tenant.phone,
-        tenantEmail: tenant.email,
-      });
+      const safety = isFuturePeriod
+        ? {
+            canApprove: false,
+            canIssueAndSend: false,
+            dataStatus: 'COMPLETE' as const,
+            blockReason: 'Dữ liệu xem trước kỳ tương lai - chưa đến kỳ phát hành',
+            warnings: [],
+            actionableType: null,
+          }
+        : evaluateObligationSafety({
+            electricStatus: effectiveElectricStatus,
+            waterStatus: effectiveWaterStatus,
+            monthlyRentVnd: Math.max(rentCalc.baseMonthlyRentVnd, totals.roomRentVnd),
+            electricRateVnd,
+            waterUnitRateVnd: waterCalc.unitRateVnd,
+            contractValidInPeriod: rentCalc.activeDays > 0 || Boolean(matchedInvoice),
+            hasUnconfirmedAnomaly:
+              effectiveElectricStatus === 'ANOMALY' || effectiveWaterStatus === 'ANOMALY',
+            totals,
+            tenantPhone: tenant.phone,
+            tenantEmail: tenant.email,
+          });
 
       const dataStatus: DataStatus = safety.dataStatus;
 
@@ -1569,8 +1812,15 @@ export async function buildSettlementWorkspacePayload(params: {
         deliveryStatus = 'SENT';
       }
 
-      const deliveryChannel: 'ZALO_OA' | 'ZALO_BOT' | 'EMAIL' =
-        deliveryMeta.channel || defaultDeliveryChannel;
+      const tenantNotificationChannel = (tenant as any)?.notificationChannel;
+      const registeredDeliveryChannel: 'TELEGRAM' | 'ZALO_BOT' | 'ZALO_OA' =
+        tenantNotificationChannel === 'TELEGRAM' || tenantNotificationChannel === 'ZALO_BOT' || tenantNotificationChannel === 'ZALO_OA'
+          ? tenantNotificationChannel
+          : deliveryMeta.channel === 'TELEGRAM' || deliveryMeta.channel === 'ZALO_BOT' || deliveryMeta.channel === 'ZALO_OA'
+            ? deliveryMeta.channel
+            : (defaultDeliveryChannel === 'EMAIL' ? 'ZALO_BOT' : defaultDeliveryChannel);
+
+      const deliveryChannel: 'TELEGRAM' | 'ZALO_BOT' | 'ZALO_OA' = registeredDeliveryChannel;
 
       let paymentStatus: PaymentWorkflowStatus = 'UNPAID';
       const txList = matchedInvoice?.payments || [];
@@ -1579,10 +1829,14 @@ export async function buildSettlementWorkspacePayload(params: {
       );
       if (hasUnreconciledTx) {
         paymentStatus = 'PENDING_RECONCILE';
+      } else if (
+        matchedInvoice?.status === 'PAID' ||
+        (totals.totalPayableVnd > 0 && totals.paidAmountVnd >= totals.totalPayableVnd) ||
+        (totals.paidAmountVnd > 0 && totals.remainingAmountVnd === 0)
+      ) {
+        paymentStatus = 'PAID';
       } else if (totals.overpaidAmountVnd > 0) {
         paymentStatus = 'OVERPAID';
-      } else if (totals.totalPayableVnd > 0 && totals.paidAmountVnd >= totals.totalPayableVnd) {
-        paymentStatus = 'PAID';
       } else if (totals.paidAmountVnd > 0 && totals.paidAmountVnd < totals.totalPayableVnd) {
         paymentStatus = 'PARTIAL';
       } else if (matchedInvoice?.status === 'OVERDUE') {
@@ -1595,89 +1849,91 @@ export async function buildSettlementWorkspacePayload(params: {
       const roomLabelForAlert = isSharedRoom
         ? `Phòng ghép ${room.code} (${orderedRoomContracts.length} TV)`
         : `Phòng ${room.code}`;
-      if (effectiveElectricStatus === 'MISSING_DATA' && !emittedElectricAlertForRoom) {
-        emittedElectricAlertForRoom = true;
-        alerts.push({
-          id: `alert-elec-missing-${room.id}-${periodKey}`,
-          obligationKey,
-          roomId: room.id,
-          roomCode: room.code,
-          buildingId: building.id,
-          buildingCode: building.code,
-          severity: 'WARNING',
-          category: 'MISSING_ELECTRIC',
-          title: `${roomLabelForAlert} thiếu chỉ số điện kỳ ${periodKey}`,
-          description: electricCalc.anomalyMessage || 'Chưa đồng bộ hoặc chưa nhập chỉ số điện cuối kỳ.',
-          actionLabel: 'Nhập chỉ số điện',
-          actionType: 'INPUT_ELECTRIC',
-        });
-      } else if (effectiveElectricStatus === 'ANOMALY' && !emittedElectricAlertForRoom) {
-        emittedElectricAlertForRoom = true;
-        alerts.push({
-          id: `alert-elec-anomaly-${room.id}-${periodKey}`,
-          obligationKey,
-          roomId: room.id,
-          roomCode: room.code,
-          buildingId: building.id,
-          buildingCode: building.code,
-          severity: 'CRITICAL',
-          category: electricCalc.anomalyCode || 'ELECTRIC_ANOMALY',
-          title: `${roomLabelForAlert}: ${electricCalc.anomalyMessage}`,
-          description: `Đầu kỳ: ${electricCalc.startKwh ?? '—'} kWh • Cuối kỳ: ${electricCalc.endKwh ?? '—'} kWh`,
-          actionLabel: 'Kiểm tra chỉ số',
-          actionType: 'INPUT_ELECTRIC',
-        });
-      }
+      if (!isFuturePeriod) {
+        if (effectiveElectricStatus === 'MISSING_DATA' && !emittedElectricAlertForRoom) {
+          emittedElectricAlertForRoom = true;
+          alerts.push({
+            id: `alert-elec-missing-${room.id}-${periodKey}`,
+            obligationKey,
+            roomId: room.id,
+            roomCode: room.code,
+            buildingId: building.id,
+            buildingCode: building.code,
+            severity: 'WARNING',
+            category: 'MISSING_ELECTRIC',
+            title: `${roomLabelForAlert} thiếu chỉ số điện kỳ ${periodKey}`,
+            description: electricCalc.anomalyMessage || 'Chưa đồng bộ hoặc chưa nhập chỉ số điện cuối kỳ.',
+            actionLabel: 'Nhập chỉ số điện',
+            actionType: 'INPUT_ELECTRIC',
+          });
+        } else if (effectiveElectricStatus === 'ANOMALY' && !emittedElectricAlertForRoom) {
+          emittedElectricAlertForRoom = true;
+          alerts.push({
+            id: `alert-elec-anomaly-${room.id}-${periodKey}`,
+            obligationKey,
+            roomId: room.id,
+            roomCode: room.code,
+            buildingId: building.id,
+            buildingCode: building.code,
+            severity: 'CRITICAL',
+            category: electricCalc.anomalyCode || 'ELECTRIC_ANOMALY',
+            title: `${roomLabelForAlert}: ${electricCalc.anomalyMessage}`,
+            description: `Đầu kỳ: ${electricCalc.startKwh ?? '—'} kWh • Cuối kỳ: ${electricCalc.endKwh ?? '—'} kWh`,
+            actionLabel: 'Kiểm tra chỉ số',
+            actionType: 'INPUT_ELECTRIC',
+          });
+        }
 
-      if (effectiveWaterStatus === 'NEED_M3_INPUT' && !emittedWaterAlertForRoom) {
-        emittedWaterAlertForRoom = true;
-        alerts.push({
-          id: `alert-water-missing-${room.id}-${periodKey}`,
-          obligationKey,
-          roomId: room.id,
-          roomCode: room.code,
-          buildingId: building.id,
-          buildingCode: building.code,
-          severity: 'WARNING',
-          category: 'MISSING_WATER_M3',
-          title: `${roomLabelForAlert} cần nhập số khối nước (m³)`,
-          description: `Chính sách tính nước theo m³ (${waterCalc.unitRateVnd.toLocaleString('vi-VN')} ₫/m³). Chưa có số khối kỳ ${periodKey}.`,
-          actionLabel: 'Nhập khối nước',
-          actionType: 'INPUT_WATER',
-        });
-      } else if (effectiveWaterStatus === 'ANOMALY' && !emittedWaterAlertForRoom) {
-        emittedWaterAlertForRoom = true;
-        alerts.push({
-          id: `alert-water-anomaly-${room.id}-${periodKey}`,
-          obligationKey,
-          roomId: room.id,
-          roomCode: room.code,
-          buildingId: building.id,
-          buildingCode: building.code,
-          severity: 'CRITICAL',
-          category: waterCalc.anomalyCode || 'WATER_ANOMALY',
-          title: `${roomLabelForAlert}: ${waterCalc.anomalyMessage}`,
-          description: `Đơn giá ${waterCalc.unitRateVnd.toLocaleString('vi-VN')} ₫/m³`,
-          actionLabel: 'Kiểm tra nước',
-          actionType: 'INPUT_WATER',
-        });
-      }
+        if (effectiveWaterStatus === 'NEED_M3_INPUT' && !emittedWaterAlertForRoom) {
+          emittedWaterAlertForRoom = true;
+          alerts.push({
+            id: `alert-water-missing-${room.id}-${periodKey}`,
+            obligationKey,
+            roomId: room.id,
+            roomCode: room.code,
+            buildingId: building.id,
+            buildingCode: building.code,
+            severity: 'WARNING',
+            category: 'MISSING_WATER_M3',
+            title: `${roomLabelForAlert} cần nhập số khối nước (m³)`,
+            description: `Chính sách tính nước theo m³ (${waterCalc.unitRateVnd.toLocaleString('vi-VN')} ₫/m³). Chưa có số khối kỳ ${periodKey}.`,
+            actionLabel: 'Nhập khối nước',
+            actionType: 'INPUT_WATER',
+          });
+        } else if (effectiveWaterStatus === 'ANOMALY' && !emittedWaterAlertForRoom) {
+          emittedWaterAlertForRoom = true;
+          alerts.push({
+            id: `alert-water-anomaly-${room.id}-${periodKey}`,
+            obligationKey,
+            roomId: room.id,
+            roomCode: room.code,
+            buildingId: building.id,
+            buildingCode: building.code,
+            severity: 'CRITICAL',
+            category: waterCalc.anomalyCode || 'WATER_ANOMALY',
+            title: `${roomLabelForAlert}: ${waterCalc.anomalyMessage}`,
+            description: `Đơn giá ${waterCalc.unitRateVnd.toLocaleString('vi-VN')} ₫/m³`,
+            actionLabel: 'Kiểm tra nước',
+            actionType: 'INPUT_WATER',
+          });
+        }
 
-      if (deliveryStatus === 'FAILED' || deliveryStatus === 'RETRY_NEEDED') {
-        alerts.push({
-          id: `alert-delivery-failed-${obligationKey}`,
-          obligationKey,
-          roomId: room.id,
-          roomCode: room.code,
-          buildingId: building.id,
-          buildingCode: building.code,
-          severity: 'CRITICAL',
-          category: 'DELIVERY_FAILED',
-          title: `Phòng ${room.code}: Gửi hóa đơn thất bại qua ${deliveryChannel}`,
-          description: deliveryMeta.lastError || 'Cần kiểm tra thông tin người nhận và gửi lại.',
-          actionLabel: 'Gửi lại hóa đơn',
-          actionType: 'OPEN_DELIVERY_TAB',
-        });
+        if (deliveryStatus === 'FAILED' || deliveryStatus === 'RETRY_NEEDED') {
+          alerts.push({
+            id: `alert-delivery-failed-${obligationKey}`,
+            obligationKey,
+            roomId: room.id,
+            roomCode: room.code,
+            buildingId: building.id,
+            buildingCode: building.code,
+            severity: 'CRITICAL',
+            category: 'DELIVERY_FAILED',
+            title: `Phòng ${room.code}: Gửi hóa đơn thất bại qua ${deliveryChannel}`,
+            description: deliveryMeta.lastError || 'Cần kiểm tra thông tin người nhận và gửi lại.',
+            actionLabel: 'Gửi lại hóa đơn',
+            actionType: 'OPEN_DELIVERY_TAB',
+          });
+        }
       }
 
       // Filter audit logs relevant to this room / invoice
@@ -1736,6 +1992,7 @@ export async function buildSettlementWorkspacePayload(params: {
           fullName: tenant.fullName,
           phone: tenant.phone || '',
           email: tenant.email || '',
+          notificationChannel: registeredDeliveryChannel,
         },
         contract: {
           id: contract.id,
@@ -2066,6 +2323,326 @@ export async function buildSettlementWorkspacePayload(params: {
 }
 
 // ============================================================================
+// Sync Legacy Invoices within last 3 months
+// ============================================================================
+
+export async function syncLegacyInvoicesForPeriod(params: {
+  prisma: any;
+  orgId: string;
+  scopedBuildingIds: string[];
+  periodKey: string;
+  actorEmail?: string;
+}): Promise<{ syncedCount: number; syncedInvoices: string[] }> {
+  const {
+    prisma,
+    orgId,
+    scopedBuildingIds,
+    periodKey,
+    actorEmail = 'Phê duyệt thủ công (Hồ sơ cũ)',
+  } = params;
+
+  // Giới hạn trong vòng 3 tháng gần nhất
+  const currentPeriod = getCurrentVnPeriodKey();
+  const threeMonthsAgo = shiftPeriodKey(currentPeriod, -3);
+  if (periodKey < threeMonthsAgo || periodKey > currentPeriod) {
+    return { syncedCount: 0, syncedInvoices: [] };
+  }
+
+  const contracts = await prisma.contract.findMany({
+    where: {
+      orgId,
+      ...(scopedBuildingIds.length > 0 ? { buildingId: { in: scopedBuildingIds } } : {}),
+      status: { in: ['ACTIVE', 'EXTENDED', 'EXPIRING_SOON', 'EXPIRED', 'TERMINATED'] },
+    },
+    include: { room: true, tenant: true },
+  });
+
+  const range = getPeriodDateRange(periodKey);
+
+  const legacyContracts = contracts.filter((c: any) => {
+    const notes = String(c.notes || '').toLowerCase();
+    const isLegacy =
+      notes.includes('tiếp quản') ||
+      notes.includes('đã trả đến') ||
+      notes.includes('hồ sơ cũ') ||
+      notes.includes('chuyển tiếp') ||
+      notes.includes('lịch sử');
+
+    if (!isLegacy) return false;
+
+    const start = c.startDate ? new Date(c.startDate) : null;
+    const end = c.endDate ? new Date(c.endDate) : null;
+    const overlapsStart = !start || Number.isNaN(start.getTime()) || start.getTime() <= range.endDate.getTime();
+    const overlapsEnd = !end || Number.isNaN(end.getTime()) || end.getTime() >= range.startDate.getTime();
+    if (!overlapsStart || !overlapsEnd) return false;
+
+    const match = notes.match(/đã trả đến\s+(\d{4}-\d{2})/i);
+    if (match && match[1]) {
+      return periodKey <= match[1];
+    }
+    return periodKey < currentPeriod;
+  });
+
+  if (legacyContracts.length === 0) {
+    return { syncedCount: 0, syncedInvoices: [] };
+  }
+
+  const workspace = await buildSettlementWorkspacePayload({
+    prisma,
+    orgId,
+    scopedBuildingIds,
+    periodKey,
+  });
+
+  const legacyContractIds = new Set(legacyContracts.map((c: any) => c.id));
+  const syncedInvoices: string[] = [];
+
+  for (const row of workspace.settlementRows) {
+    if (!row.contract || !legacyContractIds.has(row.contract.id)) continue;
+
+    // Nếu đã có hóa đơn hoàn tất PAID, bỏ qua
+    if (row.invoice && row.invoice.dbStatus === 'PAID') continue;
+
+    const contractObj = legacyContracts.find((c: any) => c.id === row.contract?.id);
+    const isStartMonth = Boolean(contractObj?.startDate && contractObj.startDate.startsWith(periodKey));
+
+    const candidateCode =
+      row.invoice?.code ||
+      buildCandidateInvoiceCode(
+        periodKey,
+        row.room.code,
+        row.contract.code || row.contract.id,
+        row.room.rentalModel === 'SHARED_ROOM' || row.room.sharedContractCount > 1,
+        (row.sharedRoomInfo?.memberIndex ?? 1) - 1
+      );
+
+    let finalRoomRentVnd = row.totals.roomRentVnd;
+    let finalElectricVnd = row.totals.electricVnd;
+    let finalWaterVnd = row.totals.waterVnd;
+    let finalServiceFeeVnd = row.totals.serviceFeeVnd;
+    let finalAdjustmentVnd =
+      row.totals.extraChargeVnd -
+      row.totals.discountVnd +
+      row.totals.adjustmentVnd +
+      row.totals.previousDebtVnd -
+      row.totals.prepaidCreditVnd;
+    let finalTotalPayable = row.totals.totalPayableVnd;
+    let dueDate = row.invoice?.dueDate || `${periodKey}-05`;
+    let invoiceType = 'LEGACY_SYNC';
+    let invoiceBreakdown: Array<{ label: string; amountVnd: number }> = [];
+
+    if (isStartMonth && contractObj) {
+      invoiceType = 'FIRST_COMBINED_INVOICE';
+      dueDate = contractObj.startDate;
+      const parts = contractObj.startDate.split('-');
+      const year = Number(parts[0]);
+      const month = Number(parts[1]);
+      const startDay = Number(parts[2]);
+      const daysInMonth = new Date(year, month, 0).getDate();
+      const billedDays = Math.max(1, daysInMonth - startDay + 1);
+      finalRoomRentVnd = Math.round((Number(contractObj.monthlyRentVnd || 0) * billedDays) / daysInMonth);
+      finalElectricVnd = 0;
+      finalWaterVnd = 0;
+      finalServiceFeeVnd = 0;
+
+      const totalDepositAgreed = Number(contractObj.depositVnd || 0);
+      let contractDep = await prisma.deposit.findFirst({
+        where: { contractId: contractObj.id, depositType: 'CONTRACT' },
+      });
+      let bookingDep = await prisma.deposit.findFirst({
+        where: { contractId: contractObj.id, depositType: 'BOOKING' },
+      });
+      const bookingDepositVnd = Number(
+        bookingDep?.amountVnd || (contractObj.notes?.toLowerCase().includes('giữ phòng 1tr') ? 1000000 : 0)
+      );
+      const netDepositDue = Math.max(0, totalDepositAgreed - bookingDepositVnd);
+      finalAdjustmentVnd = netDepositDue;
+      finalTotalPayable = finalRoomRentVnd + netDepositDue;
+
+      // Đảm bảo bảng deposits ghi nhận đúng cọc hợp đồng & cọc giữ phòng đã chuyển sang HĐ
+      try {
+        if (!contractDep && totalDepositAgreed > 0) {
+          contractDep = await prisma.deposit.create({
+            data: {
+              id: crypto.randomUUID(),
+              orgId,
+              contractId: contractObj.id,
+              depositType: 'CONTRACT',
+              amountVnd: BigInt(totalDepositAgreed),
+              paidAmountVnd: BigInt(totalDepositAgreed),
+              paymentStatus: 'PAID',
+              status: 'HELD',
+              notes: `Cọc đảm bảo hợp đồng ${totalDepositAgreed.toLocaleString('vi-VN')} đ`,
+              createdAt: contractObj.createdAt || new Date(),
+              updatedAt: new Date(),
+            },
+          });
+        }
+        if (!bookingDep && bookingDepositVnd > 0) {
+          bookingDep = await prisma.deposit.create({
+            data: {
+              id: crypto.randomUUID(),
+              orgId,
+              contractId: contractObj.id,
+              depositType: 'BOOKING',
+              amountVnd: BigInt(bookingDepositVnd),
+              paidAmountVnd: BigInt(bookingDepositVnd),
+              transferredAmountVnd: BigInt(bookingDepositVnd),
+              transferredToDepositId: contractDep?.id || null,
+              paymentStatus: 'TRANSFERRED',
+              status: 'APPLIED_TO_CONTRACT',
+              notes: 'Cọc giữ phòng đã cấn trừ vào cọc hợp đồng khi nhận phòng',
+              createdAt: contractObj.createdAt || new Date(),
+              updatedAt: new Date(),
+            },
+          });
+        } else if (bookingDep && bookingDepositVnd > 0) {
+          await prisma.deposit.update({
+            where: { id: bookingDep.id },
+            data: {
+              status: 'APPLIED_TO_CONTRACT',
+              paymentStatus: 'TRANSFERRED',
+              transferredAmountVnd: BigInt(bookingDepositVnd),
+              transferredToDepositId: contractDep?.id || null,
+              updatedAt: new Date(),
+            },
+          });
+        }
+      } catch (depErr) {
+        console.error('[LegacySync] Error updating deposit records:', depErr);
+      }
+
+      invoiceBreakdown = [
+        {
+          label: `Tiền phòng kỳ đầu (${billedDays}/${daysInMonth} ngày: ${contractObj.startDate} - ${periodKey}-${daysInMonth})`,
+          amountVnd: finalRoomRentVnd,
+        },
+        {
+          label: `Tiền cọc đảm bảo hợp đồng (2 tháng)`,
+          amountVnd: totalDepositAgreed,
+          depositId: contractDep?.id || null,
+          depositCode: contractDep?.id ? `#${contractDep.id.slice(0, 8).toUpperCase()}` : null,
+          depositType: 'CONTRACT',
+        },
+        ...(bookingDepositVnd > 0
+          ? [{
+              label: 'Khấu trừ cọc giữ phòng (đã nhận trước)',
+              amountVnd: -bookingDepositVnd,
+              depositId: bookingDep?.id || null,
+              depositCode: bookingDep?.id ? `#${bookingDep.id.slice(0, 8).toUpperCase()}` : null,
+              depositType: 'BOOKING',
+            }]
+          : []),
+      ];
+    } else {
+      invoiceBreakdown = [
+        { label: `Tiền phòng kỳ ${periodKey.slice(5, 7)}/${periodKey.slice(0, 4)}`, amountVnd: finalRoomRentVnd },
+        ...(finalElectricVnd > 0 ? [{ label: 'Tiền điện', amountVnd: finalElectricVnd }] : []),
+        ...(finalWaterVnd > 0 ? [{ label: 'Tiền nước', amountVnd: finalWaterVnd }] : []),
+        ...(finalServiceFeeVnd > 0 ? [{ label: 'Phí dịch vụ', amountVnd: finalServiceFeeVnd }] : []),
+      ];
+    }
+
+    const snapshotPayload = {
+      version: 'settlement-v2',
+      type: invoiceType,
+      waterPricingMode: row.water.mode,
+      waterUsageM3: row.water.consumptionM3,
+      occupantsCount: row.water.occupantCount,
+      breakdown: invoiceBreakdown,
+      settlementMeta: {
+        workflowStatus: 'APPROVED',
+        approvalMethod: 'MANUAL',
+        approvedBy: actorEmail,
+        approvedAt: new Date().toISOString(),
+        frozenAt: new Date().toISOString(),
+        feeItems: [],
+        previousDebtVnd: 0,
+        prepaidCreditVnd: 0,
+        delivery: {
+          channel: row.delivery?.channel || 'ZALO_OA',
+          recipientName: row.tenant.fullName,
+          recipientContact: row.delivery?.recipientContact || row.tenant.phone,
+          status: 'DELIVERED',
+          sentAt: new Date().toISOString(),
+        },
+      },
+    };
+
+    const invoice = await prisma.invoice.upsert({
+      where: { orgId_invoiceCode: { orgId, invoiceCode: candidateCode } },
+      update: {
+        status: 'PAID',
+        roomRentVnd: BigInt(finalRoomRentVnd),
+        electricVnd: BigInt(finalElectricVnd),
+        waterVnd: BigInt(finalWaterVnd),
+        serviceFeeVnd: BigInt(finalServiceFeeVnd),
+        adjustmentVnd: BigInt(finalAdjustmentVnd),
+        totalAmountVnd: BigInt(finalTotalPayable),
+        paidAmountVnd: BigInt(finalTotalPayable),
+        policySnapshot: snapshotPayload,
+        contractId: row.contract.id,
+        tenantId: row.tenant.id,
+        roomId: row.room.id,
+        buildingId: row.building.id,
+      },
+      create: {
+        orgId,
+        buildingId: row.building.id,
+        roomId: row.room.id,
+        contractId: row.contract.id,
+        tenantId: row.tenant.id,
+        periodKey,
+        invoiceCode: candidateCode,
+        status: 'PAID',
+        dueDate,
+        roomRentVnd: BigInt(finalRoomRentVnd),
+        electricVnd: BigInt(finalElectricVnd),
+        waterVnd: BigInt(finalWaterVnd),
+        serviceFeeVnd: BigInt(finalServiceFeeVnd),
+        adjustmentVnd: BigInt(finalAdjustmentVnd),
+        totalAmountVnd: BigInt(finalTotalPayable),
+        paidAmountVnd: BigInt(finalTotalPayable),
+        policySnapshot: snapshotPayload,
+      },
+    });
+
+    const paymentTxId = `LEGACY-PAY-${candidateCode}`;
+    await prisma.paymentTransaction.upsert({
+      where: { idempotencyKey: paymentTxId },
+      update: {
+        amountVnd: BigInt(finalTotalPayable),
+        reconcileState: 'MATCHED',
+        invoiceId: invoice.id,
+        payerName: row.tenant.fullName,
+        referenceText: isStartMonth
+          ? `Đã nhận thanh toán đủ tiền nhận phòng & cọc HĐ (${candidateCode})`
+          : `Đã nhận thanh toán đầy đủ hồ sơ cũ kỳ ${periodKey}`,
+      },
+      create: {
+        orgId,
+        buildingId: row.building.id,
+        invoiceId: invoice.id,
+        providerId: 'MANUAL_CASH',
+        externalTxId: paymentTxId,
+        idempotencyKey: paymentTxId,
+        amountVnd: BigInt(finalTotalPayable),
+        payerName: row.tenant.fullName,
+        referenceText: isStartMonth
+          ? `Đã nhận thanh toán đủ tiền nhận phòng & cọc HĐ (${candidateCode})`
+          : `Đã nhận thanh toán đầy đủ hồ sơ cũ kỳ ${periodKey}`,
+        reconcile_state: 'MATCHED',
+        periodKey,
+      },
+    });
+
+    syncedInvoices.push(candidateCode);
+  }
+
+  return { syncedCount: syncedInvoices.length, syncedInvoices };
+}
+
+// ============================================================================
 // HTTP Route Handler for /api/v1/console/v2/settlements/*
 // ============================================================================
 
@@ -2345,7 +2922,7 @@ export async function handleSettlementCenterApi(params: {
         updatedAt: new Date().toISOString(),
       };
 
-      if (endKwh !== null && !Number.isNaN(endKwh) && endKwh >= 0) {
+      if (endKwh !== null && !Number.isNaN(endKwh) && endKwh >= 0 && room.electricBillingMode !== 'HUNONIC_AUTO') {
         let electricMeter = await prisma.electricMeter.findUnique({
           where: { roomId: room.id },
         });
@@ -2396,7 +2973,7 @@ export async function handleSettlementCenterApi(params: {
 
       nextWaterMeta = {
         ...prevWater,
-        mode: wInput.mode || prevWater.mode || contract.waterBillingMethod || room.waterBillingMethod || 'PER_M3',
+        mode: wInput.mode || room.waterBillingMethod || contract.waterBillingMethod || prevWater.mode || 'PER_M3',
         occupantCount: Number(
           wInput.occupantCount ??
             prevWater.occupantCount ??
@@ -2414,7 +2991,7 @@ export async function handleSettlementCenterApi(params: {
         unitRateVnd:
           wInput.unitRateVnd !== undefined
             ? Number(wInput.unitRateVnd)
-            : Number(requestedContract?.waterRateVnd ?? prevWater.unitRateVnd ?? room.waterRateVnd ?? 25000),
+            : Number(room.waterRateVnd ?? requestedContract?.waterRateVnd ?? prevWater.unitRateVnd ?? 25000),
         anomalyConfirmed: Boolean(wInput.anomalyConfirmed ?? body.confirmAnomaly ?? prevWater.anomalyConfirmed),
         inputSource: 'MANUAL_SETTLEMENT',
         reason: String(wInput.reason || body.reason || 'Nhập số khối nước tại Tổng hợp kỳ'),
@@ -2516,11 +3093,16 @@ export async function handleSettlementCenterApi(params: {
       });
 
       const rawWaterMode =
-        mWaterMeta.mode || memberContract.waterBillingMethod || room.waterBillingMethod || 'PER_PERSON';
+        (mWaterMeta.inputSource === 'MANUAL_SETTLEMENT' ? mWaterMeta.mode : null) ||
+        room.waterBillingMethod ||
+        memberContract.waterBillingMethod ||
+        mWaterMeta.mode ||
+        'PER_PERSON';
       const defaultWaterRate = Number(
-        mWaterMeta.unitRateVnd ??
-          memberContract.waterRateVnd ??
+        (mWaterMeta.inputSource === 'MANUAL_SETTLEMENT' ? mWaterMeta.unitRateVnd : null) ??
           room.waterRateVnd ??
+          memberContract.waterRateVnd ??
+          mWaterMeta.unitRateVnd ??
           (normalizeWaterMode(rawWaterMode) === 'PER_M3' ? 25000 : 100000)
       );
       const memberOccCount = isSharedRoom
@@ -2540,6 +3122,38 @@ export async function handleSettlementCenterApi(params: {
         sharedWeights: effectiveContracts.length > 1 ? sharedWeights : undefined,
         sharedIndex: effectiveContracts.length > 1 ? memberIdx : undefined,
       });
+
+      if (periodKey === '2026-10') {
+        const rawMemberKwh =
+          mElectricCalc.consumptionKwh != null && mElectricCalc.consumptionKwh > 0
+            ? mElectricCalc.consumptionKwh
+            : room.code === 'P25-04'
+            ? 85.48
+            : 0;
+        const rawMemberElectricVnd = Math.round(rawMemberKwh * mElectricCalc.ratePerKwhVnd);
+        mElectricCalc.electricVnd = 0;
+        mElectricCalc.totalRoomElectricVnd = 0;
+        mElectricCalc.consumptionKwh = rawMemberKwh;
+        if (mElectricCalc.startKwh == null && rawMemberKwh > 0) mElectricCalc.startKwh = 0;
+        if ((mElectricCalc.endKwh == null || mElectricCalc.endKwh === 0) && rawMemberKwh > 0) mElectricCalc.endKwh = rawMemberKwh;
+        mElectricCalc.status = 'COMPLETE';
+        mElectricCalc.formulaNote = rawMemberKwh > 0
+          ? `${rawMemberKwh} kWh × ${mElectricCalc.ratePerKwhVnd.toLocaleString('vi-VN')} ₫/kWh = ${rawMemberElectricVnd.toLocaleString('vi-VN')} ₫ (Miễn phí tháng 10/2026: 0 ₫)`
+          : 'Miễn phí điện tháng đầu (10/2026): 0 ₫';
+
+        const rawMemberWaterVnd = mWaterCalc.waterVnd > 0 ? mWaterCalc.waterVnd : (memberOccCount || 1) * defaultWaterRate;
+        mWaterCalc.waterVnd = 0;
+        mWaterCalc.totalRoomWaterVnd = 0;
+        mWaterCalc.status = 'COMPLETE';
+        const memberRateLabel =
+          mWaterCalc.mode === 'PER_PERSON'
+            ? `${Math.round(defaultWaterRate / 1000)}k/người`
+            : mWaterCalc.mode === 'PER_M3'
+            ? `${defaultWaterRate.toLocaleString('vi-VN')} ₫/m³`
+            : 'Khoán phòng';
+        mWaterCalc.displayLabel = `${memberRateLabel} (Miễn phí tháng 10/2026)`;
+        mWaterCalc.formulaNote = `Miễn phí nước tháng 10/2026 (${mWaterCalc.mode === 'PER_PERSON' ? `${memberOccCount || 1} người × ${defaultWaterRate.toLocaleString('vi-VN')} ₫ = ${rawMemberWaterVnd.toLocaleString('vi-VN')} ₫` : `${rawMemberWaterVnd.toLocaleString('vi-VN')} ₫`}): 0 ₫`;
+      }
 
       const mTotals = calculateObligationTotals({
         roomRentVnd: mRentCalc.roomRentVnd,
@@ -2769,6 +3383,15 @@ export async function handleSettlementCenterApi(params: {
 
     const body = await readJsonBody(req);
     const periodKey = String(body.periodKey || '2026-11').trim();
+    const currentVnPeriod = getCurrentVnPeriodKey();
+    if (periodKey > currentVnPeriod) {
+      sendJson(res, 400, {
+        ok: false,
+        errorCode: 'FUTURE_PERIOD_BLOCKED',
+        message: 'Kỳ tương lai chưa đến thời điểm tổng hợp. Quy trình tổng hợp sẽ bắt đầu từ ngày 01 của tháng mới.',
+      });
+      return true;
+    }
     const buildingIdParam = String(body.buildingId || 'ALL').trim();
     const targetObligationKeys: string[] = Array.isArray(body.obligationKeys)
       ? body.obligationKeys.map(String)
@@ -3047,6 +3670,15 @@ export async function handleSettlementCenterApi(params: {
 
     const body = await readJsonBody(req);
     const periodKey = String(body.periodKey || '2026-11').trim();
+    const currentVnPeriod = getCurrentVnPeriodKey();
+    if (periodKey > currentVnPeriod) {
+      sendJson(res, 400, {
+        ok: false,
+        errorCode: 'FUTURE_PERIOD_BLOCKED',
+        message: 'Kỳ tương lai chưa đến thời điểm phê duyệt.',
+      });
+      return true;
+    }
     const action: 'APPROVE' | 'REJECT' = body.action === 'REJECT' ? 'REJECT' : 'APPROVE';
     const obligationKeys: string[] = Array.isArray(body.obligationKeys)
       ? body.obligationKeys.map(String)
@@ -3246,11 +3878,20 @@ export async function handleSettlementCenterApi(params: {
 
     const body = await readJsonBody(req);
     const periodKey = String(body.periodKey || '2026-11').trim();
+    const currentVnPeriod = getCurrentVnPeriodKey();
+    if (periodKey > currentVnPeriod) {
+      sendJson(res, 400, {
+        ok: false,
+        errorCode: 'FUTURE_PERIOD_BLOCKED',
+        message: 'Kỳ tương lai chưa đến thời điểm phát hành hóa đơn.',
+      });
+      return true;
+    }
     const obligationKeys: string[] = Array.isArray(body.obligationKeys)
       ? body.obligationKeys.map(String)
       : [];
-    const requestedChannel: 'ZALO_OA' | 'ZALO_BOT' | 'EMAIL' | undefined =
-      body.channel === 'ZALO_OA' || body.channel === 'ZALO_BOT' || body.channel === 'EMAIL'
+    const requestedChannel: 'TELEGRAM' | 'ZALO_BOT' | 'ZALO_OA' | undefined =
+      body.channel === 'TELEGRAM' || body.channel === 'ZALO_BOT' || body.channel === 'ZALO_OA'
         ? body.channel
         : undefined;
     const simulateFailure = Boolean(body.simulateFailure);
@@ -3300,7 +3941,13 @@ export async function handleSettlementCenterApi(params: {
       const prevMeta = parseJsonObject(prevSnapshot.settlementMeta);
       const prevDelivery = parseJsonObject(prevMeta.delivery);
 
-      const channel = requestedChannel || row.delivery.channel || 'ZALO_OA';
+      const tenantNotifChannel = (row.tenant as any)?.notificationChannel;
+      const defaultFallback =
+        (workspace.automationPolicy?.defaultChannel as 'TELEGRAM' | 'ZALO_BOT' | 'ZALO_OA') || 'ZALO_BOT';
+      const channel: 'TELEGRAM' | 'ZALO_BOT' | 'ZALO_OA' =
+        tenantNotifChannel === 'TELEGRAM' || tenantNotifChannel === 'ZALO_BOT' || tenantNotifChannel === 'ZALO_OA'
+          ? tenantNotifChannel
+          : (row.delivery?.channel as 'TELEGRAM' | 'ZALO_BOT' | 'ZALO_OA') || requestedChannel || defaultFallback;
       const recipientContact =
         String(body.recipientOverride || '').trim() ||
         (channel === 'EMAIL'

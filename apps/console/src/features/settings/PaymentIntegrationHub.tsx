@@ -8,11 +8,17 @@ import { SettingsDialog } from '@/shared/ui/SettingsDialog';
 import { FieldInfoHint } from '@/shared/ui/FieldInfoHint';
 import { formatVnDateTime } from '@/shared/tokens/designTokens';
 import { type WebhookConnection, type WebhookGuide } from './PaymentWebhookPanel';
+import {
+  DEFAULT_TRANSFER_SYNTAX,
+  TRANSFER_SYNTAX_PRESETS,
+  TRANSFER_SYNTAX_TOKENS,
+  formatTransferContent,
+} from '@/shared/utils/transferContentFormatter';
 
 type Provider = { id: string; name: string; description: string; docsUrl: string; canTest: boolean; environments: string[]; fields: { key: string; label: string; secret: boolean; optional?: boolean }[]; testReference: boolean; webhook: WebhookGuide };
 type Account = { bankCode: string; accountNumber: string; accountName: string };
-type Connection = WebhookConnection & { name: string; environment: string; buildingId: string | null; isEnabled: boolean; status: string; credentialFields: string[]; maskedCredentials?: Record<string, string>; version: number; lastTestedAt: string | null; lastTestMessage: string | null; verificationScope: string | null; accounts: Account[] };
-type Draft = { id?: string; creationId?: string; version?: number; providerId: string; name: string; environment: string; buildingId: string; webhookAuth: string; credentials: Record<string, string>; maskedCredentials?: Record<string, string>; accounts: Account[] };
+type Connection = WebhookConnection & { name: string; environment: string; buildingId: string | null; isEnabled: boolean; status: string; credentialFields: string[]; maskedCredentials?: Record<string, string>; version: number; lastTestedAt: string | null; lastTestMessage: string | null; verificationScope: string | null; accounts: Account[]; transferSyntax?: string };
+type Draft = { id?: string; creationId?: string; version?: number; providerId: string; name: string; environment: string; buildingId: string; webhookAuth: string; credentials: Record<string, string>; maskedCredentials?: Record<string, string>; accounts: Account[]; transferSyntax?: string };
 const endpoint = '/api/v1/console/v2/settings/payment-connections';
 const inputClass = 'mt-1 min-w-0 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900';
 const buttonClass = 'inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700';
@@ -72,8 +78,48 @@ export function PaymentIntegrationHub() {
   const edit = (connection?: Connection, providerId = providers[0]?.id) => {
     setFormError('');
     setWebhookCopyMessage('');
-    setDraft(connection ? { ...connection, buildingId: connection.buildingId || '', webhookAuth: connection.webhookAuth || 'HMAC_SHA256', credentials: {}, maskedCredentials: connection.maskedCredentials || {}, accounts: connection.accounts.map(a => ({ bankCode: a.bankCode, accountNumber: a.accountNumber, accountName: a.accountName })) } : { creationId: creationId(), providerId, name: '', environment: providers.find(p => p.id === providerId)?.environments[0] || 'LIVE', buildingId: '', webhookAuth: 'HMAC_SHA256', credentials: {}, maskedCredentials: {}, accounts: [] });
+    setDraft(connection ? {
+      ...connection,
+      buildingId: connection.buildingId || '',
+      webhookAuth: connection.webhookAuth || 'HMAC_SHA256',
+      credentials: {},
+      maskedCredentials: connection.maskedCredentials || {},
+      accounts: connection.accounts.map(a => ({ bankCode: a.bankCode, accountNumber: a.accountNumber, accountName: a.accountName })),
+      transferSyntax: connection.transferSyntax || DEFAULT_TRANSFER_SYNTAX,
+    } : {
+      creationId: creationId(),
+      providerId,
+      name: '',
+      environment: providers.find(p => p.id === providerId)?.environments[0] || 'LIVE',
+      buildingId: '',
+      webhookAuth: 'HMAC_SHA256',
+      credentials: {},
+      maskedCredentials: {},
+      accounts: [],
+      transferSyntax: DEFAULT_TRANSFER_SYNTAX,
+    });
   };
+
+  const toggleConnection = (c: Connection) => {
+    const nextState = !c.isEnabled;
+    if (nextState && c.status !== 'VERIFIED') {
+      setError('Cần kiểm tra API thành công trước khi kích hoạt cổng thanh toán.');
+      return;
+    }
+    const message = nextState
+      ? `Kích hoạt "${c.name}" làm cổng thanh toán nhận tiền chính? Hệ thống chỉ duy trì 1 cổng hoạt động, các cổng khác sẽ tự động tắt để tránh nhầm lẫn tài khoản nhận tiền.`
+      : `Tắt cổng thanh toán "${c.name}"?`;
+    if (!window.confirm(message)) return;
+    void run(
+      c.id,
+      () => request(`/${c.id}/enabled`, 'POST', { version: c.version, isEnabled: nextState }),
+      nextState
+        ? `Đã kích hoạt "${c.name}" làm cổng thanh toán chính thức. Các cổng khác đã chuyển sang Inactive.`
+        : `Đã tắt kết nối "${c.name}".`
+    );
+  };
+
+  const activeConnection = connections.find(c => c.isEnabled);
   const run = async (key: string, operation: () => Promise<unknown>, message: string, inForm = false) => {
     if (working.current) return;
     working.current = true; setBusy(key); setError(''); setNotice(''); setFormError('');
@@ -141,6 +187,49 @@ export function PaymentIntegrationHub() {
       </div>
     </div>
     {legacy.length > 0 && <p className="rounded-lg border border-amber-300 p-3 text-sm">Có cấu hình cũ: {legacy.join(', ')}. Dữ liệu cũ vẫn được giữ. Hãy tạo kết nối mới với đầy đủ trường xác thực; module không tự chuyển đổi khóa chung.</p>}
+    
+    {/* Active Gateway Banner - Enforce single active payment gateway invariant */}
+    <div className={`p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+      activeConnection
+        ? 'border-emerald-200 bg-emerald-50/70 dark:border-emerald-900/60 dark:bg-emerald-950/20 text-emerald-950 dark:text-emerald-100'
+        : 'border-amber-200 bg-amber-50/70 dark:border-amber-900/60 dark:bg-amber-950/20 text-amber-950 dark:text-amber-100'
+    }`}>
+      <div className="flex items-start gap-3">
+        <div className={`mt-0.5 p-2 rounded-lg shrink-0 ${
+          activeConnection
+            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300'
+            : 'bg-amber-100 text-amber-700 dark:bg-amber-900/60 dark:text-amber-300'
+        }`}>
+          <Banknote size={20} />
+        </div>
+        <div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-bold text-sm">
+              {activeConnection
+                ? `Cổng thanh toán chính thức đang nhận tiền: ${activeConnection.name} (${providers.find(p => p.id === activeConnection.providerId)?.name || activeConnection.providerId})`
+                : 'Chưa có cổng thanh toán nào được kích hoạt (Active)'}
+            </span>
+            {activeConnection && (
+              <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-200 text-emerald-900 dark:bg-emerald-800 dark:text-emerald-100">
+                Active · Duy nhất
+              </span>
+            )}
+          </div>
+          <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-300">
+            {activeConnection ? (
+              <>
+                Tài khoản nhận: <strong className="font-mono">{activeConnection.accounts[0] ? `${activeConnection.accounts[0].bankCode} ${activeConnection.accounts[0].accountNumber} (${activeConnection.accounts[0].accountName})` : 'Chưa khai báo STK'}</strong>
+                {activeConnection.accounts.length > 1 && ` (+${activeConnection.accounts.length - 1} tài khoản khác)`}
+                {' · '}Cú pháp CK: <code className="font-mono bg-white/70 dark:bg-slate-900/70 px-1.5 py-0.5 rounded text-[11px] font-bold">{activeConnection.transferSyntax || DEFAULT_TRANSFER_SYNTAX}</code>
+              </>
+            ) : (
+              'Hệ thống chỉ chấp nhận duy nhất 1 cổng active để tránh nhầm lẫn tài khoản khi tạo hóa đơn & VietQR. Vui lòng kiểm tra API và bấm Kích hoạt cổng mong muốn.'
+            )}
+          </p>
+        </div>
+      </div>
+    </div>
+
     {error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">{error}</p>}
     {notice && <p role="status" className="flex items-start gap-2 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"><CheckCircle2 className="shrink-0" size={18} />{notice}</p>}
     {loading ? <p role="status"><ShimmeringText text="Đang tải cấu hình tích hợp…" /></p> : <>
@@ -173,9 +262,19 @@ export function PaymentIntegrationHub() {
                       className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
                     >
                       <td className="py-3 px-3">
-                        <div className="font-bold text-slate-900 dark:text-white">{c.name}</div>
+                        <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5 flex-wrap">
+                          {c.name}
+                          {c.isEnabled && (
+                            <span className="px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700">
+                              Active
+                            </span>
+                          )}
+                        </div>
                         <div className="text-[11px] text-slate-500 flex items-center gap-1.5 mt-0.5">
                           <span className="font-semibold text-brand-primary">{p?.name || c.providerId}</span>
+                        </div>
+                        <div className="text-[10.5px] text-slate-500 font-mono mt-1">
+                          Cú pháp CK: <span className="font-semibold text-slate-700 dark:text-slate-300">{c.transferSyntax || DEFAULT_TRANSFER_SYNTAX}</span>
                         </div>
                       </td>
                       <td className="py-3 px-3">
@@ -211,7 +310,7 @@ export function PaymentIntegrationHub() {
                       </td>
                       <td className="py-3 px-3">
                         <div className="flex flex-col gap-1">
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <span
                               className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                                 c.status === 'VERIFIED'
@@ -230,11 +329,11 @@ export function PaymentIntegrationHub() {
                             <span
                               className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                                 c.isEnabled
-                                  ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+                                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 flex items-center gap-1'
                                   : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
                               }`}
                             >
-                              {c.isEnabled ? 'API: Đang bật' : 'API: Đang tắt'}
+                              {c.isEnabled ? '🟢 Đang nhận tiền' : '⚪ Không hoạt động'}
                             </span>
                           </div>
                           {c.lastTestMessage && (
@@ -246,6 +345,25 @@ export function PaymentIntegrationHub() {
                       </td>
                       <td className="py-3 px-3 text-right">
                         <div className="inline-flex items-center gap-1.5">
+                          {c.isEnabled ? (
+                            <Button
+                              className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 dark:bg-rose-950 dark:text-rose-300"
+                              disabled={!!busy}
+                              onClick={() => toggleConnection(c)}
+                              title="Tắt nhận tiền của kết nối này"
+                            >
+                              Tắt
+                            </Button>
+                          ) : (
+                            <Button
+                              className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-300 disabled:opacity-40"
+                              disabled={!!busy || c.status !== 'VERIFIED'}
+                              onClick={() => toggleConnection(c)}
+                              title={c.status !== 'VERIFIED' ? 'Cần Kiểm tra API thành công trước khi kích hoạt' : 'Kích hoạt làm cổng nhận tiền chính'}
+                            >
+                              Kích hoạt
+                            </Button>
+                          )}
                           <Button
                             className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200"
                             disabled={!!busy}
@@ -290,9 +408,16 @@ export function PaymentIntegrationHub() {
                   <div className="space-y-2.5">
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <h3 className="break-words font-bold text-sm text-slate-900 dark:text-white">
-                          {c.name}
-                        </h3>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <h3 className="break-words font-bold text-sm text-slate-900 dark:text-white">
+                            {c.name}
+                          </h3>
+                          {c.isEnabled && (
+                            <span className="px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700">
+                              Active
+                            </span>
+                          )}
+                        </div>
                         <p className="mt-0.5 text-xs text-slate-500">
                           <span className="font-semibold text-brand-primary">{p?.name || c.providerId}</span>
                           {' · '}
@@ -300,6 +425,9 @@ export function PaymentIntegrationHub() {
                           {' · '}
                           {buildingName}
                         </p>
+                        <div className="text-[11px] text-slate-500 font-mono mt-1">
+                          Cú pháp CK: <span className="font-semibold text-slate-700 dark:text-slate-300">{c.transferSyntax || DEFAULT_TRANSFER_SYNTAX}</span>
+                        </div>
                       </div>
                       <div className="flex flex-wrap gap-1.5 text-xs shrink-0">
                         <span
@@ -320,11 +448,11 @@ export function PaymentIntegrationHub() {
                         <span
                           className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
                             c.isEnabled
-                              ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
                               : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
                           }`}
                         >
-                          {c.isEnabled ? 'API: Đang bật' : 'API: Đang tắt'}
+                          {c.isEnabled ? '🟢 Đang nhận tiền' : '⚪ Không hoạt động'}
                         </span>
                       </div>
                     </div>
@@ -367,6 +495,24 @@ export function PaymentIntegrationHub() {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                    {c.isEnabled ? (
+                      <Button
+                        className="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 dark:bg-rose-950 dark:text-rose-300"
+                        disabled={!!busy}
+                        onClick={() => toggleConnection(c)}
+                      >
+                        Tắt nhận tiền
+                      </Button>
+                    ) : (
+                      <Button
+                        className="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-300 disabled:opacity-40"
+                        disabled={!!busy || c.status !== 'VERIFIED'}
+                        onClick={() => toggleConnection(c)}
+                        title={c.status !== 'VERIFIED' ? 'Cần Kiểm tra API thành công trước khi kích hoạt' : 'Kích hoạt làm cổng nhận tiền chính'}
+                      >
+                        Kích hoạt
+                      </Button>
+                    )}
                     <Button className={primaryClass} disabled={!!busy} onClick={() => edit(c)}>
                       Cấu hình
                     </Button>
@@ -429,6 +575,94 @@ export function PaymentIntegrationHub() {
               </div>;
             })}</div>
           </div>
+
+          {/* Transfer Content Syntax Configuration */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 dark:border-slate-800 dark:bg-slate-800/40 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">Cú pháp nội dung chuyển khoản</h3>
+                <FieldInfoHint label="Cú pháp chuyển khoản">
+                  Quy định nội dung trên mã VietQR và hóa đơn. Trung gian thanh toán (SePay/VietQR) sử dụng cú pháp này để tự động nhận diện và gạch nợ. Tự động chuẩn hóa không dấu, tối đa 50 ký tự.
+                </FieldInfoHint>
+              </div>
+              <span className="text-[11px] text-slate-500 font-mono">
+                {(draft.transferSyntax || DEFAULT_TRANSFER_SYNTAX).length}/50 ký tự
+              </span>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                Mẫu cú pháp (Syntax template)
+              </label>
+              <input
+                type="text"
+                maxLength={100}
+                className={inputClass}
+                value={draft.transferSyntax ?? DEFAULT_TRANSFER_SYNTAX}
+                onChange={(e) => setDraft({ ...draft, transferSyntax: e.target.value })}
+                placeholder="{room} {tenant} {period}"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <span className="text-[11px] font-semibold text-slate-500">Mẫu gợi ý chuẩn:</span>
+              <div className="flex flex-wrap gap-1.5">
+                {TRANSFER_SYNTAX_PRESETS.map((preset, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => setDraft({ ...draft, transferSyntax: preset.syntax })}
+                    className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${
+                      (draft.transferSyntax || DEFAULT_TRANSFER_SYNTAX) === preset.syntax
+                        ? 'bg-blue-50 border-blue-400 text-blue-700 font-bold dark:bg-blue-950 dark:border-blue-700 dark:text-blue-200'
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-300'
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <span className="text-[11px] font-semibold text-slate-500">Chèn nhanh biến cú pháp:</span>
+              <div className="flex flex-wrap gap-1.5">
+                {TRANSFER_SYNTAX_TOKENS.map((token) => (
+                  <button
+                    key={token.token}
+                    type="button"
+                    onClick={() => {
+                      const current = draft.transferSyntax ?? DEFAULT_TRANSFER_SYNTAX;
+                      setDraft({ ...draft, transferSyntax: `${current.trim()} ${token.token}`.trim() });
+                    }}
+                    className="text-[11px] font-mono px-2 py-0.5 rounded bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-blue-50 hover:text-blue-700 transition-colors border border-slate-200 dark:border-slate-700"
+                    title={`${token.label} (Ví dụ: ${token.sample})`}
+                  >
+                    + {token.token} <span className="text-[10px] text-slate-400 font-sans">({token.label})</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-lg bg-blue-50/70 dark:bg-blue-950/40 p-3 border border-blue-200/80 dark:border-blue-900/60 space-y-1">
+              <div className="text-[11px] font-semibold text-blue-800 dark:text-blue-300">
+                Xem trước nội dung chuyển khoản thực tế khi tạo hóa đơn:
+              </div>
+              <div className="font-mono font-bold text-sm text-blue-950 dark:text-blue-100 bg-white dark:bg-slate-900 px-3 py-1.5 rounded border border-blue-200 dark:border-blue-800 break-all select-all">
+                {formatTransferContent(draft.transferSyntax, {
+                  roomCode: 'P31-01',
+                  buildingCode: 'LK01-31',
+                  tenantName: 'Nguyễn Đức Tính',
+                  periodKey: '2026-11',
+                  invoiceCode: 'INV-HD-P31-01-7B053EC5',
+                })}
+              </div>
+              <p className="text-[10.5px] text-slate-500 dark:text-slate-400">
+                Ví dụ thực tế cho Hóa đơn phòng <strong>P31-01 · LK01-31</strong> của khách <strong>Nguyễn Đức Tính</strong> kỳ <strong>11/2026</strong>.
+              </p>
+            </div>
+          </div>
+
           {draftWebhookUrl && <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-3 dark:border-blue-900 dark:bg-blue-950/20"><div className="flex items-center gap-1"><label htmlFor="payment-draft-webhook-url" className="text-xs font-semibold">URL webhook{draft.id ? '' : ' dự kiến'}</label><FieldInfoHint label="URL webhook">Chạm vào URL để sao chép. {draft.id ? 'URL theo domain Console đang sử dụng.' : 'Lưu kết nối và bật nhận webhook trước khi dùng URL này.'}</FieldInfoHint></div><textarea id="payment-draft-webhook-url" readOnly rows={3} value={draftWebhookUrl} onClick={event => void copyDraftWebhook(event.currentTarget)} onFocus={event => event.currentTarget.select()} className="mt-1 w-full min-w-0 resize-none cursor-copy rounded-lg border border-blue-200 bg-white p-3 font-mono text-xs leading-5 text-blue-800 dark:border-blue-800 dark:bg-slate-900 dark:text-blue-200" title="Chạm vào URL để sao chép" />{webhookCopyMessage && <p role="status" className="mt-1 text-xs text-blue-700 dark:text-blue-300">{webhookCopyMessage}</p>}</div>}
           {!provider.canTest && <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">{provider.name} hỗ trợ nhận webhook/IPN đã xác thực. Có thể bật nhận webhook sau khi lưu khóa và URL. Phép kiểm tra API đọc dữ liệu và luồng tạo thanh toán chưa triển khai.</p>}
           <div><div className="flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-1"><h3 className="text-sm font-bold">Tài khoản nhận tiền ({draft.accounts.length}/50)</h3><FieldInfoHint label="Tài khoản nhận tiền">Có thể khai báo nhiều tài khoản. Hệ thống chưa xác minh quyền sở hữu hoặc định tuyến thanh toán.</FieldInfoHint></div><Button type="button" className={buttonClass} disabled={draft.accounts.length >= 50} onClick={() => setDraft({ ...draft, accounts: [...draft.accounts, emptyAccount()] })}><Plus size={14} />Thêm tài khoản</Button></div><div className="mt-2 space-y-3">{draft.accounts.map((a, i) => <div key={i} className="rounded-xl border border-slate-200 p-3 dark:border-slate-700"><div className="mb-2 flex items-center justify-between"><span className="text-xs font-bold">Tài khoản {i + 1}</span><Button type="button" className="text-xs text-rose-600" aria-label={`Bỏ tài khoản ${i + 1}`} onClick={() => setDraft({ ...draft, accounts: draft.accounts.filter((_, j) => i !== j) })}>Bỏ dòng</Button></div><div className="grid grid-cols-2 gap-2"><label className="min-w-0 text-xs">Mã ngân hàng<input required maxLength={20} className={inputClass} placeholder="VCB / MB / 970436" value={a.bankCode} onChange={e => updateAccount(i, 'bankCode', e.target.value)} /></label><label className="min-w-0 text-xs">Số tài khoản<input required maxLength={50} className={inputClass} value={a.accountNumber} onChange={e => updateAccount(i, 'accountNumber', e.target.value)} /></label><label className="col-span-2 min-w-0 text-xs">Chủ tài khoản<input required maxLength={150} className={inputClass} value={a.accountName} onChange={e => updateAccount(i, 'accountName', e.target.value)} /></label></div></div>)}</div></div>
@@ -436,7 +670,19 @@ export function PaymentIntegrationHub() {
         {formError && <p role="alert" className="text-sm text-rose-600">{formError}</p>}
         <div className="sticky bottom-0 flex flex-wrap justify-end gap-2 border-t border-slate-200 bg-white pt-3 dark:border-slate-800 dark:bg-[#111827]">
           {draft.id && <Button type="button" className={buttonClass} disabled={!!busy || !provider.canTest} onClick={() => { const target = connections.find(c => c.id === draft.id); if (target) { setDraft(null); setError(''); setReference(''); setTestTarget(target); } }}>Kiểm tra API</Button>}
-          {draft.id && <Button type="button" className={buttonClass} disabled={!!busy || (!connections.find(c => c.id === draft.id)?.isEnabled && connections.find(c => c.id === draft.id)?.status !== 'VERIFIED')} onClick={() => { const target = connections.find(c => c.id === draft.id); if (target) void run(target.id, () => request(`/${target.id}/enabled`, 'POST', { version: target.version, isEnabled: !target.isEnabled }), target.isEnabled ? 'Đã tắt kết nối.' : 'Đã bật cấu hình API.'); }}>{connections.find(c => c.id === draft.id)?.isEnabled ? 'Tắt API' : 'Bật API'}</Button>}
+          {draft.id && (
+            <Button
+              type="button"
+              className={`${buttonClass} ${connections.find(c => c.id === draft.id)?.isEnabled ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-700 dark:text-emerald-400 font-bold'}`}
+              disabled={!!busy || (!connections.find(c => c.id === draft.id)?.isEnabled && connections.find(c => c.id === draft.id)?.status !== 'VERIFIED')}
+              onClick={() => {
+                const target = connections.find(c => c.id === draft.id);
+                if (target) toggleConnection(target);
+              }}
+            >
+              {connections.find(c => c.id === draft.id)?.isEnabled ? 'Tắt nhận tiền' : 'Kích hoạt làm cổng chính'}
+            </Button>
+          )}
           <Button type="button" className={buttonClass} disabled={!!busy} onClick={() => setDraft(null)}>Đóng</Button><Button type="submit" className={primaryClass} disabled={!!busy}>{busy === 'save' ? <ShimmeringText text="Đang lưu và tải lại…" /> : 'Lưu kết nối & tài khoản'}</Button>
         </div>
       </form>

@@ -44,6 +44,9 @@ import {
 } from "../../../shared/types/portfolio";
 import { EditResidentModal } from "./EditResidentModal";
 import { EditContractModal } from "./EditContractModal";
+import { DeleteRoomTenantDialog, type RoomTenantDeleteTarget } from './DeleteRoomTenantDialog';
+import { ContractLiquidationModal } from '../../modules/modals/ContractLiquidationModal';
+import type { ContractListItem } from '../../modules/ContractsWorkspaceView';
 
 interface Props {
   rentalContent?: React.ReactNode;
@@ -112,6 +115,8 @@ export const RoomProfileModal: React.FC<Props> = ({
   const [invoiceDetailId, setInvoiceDetailId] = useState<string | null>(null);
   const [depositDetailId, setDepositDetailId] = useState<string | null>(null);
   const [editingResident, setEditingResident] = useState<any | null>(null);
+  const [deletingResident, setDeletingResident] = useState<RoomTenantDeleteTarget | null>(null);
+  const [terminatingContract, setTerminatingContract] = useState<ContractListItem | null>(null);
   const [editingContract, setEditingContract] = useState<any | null>(null);
 
   // New occupant form state
@@ -218,6 +223,7 @@ export const RoomProfileModal: React.FC<Props> = ({
       const data = await res.json();
       if (res.ok && Array.isArray(data.occupants)) {
         setOccupantsList(data.occupants);
+        return true;
       }
     } catch {
       // ignore
@@ -231,6 +237,7 @@ export const RoomProfileModal: React.FC<Props> = ({
       const response = await fetch(`/api/v1/console/v2/rental-workflow/${encodeURIComponent(roomId)}`);
       const data = await response.json();
       setWorkflow(response.ok && data.ok ? data : null);
+      return response.ok && data.ok === true;
     } catch { setWorkflow(null); }
     finally { setWorkflowLoading(false); }
   };
@@ -244,6 +251,8 @@ export const RoomProfileModal: React.FC<Props> = ({
       setIsHandoverOpen(false);
       setIsCancelResvOpen(false);
       setActionFeedback(null);
+      setDeletingResident(null);
+      setTerminatingContract(null);
       void loadOccupants();
       void loadWorkflow(room.id);
     }
@@ -364,6 +373,29 @@ export const RoomProfileModal: React.FC<Props> = ({
         contractId: occupant.contractId || room.activeContract?.id || null,
       }));
   const residentCount = residentRows.length;
+  const canPurgeTenant = user?.backendRole === 'ADMIN';
+  const currentDate = getTodayIsoVn();
+  const getEarlyContract = (resident: RoomOccupantDto): ContractListItem | null => {
+    if (resident.relationToPrimary !== 'PRIMARY') return null;
+    const occupant = occupantsList.find(item => item.id === resident.id);
+    const contract = workflow?.contracts?.find((item: any) =>
+      (occupant?.contractId ? item.id === occupant.contractId : occupant?.tenantId && item.tenantId === occupant.tenantId) &&
+      (!occupant?.tenantId || item.tenantId === occupant.tenantId));
+    if (!contract || !['ACTIVE', 'EXPIRING', 'EXTENDED'].includes(contract.status) || currentDate >= contract.endDate || currentDate < contract.startDate) return null;
+    return { ...contract, roomCode: room.code, buildingCode: room.buildingCode,
+      tenantName: contract.tenant?.fullName || resident.fullName, tenantPhone: contract.tenant?.phone || resident.phone || '' };
+  };
+  const getPurgeTarget = (resident: RoomOccupantDto & { personIndex?: number }): RoomTenantDeleteTarget | null => {
+    if (resident.personIndex === undefined) return { kind: 'occupant', id: resident.id, fullName: resident.fullName };
+    if (resident.personIndex !== 0) return null;
+    if (pendingContract?.status === 'DRAFT') return { kind: 'contract', id: pendingContract.id, fullName: resident.fullName };
+    return pendingReservation ? { kind: 'reservation', id: pendingReservation.id, fullName: resident.fullName } : null;
+  };
+  const refreshAfterTenantAction = async (message: string) => {
+    const [occupantsLoaded, workflowLoaded] = await Promise.all([loadOccupants(), loadWorkflow(room.id), refreshPortfolio(true)]);
+    if (!occupantsLoaded || !workflowLoaded) throw new Error('Không tải được hồ sơ phòng.');
+    setActionFeedback(message);
+  };
   const householdHeadOptions = occupantsList.filter(occupant => occupant.isActive && occupant.relationToPrimary !== 'FAMILY');
   const canAddResident = canManageContracts && residentCount < room.maxOccupants && Boolean(onAddRental || room.activeContract);
   const addResident = () => {
@@ -695,7 +727,7 @@ export const RoomProfileModal: React.FC<Props> = ({
 
             {/* FEEDBACK ALERT */}
             {actionFeedback && (
-              <div className="p-3 mx-5 mt-4 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 text-xs text-blue-700 dark:text-blue-300 flex items-center justify-between">
+              <div role="status" className="p-3 mx-5 mt-4 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 text-xs text-blue-700 dark:text-blue-300 flex items-center justify-between">
                 <span>{actionFeedback}</span>
                 <button
                   type="button"
@@ -949,16 +981,22 @@ export const RoomProfileModal: React.FC<Props> = ({
                       <table className="w-full table-fixed border-collapse text-left text-xs">
                         <colgroup><col className="w-9" /><col /><col className="w-[31%]" /><col className="w-14" /></colgroup>
                         <thead className="bg-slate-50 text-[9.5px] font-semibold uppercase text-slate-500 dark:bg-slate-800/80 dark:text-slate-400"><tr><th className="whitespace-nowrap px-2 py-2 text-center">#</th><th className="whitespace-nowrap px-2 py-2">Name</th><th className="whitespace-nowrap px-2 py-2">Phone</th><th className="whitespace-nowrap px-1 py-2 text-center">Action</th></tr></thead>
-                        <tbody className="divide-y divide-slate-100 bg-white dark:divide-slate-800 dark:bg-[#111827]">{residentRows.map((resident: any, index) => <tr key={resident.id}>
+                        <tbody className="divide-y divide-slate-100 bg-white dark:divide-slate-800 dark:bg-[#111827]">{residentRows.map((resident: any, index) => {
+                          const earlyContract = canManageContracts ? getEarlyContract(resident) : null;
+                          const purgeTarget = canPurgeTenant ? getPurgeTarget(resident) : null;
+                          return <tr key={resident.id}>
                           <td className="px-2 py-2.5 text-center tabular-nums text-slate-500">{index + 1}</td>
                           <td className="break-words px-2 py-2.5 text-slate-900 dark:text-white"><span className="block font-semibold">{resident.fullName}</span><span className="mt-0.5 block text-[9.5px] font-normal text-slate-500">{resident.relationToPrimary === 'PRIMARY' ? 'HĐ Chính' : resident.relationToPrimary === 'OTHER' ? 'Đại diện HĐ' : 'Người cùng hộ'}</span></td>
                           <td className="break-all px-2 py-2.5 tabular-nums text-slate-600 dark:text-slate-300">{resident.phone || '—'}</td>
-                          <td className="px-1 py-1 text-center">{canManageContracts && <ActionMenu ariaLabel={`Hành động cho ${resident.fullName}`} contextTitle={resident.fullName} contextSubtitle={resident.phone || 'Chưa có SĐT'} items={[
-                            { label: 'Xem PDF hợp đồng', icon: <FileText size={16} />, disabled: !resident.contractId || !['PRIMARY', 'OTHER'].includes(resident.relationToPrimary), onClick: () => { if (resident.contractId) { setDocumentPerson(resident.personIndex !== undefined ? { personIndex: resident.personIndex } : { occupantId: resident.id }); setDocumentContractId(resident.contractId); } } },
-                            { label: 'Chỉnh sửa thông tin', icon: <Pencil size={16} />, onClick: () => setEditingResident(resident) },
-                            { label: 'Xóa khỏi danh sách lưu trú', icon: <Trash2 size={16} />, variant: 'danger', hidden: resident.personIndex !== undefined || !['FAMILY', 'OTHER'].includes(resident.relationToPrimary) || room.rentalModel === 'SHARED_ROOM', onClick: () => void handleRemoveOccupant(resident.id) }
+                          <td className="px-1 py-1 text-center">{(canManageContracts || purgeTarget) && <ActionMenu ariaLabel={`Hành động cho ${resident.fullName}`} contextTitle={resident.fullName} contextSubtitle={resident.phone || 'Chưa có SĐT'} items={[
+                            { label: 'Xem PDF hợp đồng', icon: <FileText size={16} />, hidden: !canManageContracts, disabled: !resident.contractId || !['PRIMARY', 'OTHER'].includes(resident.relationToPrimary), onClick: () => { if (resident.contractId) { setDocumentPerson(resident.personIndex !== undefined ? { personIndex: resident.personIndex } : { occupantId: resident.id }); setDocumentContractId(resident.contractId); } } },
+                            { label: 'Chỉnh sửa thông tin', icon: <Pencil size={16} />, hidden: !canManageContracts, onClick: () => setEditingResident(resident) },
+                            ...(earlyContract ? [{ label: 'Chấm dứt hợp đồng trước hạn', icon: <FileSignature size={16} />, onClick: () => setTerminatingContract(earlyContract) }] : []),
+                            { label: 'Xóa khỏi danh sách lưu trú', icon: <Trash2 size={16} />, variant: 'danger', hidden: !canManageContracts || resident.personIndex !== undefined || !['FAMILY', 'OTHER'].includes(resident.relationToPrimary) || room.rentalModel === 'SHARED_ROOM', onClick: () => void handleRemoveOccupant(resident.id) },
+                            { label: 'Xóa khách thuê', icon: <Trash2 size={16} />, variant: 'danger', hidden: !purgeTarget, onClick: () => setDeletingResident(purgeTarget) },
                           ]} />}</td>
-                        </tr>)}</tbody>
+                        </tr>;
+                        })}</tbody>
                       </table>
                     </div>
                   )}
@@ -1174,6 +1212,14 @@ export const RoomProfileModal: React.FC<Props> = ({
             )}
 
             {documentContractId && <ContractDocumentDialog contractId={documentContractId} {...documentPerson} onClose={() => setDocumentContractId(null)} />}
+
+            {terminatingContract && <ContractLiquidationModal isOpen landlordEarly contract={terminatingContract}
+              onClose={() => setTerminatingContract(null)}
+              onSuccess={() => refreshAfterTenantAction('Đã chấm dứt hợp đồng trước hạn và quyết toán.')} />}
+
+            {deletingResident && <DeleteRoomTenantDialog target={deletingResident} roomId={room.id} buildingName={room.buildingName}
+              onClose={() => setDeletingResident(null)}
+              onSuccess={() => refreshAfterTenantAction('Đã xóa khách thuê và dữ liệu liên quan trong tòa nhà.')} />}
 
             {editingResident && (
               <EditResidentModal

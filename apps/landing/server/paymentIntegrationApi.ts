@@ -5,6 +5,7 @@ import { decryptSecret, encryptSecret } from './cryptoVault';
 import { IntegrationError, PAYMENT_PROVIDERS, providerFor, testPaymentProvider } from './paymentProviderRegistry';
 import { paymentWebhookOrigin, webhookAddress } from './paymentWebhookConfig';
 import { assertWebhookCredentials } from './paymentWebhooks';
+import { DEFAULT_TRANSFER_SYNTAX } from './transferContentFormatter';
 
 type Helpers = { sendJson: (res: ServerResponse, status: number, body: any) => unknown; readJsonBody: (req: IncomingMessage) => Promise<any> };
 const safeSelect = { id: true, providerId: true, name: true, environment: true, buildingId: true, isEnabled: true, status: true, credentialFields: true, version: true, lastTestedAt: true, lastTestMessage: true, verificationScope: true, webhookEnabled: true, webhookAuth: true, webhookLastReceivedAt: true, webhookRegisteredAt: true, createdAt: true, updatedAt: true, accounts: { orderBy: [{ bankCode: 'asc' as const }, { accountNumber: 'asc' as const }] }, webhookEvents: { select: { id: true, eventType: true, status: true, receivedAt: true, amountVnd: true }, orderBy: { receivedAt: 'desc' as const }, take: 5 } };
@@ -52,16 +53,25 @@ export async function handlePaymentIntegrations(req: IncomingMessage, res: Serve
         connections: connections.map(c => {
           const { credentialsEncrypted, ...rest } = c;
           const maskedCredentials: Record<string, string> = {};
+          let transferSyntax = DEFAULT_TRANSFER_SYNTAX;
           if (credentialsEncrypted) {
             const plaintext = decryptSecret(credentialsEncrypted);
             if (plaintext) {
               try {
                 const creds = JSON.parse(plaintext);
+                if (typeof creds.transferSyntax === 'string' && creds.transferSyntax.trim()) {
+                  transferSyntax = creds.transferSyntax.trim();
+                }
                 for (const [k, v] of Object.entries(creds)) {
+                  if (k === 'transferSyntax') continue;
                   if (typeof v === 'string' && v.trim()) {
                     const trimmed = v.trim();
-                    const visibleChars = Math.min(4, Math.max(1, trimmed.length - 2));
-                    maskedCredentials[k] = `${trimmed.slice(0, visibleChars)}••••••••`;
+                    if (trimmed.length <= 4) {
+                      maskedCredentials[k] = '••••';
+                    } else {
+                      const visibleChars = Math.min(6, Math.max(4, Math.floor(trimmed.length / 4)));
+                      maskedCredentials[k] = `••••••••${trimmed.slice(-visibleChars)}`;
+                    }
                   }
                 }
               } catch {}
@@ -69,6 +79,7 @@ export async function handlePaymentIntegrations(req: IncomingMessage, res: Serve
           }
           return {
             ...rest,
+            transferSyntax,
             maskedCredentials,
             ...webhookAddress(c.providerId, c.id, req),
             webhookEvents: c.webhookEvents.map(e => ({ ...e, amountVnd: e.amountVnd === null ? null : Number(e.amountVnd) }))
@@ -143,11 +154,32 @@ export async function handlePaymentIntegrations(req: IncomingMessage, res: Serve
       if (typeof body.isEnabled !== 'boolean') throw new IntegrationError('Trạng thái kích hoạt không hợp lệ.');
       if (body.isEnabled && (existing.status !== 'VERIFIED' || existing.environment !== 'LIVE' || !providerFor(existing.providerId)?.canTest)) throw new IntegrationError('Phải kiểm tra API thành công ở môi trường LIVE trước khi bật kết nối.');
       await prisma.$transaction(async tx => {
+        // Chỉ chấp nhận 1 trung gian thanh toán duy nhất active:
+        // Nếu active kết nối này, toàn bộ các kết nối khác của tổ chức sẽ tự động chuyển sang inactive
+        if (body.isEnabled) {
+          await tx.paymentProviderConnection.updateMany({
+            where: {
+              orgId: actor.orgId,
+              id: { not: existing.id },
+              isEnabled: true,
+            },
+            data: {
+              isEnabled: false,
+              version: { increment: 1 },
+            },
+          });
+        }
         const updated = await tx.paymentProviderConnection.updateMany({ where: { id: existing.id, orgId: actor.orgId, version: existing.version }, data: { isEnabled: body.isEnabled, version: { increment: 1 } } });
         if (updated.count !== 1) conflict();
-        await audit(tx, existing.id, 'TOGGLE_PAYMENT_CONNECTION', `${body.isEnabled ? 'Bật' : 'Tắt'} kết nối ${existing.providerId}`);
+        await audit(tx, existing.id, 'TOGGLE_PAYMENT_CONNECTION', `${body.isEnabled ? 'Kích hoạt' : 'Tắt'} kết nối ${existing.providerId} (${existing.name})${body.isEnabled ? ' làm cổng thanh toán chính thức' : ''}`);
       });
-      sendJson(res, 200, { ok: true }); return true;
+      sendJson(res, 200, {
+        ok: true,
+        message: body.isEnabled
+          ? `Đã kích hoạt "${existing.name}" làm cổng thanh toán chính thức nhận tiền. Các cổng khác đã chuyển sang Inactive.`
+          : `Đã tắt kết nối "${existing.name}".`
+      });
+      return true;
     }
     const providerId = existing?.providerId || String(body.providerId || '').toUpperCase();
     if (existing && body.providerId !== existing.providerId) throw new IntegrationError('Không thể đổi nhà cung cấp của kết nối đã tạo.');
@@ -181,6 +213,9 @@ export async function handlePaymentIntegrations(req: IncomingMessage, res: Serve
     }
     for (const field of provider.fields) if (!field.optional && !credentials[field.key]) throw new IntegrationError(`Cần nhập ${field.label}.`);
     if (providerId === 'SEPAY' && !credentials.apiToken && !credentials.webhookSecret) throw new IntegrationError('Cần khóa webhook hoặc API Token SePay. Hai khóa này phục vụ hai chức năng khác nhau.');
+    const rawSyntax = typeof body.transferSyntax === 'string' ? body.transferSyntax.trim() : '';
+    const transferSyntax = rawSyntax.slice(0, 100) || (existing && credentials.transferSyntax ? credentials.transferSyntax : DEFAULT_TRANSFER_SYNTAX);
+    credentials.transferSyntax = transferSyntax;
     const encrypted = encryptSecret(JSON.stringify(credentials)) as unknown as Prisma.InputJsonValue;
     // A client-generated creation ID makes retries safe after a lost response.
     const creationId = existing ? null : text(body.creationId, 'Mã yêu cầu tạo kết nối', 80);
@@ -190,13 +225,16 @@ export async function handlePaymentIntegrations(req: IncomingMessage, res: Serve
         const previous = await tx.paymentProviderConnection.findUnique({ where: { id: creationId }, include: { accounts: true } });
         if (previous) {
           const previousCredentials = decryptSecret(previous.credentialsEncrypted);
+          const prevParsed = previousCredentials ? JSON.parse(previousCredentials) : {};
           const accountKeys = (items: { bankCode: string; accountNumber: string; accountName: string }[]) => items.map(a => JSON.stringify([a.bankCode, a.accountNumber, a.accountName])).sort().join('|');
-          const sameCredentials = previousCredentials && provider.fields.every(f => JSON.parse(previousCredentials)[f.key] === credentials[f.key]);
+          const sameSyntax = (prevParsed.transferSyntax || DEFAULT_TRANSFER_SYNTAX) === (credentials.transferSyntax || DEFAULT_TRANSFER_SYNTAX);
+          const sameCredentials = previousCredentials && provider.fields.every(f => prevParsed[f.key] === credentials[f.key]) && sameSyntax;
           if (previous.orgId !== actor.orgId || previous.providerId !== providerId || previous.name !== name || previous.environment !== environment || previous.buildingId !== buildingId || previous.webhookAuth !== webhookAuth || !sameCredentials || accountKeys(previous.accounts) !== accountKeys(accounts)) throw new IntegrationError('Yêu cầu này đã được lưu với nội dung khác. Tải lại danh sách trước khi tạo kết nối mới.', 409, 'CREATION_CONFLICT');
           return { id: previous.id, replay: true };
         }
       }
       if (!existing && await tx.paymentProviderConnection.count({ where: { orgId: actor.orgId } }) >= 100) throw new IntegrationError('Tổ chức đã đạt giới hạn 100 kết nối.');
+      const hasWebhookKey = Boolean(credentials.webhookSecret || credentials.apiKey || credentials.checksumKey);
       const data = {
         name,
         environment,
@@ -209,7 +247,7 @@ export async function handlePaymentIntegrations(req: IncomingMessage, res: Serve
         lastTestMessage: null,
         verificationScope: null,
         webhookAuth,
-        webhookEnabled: existing ? existing.webhookEnabled : false,
+        webhookEnabled: existing ? (existing.webhookEnabled || hasWebhookKey) : hasWebhookKey,
         webhookLastReceivedAt: existing ? existing.webhookLastReceivedAt : null,
         webhookRegisteredAt: existing ? existing.webhookRegisteredAt : null
       };
@@ -224,7 +262,7 @@ export async function handlePaymentIntegrations(req: IncomingMessage, res: Serve
         connectionId = created.id;
       }
       if (accounts.length) await tx.paymentReceivingAccount.createMany({ data: accounts.map(account => ({ ...account, connectionId })) });
-      await audit(tx, connectionId, existing ? 'UPDATE_PAYMENT_CONNECTION' : 'CREATE_PAYMENT_CONNECTION', `${existing ? 'Cập nhật' : 'Thêm'} kết nối ${providerId}, ${accounts.length} tài khoản nhận tiền`);
+      await audit(tx, connectionId, existing ? 'UPDATE_PAYMENT_CONNECTION' : 'CREATE_PAYMENT_CONNECTION', `${existing ? 'Cập nhật' : 'Thêm'} kết nối ${providerId}, ${accounts.length} tài khoản nhận tiền (Cú pháp CK: ${transferSyntax})`);
       return { id: connectionId };
     });
     sendJson(res, existing ? 200 : 201, { ok: true, ...result });

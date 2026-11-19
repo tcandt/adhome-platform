@@ -10,6 +10,7 @@ import {
   SETTINGS_TABS_CONFIG,
   type SettingsTabId,
   getCurrentVnPeriodKey,
+  type PeriodRange,
 } from '@/app/navigation/navigationConfig';
 
 export {
@@ -38,6 +39,8 @@ interface NavigationContextType {
   setSettingsTab: (tab: SettingsTabId) => void;
   selectedPeriod: string;
   setSelectedPeriod: (periodKey: string) => void;
+  selectedPeriodRange: PeriodRange;
+  setSelectedPeriodRange: (range: PeriodRange) => void;
   /** Empty IDs mean ALL unless isBuildingScopeEmpty is true. */
   selectedBuildingIds: string[];
   isBuildingScopeEmpty: boolean;
@@ -91,9 +94,30 @@ export function NavigationProvider({
     }
     return 'organization';
   });
-  const [selectedPeriod, setSelectedPeriod] = useState<string>(() =>
+  const [selectedPeriod, setSelectedPeriodState] = useState<string>(() =>
     getCurrentVnPeriodKey()
   );
+  const [selectedPeriodRange, setSelectedPeriodRangeState] = useState<PeriodRange>(() => {
+    const current = getCurrentVnPeriodKey();
+    return { from: current, to: current };
+  });
+
+  const setSelectedPeriod = useCallback((periodKey: string) => {
+    setSelectedPeriodState(periodKey);
+    setSelectedPeriodRangeState({ from: periodKey, to: periodKey });
+  }, []);
+
+  const setSelectedPeriodRange = useCallback((range: PeriodRange) => {
+    let from = range.from;
+    let to = range.to;
+    if (from > to) {
+      const tmp = from;
+      from = to;
+      to = tmp;
+    }
+    setSelectedPeriodRangeState({ from, to });
+    setSelectedPeriodState(to);
+  }, []);
   const [selectedBuildingIds, setSelectedBuildingIdsState] = useState<string[]>(
     []
   );
@@ -260,6 +284,8 @@ export function NavigationProvider({
         setSettingsTab,
         selectedPeriod,
         setSelectedPeriod,
+        selectedPeriodRange,
+        setSelectedPeriodRange,
         selectedBuildingIds,
         isBuildingScopeEmpty,
         clearBuildingScope,

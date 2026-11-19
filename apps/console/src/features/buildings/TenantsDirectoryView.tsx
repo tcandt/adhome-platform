@@ -3,6 +3,7 @@ import { Dialog } from '@animate-ui/react/primitives/base-ui/dialog';
 import {
   AlertCircle,
   Bell,
+  BellOff,
   Building2,
   Calendar,
   CheckCircle2,
@@ -29,8 +30,9 @@ import { Button } from '@animate-ui/react/primitives/buttons/button';
 import { formatVnDate, formatVnDateTime } from '@/shared/tokens/designTokens';
 
 export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void }> = ({ onOpenRoom }) => {
-  const { hasCapability } = useAuth();
+  const { hasCapability, user } = useAuth();
   const canManageTenants = hasCapability('canManageTenants');
+  const canDeleteTenant = user?.backendRole === 'ADMIN';
   const { focusedTenantId, setFocusedTenantId, setActiveModule } =
     useNavigation();
   const {
@@ -70,14 +72,39 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
   const [emergencyContact, setEmergencyContact] = useState('');
   const [notes, setNotes] = useState('');
   const [notificationChannel, setNotificationChannel] = useState<
-    'TELEGRAM' | 'ZALO_BOT' | 'ZALO_OA'
-  >('ZALO_OA');
+    'TELEGRAM' | 'ZALO_BOT' | 'ZALO_OA' | 'UNREGISTERED'
+  >('UNREGISTERED');
   const [isSaving, setIsSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   const renderNotifChannelBadge = (channel?: string) => {
+    const isUnregistered =
+      !channel ||
+      channel === 'UNREGISTERED' ||
+      channel === 'NONE' ||
+      channel === 'NOT_REGISTERED';
+
+    if (isUnregistered) {
+      return (
+        <span
+          data-testid="badge-notification-channel"
+          className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium border border-slate-200 dark:border-slate-700/80 bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400"
+        >
+          <BellOff className="w-3 h-3 shrink-0 text-slate-400" />
+          <span>Chưa đăng ký nhận tin</span>
+        </span>
+      );
+    }
+
     const ch =
-      channel === 'TELEGRAM' ? 'Telegram' : channel === 'ZALO_BOT' ? 'Zalo Bot' : 'Zalo OA';
+      channel === 'TELEGRAM'
+        ? 'Telegram'
+        : channel === 'ZALO_BOT'
+        ? 'Zalo Bot'
+        : channel === 'ZALO_OA'
+        ? 'Zalo OA'
+        : channel;
+
     const colorClasses =
       channel === 'TELEGRAM'
         ? 'border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300'
@@ -164,9 +191,11 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
     setEmergencyContact(tenant.emergencyContact || '');
     setNotes(tenant.notes || '');
     setNotificationChannel(
-      tenant.notificationChannel === 'TELEGRAM' || tenant.notificationChannel === 'ZALO_BOT'
+      tenant.notificationChannel === 'TELEGRAM' ||
+      tenant.notificationChannel === 'ZALO_BOT' ||
+      tenant.notificationChannel === 'ZALO_OA'
         ? tenant.notificationChannel
-        : 'ZALO_OA'
+        : 'UNREGISTERED'
     );
     setFormError(null);
     setIsFormOpen(true);
@@ -629,7 +658,7 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
                             >
                               <Edit3 className="w-3 h-3" /> Sửa
                             </button>
-                            <button
+                            {canDeleteTenant && !isOccupantOnly(t) && <button
                               type="button"
                               data-testid={`btn-delete-tenant-${t.phone}`}
                               onClick={() => {
@@ -639,7 +668,7 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
                               className="h-8 px-2.5 rounded-lg text-[11px] font-semibold bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 text-rose-600 dark:text-rose-300 inline-flex items-center gap-1 whitespace-nowrap"
                             >
                               <Trash2 className="w-3 h-3" /> Xóa
-                            </button>
+                            </button>}
                           </div>
                         )}
                       </td>
@@ -827,12 +856,13 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Kênh nhận thông báo (Telegram / ZaloBot / ZaloOA — Chỉ chọn 1) *
+                  Kênh nhận thông báo *
                 </label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {[
-                    { id: 'ZALO_OA', label: 'Zalo OA', desc: 'Tài khoản OA' },
+                    { id: 'UNREGISTERED', label: 'Chưa đăng ký', desc: 'Chưa nhận tin' },
                     { id: 'ZALO_BOT', label: 'Zalo Bot', desc: 'Bot cư dân' },
+                    { id: 'ZALO_OA', label: 'Zalo OA', desc: 'Tài khoản OA' },
                     { id: 'TELEGRAM', label: 'Telegram', desc: 'Telegram Bot' },
                   ].map((opt) => (
                     <label
@@ -858,7 +888,7 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
                   ))}
                 </div>
                 <p className="mt-1 text-[10.5px] text-slate-400">
-                  Hệ thống sẽ đồng bộ kênh thông báo này sang mục 3 của tổng hợp chi tiết và cố định không cho phép thay đổi.
+                  Hệ thống sẽ đồng bộ kênh thông báo này sang mục quyết toán chi tiết và quản lý thông báo cư dân.
                 </p>
               </div>
 
@@ -1022,12 +1052,12 @@ export const TenantsDirectoryView: React.FC<{ onOpenRoom?: (id: string) => void 
                       </div>
                       <div className="col-span-2 pt-2 border-t border-slate-100 dark:border-slate-800">
                         <span className="text-[11px] text-slate-400 block mb-1">
-                          Kênh nhận thông báo (Telegram / ZaloBot / ZaloOA)
+                          Kênh nhận thông báo
                         </span>
                         <div className="flex items-center gap-2 flex-wrap">
                           {renderNotifChannelBadge(detailTenant.notificationChannel)}
                           <span className="text-[10.5px] text-slate-500 dark:text-slate-400">
-                            • Chỉ gửi 1 trong 3 kênh khách đã đăng ký
+                            • Kênh khách đăng ký nhận tin nhắn thông báo hóa đơn
                           </span>
                         </div>
                       </div>

@@ -225,9 +225,9 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
     setConfirmWaterAnomaly(false);
 
     setFeeItemsDraft(row.totals.feeItems || []);
-    const rawRegChannel = (row.tenant?.notificationChannel || row.delivery?.channel || 'ZALO_OA') as string;
+    const rawRegChannel = (row.tenant?.notificationChannel || row.delivery?.channel || 'ZALO_BOT') as string;
     const synchronizedChannel: 'TELEGRAM' | 'ZALO_BOT' | 'ZALO_OA' =
-      rawRegChannel === 'TELEGRAM' || rawRegChannel === 'ZALO_BOT' ? rawRegChannel : 'ZALO_OA';
+      rawRegChannel === 'TELEGRAM' || rawRegChannel === 'ZALO_OA' ? rawRegChannel : 'ZALO_BOT';
     setSelectedChannel(synchronizedChannel);
     setRecipientOverride(row.delivery?.recipientContact || row.tenant?.phone || row.tenant?.email || '');
     setPaymentAmountVnd(Math.round(row.totals.remainingAmountVnd || 0));

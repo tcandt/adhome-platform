@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS zalo_registration_attempts (
 );
 
 GRANT INSERT, SELECT ON zalo_resident_links, zalo_registration_attempts TO adhome_app;
+GRANT DELETE ON zalo_resident_links TO adhome_app;
 GRANT USAGE, SELECT ON SEQUENCE zalo_resident_links_id_seq, zalo_registration_attempts_id_seq TO adhome_app;
 
 CREATE TABLE IF NOT EXISTS zalo_reply_outbox (
@@ -131,6 +132,7 @@ CREATE TABLE IF NOT EXISTS zalo_bot_admin_outbox (
 );
 
 GRANT SELECT, INSERT, UPDATE ON zalo_bot_admin_groups, zalo_bot_group_candidates, zalo_bot_admin_outbox TO adhome_app;
+GRANT DELETE ON zalo_bot_admin_outbox TO adhome_app;
 GRANT USAGE, SELECT ON SEQUENCE zalo_bot_admin_outbox_id_seq TO adhome_app;
 
 CREATE TABLE IF NOT EXISTS zalo_bot_configs (
@@ -162,7 +164,7 @@ CREATE TABLE IF NOT EXISTS zalo_bot_resident_outbox (
   created_at timestamptz NOT NULL DEFAULT now(),
   sent_at timestamptz
 );
-GRANT SELECT, INSERT, UPDATE ON zalo_bot_resident_outbox TO adhome_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON zalo_bot_resident_outbox TO adhome_app;
 GRANT USAGE, SELECT ON SEQUENCE zalo_bot_resident_outbox_id_seq TO adhome_app;
 ALTER TABLE zalo_bot_resident_outbox ADD COLUMN IF NOT EXISTS media_url text;
 ALTER TABLE zalo_bot_resident_outbox ADD COLUMN IF NOT EXISTS media_caption text;

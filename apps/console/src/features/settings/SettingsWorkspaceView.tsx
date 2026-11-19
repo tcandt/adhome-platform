@@ -9,6 +9,7 @@ import {
   CheckSquare,
   Clock,
   Droplets,
+  Info,
   KeyRound,
   LayoutGrid,
   Loader2,
@@ -1214,106 +1215,212 @@ export const SettingsWorkspaceView: React.FC = () => {
 
           {/* TAB 4: NOTIFICATION CHANNELS */}
           {settingsTab === 'notifications' && (
-            <div className="space-y-2">
-              {notificationChannels.filter(ch => ch.channelType !== 'ZALO_BOT').map((ch) => {
-                const labelKey = `CH:${ch.channelType}`;
-                const secretKey = `CH:${ch.channelType}`;
-                return (
-                  <div
-                    key={ch.id}
-                    data-testid={`notification-channel-card-${ch.channelType}`}
-                    className="flex min-h-16 min-w-0 items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-white px-3 py-2.5 dark:border-slate-800 dark:bg-[#111827]"
-                  >
-                    <div className="flex min-w-0 items-center gap-3">
-                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-500/10"><BellRing className="h-4 w-4" /></span>
-                      <div className="min-w-0">
-                        <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                          {ch.displayName}
-                        </h3>
-                        <p className="text-[11px] text-slate-500 font-mono mt-0.5">
-                          Tối đa {ch.retryMaxAttempts} lần thử lại
-                        </p>
-                      </div>
-                      <div className="hidden sm:block">{renderStatusBadge(ch.status)}</div>
-                    </div>
-                    <SettingsButton type="button" onClick={() => setEditingChannel(ch)}>Thiết lập</SettingsButton>
-                    {editingChannel?.id === ch.id && <SettingsDialog title={ch.displayName} description={`Cấu hình kênh và tối đa ${ch.retryMaxAttempts} lần thử lại.`} busy={isSaving} onClose={() => setEditingChannel(null)}>
-                    <div className="space-y-4">{ch.channelType === 'ZALO_OA' ? (
-                      <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
-                        <p className="font-semibold">Zalo OA chưa sẵn sàng gửi tin.</p>
-                        <details><summary className="cursor-pointer font-semibold">Điều kiện kết nối</summary><p className="mt-2 leading-5">Cần App được OA cấp quyền, webhook xác thực, ZBS liên kết và mẫu tin được duyệt. Lưu OA ID hoặc token chưa kích hoạt gửi tin.</p></details>
-                        <a className="inline-block font-semibold underline underline-offset-2" href="https://oa.zalo.me/home/documents/guides/Khoi-tao-ung-dung-va-cap-quyen_117071366476220195" target="_blank" rel="noreferrer">Xem hướng dẫn OA</a>
-                      </div>
-                    ) : <div className="space-y-2.5 text-xs">
-                      <div>
-                        <label className="block font-semibold text-slate-600 dark:text-slate-300 mb-1">
-                          ID kênh nhận
-                        </label>
-                        <input
-                          type="text"
-                          value={labelInputs[labelKey] || ''}
-                          onChange={(e) =>
-                            setLabelInputs((prev) => ({
-                              ...prev,
-                              [labelKey]: e.target.value,
-                            }))
-                          }
-                          placeholder="Nhập ID kênh hoặc tài khoản đích"
-                          className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl"
-                        />
-                      </div>
+            <div className="space-y-3">
+              <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-3 text-xs text-blue-900 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200">
+                <p className="font-semibold flex items-center gap-1.5">
+                  <Info className="w-4 h-4 shrink-0 text-blue-600 dark:text-blue-400" />
+                  Quy tắc kênh thông báo mặc định
+                </p>
+                <p className="mt-1 leading-5 text-blue-800 dark:text-blue-300">
+                  Hệ thống chỉ được đăng ký <strong>1 trong 4 kênh</strong> làm kênh thông báo mặc định. Khi đã đăng ký hoặc kích hoạt 1 kênh (ví dụ: Zalo Bot), các kênh còn lại sẽ tự động ở trạng thái <strong>Inactive (Không hoạt động)</strong>.
+                </p>
+              </div>
 
-                      <div>
-                        <label className="block font-semibold text-slate-600 dark:text-slate-300 mb-1">
-                          Khóa truy cập {ch.secretHint ? '· Đã lưu' : '· Chưa lưu'}
-                        </label>
-                        <div className="relative">
-                          <KeyRound className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                          <input
-                            type="password"
-                            value={secretInputs[secretKey] || ''}
-                            onChange={(e) =>
-                              setSecretInputs((prev) => ({
-                                ...prev,
-                                [secretKey]: e.target.value,
-                              }))
-                            }
-                            placeholder="Nhập khóa mới để cập nhật"
-                            className="w-full pl-8 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl"
-                          />
+              <div className="space-y-2">
+                {notificationChannels.map((ch) => {
+                  if (ch.channelType === 'ZALO_BOT') {
+                    return (
+                      <ZaloBotSettings
+                        key={ch.id}
+                        channel={ch}
+                        onDefaultChanged={() => void loadSettings()}
+                      />
+                    );
+                  }
+
+                  const labelKey = `CH:${ch.channelType}`;
+                  const secretKey = `CH:${ch.channelType}`;
+                  return (
+                    <div
+                      key={ch.id}
+                      data-testid={`notification-channel-card-${ch.channelType}`}
+                      className="flex min-h-16 min-w-0 items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-white px-3 py-2.5 dark:border-slate-800 dark:bg-[#111827]"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-500/10"><BellRing className="h-4 w-4" /></span>
+                        <div className="min-w-0">
+                          <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                            {ch.displayName}
+                            {ch.isEnabled && (
+                              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                                Kênh mặc định
+                              </span>
+                            )}
+                          </h3>
+                          <p className="text-[11px] text-slate-500 font-mono mt-0.5">
+                            Tối đa {ch.retryMaxAttempts} lần thử lại
+                          </p>
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-                        <span className="min-w-0 text-[11px] text-slate-500">
-                          {ch.subscribedEvents.length} loại thông báo
-                        </span>
-                        <SettingsButton primary
-                          type="button"
-                          disabled={isSaving}
-                          onClick={() =>
-                            void patchSettingsSection(
-                              'notification-channel',
-                              {
-                                channelType: ch.channelType,
-                                targetLabel: labelInputs[labelKey] || '',
-                                secretToken: secretInputs[secretKey] || '',
-                                isEnabled: Boolean(
-                                  secretInputs[secretKey] || ch.hasCredentials
-                                ),
-                              },
-                              `Đã lưu cấu hình kênh ${ch.displayName}.`
-                            )
-                          }
-                        >
-                          Lưu kênh
-                        </SettingsButton>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {ch.isEnabled ? (
+                          <span className="hidden sm:inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                            Đang hoạt động · Mặc định
+                          </span>
+                        ) : (
+                          <>
+                            <span className="hidden sm:inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                              Không hoạt động (Inactive)
+                            </span>
+                            {(ch.hasCredentials || ch.secretHint) && (
+                              <SettingsButton
+                                type="button"
+                                disabled={isSaving}
+                                onClick={() =>
+                                  void patchSettingsSection(
+                                    'notification-channel',
+                                    {
+                                      channelType: ch.channelType,
+                                      targetLabel: labelInputs[labelKey] || ch.targetLabel || '',
+                                      secretToken: secretInputs[secretKey] || '',
+                                      isEnabled: true,
+                                    },
+                                    `Đã kích hoạt ${ch.displayName} làm kênh thông báo mặc định. Các kênh khác đã chuyển sang Inactive.`
+                                  )
+                                }
+                              >
+                                Đặt làm mặc định
+                              </SettingsButton>
+                            )}
+                          </>
+                        )}
+                        <SettingsButton type="button" onClick={() => setEditingChannel(ch)}>Thiết lập</SettingsButton>
                       </div>
-                    </div>} </div></SettingsDialog>}
-                  </div>
-                );
-              })}
-              <ZaloBotSettings />
+
+                      {editingChannel?.id === ch.id && (
+                        <SettingsDialog
+                          title={ch.displayName}
+                          description={`Cấu hình kênh thông báo. Chỉ 1 trong 4 kênh được kích hoạt làm mặc định.`}
+                          busy={isSaving}
+                          onClose={() => setEditingChannel(null)}
+                        >
+                          <div className="space-y-4">
+                            <div className="rounded-lg bg-blue-50 p-2.5 text-[11px] text-blue-800 dark:bg-blue-950/40 dark:text-blue-200">
+                              Lưu ý: Khi lưu và kích hoạt kênh này làm mặc định, các kênh thông báo khác sẽ tự động chuyển sang trạng thái <strong>Inactive</strong>.
+                            </div>
+
+                            {ch.channelType === 'ZALO_OA' ? (
+                              <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+                                <p className="font-semibold">Zalo OA chưa sẵn sàng gửi tin.</p>
+                                <details>
+                                  <summary className="cursor-pointer font-semibold">Điều kiện kết nối</summary>
+                                  <p className="mt-2 leading-5">Cần App được OA cấp quyền, webhook xác thực, ZBS liên kết và mẫu tin được duyệt. Lưu OA ID hoặc token chưa kích hoạt gửi tin.</p>
+                                </details>
+                                <a className="inline-block font-semibold underline underline-offset-2" href="https://oa.zalo.me/home/documents/guides/Khoi-tao-ung-dung-va-cap-quyen_117071366476220195" target="_blank" rel="noreferrer">Xem hướng dẫn OA</a>
+                              </div>
+                            ) : null}
+
+                            <div className="space-y-2.5 text-xs">
+                              <div>
+                                <label className="block font-semibold text-slate-600 dark:text-slate-300 mb-1">
+                                  ID kênh nhận
+                                </label>
+                                <input
+                                  type="text"
+                                  value={labelInputs[labelKey] ?? ch.targetLabel ?? ''}
+                                  onChange={(e) =>
+                                    setLabelInputs((prev) => ({
+                                      ...prev,
+                                      [labelKey]: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="Nhập ID kênh hoặc tài khoản đích"
+                                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block font-semibold text-slate-600 dark:text-slate-300 mb-1">
+                                  Khóa truy cập {ch.secretHint ? '· Đã lưu' : '· Chưa lưu'}
+                                </label>
+                                <div className="relative">
+                                  <KeyRound className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                  <input
+                                    type="password"
+                                    value={secretInputs[secretKey] || ''}
+                                    onChange={(e) =>
+                                      setSecretInputs((prev) => ({
+                                        ...prev,
+                                        [secretKey]: e.target.value,
+                                      }))
+                                    }
+                                    placeholder={ch.secretHint ? 'Nhập khóa mới để thay thế' : 'Nhập khóa truy cập / token'}
+                                    className="w-full pl-8 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl"
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                                <span className="min-w-0 text-[11px] text-slate-500">
+                                  {ch.subscribedEvents.length} loại thông báo
+                                </span>
+                                <div className="flex items-center gap-2">
+                                  {ch.isEnabled && (
+                                    <SettingsButton
+                                      type="button"
+                                      disabled={isSaving}
+                                      onClick={() => {
+                                        void patchSettingsSection(
+                                          'notification-channel',
+                                          {
+                                            channelType: ch.channelType,
+                                            targetLabel: labelInputs[labelKey] ?? ch.targetLabel ?? '',
+                                            secretToken: secretInputs[secretKey] || '',
+                                            isEnabled: false,
+                                          },
+                                          `Đã chuyển kênh ${ch.displayName} sang Inactive.`
+                                        );
+                                        setEditingChannel(null);
+                                      }}
+                                    >
+                                      Hủy kích hoạt (Inactive)
+                                    </SettingsButton>
+                                  )}
+                                  <SettingsButton
+                                    primary
+                                    type="button"
+                                    disabled={isSaving}
+                                    onClick={() => {
+                                      void patchSettingsSection(
+                                        'notification-channel',
+                                        {
+                                          channelType: ch.channelType,
+                                          targetLabel: labelInputs[labelKey] ?? ch.targetLabel ?? '',
+                                          secretToken: secretInputs[secretKey] || '',
+                                          isEnabled: true,
+                                        },
+                                        `Đã lưu và kích hoạt kênh ${ch.displayName} làm kênh thông báo mặc định.`
+                                      );
+                                      setEditingChannel(null);
+                                    }}
+                                  >
+                                    Lưu & Đặt làm mặc định
+                                  </SettingsButton>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </SettingsDialog>
+                      )}
+                    </div>
+                  );
+                })}
+                {/* Fallback if ZALO_BOT is somehow missing from notificationChannels */}
+                {notificationChannels.every((c) => c.channelType !== 'ZALO_BOT') && (
+                  <ZaloBotSettings onDefaultChanged={() => void loadSettings()} />
+                )}
+              </div>
             </div>
           )}
 

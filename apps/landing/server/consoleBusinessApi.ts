@@ -1,5 +1,6 @@
 import { availableDeposit, allocateInitialReceipt, vnd } from './rentalFinance';
 import { handleRentalWorkflow, saveRentalProfile } from './rentalWorkflowApi';
+import { purgeRoomTenant } from './tenantPurge';
 import { personOccupancy } from './rentalPeople';
 import { missingAttachmentLabels, validateDocumentProfile } from './rentalDocuments';
 import { handleDataManagement } from './dataManagementApi';
@@ -10,9 +11,17 @@ import { handleZaloBotSettings } from './zaloBotSettings';
 import { splitSharedCharge, sharedWaterCharge } from './sharedRoomBilling';
 import { handleConsoleRoomImages, publicRoomImages, roomImages } from './roomImagesApi';
 import { handlePaymentProof, paymentProofMap } from './paymentProofApi';
+import { handleBillingPromotions } from './billingPromotionsApi';
+import { formatTransferContent, DEFAULT_TRANSFER_SYNTAX } from './transferContentFormatter';
 import { normalizeBuildingLandlord, readBuildingLandlords, writeBuildingLandlord } from './buildingLandlord';
 import { readHunonicHistory } from "./hunonicHistory";
-import { buildSettlementWorkspacePayload, handleSettlementCenterApi } from './settlementCenterApi';
+import {
+  buildSettlementWorkspacePayload,
+  getCurrentVnPeriodKey,
+  handleSettlementCenterApi,
+  shiftPeriodKey,
+  syncLegacyInvoicesForPeriod,
+} from './settlementCenterApi';
 import crypto from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Prisma, type PrismaClient } from '@prisma/client';
@@ -93,17 +102,21 @@ export interface FirstPeriodRentCalc {
   monthlyRentVnd: number;
   rentFirstPeriodVnd: number;
   formula: string;
+  cycleMonths?: number;
+  billingCycle?: string;
 }
 
 /**
  * Calculates first billing period rent supporting CALENDAR_PRORATE, ANNIVERSARY_CYCLE, and FULL_FIRST_MONTH.
  * Example (E2E-09): Start Nov 23, 2026 -> 8 / 30 days of Nov -> 4.500.000 * 8 / 30 = 1.200.000 VND
+ * Supports multi-month billing cycles (e.g. 3 months, 6 months, 12 months)
  */
 export function calculateFirstPeriodRent(
   policy: string | undefined,
   startDate: string,
   monthlyRentVnd: number,
-  customFirstPeriodVnd?: number
+  customFirstPeriodVnd?: number,
+  cycleMonthsInput?: number
 ): FirstPeriodRentCalc {
   const [y, m, d] = startDate.split('-').map(Number);
   const periodKey = `${y}-${String(m).padStart(2, '0')}`;
@@ -112,8 +125,13 @@ export function calculateFirstPeriodRent(
     ? policy
     : 'CALENDAR_PRORATE') as FirstPeriodRentCalc['policy'];
 
+  const cycleMonths = Math.max(1, Math.trunc(Number(cycleMonthsInput || 1)));
+
+  // Calculate target period end date spanning cycleMonths
+  const targetEndMonth = new Date(y, m - 1 + cycleMonths, 0);
+  const periodEndDate = `${targetEndMonth.getFullYear()}-${String(targetEndMonth.getMonth() + 1).padStart(2, '0')}-${String(targetEndMonth.getDate()).padStart(2, '0')}`;
+
   if (validPolicy === 'CUSTOM_FIRST_CYCLE' && customFirstPeriodVnd !== undefined && customFirstPeriodVnd >= 0) {
-    const periodEndDate = `${y}-${String(m).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
     return {
       policy: 'CUSTOM_FIRST_CYCLE',
       daysInMonth,
@@ -123,14 +141,17 @@ export function calculateFirstPeriodRent(
       periodEndDate,
       monthlyRentVnd,
       rentFirstPeriodVnd: Math.trunc(customFirstPeriodVnd),
-      formula: `Tùy chỉnh phê duyệt: ${Math.trunc(customFirstPeriodVnd).toLocaleString('vi-VN')} đ`,
+      formula: `Tùy chỉnh phê duyệt (${cycleMonths} tháng): ${Math.trunc(customFirstPeriodVnd).toLocaleString('vi-VN')} đ`,
+      cycleMonths,
     };
   }
 
   if (validPolicy === 'ANNIVERSARY_CYCLE') {
     const target = new Date(y, m, d);
+    target.setMonth(target.getMonth() + cycleMonths);
     target.setDate(target.getDate() - 1);
     const endIso = `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, '0')}-${String(target.getDate()).padStart(2, '0')}`;
+    const rentFirstPeriodVnd = monthlyRentVnd * cycleMonths;
     return {
       policy: 'ANNIVERSARY_CYCLE',
       daysInMonth,
@@ -139,33 +160,56 @@ export function calculateFirstPeriodRent(
       periodStartDate: startDate,
       periodEndDate: endIso,
       monthlyRentVnd,
-      rentFirstPeriodVnd: monthlyRentVnd,
-      formula: `Chu kỳ tròn tháng (${startDate} → ${endIso}): ${monthlyRentVnd.toLocaleString('vi-VN')} đ`,
+      rentFirstPeriodVnd,
+      formula:
+        cycleMonths > 1
+          ? `Chu kỳ tròn ${cycleMonths} tháng (${startDate} → ${endIso}): ${rentFirstPeriodVnd.toLocaleString('vi-VN')} đ (${monthlyRentVnd.toLocaleString('vi-VN')} đ × ${cycleMonths} tháng)`
+          : `Chu kỳ tròn tháng (${startDate} → ${endIso}): ${monthlyRentVnd.toLocaleString('vi-VN')} đ`,
+      cycleMonths,
     };
   }
 
   if (validPolicy === 'FULL_FIRST_MONTH') {
-    const endIso = `${y}-${String(m).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+    const rentFirstPeriodVnd = monthlyRentVnd * cycleMonths;
     return {
       policy: 'FULL_FIRST_MONTH',
       daysInMonth,
       billedDays: daysInMonth,
       periodKey,
       periodStartDate: startDate,
-      periodEndDate: endIso,
+      periodEndDate,
       monthlyRentVnd,
-      rentFirstPeriodVnd: monthlyRentVnd,
-      formula: `Trọn tháng dương lịch ${periodKey}: ${monthlyRentVnd.toLocaleString('vi-VN')} đ`,
+      rentFirstPeriodVnd,
+      formula:
+        cycleMonths > 1
+          ? `Chu kỳ trọn ${cycleMonths} tháng (${monthlyRentVnd.toLocaleString('vi-VN')} đ × ${cycleMonths} tháng): ${rentFirstPeriodVnd.toLocaleString('vi-VN')} đ`
+          : `Trọn tháng dương lịch ${periodKey}: ${monthlyRentVnd.toLocaleString('vi-VN')} đ`,
+      cycleMonths,
     };
   }
 
   // Default: CALENDAR_PRORATE
   const billedDays = daysInMonth - d + 1; // inclusive of start date to month end
-  const rentFirstPeriodVnd =
+  const firstMonthRent =
     billedDays === daysInMonth
       ? monthlyRentVnd
       : Math.round((monthlyRentVnd * billedDays) / daysInMonth);
-  const periodEndDate = `${y}-${String(m).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+  const remainingMonthsRent = (cycleMonths - 1) * monthlyRentVnd;
+  const rentFirstPeriodVnd = firstMonthRent + remainingMonthsRent;
+
+  let formula = '';
+  if (cycleMonths > 1) {
+    if (billedDays === daysInMonth) {
+      formula = `Chu kỳ ${cycleMonths} tháng (${monthlyRentVnd.toLocaleString('vi-VN')} đ/tháng): ${rentFirstPeriodVnd.toLocaleString('vi-VN')} đ`;
+    } else {
+      formula = `${billedDays}/${daysInMonth} ngày tháng đầu (${firstMonthRent.toLocaleString('vi-VN')} đ) + ${cycleMonths - 1} tháng tiếp theo (${remainingMonthsRent.toLocaleString('vi-VN')} đ) = ${rentFirstPeriodVnd.toLocaleString('vi-VN')} đ`;
+    }
+  } else {
+    formula =
+      billedDays === daysInMonth
+        ? `Trọn tháng (${billedDays}/${daysInMonth} ngày): ${monthlyRentVnd.toLocaleString('vi-VN')} đ`
+        : `${monthlyRentVnd.toLocaleString('vi-VN')} đ × (${billedDays}/${daysInMonth} ngày: ${startDate} → ${periodEndDate}) = ${rentFirstPeriodVnd.toLocaleString('vi-VN')} đ`;
+  }
 
   return {
     policy: 'CALENDAR_PRORATE',
@@ -176,10 +220,8 @@ export function calculateFirstPeriodRent(
     periodEndDate,
     monthlyRentVnd,
     rentFirstPeriodVnd,
-    formula:
-      billedDays === daysInMonth
-        ? `Trọn tháng (${billedDays}/${daysInMonth} ngày): ${monthlyRentVnd.toLocaleString('vi-VN')} đ`
-        : `${monthlyRentVnd.toLocaleString('vi-VN')} đ × (${billedDays}/${daysInMonth} ngày: ${startDate} → ${periodEndDate}) = ${rentFirstPeriodVnd.toLocaleString('vi-VN')} đ`,
+    formula,
+    cycleMonths,
   };
 }
 
@@ -277,6 +319,194 @@ function isValidVnPhone(raw: string): boolean {
 function toSafeVndNumber(val: bigint | number | null | undefined): number {
   if (val === null || val === undefined) return 0;
   return typeof val === 'bigint' ? Number(val) : Math.trunc(val);
+}
+
+export async function syncContractInvoiceOnDateOrRentChange(
+  prisma: any,
+  contractId: string,
+  orgId: string,
+  updates: {
+    startDate?: string;
+    monthlyRentVnd?: number | bigint;
+    depositVnd?: number | bigint;
+  },
+  actor?: { email?: string; role?: string }
+): Promise<{ recalculated: boolean; invoiceCode?: string; message: string; newRoomRentVnd?: number; newTotalAmountVnd?: number; newPaidAmountVnd?: number } | null> {
+  const ct = await prisma.contract.findFirst({
+    where: { id: contractId, orgId },
+    include: {
+      invoices: {
+        orderBy: { createdAt: 'asc' },
+      },
+    },
+  });
+  if (!ct) return null;
+
+  const targetStartDate = updates.startDate || ct.startDate;
+  const targetMonthlyRent = updates.monthlyRentVnd !== undefined
+    ? Number(updates.monthlyRentVnd)
+    : toSafeVndNumber(ct.monthlyRentVnd);
+  const targetDeposit = updates.depositVnd !== undefined
+    ? Number(updates.depositVnd)
+    : toSafeVndNumber(ct.depositVnd);
+
+  // Find the first/initial invoice for this contract
+  const firstInvoice = ct.invoices?.find((inv: any) => {
+    const snap = inv.policySnapshot as any;
+    return (
+      inv.status !== 'VOID' &&
+      (snap?.type === 'FIRST_COMBINED_INVOICE' || inv.periodKey === ct.startDate.slice(0, 7))
+    );
+  }) || ct.invoices?.[0];
+
+  if (!firstInvoice) return null;
+
+  const paidAmount = toSafeVndNumber(firstInvoice.paidAmountVnd);
+  const isAdminOverride = Boolean(
+    actor?.email?.toLowerCase() === 'admin@adhome.vn' ||
+    (actor?.role === 'ADMIN' && actor?.email?.toLowerCase() === 'admin@adhome.vn')
+  );
+
+  if (paidAmount > 0 && !isAdminOverride) {
+    return {
+      recalculated: false,
+      invoiceCode: firstInvoice.invoiceCode,
+      message: `Hóa đơn kỳ đầu ${firstInvoice.invoiceCode} đã có phát sinh thanh toán (${paidAmount.toLocaleString('vi-VN')} đ) nên được giữ nguyên để bảo toàn đối soát sổ quỹ kế toán. Phần chênh lệch (nếu có) sẽ được điều chỉnh ở kỳ hóa đơn tiếp theo.`,
+    };
+  }
+
+  if (firstInvoice.status === 'VOID') {
+    return null;
+  }
+
+  // Recalculate invoice
+  const snap = (firstInvoice.policySnapshot as any) || {};
+  const policy = snap.billingPolicy || 'CALENDAR_PRORATE';
+  const isDepositPaid = snap.financialSummary?.isDepositPaid ?? (toSafeVndNumber(firstInvoice.adjustmentVnd) === 0);
+  const additionalDepositDue = isDepositPaid ? 0 : targetDeposit;
+
+  const firstRentCalc = calculateFirstPeriodRent(
+    policy,
+    targetStartDate,
+    targetMonthlyRent
+  );
+  const rentFirstPeriodVnd = firstRentCalc.rentFirstPeriodVnd;
+  const electricVnd = toSafeVndNumber(firstInvoice.electricVnd);
+  const waterVnd = toSafeVndNumber(firstInvoice.waterVnd);
+  const serviceFeeVnd = toSafeVndNumber(firstInvoice.serviceFeeVnd);
+  const totalFirstDue = rentFirstPeriodVnd + additionalDepositDue + electricVnd + waterVnd + serviceFeeVnd;
+
+  const oldTotal = toSafeVndNumber(firstInvoice.totalAmountVnd);
+  const wasFullyPaid = paidAmount >= oldTotal || firstInvoice.status === 'PAID';
+
+  let newPaidAmount = BigInt(0);
+  let newStatus = totalFirstDue === 0 ? 'PAID' : 'ISSUED';
+
+  if (paidAmount > 0 && isAdminOverride) {
+    if (wasFullyPaid) {
+      newPaidAmount = BigInt(totalFirstDue);
+      newStatus = 'PAID';
+    } else {
+      const clamped = Math.min(paidAmount, totalFirstDue);
+      newPaidAmount = BigInt(clamped);
+      newStatus = clamped >= totalFirstDue ? 'PAID' : clamped > 0 ? 'PARTIAL' : 'ISSUED';
+    }
+  }
+
+  const existingBreakdown = Array.isArray(snap.breakdown) ? snap.breakdown : [];
+  const existingDepositItem = existingBreakdown.find(
+    (b: any) => b.depositId || b.depositType || b.label?.toLowerCase().includes('cọc')
+  );
+  const otherItems = existingBreakdown.filter(
+    (b: any) =>
+      !b.label?.toLowerCase().includes('kỳ đầu') &&
+      !b.label?.toLowerCase().includes('chu kỳ đầu') &&
+      b !== existingDepositItem
+  );
+
+  const updatedBreakdown = [
+    {
+      label: `Tiền phòng kỳ đầu (${firstRentCalc.billedDays}/${firstRentCalc.daysInMonth} ngày: ${firstRentCalc.periodStartDate} - ${firstRentCalc.periodEndDate})`,
+      amountVnd: rentFirstPeriodVnd,
+    },
+    ...(existingDepositItem
+      ? [{ ...existingDepositItem, amountVnd: targetDeposit }]
+      : (additionalDepositDue > 0 ? [{ label: 'Tiền cọc đảm bảo hợp đồng', amountVnd: targetDeposit }] : [])),
+    ...(isDepositPaid && !existingDepositItem
+      ? [{ label: 'Tiền cọc hợp đồng đã thu riêng', amountVnd: -targetDeposit }]
+      : []),
+    ...otherItems,
+  ];
+
+  const updatedPolicySnapshot = {
+    ...snap,
+    type: 'FIRST_COMBINED_INVOICE',
+    billingPolicy: firstRentCalc.policy,
+    daysInMonth: firstRentCalc.daysInMonth,
+    billedDays: firstRentCalc.billedDays,
+    periodStartDate: firstRentCalc.periodStartDate,
+    periodEndDate: firstRentCalc.periodEndDate,
+    formula: firstRentCalc.formula,
+    adminOverrideApplied: paidAmount > 0 && isAdminOverride ? {
+      by: actor?.email,
+      at: new Date().toISOString(),
+      previousRoomRentVnd: toSafeVndNumber(firstInvoice.roomRentVnd),
+      previousTotalAmountVnd: oldTotal,
+      previousPaidAmountVnd: paidAmount,
+      reason: 'Đồng bộ lại ngày vào ở & số ngày tính tiền từ sổ sách lịch sử',
+    } : snap.adminOverrideApplied,
+    breakdown: updatedBreakdown,
+    financialSummary: {
+      monthlyRentVnd: targetMonthlyRent,
+      rentFirstPeriodVnd,
+      depositVnd: targetDeposit,
+      isDepositPaid,
+      additionalDepositDue,
+      totalFirstDue,
+    },
+  };
+
+  const updatedInv = await prisma.invoice.update({
+    where: { id: firstInvoice.id },
+    data: {
+      periodKey: firstRentCalc.periodKey,
+      dueDate: targetStartDate,
+      roomRentVnd: BigInt(rentFirstPeriodVnd),
+      adjustmentVnd: BigInt(additionalDepositDue),
+      totalAmountVnd: BigInt(totalFirstDue),
+      paidAmountVnd: newPaidAmount,
+      status: newStatus,
+      policySnapshot: updatedPolicySnapshot,
+    },
+  });
+
+  if (paidAmount > 0 && isAdminOverride && wasFullyPaid) {
+    // Synchronize linked payment transactions and ledger entries for full data integrity
+    await prisma.paymentTransaction.updateMany({
+      where: { invoiceId: firstInvoice.id, orgId },
+      data: { amountVnd: BigInt(totalFirstDue), periodKey: firstRentCalc.periodKey },
+    }).catch(() => {});
+    await prisma.ledgerEntry.updateMany({
+      where: {
+        orgId,
+        description: { contains: firstInvoice.invoiceCode },
+      },
+      data: { amountVnd: BigInt(totalFirstDue), periodKey: firstRentCalc.periodKey },
+    }).catch(() => {});
+  }
+
+  const message = paidAmount > 0 && isAdminOverride
+    ? `[Đặc quyền admin@adhome.vn] Đã đồng bộ lại số ngày tính tiền trên hóa đơn ${updatedInv.invoiceCode}: tiền phòng tính lại ${rentFirstPeriodVnd.toLocaleString('vi-VN')} đ (${firstRentCalc.billedDays}/${firstRentCalc.daysInMonth} ngày, tổng cộng: ${totalFirstDue.toLocaleString('vi-VN')} đ) theo ngày vào ở mới (${targetStartDate}).`
+    : `Hóa đơn kỳ đầu ${updatedInv.invoiceCode} (chưa thanh toán) đã được tự động tính lại tiền phòng theo ngày vào ở mới: ${rentFirstPeriodVnd.toLocaleString('vi-VN')} đ (Tổng cộng: ${totalFirstDue.toLocaleString('vi-VN')} đ).`;
+
+  return {
+    recalculated: true,
+    invoiceCode: updatedInv.invoiceCode,
+    newRoomRentVnd: rentFirstPeriodVnd,
+    newTotalAmountVnd: totalFirstDue,
+    newPaidAmountVnd: toSafeVndNumber(newPaidAmount),
+    message,
+  };
 }
 
 function computeServiceCycleEndIso(startDateIso: string): string {
@@ -914,19 +1144,54 @@ export async function handleConsoleV2Api(
   await ensureConsoleV2Bootstrap(prisma);
 
   const method = req.method || 'GET';
+  const roomTenantPurge = pathname.match(/^\/api\/v1\/console\/v2\/rooms\/([^/]+)\/rental-tenant$/);
+  if (method === 'DELETE' && roomTenantPurge) {
+    if (actor.role !== 'ADMIN') return sendJson(res, 403, { ok: false, message: 'Chỉ quản trị viên được xóa khách thuê.' });
+    try {
+      const body = await readJsonBody(req);
+      if (!body || body.confirm !== true || typeof body.id !== 'string' || !body.id || !['occupant', 'contract', 'reservation'].includes(body.kind)) {
+        return sendJson(res, 422, { ok: false, message: 'Cần xác nhận hồ sơ khách thuê muốn xóa.' });
+      }
+      await purgeRoomTenant(prisma, actor, decodeURIComponent(roomTenantPurge[1]), { kind: body.kind, id: body.id }, ACTIVE_CONTRACT_STATUSES);
+      return sendJson(res, 200, { ok: true });
+    } catch (error: any) {
+      const status = error.code === 'P2034' ? 409 : error.statusCode || 500;
+      return sendJson(res, status, { ok: false, message: error.statusCode ? error.message
+        : status === 409 ? 'Hồ sơ đang được cập nhật. Vui lòng thử lại.' : 'Không thể xóa hồ sơ khách thuê. Vui lòng thử lại.' });
+    }
+  }
   if (await handlePrivateDocuments(req, res, pathname, prisma, actor, { sendJson })) return;
   if (await handleConsoleRoomImages(req, res, pathname, prisma, actor)) return;
   if (await handlePaymentProof(req, res, pathname, prisma, actor)) return;
+  if (await handleBillingPromotions(req, res, pathname, prisma, actor, { sendJson, readJsonBody })) return;
   if (await handleZaloBotSettings(req, res, pathname, prisma, actor, { sendJson, readJsonBody })) return;
   if (await handlePaymentIntegrations(req, res, pathname, prisma, actor, { sendJson, readJsonBody })) return;
   if (await handleContractDocuments(req, res, pathname, prisma, actor, { sendJson, readJsonBody })) return;
   if (await handleRentalWorkflow(req, res, pathname, prisma, actor, { sendJson, readJsonBody, calculateFirstPeriodRent, handleWithIdempotency })) return;
   if (await handleDataManagement(req, res, pathname, prisma, actor)) return;
   const periodParam = urlObj.searchParams.get('period');
+  const fromPeriodParam = urlObj.searchParams.get('fromPeriod');
+  const toPeriodParam = urlObj.searchParams.get('toPeriod');
+
   const activePeriod =
     periodParam && /^\d{4}-\d{2}$/.test(periodParam)
       ? periodParam
       : getCurrentVnPeriodKey();
+
+  let fromPeriod =
+    fromPeriodParam && /^\d{4}-\d{2}$/.test(fromPeriodParam)
+      ? fromPeriodParam
+      : activePeriod;
+  let toPeriod =
+    toPeriodParam && /^\d{4}-\d{2}$/.test(toPeriodParam)
+      ? toPeriodParam
+      : activePeriod;
+
+  if (fromPeriod > toPeriod) {
+    const tmp = fromPeriod;
+    fromPeriod = toPeriod;
+    toPeriod = tmp;
+  }
   const buildingsParam = urlObj.searchParams.get('buildings');
 
   // ===========================================================================
@@ -1021,7 +1286,10 @@ export async function handleConsoleV2Api(
         where: {
           orgId: actor.orgId,
           buildingId: { in: effectiveBuildingIds },
-          periodKey: activePeriod,
+          periodKey:
+            fromPeriod === toPeriod
+              ? fromPeriod
+              : { gte: fromPeriod, lte: toPeriod },
           status: { not: 'VOID' },
         },
       }),
@@ -1035,7 +1303,10 @@ export async function handleConsoleV2Api(
       prisma.ledgerEntry.findMany({
         where: {
           orgId: actor.orgId,
-          periodKey: activePeriod,
+          periodKey:
+            fromPeriod === toPeriod
+              ? fromPeriod
+              : { gte: fromPeriod, lte: toPeriod },
           ...(effectiveBuildingIds.length > 0
             ? {
                 OR: [
@@ -1123,6 +1394,37 @@ export async function handleConsoleV2Api(
 
     const canReadLandlord = actorHasPermission(actor, 'buildings.manage') || actorHasPermission(actor, 'contracts.manage');
     const buildingLandlords = canReadLandlord ? await readBuildingLandlords(prisma, actor.orgId, authorizedBuildingIds) : new Map();
+
+    const activeContractIds = activeContracts.map((c) => c.id);
+    const residenceUploadLogs =
+      activeContractIds.length > 0
+        ? await prisma.consoleAuditLog.findMany({
+            where: {
+              orgId: actor.orgId,
+              entityType: 'RENTAL_DOCUMENT',
+              entityId: { in: activeContractIds },
+              action: { in: ['UPLOAD_PRIVATE_DOCUMENT', 'REMOVE_PRIVATE_DOCUMENT'] },
+            },
+            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          })
+        : [];
+
+    const removedDocIds = new Set(
+      residenceUploadLogs
+        .filter((l) => l.action === 'REMOVE_PRIVATE_DOCUMENT' && (l.metadata as any)?.id)
+        .map((l) => (l.metadata as any).id)
+    );
+    const contractsWithResidenceDoc = new Set(
+      residenceUploadLogs
+        .filter(
+          (l) =>
+            l.action === 'UPLOAD_PRIVATE_DOCUMENT' &&
+            (l.metadata as any)?.kind === 'SIGNED_RESIDENCE_PDF' &&
+            !removedDocIds.has((l.metadata as any)?.id)
+        )
+        .map((l) => l.entityId)
+    );
+
     const buildingsDto = authorizedBuildings.map((b) => {
       const bRooms = allAuthorizedRooms.filter(
         (r) => r.buildingId === b.id && r.occupancyStatus !== 'ARCHIVED'
@@ -1167,6 +1469,11 @@ export async function handleConsoleV2Api(
             (r) => r.occupancyStatus === 'MAINTENANCE'
           ).length,
           publishedRooms: bRooms.filter((r) => r.isPublishedToLanding).length,
+          missingResidenceRooms: bRooms.filter((r) => {
+            if (r.occupancyStatus !== 'OCCUPIED') return false;
+            const c = contractByRoomId.get(r.id);
+            return !c || !contractsWithResidenceDoc.has(c.id);
+          }).length,
           contractedMonthlyVnd: bContracts.reduce(
             (sum, c) => sum + toSafeVndNumber(c.monthlyRentVnd),
             0
@@ -1211,6 +1518,9 @@ export async function handleConsoleV2Api(
 
       const resv = activeReservationByRoomId.get(r.id);
       const cloudMeter = r.electricMeter?.hunonicDeviceId ? cloudById.get(r.electricMeter.hunonicDeviceId) : undefined;
+      const hasSignedResidencePdf = Boolean(
+        contract && contractsWithResidenceDoc.has(contract.id)
+      );
 
       return {
         id: r.id,
@@ -1234,6 +1544,7 @@ export async function handleConsoleV2Api(
         amenities: Array.isArray(r.amenities) ? (r.amenities as string[]) : [],
         images: roomImages(r.images),
         availableFrom: r.availableFrom,
+        hasSignedResidencePdf,
         waterBillingMethod: r.waterBillingMethod,
         waterRateVnd: r.waterRateVnd,
         electricBillingMode: (r as any).electricBillingMode || 'HUNONIC_AUTO',
@@ -1300,6 +1611,7 @@ export async function handleConsoleV2Api(
               fullName: tenant.fullName,
               phone: tenant.phone,
               residenceRegStatus: tenant.residenceRegStatus,
+              notificationChannel: (tenant as any).notificationChannel || 'UNREGISTERED',
             }
           : null,
         activeContract: contract
@@ -1310,6 +1622,7 @@ export async function handleConsoleV2Api(
               endDate: contract.endDate,
               monthlyRentVnd: toSafeVndNumber(contract.monthlyRentVnd),
               status: contract.status,
+              hasSignedResidencePdf,
             }
           : null,
         activeContracts: activeContracts.filter(item => item.roomId === r.id).map(item => ({ id: item.id, contractCode: item.contractCode, tenantId: item.tenantId, tenantName: item.tenant.fullName, status: item.status })),
@@ -1332,6 +1645,7 @@ export async function handleConsoleV2Api(
         email: t.email || '',
         idNumber: t.idNumber || '',
         residenceRegStatus: t.residenceRegStatus,
+        notificationChannel: t.notificationChannel || 'UNREGISTERED',
         emergencyContact: t.emergencyContact || '',
         notes: t.notes || '',
         primaryBuildingId: bld?.id || t.primaryBuildingId || null,
@@ -1509,6 +1823,7 @@ export async function handleConsoleV2Api(
     return sendJson(res, 200, {
       ok: true,
       activePeriod,
+      activePeriodRange: { from: fromPeriod, to: toPeriod },
       syncedAt: new Date().toISOString(),
       organization: org
         ? {
@@ -3025,6 +3340,42 @@ export async function handleConsoleV2Api(
           },
         });
 
+        const contractUpdateData: any = {};
+        if (body.waterBillingMethod !== undefined) {
+          contractUpdateData.waterBillingMethod =
+            nextWaterMethod ||
+            existing.building.waterBillingMethod ||
+            'PER_M3';
+        }
+        if (body.waterRateVnd !== undefined) {
+          contractUpdateData.waterRateVnd =
+            nextWaterRate ??
+            existing.building.waterRateVnd ??
+            15000;
+        }
+        if (body.electricBillingMode !== undefined || body.electricRateVnd !== undefined) {
+          if (nextElectricBillingMode === 'MANUAL' && nextElectricRate !== null) {
+            contractUpdateData.electricRateVnd = nextElectricRate;
+          } else if (nextElectricBillingMode === 'HUNONIC_AUTO') {
+            const meter = await tx.electricMeter.findUnique({ where: { roomId: existing.id } });
+            if (meter?.tariffRateVnd) {
+              contractUpdateData.electricRateVnd = meter.tariffRateVnd;
+            } else if (existing.building.electricRateVnd) {
+              contractUpdateData.electricRateVnd = existing.building.electricRateVnd;
+            }
+          }
+        }
+        if (Object.keys(contractUpdateData).length > 0) {
+          await tx.contract.updateMany({
+            where: {
+              orgId: actor.orgId,
+              roomId: existing.id,
+              status: { in: ['ACTIVE', 'EXTENDED', 'EXPIRING_SOON', 'DRAFT'] },
+            },
+            data: contractUpdateData,
+          });
+        }
+
         await tx.consoleAuditLog.create({
           data: {
             orgId: actor.orgId,
@@ -3457,14 +3808,38 @@ export async function handleConsoleV2Api(
       if (typeof body.relationToPrimary === 'string' && ['PRIMARY', 'FAMILY', 'ROOMMATE', 'OTHER'].includes(body.relationToPrimary)) {
         dataToUpdate.relationToPrimary = body.relationToPrimary;
       }
+      if (typeof body.moveInDate === 'string') {
+        dataToUpdate.moveInDate = body.moveInDate.trim() || null;
+      }
       if (typeof body.moveOutDate === 'string') {
         dataToUpdate.moveOutDate = body.moveOutDate.trim() || null;
       }
       if (typeof body.isActive === 'boolean') {
         dataToUpdate.isActive = body.isActive;
       }
-      if (typeof body.notes === 'string') {
-        dataToUpdate.notes = body.notes.trim() || null;
+
+      if (typeof body.address === 'string' || typeof body.relationship === 'string' || typeof body.householdHeadOccupantId === 'string' || typeof body.notes === 'string' || typeof body.startDate === 'string' || typeof body.endDate === 'string' || body.durationMonths !== undefined) {
+        let existingNotesObj: any = {};
+        try { existingNotesObj = JSON.parse(existing.notes || '{}'); } catch { existingNotesObj = { customNotes: existing.notes }; }
+        const secondaryContract = {
+          ...(existingNotesObj.secondaryContract || {}),
+          ...(typeof body.address === 'string' ? { address: body.address.trim() } : {}),
+          ...(typeof body.relationship === 'string' ? { relationship: body.relationship.trim() } : {}),
+          ...(typeof body.householdHeadOccupantId === 'string' ? { householdHeadOccupantId: body.householdHeadOccupantId.trim() || '' } : {}),
+          ...(typeof body.householdHeadName === 'string' ? { householdHeadName: body.householdHeadName.trim() || '' } : {}),
+          ...(typeof body.startDate === 'string' ? { startDate: body.startDate.trim() } : {}),
+          ...(typeof body.endDate === 'string' ? { endDate: body.endDate.trim() } : {}),
+          ...(body.durationMonths !== undefined ? { durationMonths: Number(body.durationMonths) } : {}),
+          ...(body.monthlyRentVnd !== undefined ? { monthlyRentVnd: Number(body.monthlyRentVnd) } : {}),
+          ...(body.depositVnd !== undefined ? { depositVnd: Number(body.depositVnd) } : {}),
+        };
+        const newNotesObj = {
+          ...existingNotesObj,
+          secondaryContract,
+          ...(typeof body.address === 'string' ? { address: body.address.trim() } : {}),
+          ...(typeof body.notes === 'string' ? { customNotes: body.notes.trim() } : {}),
+        };
+        dataToUpdate.notes = JSON.stringify(newNotesObj);
       }
 
       const updated = await prisma.roomOccupant.update({
@@ -3472,7 +3847,91 @@ export async function handleConsoleV2Api(
         data: dataToUpdate,
       });
 
-      return sendJson(res, 200, { ok: true, occupant: updated });
+      // Synchronize with tenant CRM profile if linked
+      const targetTenantId = existing.tenantId || (existing.relationToPrimary === 'PRIMARY' && existing.contract?.tenantId ? existing.contract.tenantId : null);
+      if (targetTenantId) {
+        const tenantData: any = {};
+        if (dataToUpdate.fullName) tenantData.fullName = dataToUpdate.fullName;
+        if (dataToUpdate.phone) {
+          tenantData.phone = dataToUpdate.phone;
+          tenantData.normalizedPhone = normalizeVnPhone(dataToUpdate.phone) || dataToUpdate.phone;
+        }
+        if (dataToUpdate.idNumber !== undefined) tenantData.idNumber = dataToUpdate.idNumber;
+        if (dataToUpdate.residenceRegStatus) tenantData.residenceRegStatus = dataToUpdate.residenceRegStatus;
+        if (typeof body.email === 'string') tenantData.email = body.email.trim() || null;
+        if (typeof body.emergencyContact === 'string') tenantData.emergencyContact = body.emergencyContact.trim() || null;
+        if (Object.keys(tenantData).length > 0) {
+          await prisma.tenant.update({
+            where: { id: targetTenantId },
+            data: tenantData,
+          }).catch(() => {});
+        }
+      }
+
+      // Synchronize public listing tenant name/phone if primary occupant
+      if (existing.relationToPrimary === 'PRIMARY' && existing.room?.publicListingId) {
+        const listingData: any = {};
+        if (dataToUpdate.fullName) listingData.currentTenantName = dataToUpdate.fullName;
+        if (dataToUpdate.phone) listingData.currentTenantPhone = dataToUpdate.phone;
+        if (Object.keys(listingData).length > 0) {
+          await prisma.publicRoomListing.update({
+            where: { id: existing.room.publicListingId },
+            data: listingData,
+          }).catch(() => {});
+        }
+      }
+
+      // If primary occupant and contract dates provided, sync to contract
+      let invoiceAdjustment: any = null;
+      if (existing.relationToPrimary === 'PRIMARY' && existing.contractId) {
+        const contractUpdate: any = {};
+        if (typeof body.contractStartDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.contractStartDate.trim())) {
+          contractUpdate.startDate = body.contractStartDate.trim();
+        }
+        if (typeof body.contractEndDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.contractEndDate.trim())) {
+          contractUpdate.endDate = body.contractEndDate.trim();
+        }
+        if (dataToUpdate.moveInDate) {
+          contractUpdate.moveInDate = dataToUpdate.moveInDate;
+          if (!contractUpdate.startDate) {
+            contractUpdate.startDate = dataToUpdate.moveInDate;
+          }
+        }
+        if (Object.keys(contractUpdate).length > 0) {
+          await prisma.contract.update({
+            where: { id: existing.contractId },
+            data: contractUpdate,
+          }).catch(() => {});
+
+          const effectiveStartDate = contractUpdate.startDate || dataToUpdate.moveInDate;
+          if (effectiveStartDate) {
+            invoiceAdjustment = await syncContractInvoiceOnDateOrRentChange(
+              prisma,
+              existing.contractId,
+              actor.orgId,
+              { startDate: effectiveStartDate },
+              actor
+            ).catch(() => null);
+          }
+        }
+      }
+
+      await prisma.consoleAuditLog.create({
+        data: {
+          orgId: actor.orgId,
+          buildingId: existing.room?.buildingId || null,
+          actorId: actor.id,
+          actorEmail: actor.email,
+          actorRole: actor.role,
+          entityType: 'OCCUPANT',
+          entityId: existing.id,
+          action: 'UPDATE_OCCUPANT',
+          summary: `Cập nhật thông tin cư dân ${dataToUpdate.fullName || existing.fullName} (Phòng ${existing.room?.code || existing.roomId})`,
+          metadata: { clientIp, updatedFields: Object.keys(dataToUpdate), invoiceAdjustment },
+        },
+      }).catch(() => {});
+
+      return sendJson(res, 200, { ok: true, occupant: updated, invoiceAdjustment });
     }
   }
 
@@ -3545,6 +4004,7 @@ export async function handleConsoleV2Api(
         email: t.email,
         idNumber: t.idNumber,
         residenceRegStatus: t.residenceRegStatus,
+        notificationChannel: t.notificationChannel || 'UNREGISTERED',
         emergencyContact: t.emergencyContact,
         primaryBuildingId: t.primaryBuildingId,
         currentRoomId: t.currentRoomId,
@@ -3585,6 +4045,11 @@ export async function handleConsoleV2Api(
       : 'PENDING';
     const emergencyContact =
       String(body.emergencyContact || '').trim() || null;
+    const notificationChannel = ['TELEGRAM', 'ZALO_BOT', 'ZALO_OA', 'UNREGISTERED'].includes(
+      String(body.notificationChannel || '')
+    )
+      ? String(body.notificationChannel)
+      : 'UNREGISTERED';
     const notes = String(body.notes || '').trim() || null;
 
     let targetRoom: {
@@ -3668,6 +4133,7 @@ export async function handleConsoleV2Api(
           email,
           idNumber,
           residenceRegStatus,
+          notificationChannel,
           emergencyContact,
           notes,
         },
@@ -3702,6 +4168,9 @@ export async function handleConsoleV2Api(
     /^\/api\/v1\/console\/v2\/tenants\/([^/]+)$/
   );
   if (tenantIdMatch && (method === 'PATCH' || method === 'DELETE')) {
+    if (method === 'DELETE' && actor.role !== 'ADMIN') {
+      return sendJson(res, 403, { ok: false, errorCode: 'INSUFFICIENT_PERMISSION', message: 'Chỉ quản trị viên được xóa khách thuê.' });
+    }
     if (!actorHasPermission(actor, 'tenants.manage')) {
       return sendJson(res, 403, {
         ok: false,
@@ -3818,6 +4287,11 @@ export async function handleConsoleV2Api(
               typeof body.emergencyContact === 'string'
                 ? body.emergencyContact.trim() || null
                 : existing.emergencyContact,
+            notificationChannel:
+              typeof body.notificationChannel === 'string' &&
+              ['TELEGRAM', 'ZALO_BOT', 'ZALO_OA', 'UNREGISTERED'].includes(body.notificationChannel)
+                ? body.notificationChannel
+                : existing.notificationChannel || 'UNREGISTERED',
             notes:
               typeof body.notes === 'string'
                 ? body.notes.trim() || null
@@ -4547,7 +5021,7 @@ export async function handleConsoleV2Api(
         }),
         prisma.deposit.findMany({
           where: { orgId: actor.orgId },
-          include: { reservation: true },
+          include: { reservation: true, contract: true },
           orderBy: { createdAt: 'desc' },
         }),
       ]);
@@ -4569,7 +5043,11 @@ export async function handleConsoleV2Api(
           createdAt: r.createdAt.toISOString(),
         })),
         deposits: deposits
-          .filter((d) => !d.reservationId || allowedResIds.has(d.reservationId))
+          .filter((d) => {
+            if (d.reservationId && !allowedResIds.has(d.reservationId)) return false;
+            if (d.contract?.buildingId && !bldIds.includes(d.contract.buildingId)) return false;
+            return true;
+          })
           .map((d) => ({
             id: d.id,
             reservationId: d.reservationId,
@@ -4658,9 +5136,25 @@ export async function handleConsoleV2Api(
         module: moduleKey,
         activePeriod,
         contracts: contracts.map((c) => {
-          const collectedDepositVnd = c.deposits.reduce((sum, d) => {
-            return sum + Number(d.paidAmountVnd || 0);
-          }, 0);
+          const contractDeposits = c.deposits.filter((d) => d.depositType === 'CONTRACT');
+          let collectedDepositVnd = 0;
+          if (contractDeposits.length > 0) {
+            collectedDepositVnd = contractDeposits.reduce((sum, d) => {
+              if (d.status === 'REFUNDED' || d.status === 'FORFEITED') return sum;
+              return sum + Number(d.paidAmountVnd || 0);
+            }, 0);
+          } else {
+            collectedDepositVnd = c.deposits.reduce((sum, d) => {
+              if (
+                d.status === 'APPLIED_TO_CONTRACT' ||
+                d.paymentStatus === 'TRANSFERRED' ||
+                d.status === 'REFUNDED' ||
+                d.status === 'FORFEITED'
+              )
+                return sum;
+              return sum + Number(d.paidAmountVnd || 0);
+            }, 0);
+          }
           const reqDeposit = toSafeVndNumber(c.depositVnd);
           const remDeposit = Math.max(0, reqDeposit - collectedDepositVnd);
           const buildingLandlord = landlordMap.get(c.buildingId) || {};
@@ -4688,6 +5182,7 @@ export async function handleConsoleV2Api(
             tenantName: c.tenant.fullName,
             tenantPhone: c.tenant.phone,
             rentalModel: c.rentalModel,
+            billingCycle: (c as any).billingCycle || 'MONTHLY',
             startDate: c.startDate,
             endDate: c.endDate,
             signedAt: c.signedAt?.toISOString() || null,
@@ -4817,6 +5312,36 @@ export async function handleConsoleV2Api(
     }
 
     if (moduleKey === 'invoices') {
+      try {
+        await syncLegacyInvoicesForPeriod({
+          prisma,
+          orgId: actor.orgId,
+          scopedBuildingIds: bldIds,
+          periodKey: activePeriod,
+          actorEmail: actor.email || 'Phê duyệt thủ công (Hồ sơ cũ)',
+        });
+
+        // Nếu người dùng bấm "Đồng bộ" (?sync=1), quét đồng bộ luôn các kỳ trong vòng 3 tháng gần nhất
+        if (urlObj.searchParams.get('sync') === '1') {
+          const curP = getCurrentVnPeriodKey();
+          const p1 = shiftPeriodKey(curP, -1);
+          const p2 = shiftPeriodKey(curP, -2);
+          for (const p of [p2, p1, curP]) {
+            if (p !== activePeriod) {
+              await syncLegacyInvoicesForPeriod({
+                prisma,
+                orgId: actor.orgId,
+                scopedBuildingIds: bldIds,
+                periodKey: p,
+                actorEmail: actor.email || 'Phê duyệt thủ công (Hồ sơ cũ)',
+              });
+            }
+          }
+        }
+      } catch (legacySyncErr) {
+        console.error('[ModuleData:Invoices] Legacy sync non-fatal error:', legacySyncErr);
+      }
+
       const invoices = await prisma.invoice.findMany({
         where: {
           orgId: actor.orgId,
@@ -4846,6 +5371,7 @@ export async function handleConsoleV2Api(
           totalAmountVnd: toSafeVndNumber(i.totalAmountVnd),
           paidAmountVnd: toSafeVndNumber(i.paidAmountVnd),
           status: i.status,
+          policySnapshot: i.policySnapshot,
           createdAt: i.createdAt.toISOString(),
         })),
       });
@@ -4898,6 +5424,7 @@ export async function handleConsoleV2Api(
           reconcileState: t.reconcileState,
           invoiceId: t.invoiceId || null,
           invoiceCode: t.invoice?.invoiceCode || null,
+          periodKey: t.invoice?.periodKey || null,
           buildingCode: t.invoice?.building?.code || null,
           roomCode: t.invoice?.room?.code || null,
           tenantName: t.invoice?.tenant?.fullName || null,
@@ -4963,13 +5490,18 @@ export async function handleConsoleV2Api(
     }
 
     if (moduleKey === 'reports') {
-      const [rooms, contracts, invoices, periodExpenses] = await Promise.all([
+      const activeYear = activePeriod.slice(0, 4);
+      const activeMonth = parseInt(activePeriod.split('-')[1] || '1', 10);
+      const daysInMonth = new Date(parseInt(activeYear, 10), activeMonth, 0).getDate();
+
+      const [rooms, contracts, invoices, periodExpenses, yearInvoices, allDeposits, allYearExpenses] = await Promise.all([
         prisma.consoleRoom.findMany({
           where: {
             orgId: actor.orgId,
             buildingId: { in: bldIds },
             occupancyStatus: { not: 'ARCHIVED' },
           },
+          orderBy: [{ code: 'asc' }],
         }),
         prisma.contract.findMany({
           where: {
@@ -4994,7 +5526,54 @@ export async function handleConsoleV2Api(
             entryType: 'EXPENSE',
           },
         }),
+        prisma.invoice.findMany({
+          where: {
+            orgId: actor.orgId,
+            buildingId: { in: bldIds },
+            periodKey: { startsWith: `${activeYear}-` },
+            status: { not: 'VOID' },
+          },
+          include: { payments: true },
+        }),
+        prisma.deposit.findMany({
+          where: {
+            orgId: actor.orgId,
+            status: { not: 'FORFEITED' },
+            OR: [
+              { contract: { buildingId: { in: bldIds } } },
+              { reservation: { buildingId: { in: bldIds } } },
+            ],
+          },
+          include: {
+            contract: { select: { id: true, roomId: true, buildingId: true, contractCode: true } },
+            reservation: { select: { id: true, roomId: true, buildingId: true, reservationCode: true } },
+          },
+        }),
+        prisma.ledgerEntry.findMany({
+          where: {
+            orgId: actor.orgId,
+            buildingId: { in: bldIds },
+            periodKey: { startsWith: `${activeYear}-` },
+            entryType: 'EXPENSE',
+          },
+        }),
       ]);
+
+      const isElectricExpense = (e: { category?: string | null; description?: string | null }) => {
+        const cat = String(e.category || '').trim().toLowerCase();
+        if (cat.includes('hoàn cọc') || cat.includes('hoàn tiền cọc')) return false;
+        if (/^(điện|tiền điện|chi phí điện|điện lực|evn)$/i.test(cat) || /(tiền điện|hóa đơn điện)/i.test(cat)) return true;
+        const desc = String(e.description || '').toLowerCase();
+        return /(^|[\s,.:;_\-])(tiền điện|điện sinh hoạt|hóa đơn điện|điện lực|evn)($|[\s,.:;_\-])/i.test(desc);
+      };
+
+      const isWaterExpense = (e: { category?: string | null; description?: string | null }) => {
+        const cat = String(e.category || '').trim().toLowerCase();
+        if (cat.includes('hoàn cọc') || cat.includes('hoàn tiền cọc')) return false;
+        if (/^(nước|tiền nước|chi phí nước|cấp nước)$/i.test(cat) || /(tiền nước|hóa đơn nước)/i.test(cat)) return true;
+        const desc = String(e.description || '').toLowerCase();
+        return /(^|[\s,.:;_\-])(tiền nước|nước sinh hoạt|hóa đơn nước|cấp nước)($|[\s,.:;_\-])/i.test(desc);
+      };
 
       const breakdown = authorizedBuildings
         .filter((b) => bldIds.includes(b.id))
@@ -5006,18 +5585,77 @@ export async function handleConsoleV2Api(
           const bContracts = contracts.filter((c) => c.buildingId === b.id);
           const bInvoices = invoices.filter((i) => i.buildingId === b.id);
           const bExpenses = periodExpenses.filter((e) => e.buildingId === b.id);
-          const invoicedVnd = bInvoices.reduce(
-            (sum, i) => sum + toSafeVndNumber(i.totalAmountVnd),
-            0
-          );
-          const collectedVnd = bInvoices.reduce(
-            (sum, i) => sum + toSafeVndNumber(i.paidAmountVnd),
-            0
-          );
-          const operatingExpenseVnd = bExpenses.reduce(
-            (sum, e) => sum + toSafeVndNumber(e.amountVnd),
-            0
-          );
+
+          let invoicedRentVnd = 0;
+          let invoicedElectricVnd = 0;
+          let invoicedWaterVnd = 0;
+          let invoicedServiceVnd = 0;
+          let invoicedVnd = 0;
+
+          let collectedRentVnd = 0;
+          let collectedElectricVnd = 0;
+          let collectedWaterVnd = 0;
+          let collectedServiceVnd = 0;
+          let collectedVnd = 0;
+
+          for (const i of bInvoices) {
+            const tot = toSafeVndNumber(i.totalAmountVnd);
+            const paid = toSafeVndNumber(i.paidAmountVnd);
+            const rent = toSafeVndNumber(i.roomRentVnd);
+            const elec = toSafeVndNumber(i.electricVnd);
+            const water = toSafeVndNumber(i.waterVnd);
+            const serv = toSafeVndNumber(i.serviceFeeVnd) + toSafeVndNumber(i.adjustmentVnd);
+
+            invoicedRentVnd += rent;
+            invoicedElectricVnd += elec;
+            invoicedWaterVnd += water;
+            invoicedServiceVnd += serv;
+            invoicedVnd += tot;
+
+            collectedVnd += paid;
+
+            if (tot > 0) {
+              if (paid >= tot) {
+                collectedRentVnd += rent;
+                collectedElectricVnd += elec;
+                collectedWaterVnd += water;
+                collectedServiceVnd += serv;
+              } else if (paid > 0) {
+                const ratio = paid / tot;
+                collectedRentVnd += Math.round(rent * ratio);
+                collectedElectricVnd += Math.round(elec * ratio);
+                collectedWaterVnd += Math.round(water * ratio);
+                collectedServiceVnd += Math.round(serv * ratio);
+              }
+            } else if (paid > 0) {
+              collectedRentVnd += paid;
+            }
+          }
+
+          // Balance check to ensure exact penny equality
+          const sumCollectedItems =
+            collectedRentVnd + collectedElectricVnd + collectedWaterVnd + collectedServiceVnd;
+          if (collectedVnd > 0 && sumCollectedItems !== collectedVnd) {
+            collectedRentVnd += (collectedVnd - sumCollectedItems);
+          }
+
+          let electricExpenseVnd = 0;
+          let waterExpenseVnd = 0;
+          let generalExpenseVnd = 0;
+          let totalExpenseVnd = 0;
+
+          for (const e of bExpenses) {
+            const amt = toSafeVndNumber(e.amountVnd);
+            totalExpenseVnd += amt;
+            if (isElectricExpense(e)) {
+              electricExpenseVnd += amt;
+            } else if (isWaterExpense(e)) {
+              waterExpenseVnd += amt;
+            } else {
+              generalExpenseVnd += amt;
+            }
+          }
+
           return {
             buildingId: b.id,
             buildingCode: b.code,
@@ -5035,16 +5673,192 @@ export async function handleConsoleV2Api(
             invoicedVnd,
             collectedVnd,
             receivableVnd: Math.max(0, invoicedVnd - collectedVnd),
-            operatingExpenseVnd,
-            netResultVnd: collectedVnd - operatingExpenseVnd,
+            invoicedRentVnd,
+            invoicedElectricVnd,
+            invoicedWaterVnd,
+            invoicedServiceVnd,
+            collectedRentVnd,
+            collectedElectricVnd,
+            collectedWaterVnd,
+            collectedServiceVnd,
+            electricExpenseVnd,
+            waterExpenseVnd,
+            generalExpenseVnd,
+            operatingExpenseVnd: totalExpenseVnd,
+            totalExpenseVnd,
+            netResultVnd: collectedVnd - totalExpenseVnd,
           };
         });
+
+      const cleanRoomDisplayCode = (code: string): string => {
+        const trimmed = String(code || '').trim();
+        const m = trimmed.match(/^P[.\-_]?(\d+)[.\-_]?(\d+)$/i);
+        if (m) {
+          return `${m[1]}.${m[2]}`;
+        }
+        return trimmed.replace(/^P[.\-_]/i, '');
+      };
+
+      const buildingMatrixGroups = authorizedBuildings
+        .filter((b) => bldIds.includes(b.id))
+        .map((b) => {
+          const bRooms = rooms.filter((r) => r.buildingId === b.id);
+          const roomItems = bRooms.map((r) => {
+            const daily = Array.from({ length: daysInMonth }, (_, i) => ({
+              day: i + 1,
+              rentVnd: 0,
+              depositVnd: 0,
+              electricVnd: 0,
+              waterVnd: 0,
+              electricWaterVnd: 0,
+              brokerExpenseVnd: 0,
+            }));
+
+            const monthly = Array.from({ length: 12 }, (_, i) => ({
+              month: i + 1,
+              periodKey: `${activeYear}-${String(i + 1).padStart(2, '0')}`,
+              rentVnd: 0,
+              depositVnd: 0,
+              electricVnd: 0,
+              waterVnd: 0,
+              electricWaterVnd: 0,
+              brokerExpenseVnd: 0,
+            }));
+
+            const rInvoices = yearInvoices.filter((inv) => inv.roomId === r.id);
+            for (const inv of rInvoices) {
+              const invMonth = parseInt(inv.periodKey.split('-')[1] || '0', 10);
+              const rent = toSafeVndNumber(inv.roomRentVnd);
+              const elec = toSafeVndNumber(inv.electricVnd);
+              const water = toSafeVndNumber(inv.waterVnd);
+              const total = toSafeVndNumber(inv.totalAmountVnd);
+              const paid = toSafeVndNumber(inv.paidAmountVnd);
+
+              const ratio = total > 0 ? (paid >= total ? 1 : Math.max(0, paid / total)) : (paid > 0 ? 1 : 0);
+              const collectedRent = Math.round(rent * ratio);
+              const collectedElec = Math.round(elec * ratio);
+              const collectedWater = Math.round(water * ratio);
+
+              if (invMonth >= 1 && invMonth <= 12) {
+                monthly[invMonth - 1].rentVnd += collectedRent;
+                monthly[invMonth - 1].electricVnd += collectedElec;
+                monthly[invMonth - 1].waterVnd += collectedWater;
+                monthly[invMonth - 1].electricWaterVnd += (collectedElec + collectedWater);
+              }
+
+              if (inv.periodKey === activePeriod) {
+                if (inv.payments && inv.payments.length > 0) {
+                  for (const p of inv.payments) {
+                    const pAmt = toSafeVndNumber(p.amountVnd);
+                    const pDate = new Date(p.verifiedAt || p.createdAt);
+                    const pDay = pDate.getDate();
+                    const pRatio = total > 0 ? Math.min(1, pAmt / total) : 1;
+                    const pRent = Math.round(rent * pRatio);
+                    const pElec = Math.round(elec * pRatio);
+                    const pWater = Math.round(water * pRatio);
+                    if (pDay >= 1 && pDay <= daysInMonth) {
+                      daily[pDay - 1].rentVnd += pRent;
+                      daily[pDay - 1].electricVnd += pElec;
+                      daily[pDay - 1].waterVnd += pWater;
+                      daily[pDay - 1].electricWaterVnd += (pElec + pWater);
+                    }
+                  }
+                } else if (paid > 0) {
+                  let dayNum = 10;
+                  if (inv.dueDate) {
+                    const parts = inv.dueDate.split('-');
+                    const d = parseInt(parts[2] || '10', 10);
+                    if (!isNaN(d) && d >= 1 && d <= daysInMonth) dayNum = d;
+                  }
+                  daily[dayNum - 1].rentVnd += collectedRent;
+                  daily[dayNum - 1].electricVnd += collectedElec;
+                  daily[dayNum - 1].waterVnd += collectedWater;
+                  daily[dayNum - 1].electricWaterVnd += (collectedElec + collectedWater);
+                }
+              }
+            }
+
+            const rDeposits = allDeposits.filter(
+              (d) => d.contract?.roomId === r.id || d.reservation?.roomId === r.id
+            );
+            for (const d of rDeposits) {
+              const amt = toSafeVndNumber(d.paidAmountVnd || d.amountVnd);
+              if (amt <= 0) continue;
+              const dDate = new Date(d.receivedAt || d.createdAt);
+              const dYear = dDate.getFullYear().toString();
+              const dMonth = dDate.getMonth() + 1;
+              const dDay = dDate.getDate();
+
+              if (dYear === activeYear && dMonth >= 1 && dMonth <= 12) {
+                monthly[dMonth - 1].depositVnd += amt;
+              }
+              if (dYear === activeYear && dMonth === activeMonth && dDay >= 1 && dDay <= daysInMonth) {
+                daily[dDay - 1].depositVnd += amt;
+              }
+            }
+
+            const rExpenses = allYearExpenses.filter((e) => {
+              const desc = `${e.category || ''} ${e.description || ''}`.toLowerCase();
+              const codeRaw = r.code.toLowerCase();
+              const codeClean = cleanRoomDisplayCode(r.code).toLowerCase();
+              return desc.includes(codeRaw) || desc.includes(codeClean);
+            });
+            for (const e of rExpenses) {
+              const amt = toSafeVndNumber(e.amountVnd);
+              if (amt <= 0) continue;
+              const eDate = new Date(e.occurredAt || e.createdAt);
+              const eYear = eDate.getFullYear().toString();
+              const eMonth = eDate.getMonth() + 1;
+              const eDay = eDate.getDate();
+
+              if (eYear === activeYear && eMonth >= 1 && eMonth <= 12) {
+                monthly[eMonth - 1].brokerExpenseVnd += amt;
+              }
+              if (eYear === activeYear && eMonth === activeMonth && eDay >= 1 && eDay <= daysInMonth) {
+                daily[eDay - 1].brokerExpenseVnd += amt;
+              }
+            }
+
+            return {
+              roomId: r.id,
+              roomCode: r.code,
+              roomDisplayCode: cleanRoomDisplayCode(r.code),
+              daily,
+              monthly,
+              totals: {
+                rentVnd: daily.reduce((s, d) => s + d.rentVnd, 0),
+                depositVnd: daily.reduce((s, d) => s + d.depositVnd, 0),
+                electricVnd: daily.reduce((s, d) => s + d.electricVnd, 0),
+                waterVnd: daily.reduce((s, d) => s + d.waterVnd, 0),
+                electricWaterVnd: daily.reduce((s, d) => s + d.electricWaterVnd, 0),
+                brokerExpenseVnd: daily.reduce((s, d) => s + d.brokerExpenseVnd, 0),
+              },
+            };
+          });
+
+          return {
+            buildingId: b.id,
+            buildingCode: b.code,
+            buildingName: b.name,
+            rooms: roomItems,
+          };
+        })
+        .filter((bg) => bg.rooms.length > 0);
+
+      const roomMatrixData = {
+        activePeriod,
+        activeYear,
+        activeMonth,
+        daysInMonth,
+        buildings: buildingMatrixGroups,
+      };
 
       return sendJson(res, 200, {
         ok: true,
         module: moduleKey,
         activePeriod,
         breakdown,
+        roomMatrixData,
       });
     }
 
@@ -5079,6 +5893,14 @@ export async function handleConsoleV2Api(
     const rentalModel = ['ENTIRE_ROOM', 'SHARED_ROOM'].includes(String(body.rentalModel || ''))
       ? String(body.rentalModel)
       : 'ENTIRE_ROOM';
+    const billingCycle = ['MONTHLY', 'BI_MONTHLY', 'QUARTERLY', 'BIANNUAL', 'ANNUAL'].includes(String(body.billingCycle || ''))
+      ? String(body.billingCycle)
+      : 'MONTHLY';
+    const cycleMonths =
+      billingCycle === 'QUARTERLY' ? 3 :
+      billingCycle === 'BIANNUAL' ? 6 :
+      billingCycle === 'ANNUAL' ? 12 :
+      billingCycle === 'BI_MONTHLY' ? 2 : 1;
     const coOccupants: Array<{
       fullName: string;
       phone?: string;
@@ -5225,6 +6047,7 @@ export async function handleConsoleV2Api(
             reservationId: body.reservationId ? String(body.reservationId) : null,
             contractCode,
             rentalModel,
+            billingCycle,
             startDate,
             endDate,
             signedAt: new Date(),
@@ -5326,7 +6149,8 @@ export async function handleConsoleV2Api(
           String(body.firstPeriodBillingPolicy || 'CALENDAR_PRORATE'),
           startDate,
           monthlyRentVnd,
-          body.customFirstPeriodVnd !== undefined ? Number(body.customFirstPeriodVnd) : undefined
+          body.customFirstPeriodVnd !== undefined ? Number(body.customFirstPeriodVnd) : undefined,
+          cycleMonths
         );
         const rentFirstPeriodVnd = firstRentCalc.rentFirstPeriodVnd;
 
@@ -5355,6 +6179,8 @@ export async function handleConsoleV2Api(
             policySnapshot: {
               type: 'FIRST_COMBINED_INVOICE',
               billingPolicy: firstRentCalc.policy,
+              billingCycle,
+              cycleMonths,
               daysInMonth: firstRentCalc.daysInMonth,
               billedDays: firstRentCalc.billedDays,
               periodStartDate: firstRentCalc.periodStartDate,
@@ -5362,7 +6188,7 @@ export async function handleConsoleV2Api(
               formula: firstRentCalc.formula,
               breakdown: [
                 {
-                  label: `Tiền thuê chu kỳ đầu (${firstRentCalc.billedDays}/${firstRentCalc.daysInMonth} ngày: ${firstRentCalc.periodStartDate} → ${firstRentCalc.periodEndDate})`,
+                  label: `Tiền thuê chu kỳ đầu (${cycleMonths > 1 ? `${cycleMonths} tháng` : `${firstRentCalc.billedDays}/${firstRentCalc.daysInMonth} ngày`}: ${firstRentCalc.periodStartDate} → ${firstRentCalc.periodEndDate})`,
                   amountVnd: rentFirstPeriodVnd,
                 },
                 { label: 'Tiền cọc hợp đồng yêu cầu', amountVnd: depositVnd },
@@ -5377,6 +6203,8 @@ export async function handleConsoleV2Api(
                 isDepositPaid,
                 additionalDepositDue,
                 totalFirstDue,
+                billingCycle,
+                cycleMonths,
               },
             },
           },
@@ -6520,6 +7348,14 @@ export async function handleConsoleV2Api(
         const rentalModel = ['ENTIRE_ROOM', 'SHARED_ROOM'].includes(String(body.rentalModel || ''))
           ? String(body.rentalModel)
           : 'ENTIRE_ROOM';
+        const billingCycle = ['MONTHLY', 'BI_MONTHLY', 'QUARTERLY', 'BIANNUAL', 'ANNUAL'].includes(String(body.billingCycle || ''))
+          ? String(body.billingCycle)
+          : 'MONTHLY';
+        const cycleMonths =
+          billingCycle === 'QUARTERLY' ? 3 :
+          billingCycle === 'BIANNUAL' ? 6 :
+          billingCycle === 'ANNUAL' ? 12 :
+          billingCycle === 'BI_MONTHLY' ? 2 : 1;
         if (rentalModel === 'SHARED_ROOM' && occupantsCount !== 1) throw Object.assign(new Error('Mỗi khách ghép phải có hợp đồng riêng.'), { statusCode: 409 });
         const surplusAction = String(body.surplusAction || 'RENT_CREDIT'); // RENT_CREDIT | REFUND
         if (surplusAction === 'REFUND' && !actorHasPermission(actor, 'finance.write')) {
@@ -6629,7 +7465,8 @@ export async function handleConsoleV2Api(
           String(body.firstPeriodBillingPolicy || 'CALENDAR_PRORATE'),
           startDate,
           monthlyRentVnd,
-          body.customFirstPeriodVnd !== undefined ? Number(body.customFirstPeriodVnd) : undefined
+          body.customFirstPeriodVnd !== undefined ? Number(body.customFirstPeriodVnd) : undefined,
+          cycleMonths
         );
         const R = firstRentCalc.rentFirstPeriodVnd;
 
@@ -6674,6 +7511,7 @@ export async function handleConsoleV2Api(
             reservationId: resv.id,
             contractCode,
             rentalModel,
+            billingCycle,
             startDate,
             endDate,
             signedAt: new Date(),
@@ -6829,7 +7667,7 @@ export async function handleConsoleV2Api(
         // P0-03: First Combined Invoice line items MUST sum exactly to totalInitialInvoiceDue (C4-BILL-01)
         const invoiceBreakdown: Array<{ label: string; amountVnd: number }> = [
           {
-            label: `Tiền thuê chu kỳ đầu (${firstRentCalc.billedDays}/${firstRentCalc.daysInMonth} ngày: ${firstRentCalc.periodStartDate} → ${firstRentCalc.periodEndDate})`,
+            label: `Tiền thuê chu kỳ đầu (${cycleMonths > 1 ? `${cycleMonths} tháng` : `${firstRentCalc.billedDays}/${firstRentCalc.daysInMonth} ngày`}: ${firstRentCalc.periodStartDate} → ${firstRentCalc.periodEndDate})`,
             amountVnd: R,
           },
         ];
@@ -6873,6 +7711,8 @@ export async function handleConsoleV2Api(
             policySnapshot: {
               type: 'FIRST_COMBINED_INVOICE',
               billingPolicy: firstRentCalc.policy,
+              billingCycle,
+              cycleMonths,
               daysInMonth: firstRentCalc.daysInMonth,
               billedDays: firstRentCalc.billedDays,
               periodStartDate: firstRentCalc.periodStartDate,
@@ -6899,6 +7739,8 @@ export async function handleConsoleV2Api(
                 remainingSurplusCreditVnd,
                 firstCycleRentDue,
                 totalInitialInvoiceDue,
+                billingCycle,
+                cycleMonths,
               },
             },
           },
@@ -7675,7 +8517,6 @@ export async function handleConsoleV2Api(
       prisma.paymentProviderConnection.findMany({
         where: {
           orgId: actor.orgId,
-          providerId: 'SEPAY',
           environment: 'LIVE',
           isEnabled: true,
           status: 'VERIFIED',
@@ -7704,12 +8545,32 @@ export async function handleConsoleV2Api(
       );
     }) || allAccounts[0] || null;
 
+    let transferSyntax = DEFAULT_TRANSFER_SYNTAX;
+    if (paymentConnection?.credentialsEncrypted) {
+      const plaintext = decryptSecret(paymentConnection.credentialsEncrypted);
+      if (plaintext) {
+        try {
+          const creds = JSON.parse(plaintext);
+          if (typeof creds.transferSyntax === 'string' && creds.transferSyntax.trim()) {
+            transferSyntax = creds.transferSyntax.trim();
+          }
+        } catch {}
+      }
+    }
+    const transferContent = formatTransferContent(transferSyntax, {
+      roomCode: inv.room?.code,
+      buildingCode: inv.building?.code,
+      tenantName: inv.tenant?.fullName,
+      periodKey: inv.periodKey,
+      invoiceCode: inv.invoiceCode,
+    });
+
     const remainingAmountVnd = Math.max(0, toSafeVndNumber(inv.totalAmountVnd) - toSafeVndNumber(inv.paidAmountVnd));
-    const transferContent = inv.invoiceCode.replace(/[^A-Za-z0-9]/g, '').slice(0, 50).toUpperCase();
     const accountNameClean = paymentAccount ? toAsciiAccountName(paymentAccount.accountName) : '';
     const qrHolder = accountNameClean.replace(/\s+/g, '+');
+    const qrTemplate = paymentConnection?.providerId === 'SEPAY' ? 'compact' : 'compact2';
     const qrUrl = paymentAccount && remainingAmountVnd > 0
-      ? `https://vietqr.app/img?bank=${encodeURIComponent(paymentAccount.bankCode)}&acc=${encodeURIComponent(paymentAccount.accountNumber)}&template=compact&amount=${remainingAmountVnd}&des=${encodeURIComponent(transferContent)}&showinfo=true&holder=${qrHolder}`
+      ? `https://vietqr.app/img?bank=${encodeURIComponent(paymentAccount.bankCode)}&acc=${encodeURIComponent(paymentAccount.accountNumber)}&template=${qrTemplate}&amount=${remainingAmountVnd}&des=${encodeURIComponent(transferContent)}&showinfo=true&holder=${qrHolder}`
       : null;
     const proofs = await paymentProofMap(prisma, actor.orgId, inv.payments.map(payment => payment.id));
     return sendJson(res, 200, {
@@ -7741,6 +8602,163 @@ export async function handleConsoleV2Api(
           proofUrl: proofs.has(p.id) ? `/api/v1/console/v2/payment-transactions/${p.id}/proof` : null,
         })),
       },
+    });
+  }
+
+  // PATCH /api/v1/console/v2/contracts/:id (Chỉnh sửa thông tin, ngày tháng & điều khoản hợp đồng)
+  const contractUpdateMatch = pathname.match(
+    /^\/api\/v1\/console\/v2\/contracts\/([^/]+)$/
+  );
+  if (method === 'PATCH' && contractUpdateMatch) {
+    if (!actorHasPermission(actor, 'contracts.manage')) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'INSUFFICIENT_PERMISSION',
+        message: 'Không có quyền cập nhật hợp đồng.',
+      });
+    }
+
+    const ctId = decodeURIComponent(contractUpdateMatch[1]);
+    const body = await readJsonBody(req);
+    const ct = await prisma.contract.findUnique({
+      where: { id: ctId },
+      include: { room: { include: { building: true } }, tenant: true },
+    });
+    if (!ct || ct.orgId !== actor.orgId) {
+      return sendJson(res, 404, {
+        ok: false,
+        errorCode: 'ENTITY_NOT_FOUND',
+        message: 'Hợp đồng không tồn tại trong tổ chức.',
+      });
+    }
+    if (!isBuildingAllowedForActor(actor, ct.buildingId, ct.room.building.code)) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'FORBIDDEN_BUILDING_SCOPE',
+        message: 'Không có quyền thao tác trên tòa nhà này.',
+      });
+    }
+
+    const dataToUpdate: any = {};
+    const nextStartDate = typeof body.startDate === 'string' && body.startDate.trim() ? body.startDate.trim() : ct.startDate;
+    const nextEndDate = typeof body.endDate === 'string' && body.endDate.trim() ? body.endDate.trim() : ct.endDate;
+
+    if (nextStartDate && !/^\d{4}-\d{2}-\d{2}$/.test(nextStartDate)) {
+      return sendJson(res, 422, {
+        ok: false,
+        errorCode: 'VALIDATION_ERROR',
+        message: 'Ngày bắt đầu hợp đồng không hợp lệ (định dạng YYYY-MM-DD).',
+      });
+    }
+    if (nextEndDate && !/^\d{4}-\d{2}-\d{2}$/.test(nextEndDate)) {
+      return sendJson(res, 422, {
+        ok: false,
+        errorCode: 'VALIDATION_ERROR',
+        message: 'Ngày kết thúc hợp đồng không hợp lệ (định dạng YYYY-MM-DD).',
+      });
+    }
+    if (nextStartDate && nextEndDate && nextStartDate > nextEndDate) {
+      return sendJson(res, 422, {
+        ok: false,
+        errorCode: 'VALIDATION_ERROR',
+        message: 'Ngày bắt đầu hợp đồng không thể sau ngày kết thúc.',
+      });
+    }
+
+    if (typeof body.startDate === 'string' && body.startDate.trim()) {
+      dataToUpdate.startDate = body.startDate.trim();
+    }
+    if (typeof body.endDate === 'string' && body.endDate.trim()) {
+      dataToUpdate.endDate = body.endDate.trim();
+    }
+    if (typeof body.moveInDate === 'string') {
+      dataToUpdate.moveInDate = body.moveInDate.trim() || null;
+      if (dataToUpdate.moveInDate && (!body.startDate || body.startDate === ct.startDate)) {
+        dataToUpdate.startDate = dataToUpdate.moveInDate;
+      }
+    }
+    if (body.signedAt) {
+      dataToUpdate.signedAt = new Date(body.signedAt);
+    }
+    if (body.monthlyRentVnd !== undefined && !isNaN(Number(body.monthlyRentVnd))) {
+      dataToUpdate.monthlyRentVnd = BigInt(Math.trunc(Number(body.monthlyRentVnd)));
+    }
+    if (body.depositVnd !== undefined && !isNaN(Number(body.depositVnd))) {
+      dataToUpdate.depositVnd = BigInt(Math.trunc(Number(body.depositVnd)));
+    }
+    if (typeof body.notes === 'string') {
+      dataToUpdate.notes = body.notes.trim() || null;
+    }
+    if (
+      typeof body.billingCycle === 'string' &&
+      ['MONTHLY', 'BI_MONTHLY', 'QUARTERLY', 'BIANNUAL', 'ANNUAL'].includes(body.billingCycle)
+    ) {
+      dataToUpdate.billingCycle = body.billingCycle;
+    }
+
+    const updated = await prisma.contract.update({
+      where: { id: ct.id },
+      data: dataToUpdate,
+      include: {
+        tenant: true,
+        room: { include: { building: true } },
+      },
+    });
+
+    // Đồng bộ moveInDate cho cư dân chính nếu startDate hoặc moveInDate thay đổi
+    if (dataToUpdate.startDate || dataToUpdate.moveInDate) {
+      await prisma.roomOccupant.updateMany({
+        where: {
+          contractId: ct.id,
+          orgId: actor.orgId,
+          relationToPrimary: 'PRIMARY',
+        },
+        data: {
+          moveInDate: dataToUpdate.moveInDate || dataToUpdate.startDate,
+        },
+      }).catch(() => {});
+    }
+
+    // Tự động tính lại hóa đơn kỳ đầu nếu startDate, moveInDate, monthlyRentVnd hoặc depositVnd thay đổi
+    let invoiceAdjustment: any = null;
+    const effectiveStartDate = dataToUpdate.startDate || dataToUpdate.moveInDate;
+    if (effectiveStartDate || dataToUpdate.monthlyRentVnd !== undefined || dataToUpdate.depositVnd !== undefined) {
+      invoiceAdjustment = await syncContractInvoiceOnDateOrRentChange(
+        prisma,
+        ct.id,
+        actor.orgId,
+        {
+          startDate: effectiveStartDate,
+          monthlyRentVnd: dataToUpdate.monthlyRentVnd,
+          depositVnd: dataToUpdate.depositVnd,
+        },
+        actor
+      ).catch(() => null);
+    }
+
+    await prisma.consoleAuditLog.create({
+      data: {
+        orgId: actor.orgId,
+        buildingId: ct.buildingId,
+        actorId: actor.id,
+        actorEmail: actor.email,
+        actorRole: actor.role,
+        entityType: 'CONTRACT',
+        entityId: ct.id,
+        action: 'UPDATE_CONTRACT',
+        summary: `Chỉnh sửa thông tin hợp đồng ${ct.contractCode} (Phòng ${ct.room?.code})`,
+        metadata: { clientIp, updatedFields: Object.keys(dataToUpdate), invoiceAdjustment },
+      },
+    }).catch(() => {});
+
+    return sendJson(res, 200, {
+      ok: true,
+      contract: {
+        ...updated,
+        monthlyRentVnd: toSafeVndNumber(updated.monthlyRentVnd),
+        depositVnd: toSafeVndNumber(updated.depositVnd),
+      },
+      invoiceAdjustment,
     });
   }
 
@@ -8011,6 +9029,132 @@ export async function handleConsoleV2Api(
     }
   }
 
+  // GET /api/v1/console/v2/contracts/:id/liquidation-preview (Liquidation calculation preview)
+  const contractLiqPreviewMatch = pathname.match(
+    /^\/api\/v1\/console\/v2\/contracts\/([^/]+)\/liquidation-preview$/
+  );
+  if (method === 'GET' && contractLiqPreviewMatch) {
+    if (!actorHasPermission(actor, 'contracts.manage')) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'INSUFFICIENT_PERMISSION',
+        message: 'Không có quyền xem dữ liệu thanh lý hợp đồng.',
+      });
+    }
+
+    const ctId = decodeURIComponent(contractLiqPreviewMatch[1]);
+    const ct = await prisma.contract.findUnique({
+      where: { id: ctId },
+      include: {
+        room: { include: { building: true } },
+        tenant: true,
+        deposits: true,
+      },
+    });
+    if (!ct || ct.orgId !== actor.orgId) {
+      return sendJson(res, 404, {
+        ok: false,
+        errorCode: 'ENTITY_NOT_FOUND',
+        message: 'Hợp đồng không tồn tại trong tổ chức.',
+      });
+    }
+
+    if (!isBuildingAllowedForActor(actor, ct.buildingId, ct.room.building?.code)) {
+      return sendJson(res, 403, {
+        ok: false,
+        errorCode: 'FORBIDDEN_BUILDING_SCOPE',
+        message: 'Tài khoản không có quyền thao tác trên tòa nhà này.',
+      });
+    }
+
+    // Find electric meter for room
+    const meter = await prisma.electricMeter.findFirst({
+      where: { roomId: ct.roomId, orgId: actor.orgId },
+      include: { readings: { orderBy: { recordedAt: 'desc' }, take: 5 } },
+    });
+
+    // Contract deposits calculation
+    const contractDeposits = ct.deposits.filter((d) => d.depositType === 'CONTRACT');
+    let collectedDepositVnd = 0;
+    if (contractDeposits.length > 0) {
+      collectedDepositVnd = contractDeposits.reduce((sum, d) => {
+        if (d.status === 'REFUNDED' || d.status === 'FORFEITED') return sum;
+        return sum + Number(d.paidAmountVnd || 0);
+      }, 0);
+    } else {
+      collectedDepositVnd = ct.deposits.reduce((sum, d) => {
+        if (
+          d.status === 'APPLIED_TO_CONTRACT' ||
+          d.paymentStatus === 'TRANSFERRED' ||
+          d.status === 'REFUNDED' ||
+          d.status === 'FORFEITED'
+        )
+          return sum;
+        return sum + Number(d.paidAmountVnd || 0);
+      }, 0);
+    }
+    const depositVnd = collectedDepositVnd > 0 ? collectedDepositVnd : toSafeVndNumber(ct.depositVnd);
+
+    // Meter readings
+    const latestReading = meter?.readings?.[0]?.readingKwh != null
+      ? Number(meter.readings[0].readingKwh)
+      : (meter?.monthReportedKwh != null ? Number(meter.monthReportedKwh) : null);
+    const startReading = ct.handoverMeterKwh != null && Number(ct.handoverMeterKwh) > 0
+      ? Number(ct.handoverMeterKwh)
+      : (meter?.readings?.[1]?.readingKwh != null ? Number(meter.readings[1].readingKwh) : 0);
+
+    return sendJson(res, 200, {
+      ok: true,
+      contract: {
+        id: ct.id,
+        contractCode: ct.contractCode,
+        startDate: ct.startDate,
+        endDate: ct.endDate,
+        monthlyRentVnd: toSafeVndNumber(ct.monthlyRentVnd),
+        depositVnd,
+        requiredDepositVnd: toSafeVndNumber(ct.depositVnd),
+        collectedDepositVnd,
+        electricRateVnd: ct.electricRateVnd || ct.room.electricRateVnd || 3800,
+        waterBillingMethod: ct.waterBillingMethod || ct.room.waterBillingMethod || 'PER_PERSON',
+        waterRateVnd: ct.waterRateVnd || ct.room.waterRateVnd || 100000,
+        handoverMeterKwh: ct.handoverMeterKwh ?? 0,
+        handoverWaterM3: ct.handoverWaterM3 ?? 0,
+        occupantsCount: ct.occupantsCount || 1,
+      },
+      room: {
+        id: ct.room.id,
+        code: ct.room.code,
+        baseRentVnd: toSafeVndNumber(ct.room.baseRentVnd),
+        electricBillingMode: ct.room.electricBillingMode,
+      },
+      building: {
+        id: ct.buildingId,
+        code: ct.room.building?.code || '',
+        name: ct.room.building?.name || '',
+      },
+      tenant: {
+        id: ct.tenant.id,
+        fullName: ct.tenant.fullName,
+        phone: ct.tenant.phone,
+      },
+      electricMeter: meter
+        ? {
+            id: meter.id,
+            serialNumber: meter.serialNumber,
+            connectionStatus: meter.connectionStatus,
+            method:
+              meter.connectionStatus === 'ONLINE' && meter.hunonicDeviceId
+                ? 'HUNONIC_AUTO'
+                : 'MANUAL',
+            hunonicDeviceId: meter.hunonicDeviceId,
+            latestReadingKwh: latestReading,
+            suggestedStartKwh: startReading,
+            suggestedEndKwh: latestReading ?? startReading,
+          }
+        : null,
+    });
+  }
+
   // POST /api/v1/console/v2/contracts/:id/terminate (Terminate Contract)
   const contractTerminateMatch = pathname.match(
     /^\/api\/v1\/console\/v2\/contracts\/([^/]+)\/terminate$/
@@ -8026,12 +9170,17 @@ export async function handleConsoleV2Api(
 
     const ctId = decodeURIComponent(contractTerminateMatch[1]);
     const body = await readJsonBody(req);
-    const reason = String(body.reason || 'Thanh lý kết thúc thời hạn thuê').trim();
+    const earlyTermination = body.mode === 'LANDLORD_EARLY';
+    const reason = earlyTermination ? 'Chủ nhà yêu cầu chấm dứt trước hạn' : String(body.reason || 'Thanh lý kết thúc thời hạn thuê').trim();
     const roomNextStatus = body.roomNextStatus === 'MAINTENANCE' ? 'MAINTENANCE' : 'AVAILABLE';
+    const liquidationDate = String(body.liquidationDate || (earlyTermination ? '' : new Date().toISOString().slice(0, 10))).trim();
 
     const ct = await prisma.contract.findUnique({
       where: { id: ctId },
-      include: { room: { include: { building: true } } },
+      include: {
+        room: { include: { building: true } },
+        tenant: true,
+      },
     });
     if (!ct || ct.orgId !== actor.orgId) {
       return sendJson(res, 404, {
@@ -8049,18 +9198,218 @@ export async function handleConsoleV2Api(
       });
     }
 
+    if (earlyTermination) {
+      const today = getTodayIsoVn();
+      const date = new Date(`${liquidationDate}T00:00:00Z`);
+      if (!isActiveContract(ct.status) || today >= ct.endDate) {
+        return sendJson(res, 409, { ok: false, message: 'Hợp đồng phải còn hiệu lực để chấm dứt trước hạn.' });
+      }
+      if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== liquidationDate ||
+          liquidationDate < ct.startDate || liquidationDate >= ct.endDate || liquidationDate > today) {
+        return sendJson(res, 422, { ok: false, message: 'Ngày chấm dứt phải trong thời hạn hợp đồng, trước ngày hết hạn và không sau hôm nay.' });
+      }
+    }
+
+    // Financial liquidation parameters
+    const depositVnd = Math.max(0, Math.round(Number(body.depositVnd ?? toSafeVndNumber(ct.depositVnd))));
+    const roomRentVnd = Math.max(0, Math.round(Number(body.roomRentVnd || 0)));
+    const roomRentNote = String(body.roomRentNote || '').trim();
+
+    const electricData = body.electric || {};
+    const electricStartKwh = Number(electricData.startKwh ?? 0);
+    const electricEndKwh = Number(electricData.endKwh ?? 0);
+    const electricKwh = Math.max(0, Number(electricData.consumptionKwh ?? Math.max(0, electricEndKwh - electricStartKwh)));
+    const electricRateVnd = Math.max(0, Math.round(Number(electricData.ratePerKwhVnd || ct.electricRateVnd || 3800)));
+    const electricVnd = Math.max(0, Math.round(Number(electricData.amountVnd ?? Math.round(electricKwh * electricRateVnd))));
+
+    const waterData = body.water || {};
+    const waterMode = String(waterData.mode || ct.waterBillingMethod || 'PER_PERSON');
+    const waterVnd = Math.max(0, Math.round(Number(waterData.amountVnd || 0)));
+
+    const damagesAndFees = Array.isArray(body.damagesAndFees)
+      ? body.damagesAndFees.map((f: any) => ({
+          name: String(f.name || 'Chi phí phát sinh').trim(),
+          amountVnd: Math.max(0, Math.round(Number(f.amountVnd || 0))),
+          note: f.note ? String(f.note).trim() : undefined,
+        })).filter((f: any) => f.amountVnd > 0 || f.name)
+      : [];
+    const totalDamagesVnd = damagesAndFees.reduce((sum: number, f: any) => sum + f.amountVnd, 0);
+
+    const totalDeductionVnd = roomRentVnd + electricVnd + waterVnd + totalDamagesVnd;
+    const settlementDifferenceVnd = depositVnd - totalDeductionVnd; // > 0: dư cọc hoàn lại, < 0: thiếu tiền thu thêm
+
+    const refundAction = body.refundAction || {};
+    const additionalCollectionAction = body.additionalCollectionAction || {};
+
     const updated = await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT id FROM "console_rooms" WHERE id = ${ct.roomId} FOR UPDATE`;
+
+      await tx.$executeRaw`SELECT id FROM "contracts" WHERE id = ${ct.id} FOR UPDATE`;
+      const current = await tx.contract.findUnique({ where: { id: ct.id } });
+      if (!current || current.status === 'TERMINATED' || current.roomId !== ct.roomId || (earlyTermination &&
+        (!isActiveContract(current.status) || current.endDate !== ct.endDate || current.startDate !== ct.startDate))) return null;
+
+      const liquidationSummary = {
+        liquidationDate,
+        reason,
+        ...(earlyTermination ? { mode: 'LANDLORD_EARLY', originalEndDate: ct.endDate } : {}),
+        roomNextStatus,
+        depositVnd,
+        roomRentVnd,
+        roomRentNote: roomRentNote || undefined,
+        electric: {
+          startKwh: electricStartKwh,
+          endKwh: electricEndKwh,
+          consumptionKwh: electricKwh,
+          ratePerKwhVnd: electricRateVnd,
+          amountVnd: electricVnd,
+        },
+        water: {
+          mode: waterMode,
+          amountVnd: waterVnd,
+          details: waterData,
+        },
+        damagesAndFees,
+        totalDamagesVnd,
+        totalDeductionVnd,
+        settlementDifferenceVnd,
+        refundAmountVnd: settlementDifferenceVnd > 0 ? settlementDifferenceVnd : 0,
+        additionalAmountVnd: settlementDifferenceVnd < 0 ? Math.abs(settlementDifferenceVnd) : 0,
+        performedBy: actor.email,
+        performedAt: new Date().toISOString(),
+      };
+
+      const formattedNote = `[THANH LÝ ${liquidationDate}]: ${reason} | Cọc: ${depositVnd.toLocaleString('vi-VN')}₫ | Khấu trừ: ${totalDeductionVnd.toLocaleString('vi-VN')}₫ (Phòng: ${roomRentVnd.toLocaleString('vi-VN')}₫, Điện: ${electricVnd.toLocaleString('vi-VN')}₫, Nước: ${waterVnd.toLocaleString('vi-VN')}₫, Hư hao/khác: ${totalDamagesVnd.toLocaleString('vi-VN')}₫) | ${
+        settlementDifferenceVnd > 0
+          ? `Hoàn cọc: ${settlementDifferenceVnd.toLocaleString('vi-VN')}₫`
+          : settlementDifferenceVnd < 0
+          ? `Thu thêm: ${Math.abs(settlementDifferenceVnd).toLocaleString('vi-VN')}₫`
+          : 'Quyết toán cân bằng 0₫'
+      }`;
 
       const terminatedCt = await tx.contract.update({
         where: { id: ct.id },
         data: {
           status: 'TERMINATED',
-          notes: ct.notes ? `${ct.notes} | [THANH LÝ]: ${reason}` : `[THANH LÝ]: ${reason}`,
+          endDate: liquidationDate < ct.endDate ? liquidationDate : ct.endDate,
+          notes: current.notes ? `${current.notes}\n${formattedNote}` : formattedNote,
         },
       });
-      const remainingContracts = await tx.contract.count({ where: { roomId: ct.roomId, id: { not: ct.id }, status: { in: ['DRAFT', ...ACTIVE_CONTRACT_STATUSES] } } });
-      const effectiveRoomStatus = remainingContracts ? 'OCCUPIED' : roomNextStatus;
+
+      // Update Deposit records
+      const contractDeposits = await tx.deposit.findMany({
+        where: { contractId: ct.id, orgId: actor.orgId },
+      });
+      for (const dep of contractDeposits) {
+        const depPaid = Number(dep.paidAmountVnd || dep.amountVnd || 0);
+        if (settlementDifferenceVnd > 0) {
+          const refundForThisDep = Math.min(depPaid, settlementDifferenceVnd);
+          const deductForThisDep = Math.max(0, depPaid - refundForThisDep);
+          await tx.deposit.update({
+            where: { id: dep.id },
+            data: {
+              refundedVnd: BigInt(refundForThisDep),
+              deductedAmountVnd: BigInt(deductForThisDep),
+              status: refundForThisDep === depPaid ? 'REFUNDED' : 'PARTIALLY_REFUNDED',
+              notes: dep.notes
+                ? `${dep.notes} | Đã thanh lý hoàn cọc ${refundForThisDep.toLocaleString('vi-VN')}₫`
+                : `Đã thanh lý hoàn cọc ${refundForThisDep.toLocaleString('vi-VN')}₫`,
+            },
+          });
+        } else {
+          await tx.deposit.update({
+            where: { id: dep.id },
+            data: {
+              deductedAmountVnd: BigInt(depPaid),
+              refundedVnd: BigInt(0),
+              status: 'FORFEITED',
+              notes: dep.notes ? `${dep.notes} | Cấn trừ toàn bộ cọc khi thanh lý` : `Cấn trừ toàn bộ cọc khi thanh lý`,
+            },
+          });
+        }
+      }
+
+      // Handle Option 1: Create expense voucher (phiếu chi hoàn tiền cọc)
+      let createdExpenseVoucher: any = null;
+      if (settlementDifferenceVnd > 0 && refundAction.createExpenseVoucher) {
+        const periodKey = liquidationDate.slice(0, 7);
+        const entryCode = `PC-${periodKey.replace('-', '')}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
+        const payMethodText = refundAction.paymentMethod === 'CASH' ? 'Tiền mặt' : 'Chuyển khoản';
+        const recipientDesc = refundAction.recipientInfo ? ` (Người nhận: ${refundAction.recipientInfo})` : ` (Khách thuê: ${ct.tenant.fullName})`;
+
+        createdExpenseVoucher = await tx.ledgerEntry.create({
+          data: {
+            orgId: actor.orgId,
+            buildingId: ct.buildingId,
+            periodKey,
+            entryCode,
+            entryType: 'EXPENSE',
+            category: 'REFUND_DEPOSIT',
+            amountVnd: BigInt(settlementDifferenceVnd),
+            description: `Phiếu chi hoàn tiền cọc thanh lý HĐ ${ct.contractCode} (Phòng ${ct.room.code}) - ${payMethodText}${recipientDesc}`,
+            recordedBy: actor.email,
+            occurredAt: new Date(liquidationDate),
+          },
+        });
+      }
+
+      // Handle Option 2: Create additional collection invoice (hóa đơn thu thêm khi thiếu tiền)
+      let createdAdditionalInvoice: any = null;
+      if (settlementDifferenceVnd < 0 && additionalCollectionAction.createInvoice) {
+        const periodKey = liquidationDate.slice(0, 7);
+        const additionalDue = Math.abs(settlementDifferenceVnd);
+        const extraInvCode = `INV-LIQ-${ct.room.code}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
+
+        const invoiceBreakdown = [
+          ...(roomRentVnd > 0 ? [{ label: `Tiền phòng phát sinh thanh lý (${roomRentNote || 'Quyết toán'})`, amountVnd: roomRentVnd }] : []),
+          ...(electricVnd > 0 ? [{ label: `Tiền điện chốt thanh lý (${electricKwh} kWh × ${electricRateVnd.toLocaleString('vi-VN')} ₫/kWh)`, amountVnd: electricVnd }] : []),
+          ...(waterVnd > 0 ? [{ label: `Tiền nước chốt thanh lý`, amountVnd: waterVnd }] : []),
+          ...damagesAndFees.map((f: any) => ({ label: f.name, amountVnd: f.amountVnd })),
+          ...(depositVnd > 0 ? [{ label: `Khấu trừ cọc hợp đồng`, amountVnd: -depositVnd }] : []),
+        ];
+
+        createdAdditionalInvoice = await tx.invoice.create({
+          data: {
+            orgId: actor.orgId,
+            buildingId: ct.buildingId,
+            roomId: ct.roomId,
+            contractId: ct.id,
+            tenantId: ct.tenantId,
+            invoiceCode: extraInvCode,
+            periodKey,
+            dueDate: additionalCollectionAction.dueDate || liquidationDate,
+            roomRentVnd: BigInt(roomRentVnd),
+            electricVnd: BigInt(electricVnd),
+            waterVnd: BigInt(waterVnd),
+            serviceFeeVnd: BigInt(totalDamagesVnd),
+            adjustmentVnd: BigInt(-depositVnd),
+            totalAmountVnd: BigInt(additionalDue),
+            paidAmountVnd: BigInt(0),
+            status: 'ISSUED',
+            policySnapshot: {
+              type: 'LIQUIDATION_ADDITIONAL_INVOICE',
+              contractCode: ct.contractCode,
+              roomCode: ct.room.code,
+              liquidationDate,
+              breakdown: invoiceBreakdown,
+              liquidationDetails: liquidationSummary,
+            },
+          },
+        });
+      }
+
+      const remainingContracts = await tx.contract.count({
+        where: {
+          roomId: ct.roomId,
+          id: { not: ct.id },
+          status: { in: earlyTermination ? [...ACTIVE_CONTRACT_STATUSES] : ['DRAFT', ...ACTIVE_CONTRACT_STATUSES] },
+        },
+      });
+      const remainingHold = earlyTermination && !remainingContracts && (
+        await tx.contract.count({ where: { orgId: ct.orgId, roomId: ct.roomId, status: 'DRAFT' } }) ||
+        await tx.roomReservation.count({ where: { orgId: ct.orgId, roomId: ct.roomId, status: { in: ['PENDING', 'CONFIRMED'] } } })
+      );
+      const effectiveRoomStatus = remainingContracts ? 'OCCUPIED' : remainingHold ? 'RESERVED' : roomNextStatus;
 
       await tx.consoleRoom.update({
         where: { id: ct.roomId },
@@ -8069,7 +9418,7 @@ export async function handleConsoleV2Api(
       if (ct.room.publicListingId) {
         await tx.publicRoomListing.update({
           where: { id: ct.room.publicListingId },
-          data: { status: effectiveRoomStatus === 'MAINTENANCE' ? 'MAINTENANCE' : effectiveRoomStatus },
+          data: { status: effectiveRoomStatus, ...(remainingContracts ? {} : { currentTenantName: null, currentTenantPhone: null }) },
         });
       }
 
@@ -8078,13 +9427,15 @@ export async function handleConsoleV2Api(
         data: {
           isActive: false,
           occupancyStatus: 'MOVED_OUT',
+          ...(earlyTermination ? { moveOutDate: liquidationDate } : {}),
         },
       });
 
-      await tx.tenant.update({
-        where: { id: ct.tenantId },
-        data: { currentRoomId: null },
-      });
+      if (earlyTermination) {
+        await tx.tenant.updateMany({ where: { id: ct.tenantId, orgId: ct.orgId, currentRoomId: ct.roomId }, data: { currentRoomId: null } });
+      } else {
+        await tx.tenant.update({ where: { id: ct.tenantId }, data: { currentRoomId: null } });
+      }
 
       await tx.consoleAuditLog.create({
         data: {
@@ -8096,21 +9447,49 @@ export async function handleConsoleV2Api(
           entityType: 'CONTRACT',
           entityId: ct.id,
           action: 'TERMINATE_CONTRACT',
-          summary: `Thanh lý hợp đồng ${ct.contractCode} (Lý do: ${reason})`,
-          metadata: { clientIp, reason, roomNextStatus },
+          summary: `${earlyTermination ? 'Chấm dứt trước hạn' : 'Thanh lý hợp đồng'} ${ct.contractCode} (Lý do: ${reason} | Chênh lệch: ${settlementDifferenceVnd.toLocaleString('vi-VN')}₫)`,
+          metadata: {
+            clientIp,
+            reason,
+            roomNextStatus,
+            liquidationSummary,
+            createdExpenseVoucherId: createdExpenseVoucher?.id,
+            createdAdditionalInvoiceId: createdAdditionalInvoice?.id,
+          },
         },
       });
 
-      return terminatedCt;
+      return {
+        terminatedCt,
+        liquidationSummary,
+        createdExpenseVoucher,
+        createdAdditionalInvoice,
+      };
     });
 
+    if (!updated) return sendJson(res, 409, { ok: false, message: 'Hợp đồng đã thay đổi hoặc đã được quyết toán. Vui lòng tải lại.' });
     return sendJson(res, 200, {
       ok: true,
       contract: {
-        ...updated,
-        monthlyRentVnd: toSafeVndNumber(updated.monthlyRentVnd),
-        depositVnd: toSafeVndNumber(updated.depositVnd),
+        ...updated.terminatedCt,
+        monthlyRentVnd: toSafeVndNumber(updated.terminatedCt.monthlyRentVnd),
+        depositVnd: toSafeVndNumber(updated.terminatedCt.depositVnd),
       },
+      liquidation: updated.liquidationSummary,
+      expenseVoucher: updated.createdExpenseVoucher
+        ? {
+            id: updated.createdExpenseVoucher.id,
+            entryCode: updated.createdExpenseVoucher.entryCode,
+            amountVnd: Number(updated.createdExpenseVoucher.amountVnd),
+          }
+        : null,
+      additionalInvoice: updated.createdAdditionalInvoice
+        ? {
+            id: updated.createdAdditionalInvoice.id,
+            invoiceCode: updated.createdAdditionalInvoice.invoiceCode,
+            amountVnd: Number(updated.createdAdditionalInvoice.totalAmountVnd),
+          }
+        : null,
     });
   }
 
@@ -8131,6 +9510,9 @@ export async function handleConsoleV2Api(
       });
     }
 
+    const roomIdParam = urlObj.searchParams.get('roomId') || undefined;
+    const meterIdParam = urlObj.searchParams.get('meterId') || undefined;
+
     const hunonicScoped = await resolveScopedBuildings(
       prisma,
       actor,
@@ -8140,7 +9522,14 @@ export async function handleConsoleV2Api(
     const bldIds = hunonicScoped.selectedBuildingIds;
 
     try {
-      const snapshot = await executeHunonicBackgroundSync({ prisma, orgId: actor.orgId, actorId: actor.id, buildingIds: bldIds });
+      const snapshot = await executeHunonicBackgroundSync({
+        prisma,
+        orgId: actor.orgId,
+        actorId: actor.id,
+        buildingIds: bldIds,
+        roomId: roomIdParam,
+        meterId: meterIdParam,
+      });
       return sendJson(res, 200, {
         ok: snapshot.status !== 'ERROR', isMockSession: false,
         syncedCount: snapshot.summary.syncedMeters, totalMeters: snapshot.summary.totalMeters,
@@ -9262,8 +10651,9 @@ export async function handleConsoleV2Api(
         org,
         buildings,
         integrations,
-        notificationChannels,
+        rawNotificationChannels,
         cronJobs,
+        recentZaloAudit,
       ] = await Promise.all([
         prisma.organization.findUnique({ where: { id: actor.orgId } }),
         prisma.building.findMany({
@@ -9282,7 +10672,43 @@ export async function handleConsoleV2Api(
           where: { orgId: actor.orgId },
           orderBy: { createdAt: 'asc' },
         }),
+        prisma.consoleAuditLog.findFirst({
+          where: { orgId: actor.orgId, entityType: 'ZALO_BOT' },
+          orderBy: { createdAt: 'desc' },
+        }),
       ]);
+
+      // Enforce single-active default channel invariant:
+      // Only 1 channel can be isEnabled=true. If none is enabled and ZaloBot was configured, activate ZaloBot.
+      let notificationChannels = rawNotificationChannels;
+      const enabledList = rawNotificationChannels.filter((n) => n.isEnabled);
+      if (enabledList.length === 0 && (recentZaloAudit || rawNotificationChannels.some((n) => n.channelType === 'ZALO_BOT' && (n.secretHint || n.status === 'VERIFIED')))) {
+        await prisma.$transaction(async (tx) => {
+          await tx.notificationChannelConfig.updateMany({
+            where: { orgId: actor.orgId, channelType: 'ZALO_BOT' },
+            data: { isEnabled: true, status: 'VERIFIED', targetLabel: 'Zalo Bot', secretHint: '••••••••' },
+          });
+          await tx.notificationChannelConfig.updateMany({
+            where: { orgId: actor.orgId, channelType: { not: 'ZALO_BOT' } },
+            data: { isEnabled: false, status: 'DISABLED' },
+          });
+        });
+        notificationChannels = await prisma.notificationChannelConfig.findMany({
+          where: { orgId: actor.orgId },
+          orderBy: { channelType: 'asc' },
+        });
+      } else if (enabledList.length > 1) {
+        // More than 1 enabled -> keep only the first/most relevant, disable the others
+        const keepId = enabledList.find((n) => n.channelType === 'ZALO_BOT')?.id || enabledList[0].id;
+        await prisma.notificationChannelConfig.updateMany({
+          where: { orgId: actor.orgId, id: { not: keepId } },
+          data: { isEnabled: false, status: 'DISABLED' },
+        });
+        notificationChannels = await prisma.notificationChannelConfig.findMany({
+          where: { orgId: actor.orgId },
+          orderBy: { channelType: 'asc' },
+        });
+      }
 
       return sendJson(res, 200, {
         ok: true,
@@ -9643,7 +11069,7 @@ export async function handleConsoleV2Api(
             data: {
               targetLabel,
               isEnabled: requestedEnabled,
-              status: !nextSecretHint ? 'UNCONFIGURED' : 'DISABLED',
+              status: !nextSecretHint ? 'UNCONFIGURED' : (requestedEnabled ? 'VERIFIED' : 'DISABLED'),
               subscribedEvents: subscribedEvents as Prisma.InputJsonValue,
               ...(rawSecret
                 ? {
@@ -9657,6 +11083,63 @@ export async function handleConsoleV2Api(
             },
           });
 
+          // Single-active default channel invariant:
+          // Kênh thông báo mặc định chỉ được đăng ký 1 trong 4 kênh.
+          // Khi kích hoạt 1 kênh, tất cả các kênh khác sẽ inactive.
+          if (requestedEnabled) {
+            await tx.notificationChannelConfig.updateMany({
+              where: {
+                orgId: actor.orgId,
+                id: { not: existing.id },
+              },
+              data: {
+                isEnabled: false,
+                status: 'DISABLED',
+              },
+            });
+
+            const deliveryChan =
+              channelType === 'TELEGRAM_BOT' ? 'TELEGRAM' :
+              channelType === 'FACEBOOK_MESSENGER' ? 'FACEBOOK' :
+              channelType;
+
+            const existingAuto = await tx.integrationConnection.findUnique({
+              where: { orgId_providerId: { orgId: actor.orgId, providerId: MODULE_AUTOMATION_KEY } },
+            });
+            const autoCaps = existingAuto?.capabilities && typeof existingAuto.capabilities === 'object'
+              ? (existingAuto.capabilities as Record<string, unknown>)
+              : {};
+
+            await tx.integrationConnection.upsert({
+              where: { orgId_providerId: { orgId: actor.orgId, providerId: MODULE_AUTOMATION_KEY } },
+              create: {
+                orgId: actor.orgId,
+                providerId: MODULE_AUTOMATION_KEY,
+                category: 'AUTOMATION',
+                displayName: 'Settlement Automation Policy',
+                isEnabled: true,
+                status: 'CONNECTED',
+                capabilities: {
+                  ...autoCaps,
+                  mode: (autoCaps.mode as string) || 'AUTO_FULL',
+                  defaultChannel: deliveryChan,
+                  electricSpikeThresholdKwh: Number(autoCaps.electricSpikeThresholdKwh ?? 2000),
+                  waterSpikeThresholdM3: Number(autoCaps.waterSpikeThresholdM3 ?? 100),
+                  updatedBy: actor.email || actor.id,
+                  updatedAt: new Date().toISOString(),
+                },
+              },
+              update: {
+                capabilities: {
+                  ...autoCaps,
+                  defaultChannel: deliveryChan,
+                  updatedBy: actor.email || actor.id,
+                  updatedAt: new Date().toISOString(),
+                },
+              },
+            });
+          }
+
           await tx.consoleAuditLog.create({
             data: {
               orgId: actor.orgId,
@@ -9666,7 +11149,9 @@ export async function handleConsoleV2Api(
               entityType: 'NOTIFICATION_CHANNEL',
               entityId: existing.id,
               action: 'UPDATE_NOTIFICATION_CHANNEL',
-              summary: `Cập nhật cấu hình kênh thông báo ${existing.displayName}`,
+              summary: requestedEnabled
+                ? `Kích hoạt kênh ${existing.displayName} làm kênh thông báo mặc định (các kênh khác chuyển sang inactive)`
+                : `Hủy kích hoạt kênh ${existing.displayName}`,
               metadata: { clientIp, channelType, isEnabled: requestedEnabled },
             },
           });

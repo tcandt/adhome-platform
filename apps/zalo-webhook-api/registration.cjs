@@ -1,15 +1,34 @@
 function parseRegistration(text) {
-  const match = /^DANGKY\s+(\S+)\s+(\S+)(?:\s+(\S+))?$/i.exec(String(text || '').trim());
-  if (!match) return null;
-  const roomCode = match[1].toUpperCase();
-  const digits = match[2].replace(/[^\d]/g, '');
-  const phone = digits.startsWith('84') && digits.length === 11 ? `0${digits.slice(2)}` : digits;
-  if (!/^0\d{9}$/.test(phone) || roomCode.length > 64) return null;
-  return { roomCode, phone, ...(match[3] ? { contractCode: match[3].toUpperCase() } : {}) };
+  const trimmed = String(text || '').trim();
+  const match = /^(?:(?:DK|DANGKY|DANG\s*KY|ĐK|ĐĂNG\s*KÝ)\s+)?(.+)$/i.exec(trimmed);
+  if (!match || !match[1]) return null;
+  const rawArgs = match[1].trim();
+  const phoneRegex = /(?:\+?84|0)(\d{9})\b/g;
+  const phones = [];
+  let phoneMatch;
+  while ((phoneMatch = phoneRegex.exec(rawArgs)) !== null) {
+    phones.push('0' + phoneMatch[1]);
+  }
+  if (!phones.length) return null;
+  const uniquePhones = Array.from(new Set(phones));
+
+  const remaining = rawArgs.replace(/(?:\+?84|0)\d{9}\b/g, '').replace(/[,;/]+/g, ' ').trim();
+  const tokens = remaining.split(/\s+/).filter(Boolean);
+  if (!tokens.length) return null;
+  const roomCode = tokens[0].toUpperCase();
+  if (roomCode.length > 64) return null;
+  const contractCode = tokens[1] ? tokens[1].toUpperCase() : undefined;
+
+  return {
+    roomCode,
+    phone: uniquePhones[0],
+    phones: uniquePhones,
+    ...(contractCode ? { contractCode } : {}),
+  };
 }
 
 async function processRegistration(client, { inboxId, oaId, zaloUid, text }) {
-  if (!/^DANGKY(?:\s|$)/i.test(String(text || '').trim())) return null;
+  if (!/^(?:DK|DANGKY|DANG\s*KY|ĐK|ĐĂNG\s*KÝ)(?:\s|$)/i.test(String(text || '').trim())) return null;
   const input = parseRegistration(text);
     const previous = await client.query('SELECT status FROM zalo_registration_attempts WHERE inbox_id = $1', [inboxId]);
     if (previous.rowCount) {

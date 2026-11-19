@@ -190,7 +190,7 @@ export const NAV_GROUPS_CONFIG: NavGroupConfig[] = [
       {
         id: 'settlements',
         label: 'Tổng hợp kỳ',
-        shortMobileLabel: 'Tổng hợp',
+        shortMobileLabel: 'Tổng hợp kỳ',
         groupId: 'finance_summary',
         icon: ClipboardCheck,
         requiredCapability: 'canManageSettlements',
@@ -302,4 +302,26 @@ export function shiftPeriodKey(periodKey: string, deltaMonths: number): string {
     '0'
   )}`;
 }
+
+export interface PeriodRange {
+  from: string; // 'YYYY-MM'
+  to: string;   // 'YYYY-MM'
+}
+
+export function formatPeriodRangeDisplay(from: string, to: string): string {
+  if (!from || !to) return '';
+  const [fYear, fMonth] = from.split('-');
+  const [tYear, tMonth] = to.split('-');
+  if (from === to) {
+    return `Tháng ${tMonth}/${tYear}`;
+  }
+  if (fYear === tYear) {
+    if (fMonth === '01' && tMonth === '12') {
+      return `Cả năm ${fYear}`;
+    }
+    return `T${fMonth} - T${tMonth}/${tYear}`;
+  }
+  return `T${fMonth}/${fYear.slice(2)} - T${tMonth}/${tYear.slice(2)}`;
+}
+
 

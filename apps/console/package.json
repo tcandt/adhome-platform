@@ -16,13 +16,15 @@
     "@floating-ui/react": "^0.27.20",
     "@techstark/opencv-js": "4.11.0-release.1",
     "clsx": "^2.1.1",
+    "exceljs": "^4.4.0",
     "lucide-react": "^1.63.0",
     "motion": "^14.7.1",
     "onnxruntime-web": "^1.31.1",
     "pdfjs-dist": "6.5.438",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "tailwind-merge": "^3.0.2"
+    "tailwind-merge": "^3.0.2",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/node": "^22.13.0",

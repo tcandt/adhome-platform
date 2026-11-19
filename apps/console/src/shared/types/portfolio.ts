@@ -85,6 +85,7 @@ export interface ConsoleBuildingDto {
     occupiedRooms: number;
     maintenanceRooms: number;
     publishedRooms: number;
+    missingResidenceRooms?: number;
     contractedMonthlyVnd: number;
   };
 }
@@ -137,6 +138,7 @@ export interface ConsoleRoomDto {
   isPublishedToLanding: boolean;
   publicSlug: string | null;
   internalNotes: string;
+  hasSignedResidencePdf?: boolean;
   meterStatus: MeterConnectionStatus;
   meterLastSyncedAt: string | null;
   currentTenant: {
@@ -152,6 +154,7 @@ export interface ConsoleRoomDto {
     endDate: string;
     monthlyRentVnd: number;
     status: string;
+    hasSignedResidencePdf?: boolean;
   } | null;
   activeContracts?: Array<{ id: string; contractCode: string; tenantId: string; tenantName: string; status: string }>;
   unpaidInvoicesCount: number;
@@ -194,6 +197,7 @@ export interface ConsoleTenantDto {
   email: string;
   idNumber: string;
   residenceRegStatus: 'PENDING' | 'REGISTERED' | 'EXPIRED' | string;
+  notificationChannel?: 'TELEGRAM' | 'ZALO_BOT' | 'ZALO_OA' | 'UNREGISTERED' | string;
   emergencyContact: string;
   notes: string;
   primaryBuildingId: string | null;
@@ -366,6 +370,7 @@ export interface CreateTenantInput {
   email?: string;
   idNumber?: string;
   residenceRegStatus?: 'PENDING' | 'REGISTERED' | 'EXPIRED';
+  notificationChannel?: 'TELEGRAM' | 'ZALO_BOT' | 'ZALO_OA' | 'UNREGISTERED';
   emergencyContact?: string;
   notes?: string;
   primaryBuildingId?: string | null;
@@ -378,6 +383,7 @@ export interface UpdateTenantInput {
   email?: string;
   idNumber?: string;
   residenceRegStatus?: 'PENDING' | 'REGISTERED' | 'EXPIRED';
+  notificationChannel?: 'TELEGRAM' | 'ZALO_BOT' | 'ZALO_OA' | 'UNREGISTERED';
   emergencyContact?: string;
   notes?: string;
   primaryBuildingId?: string | null;
@@ -427,6 +433,7 @@ export interface ContractDto {
   tenantName: string;
   tenantPhone: string;
   rentalModel?: string;
+  billingCycle?: string;
   startDate: string;
   endDate: string;
   signedAt?: string | null;

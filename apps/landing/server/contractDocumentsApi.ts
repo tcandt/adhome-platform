@@ -1,5 +1,6 @@
 import { actorHasPermission, isBuildingAllowedForActor } from './authRbac';
 import { compiledResidencePdf, convertRentalPdf, renderRentalDocx, validateDocumentProfile } from './rentalDocuments';
+import { listPrivateDocuments } from './privateDocuments';
 import { saveRentalProfile } from './rentalWorkflowApi';
 import { readBuildingLandlords, resolveBuildingLandlord } from './buildingLandlord';
 import { memberRole, mergeRentalOccupants } from './rentalPeople';
@@ -32,12 +33,17 @@ export function assembleContractDocumentProfile(
   const primary = (contract.occupants || []).find((person: any) => person.relationToPrimary === 'PRIMARY');
   const stored = savedMeta || {};
   const buildingWithLandlord = { ...building, landlord: buildingLandlord || building.landlord || {} };
+  const isImport = Boolean(contract.notes?.includes('Tiếp quản') || contract.status === 'ACTIVE');
+  const defaultSignedDate = isImport
+    ? (contract.startDate || '')
+    : (contract.signedAt ? new Date(contract.signedAt).toISOString().slice(0, 10) : (stored.signedDate || contract.startDate || ''));
   return mergeRentalOccupants({
     members: [], purpose: 'Để ở', durationText: `${contract.startDate.split('-').reverse().join('/')} đến ${contract.endDate.split('-').reverse().join('/')}`,
     rentalAddress: [building.streetAddress, building.ward, building.province].filter(Boolean).join(', '),
-    signedDate: contract.signedAt ? new Date(contract.signedAt).toISOString().slice(0, 10) : '',
+    signedDate: defaultSignedDate,
     managerContact: [building.managerName, building.managerPhone].filter(Boolean).join(' - '),
     leaseTemplate: room.roomType === '2PN' ? 'LEASE_2PN' : 'LEASE_1PN', ...stored,
+    ...(isImport ? { signedDate: contract.startDate } : {}),
     tenant: { fullName: contract.tenant?.fullName || primary?.fullName || '', phone: contract.tenant?.phone || primary?.phone || '',
       idNumber: contract.tenant?.idNumber || primary?.idNumber || '', birthDate: primary?.dateOfBirth || '', gender: primary?.gender || '', address: '', ...stored.tenant },
     landlord: resolveBuildingLandlord(buildingWithLandlord, reusableMeta?.landlord, stored.landlord),
@@ -73,9 +79,15 @@ export async function handleContractDocuments(req: any, res: any, pathname: stri
     const selectedMissing = () => contractDocumentMissing({ ...selected, tenant: people[personIndex] });
     res.setHeader('Cache-Control', 'private, no-store');
     if (req.method === 'GET') {
+      const docs = await listPrivateDocuments(prisma, actor.orgId, contract.id);
+      const signedResidencePdf = docs.find((d: any) => d.kind === 'SIGNED_RESIDENCE_PDF') || null;
       sendJson(res, 200, { ok: true, contract: { id: contract.id, contractCode: contract.contractCode, status: contract.status,
         startDate: contract.startDate, endDate: contract.endDate, monthlyRentVnd: Number(contract.monthlyRentVnd), depositVnd: Number(contract.depositVnd) },
-        room: { code: room.code, buildingName: room.building.name }, profile, personIndex, missing: selectedMissing() });
+        room: { code: room.code, buildingName: room.building.name }, profile, personIndex, missing: selectedMissing(),
+        residence: {
+          isRegistered: !!signedResidencePdf,
+          signedPdf: signedResidencePdf,
+        } });
       return true;
     }
     if (match[2] === 'profile') {

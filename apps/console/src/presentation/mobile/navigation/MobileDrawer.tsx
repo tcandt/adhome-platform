@@ -66,7 +66,7 @@ export const MobileDrawer: React.FC<MobileDrawerProps> = ({
         {NAV_GROUPS_CONFIG.map((group) => {
           const visibleItems = group.items.filter(
             (item) =>
-              (!moreOnly || !['overview', 'buildings', 'invoices', 'payments'].includes(item.id)) &&
+              (!moreOnly || !['overview', 'buildings', 'invoices', 'settlements'].includes(item.id)) &&
               (!item.requiredCapability || hasCapability(item.requiredCapability))
           );
           if (visibleItems.length === 0) return null;

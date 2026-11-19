@@ -18,6 +18,7 @@ import {
   getCurrentVnPeriodKey,
   shiftPeriodKey as defaultShiftPeriodKey,
 } from '@/app/navigation/navigationConfig';
+import { CompactMonthPicker } from './CompactMonthPicker';
 
 /**
  * Shared responsive Card/Table view mode hook:
@@ -56,69 +57,17 @@ export interface CompactPeriodStepperProps {
 export const CompactPeriodStepper: React.FC<CompactPeriodStepperProps> = ({
   selectedPeriod,
   onChangePeriod,
-  shiftPeriodKey = defaultShiftPeriodKey,
   testIdPrefix = 'module',
   className = '',
   fullWidth = true,
 }) => {
-  const currentPeriod = getCurrentVnPeriodKey();
   return (
-    <div className={`flex items-center gap-1.5 ${fullWidth ? 'flex-1 min-w-0' : ''} ${className}`}>
-      <div
-        data-testid={`${testIdPrefix}-period-selector`}
-        className={`flex h-9 items-center justify-between gap-0.5 rounded-xl border border-slate-200/80 bg-slate-100/80 p-0.5 dark:border-slate-700/80 dark:bg-slate-800/80 shadow-2xs ${
-          fullWidth ? 'flex-1 min-w-0' : 'inline-flex'
-        }`}
-      >
-        <button
-          type="button"
-          data-testid={`btn-${testIdPrefix}-period-prev`}
-          aria-label="Kỳ trước"
-          onClick={() => onChangePeriod(shiftPeriodKey(selectedPeriod, -1))}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-white hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-white active:scale-95 shadow-2xs"
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </button>
-        <label className="relative flex flex-1 min-w-0 cursor-pointer items-center justify-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-800 transition-colors hover:bg-white/80 dark:text-slate-100 dark:hover:bg-slate-700/70">
-          <Calendar className="h-3.5 w-3.5 shrink-0 text-brand-primary" />
-          <span className="truncate">
-            Tháng {selectedPeriod.slice(5, 7)}/{selectedPeriod.slice(0, 4)}
-          </span>
-          <ChevronDown className="h-3 w-3 shrink-0 text-slate-400 dark:text-slate-500" />
-          <input
-            data-testid={`input-${testIdPrefix}-period`}
-            aria-label="Kỳ tài chính"
-            type="month"
-            value={selectedPeriod}
-            onChange={(e) => {
-              if (/^\d{4}-\d{2}$/.test(e.target.value)) {
-                onChangePeriod(e.target.value);
-              }
-            }}
-            className="absolute inset-0 h-full w-full cursor-pointer opacity-0 z-10 [color-scheme:light] dark:[color-scheme:dark]"
-          />
-        </label>
-        <button
-          type="button"
-          data-testid={`btn-${testIdPrefix}-period-next`}
-          aria-label="Kỳ sau"
-          onClick={() => onChangePeriod(shiftPeriodKey(selectedPeriod, 1))}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-white hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-white active:scale-95 shadow-2xs"
-        >
-          <ChevronRight className="h-4 w-4" />
-        </button>
-      </div>
-
-      {selectedPeriod !== currentPeriod && (
-        <button
-          type="button"
-          onClick={() => onChangePeriod(currentPeriod)}
-          className="hidden md:inline-flex h-9 items-center rounded-xl bg-blue-50 px-2.5 text-[11px] font-semibold text-blue-600 transition-colors hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-400 whitespace-nowrap shrink-0 shadow-2xs"
-        >
-          Kỳ này
-        </button>
-      )}
-    </div>
+    <CompactMonthPicker
+      value={selectedPeriod}
+      onChange={onChangePeriod}
+      testIdPrefix={testIdPrefix}
+      className={`${fullWidth ? 'flex-1 min-w-0' : ''} ${className}`}
+    />
   );
 };
 

@@ -8,6 +8,7 @@ import { actorHasPermission, isBuildingAllowedForActor } from './authRbac';
 
 export const buildingDocumentKinds = ['TITLE_FRONT', 'TITLE_BACK', 'BUSINESS_REGISTRATION', 'SALE_CERTIFICATE'] as const;
 export const identityDocumentKinds = ['ID_FRONT', 'ID_BACK'] as const;
+export const contractDocumentKinds = ['ID_FRONT', 'ID_BACK', 'SIGNED_RESIDENCE_PDF'] as const;
 export type PrivateDocument = { id: string; kind: string; name: string; mimeType: string; size: number; pages: number; sha256: string };
 const root = () => path.resolve(process.env.ADH_PRIVATE_DOCUMENT_DIR || 'uploads/private-documents');
 const chunkBytes = 512 * 1024;
@@ -17,6 +18,10 @@ const fail = (message: string, statusCode = 422): never => { throw Object.assign
 const scopeKey = (orgId: string, entityId: string) => crypto.createHash('sha256').update(`${orgId}\0${entityId}`).digest('hex');
 const scopeDir = (orgId: string, entityId: string) => path.join(root(), scopeKey(orgId, entityId));
 const filePath = (orgId: string, entityId: string, id: string) => path.join(scopeDir(orgId, entityId), `${id}.bin`);
+
+export async function purgePrivateDocuments(orgId: string, contractId: string) {
+  await fs.rm(scopeDir(orgId, contractId), { recursive: true, force: true });
+}
 
 // The existing durable rental-document audit stream also preserves attachment versions and removal history.
 export async function listPrivateDocuments(db: any, orgId: string, entityId: string): Promise<PrivateDocument[]> {
@@ -98,12 +103,13 @@ export async function handlePrivateDocuments(req: any, res: any, pathname: strin
     }
     if (req.method === 'POST' && !documentId) {
       const body = await jsonBody(req);
-      const kinds: readonly string[] = buildingScope ? buildingDocumentKinds : identityDocumentKinds;
+      const kinds: readonly string[] = buildingScope ? buildingDocumentKinds : contractDocumentKinds;
       if (!kinds.includes(body.kind) || !['application/pdf', 'image/jpeg', 'image/png'].includes(body.mimeType)
         || !Number.isSafeInteger(body.size) || body.size <= 0 || body.size > maxPrivateDocumentBytes || typeof body.name !== 'string' || body.name.length > 255) {
         fail(body.size > maxPrivateDocumentBytes ? 'Tệp không được vượt quá 25 MB.' : 'Chọn tệp ảnh JPEG, PNG hoặc PDF hợp lệ.');
       }
-      if (!buildingScope && body.mimeType === 'application/pdf') fail('CCCD cần ảnh chụp mặt trước hoặc mặt sau.');
+      if (!buildingScope && body.kind !== 'SIGNED_RESIDENCE_PDF' && body.mimeType === 'application/pdf') fail('CCCD cần ảnh chụp mặt trước hoặc mặt sau.');
+      if (body.kind === 'SIGNED_RESIDENCE_PDF' && body.mimeType !== 'application/pdf') fail('File xác nhận tạm trú phải là định dạng PDF (.pdf).');
       const id = crypto.randomUUID();
       await fs.mkdir(dir, { recursive: true });
       await fs.writeFile(path.join(dir, `${id}.upload.json`), JSON.stringify({ ...body, id, orgId: actor.orgId, entityId, createdAt: Date.now() }), { flag: 'wx' });
@@ -170,6 +176,14 @@ export async function handlePrivateDocuments(req: any, res: any, pathname: strin
             }
           }
           await tx.consoleAuditLog.create({ data: log('UPLOAD_PRIVATE_DOCUMENT', document) });
+          if (!buildingScope && document.kind === 'SIGNED_RESIDENCE_PDF') {
+            if (entity.tenantId) {
+              await tx.tenant.update({ where: { id: entity.tenantId }, data: { residenceRegStatus: 'REGISTERED' } });
+            }
+            if (entity.roomId) {
+              await tx.roomOccupant.updateMany({ where: { roomId: entity.roomId, orgId: actor.orgId, isActive: true }, data: { residenceRegStatus: 'REGISTERED' } });
+            }
+          }
         });
         // Keep the manifest briefly so a lost completion response can be retried idempotently.
         for (let part = 0; part < Math.ceil(session.size / chunkBytes); part++) await fs.rm(path.join(dir, `${documentId}.${part}.part`), { force: true });
@@ -189,7 +203,17 @@ export async function handlePrivateDocuments(req: any, res: any, pathname: strin
       await pipeline(createReadStream(filename), res); return true;
     }
     if (req.method === 'DELETE') {
-      await db.consoleAuditLog.create({ data: log('REMOVE_PRIVATE_DOCUMENT', { id: document.id }) });
+      await db.$transaction(async (tx: any) => {
+        await tx.consoleAuditLog.create({ data: log('REMOVE_PRIVATE_DOCUMENT', { id: document.id }) });
+        if (!buildingScope && document.kind === 'SIGNED_RESIDENCE_PDF') {
+          if (entity.tenantId) {
+            await tx.tenant.update({ where: { id: entity.tenantId }, data: { residenceRegStatus: 'PENDING' } });
+          }
+          if (entity.roomId) {
+            await tx.roomOccupant.updateMany({ where: { roomId: entity.roomId, orgId: actor.orgId, isActive: true }, data: { residenceRegStatus: 'PENDING' } });
+          }
+        }
+      });
       reply(200, { ok: true, documents: await listPrivateDocuments(db, actor.orgId, entityId) }); return true;
     }
     fail('Phương thức không được hỗ trợ.', 405);

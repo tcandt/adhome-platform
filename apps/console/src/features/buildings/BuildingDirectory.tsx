@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Accordion } from "@animate-ui/react/primitives/base-ui/accordion";
 import {
+  AlertTriangle,
   Building2,
   ChevronDown,
   Edit,
@@ -110,8 +111,18 @@ export function BuildingDirectory(props: BuildingDirectoryProps) {
   );
   const transition = { duration: reducedMotion ? 0 : 0.2 };
   const normalizedQuery = query.trim().toLocaleLowerCase("vi");
+
+  const isMissingResidence = (room: ConsoleRoomDto) =>
+    room.occupancyStatus === "OCCUPIED" && !room.hasSignedResidencePdf;
+
+  const matchesRoomFilter = (room: ConsoleRoomDto) => {
+    if (roomFilter === "ALL") return true;
+    if (roomFilter === "MISSING_RESIDENCE") return isMissingResidence(room);
+    return room.occupancyStatus === roomFilter;
+  };
+
   const matchesRoom = (room: ConsoleRoomDto) =>
-    (roomFilter === "ALL" || room.occupancyStatus === roomFilter) &&
+    matchesRoomFilter(room) &&
     (!normalizedQuery ||
       [
         room.code,
@@ -134,7 +145,7 @@ export function BuildingDirectory(props: BuildingDirectoryProps) {
     );
     if (
       roomFilter !== "ALL" &&
-      !buildingRooms.some((room) => room.occupancyStatus === roomFilter)
+      !buildingRooms.some(matchesRoomFilter)
     )
       return false;
     return (
@@ -168,6 +179,7 @@ export function BuildingDirectory(props: BuildingDirectoryProps) {
             className="h-11 w-full min-w-0 rounded-r-xl border-0 border-l border-slate-200 bg-transparent pl-2 pr-1 text-xs font-medium text-slate-700 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 dark:border-slate-700 dark:text-slate-200 dark:[color-scheme:dark]"
           >
             <option value="ALL">Tất cả phòng</option>
+            <option value="MISSING_RESIDENCE">⚠️ Chưa tạm trú</option>
             <option value="AVAILABLE">Phòng trống</option>
             <option value="OCCUPIED">Đang thuê</option>
             <option value="RESERVED">Giữ chỗ</option>
@@ -246,10 +258,11 @@ export function BuildingDirectory(props: BuildingDirectoryProps) {
               );
               const matchedRooms = buildingRooms.filter(
                 (room) =>
-                  (roomFilter === "ALL" ||
-                    room.occupancyStatus === roomFilter) &&
+                  matchesRoomFilter(room) &&
                   (buildingMatches || matchesRoom(room)),
               );
+              const missingResidenceRooms = buildingRooms.filter(isMissingResidence);
+              const missingResidenceCount = building.stats.missingResidenceRooms ?? missingResidenceRooms.length;
               const isOpen = expandedBuildings.includes(building.id);
               return (
                 <Accordion.Item
@@ -269,14 +282,25 @@ export function BuildingDirectory(props: BuildingDirectoryProps) {
                           <Building2 className="h-5 w-5" />
                         </span>
                         <span className="min-w-0">
-                          <span className="block truncate text-sm font-semibold text-slate-900 dark:text-white">
-                            {building.name}
+                          <span className="flex items-center gap-2">
+                            <span className="truncate text-sm font-semibold text-slate-900 dark:text-white">
+                              {building.name}
+                            </span>
+                            {missingResidenceCount > 0 && (
+                              <span
+                                className="inline-flex shrink-0 items-center gap-1 rounded-md bg-amber-100/90 px-1.5 py-0.5 text-[10.5px] font-semibold text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 dark:border dark:border-amber-800/60"
+                                title={`Tòa nhà có ${missingResidenceCount} phòng đang thuê chưa upload tạm trú`}
+                              >
+                                <AlertTriangle className="h-3 w-3 text-amber-600 dark:text-amber-400" />
+                                <span>{missingResidenceCount} chưa tạm trú</span>
+                              </span>
+                            )}
                           </span>
                           <span className="mt-1 block truncate text-xs font-normal text-slate-500 dark:text-slate-400">
                             {building.code} · {building.floors.length} tầng ·{" "}
                             {building.stats.totalRooms} phòng
                           </span>
-                          <span className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs font-normal">
+                          <span className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-normal">
                             <span className="text-slate-500 dark:text-slate-400">
                               {building.stats.occupiedRooms} đang thuê
                             </span>
@@ -392,6 +416,7 @@ export function BuildingDirectory(props: BuildingDirectoryProps) {
                                   (room) =>
                                     room.occupancyStatus === "AVAILABLE",
                                 ).length;
+                                const floorMissingResidence = floorRooms.filter(isMissingResidence).length;
                                 const floorOpen = expandedFloors.includes(
                                   floor.id,
                                 );
@@ -436,6 +461,11 @@ export function BuildingDirectory(props: BuildingDirectoryProps) {
                                             {available > 0 && (
                                               <span className="text-emerald-700 dark:text-emerald-400">
                                                 {available} trống
+                                              </span>
+                                            )}
+                                            {floorMissingResidence > 0 && (
+                                              <span className="font-semibold text-amber-600 dark:text-amber-400">
+                                                {floorMissingResidence} chưa tạm trú
                                               </span>
                                             )}
                                           </span>
@@ -507,6 +537,7 @@ export function BuildingDirectory(props: BuildingDirectoryProps) {
                                                 room.activeContract?.status === "EXPIRING"
                                                   ? roomStatuses.EXPIRING
                                                   : roomStatuses[room.occupancyStatus] || roomStatuses.UNKNOWN;
+                                              const missingResidence = isMissingResidence(room);
                                               return (
                                                 <button
                                                   type="button"
@@ -515,10 +546,18 @@ export function BuildingDirectory(props: BuildingDirectoryProps) {
                                                   onClick={() =>
                                                     props.onSelectRoom(room)
                                                   }
-                                                  aria-label={`Phòng ${room.code} · ${status.label}`}
-                                                  title={`Phòng ${room.code} · ${status.label}`}
-                                                  className={`flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-xl border px-1.5 py-2.5 text-center hover:brightness-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 sm:px-2.5 dark:hover:brightness-110 ${status.style}`}
+                                                  aria-label={`Phòng ${room.code} · ${status.label}${missingResidence ? ' · Chưa upload tạm trú' : ''}`}
+                                                  title={`Phòng ${room.code} · ${status.label}${missingResidence ? ' · Chưa upload tạm trú' : ''}`}
+                                                  className={`relative flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-xl border px-1.5 py-2 text-center hover:brightness-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 sm:px-2.5 dark:hover:brightness-110 ${status.style}`}
                                                 >
+                                                  {missingResidence && (
+                                                    <span
+                                                      className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-white shadow-sm ring-2 ring-white dark:ring-slate-900"
+                                                      title="Chưa upload tạm trú"
+                                                    >
+                                                      <AlertTriangle className="h-2.5 w-2.5" />
+                                                    </span>
+                                                  )}
                                                   <span className="block w-full truncate text-xs font-semibold tracking-tight text-slate-800 dark:text-slate-100 sm:text-sm">
                                                     {room.code}
                                                   </span>
@@ -526,6 +565,11 @@ export function BuildingDirectory(props: BuildingDirectoryProps) {
                                                     <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
                                                     <span className="truncate">{status.label}</span>
                                                   </span>
+                                                  {missingResidence && (
+                                                    <span className="inline-flex max-w-full items-center gap-0.5 rounded px-1 text-[9px] font-semibold text-amber-700 bg-amber-100/90 dark:bg-amber-950/70 dark:text-amber-300">
+                                                      Chưa tạm trú
+                                                    </span>
+                                                  )}
                                                 </button>
                                               );
                                             })}

@@ -10,6 +10,11 @@ const root = path.resolve(process.env.ADH_PAYMENT_PROOF_DIR || 'uploads/payment-
 const maxBytes = 8 * 1024 * 1024;
 const extensions: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 const proofPath = (transactionId: string, proof: ProofMeta) => path.join(root, transactionId, `${proof.id}.${extensions[proof.mimeType]}`);
+
+export async function purgePaymentProofs(transactionId: string) {
+  if (!/^[A-Za-z0-9-]{1,80}$/.test(transactionId)) throw new Error('Invalid transaction ID');
+  await fs.rm(path.join(root, transactionId), { recursive: true, force: true });
+}
 const validProof = (value: unknown): value is ProofMeta => !!value && typeof value === 'object' &&
   /^[0-9a-f-]{36}$/.test(String((value as any).id || '')) && !!extensions[String((value as any).mimeType || '')] &&
   Number.isSafeInteger(Number((value as any).size)) && typeof (value as any).originalName === 'string';

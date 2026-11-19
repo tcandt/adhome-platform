@@ -1,4 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Dialog } from '@animate-ui/react/primitives/base-ui/dialog';
+import { Button } from '@animate-ui/react/primitives/buttons/button';
+import { ShimmeringText } from '@animate-ui/react/primitives/texts/shimmering';
 import {
   AlertTriangle,
   ArrowDownRight,
@@ -24,6 +27,7 @@ import { type ContractListItem } from '../ContractsWorkspaceView';
 export interface ContractLiquidationModalProps {
   isOpen: boolean;
   contract: ContractListItem;
+  landlordEarly?: boolean;
   onClose: () => void;
   onSuccess: () => Promise<void>;
 }
@@ -42,18 +46,20 @@ const COMMON_DAMAGE_PRESETS = [
   { name: 'Sơn sửa lại tường', amountVnd: 300000 },
   { name: 'Hỏng hóc thiết bị điện', amountVnd: 400000 },
 ];
+const LANDLORD_EARLY_REASON = 'Chủ nhà yêu cầu chấm dứt trước hạn';
 
 export const ContractLiquidationModal: React.FC<ContractLiquidationModalProps> = ({
   isOpen,
   contract,
+  landlordEarly = false,
   onClose,
   onSuccess,
 }) => {
-  const todayIso = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const todayIso = useMemo(() => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date()), []);
 
   // Basic liquidation info
   const [liquidationDate, setLiquidationDate] = useState<string>(todayIso);
-  const [reason, setReason] = useState<string>('Hết hạn hợp đồng');
+  const [reason, setReason] = useState<string>(landlordEarly ? LANDLORD_EARLY_REASON : 'Hết hạn hợp đồng');
   const [roomNextStatus, setRoomNextStatus] = useState<'AVAILABLE' | 'MAINTENANCE'>('AVAILABLE');
 
   // Contract Deposit
@@ -120,6 +126,7 @@ export const ContractLiquidationModal: React.FC<ContractLiquidationModalProps> =
   // Execution states
   const [isLoadingPreview, setIsLoadingPreview] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [committed, setCommitted] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Load preview data from backend
@@ -135,7 +142,7 @@ export const ContractLiquidationModal: React.FC<ContractLiquidationModalProps> =
       );
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.ok) {
-        if (data.contract?.depositVnd) {
+        if (data.contract?.depositVnd != null) {
           setDepositVnd(Number(data.contract.depositVnd));
         }
         if (data.contract?.electricRateVnd) {
@@ -270,76 +277,87 @@ export const ContractLiquidationModal: React.FC<ContractLiquidationModalProps> =
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSaving || isLoadingPreview || isSyncingElectric) return;
+    if (!committed && landlordEarly && (!liquidationDate || liquidationDate < contract.startDate || liquidationDate >= contract.endDate || liquidationDate > todayIso)) {
+      setErrorMsg('Ngày chấm dứt phải trong thời hạn hợp đồng, trước ngày hết hạn và không sau hôm nay.');
+      return;
+    }
     setIsSaving(true);
     setErrorMsg(null);
+    let saved = committed;
 
     try {
-      const payload = {
-        reason: reason.trim(),
-        roomNextStatus,
-        liquidationDate,
-        depositVnd,
-        roomRentVnd,
-        roomRentNote: roomRentVnd > 0 ? roomRentNote.trim() : '',
-        electric: {
-          startKwh: parseFloat(electricStartKwh) || 0,
-          endKwh: parseFloat(electricEndKwh) || 0,
-          consumptionKwh: electricKwh,
-          ratePerKwhVnd: electricRateVnd,
-          amountVnd: electricAmountVnd,
-        },
-        water: {
-          mode: waterMode,
-          startM3: waterMode === 'PER_M3' ? parseFloat(waterStartM3) || 0 : null,
-          endM3: waterMode === 'PER_M3' ? parseFloat(waterEndM3) || 0 : null,
-          consumptionM3: waterMode === 'PER_M3' ? waterUsageM3 : null,
-          occupantsCount: waterMode === 'PER_PERSON' ? waterOccupants : null,
-          unitRateVnd: waterRateVnd,
-          amountVnd: waterAmountVnd,
-        },
-        damagesAndFees,
-        totalDeductionVnd,
-        settlementDifferenceVnd,
-        refundAction:
-          settlementDifferenceVnd > 0
-            ? {
-                createExpenseVoucher,
-                paymentMethod: refundPaymentMethod,
-                recipientInfo: refundRecipientInfo.trim(),
-              }
-            : undefined,
-        additionalCollectionAction:
-          settlementDifferenceVnd < 0
-            ? {
-                createInvoice: createAdditionalInvoice,
-                dueDate: additionalInvoiceDueDate,
-              }
-            : undefined,
-      };
-
-      const res = await fetch(
-        `/api/v1/console/v2/contracts/${encodeURIComponent(contract.id)}/terminate`,
-        {
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Requested-With': CONSOLE_CSRF_HEADER,
+      if (!committed) {
+        const payload = {
+          ...(landlordEarly ? { mode: 'LANDLORD_EARLY' } : {}),
+          reason: reason.trim(),
+          roomNextStatus,
+          liquidationDate,
+          depositVnd,
+          roomRentVnd,
+          roomRentNote: roomRentVnd > 0 ? roomRentNote.trim() : '',
+          electric: {
+            startKwh: parseFloat(electricStartKwh) || 0,
+            endKwh: parseFloat(electricEndKwh) || 0,
+            consumptionKwh: electricKwh,
+            ratePerKwhVnd: electricRateVnd,
+            amountVnd: electricAmountVnd,
           },
-          body: JSON.stringify(payload),
-        }
-      );
+          water: {
+            mode: waterMode,
+            startM3: waterMode === 'PER_M3' ? parseFloat(waterStartM3) || 0 : null,
+            endM3: waterMode === 'PER_M3' ? parseFloat(waterEndM3) || 0 : null,
+            consumptionM3: waterMode === 'PER_M3' ? waterUsageM3 : null,
+            occupantsCount: waterMode === 'PER_PERSON' ? waterOccupants : null,
+            unitRateVnd: waterRateVnd,
+            amountVnd: waterAmountVnd,
+          },
+          damagesAndFees,
+          totalDeductionVnd,
+          settlementDifferenceVnd,
+          refundAction:
+            settlementDifferenceVnd > 0
+              ? {
+                  createExpenseVoucher,
+                  paymentMethod: refundPaymentMethod,
+                  recipientInfo: refundRecipientInfo.trim(),
+                }
+              : undefined,
+          additionalCollectionAction:
+            settlementDifferenceVnd < 0
+              ? {
+                  createInvoice: createAdditionalInvoice,
+                  dueDate: additionalInvoiceDueDate,
+                }
+              : undefined,
+        };
 
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok) {
-        setErrorMsg(data.message || 'Không thể thực hiện thanh lý hợp đồng.');
-        return;
+        const res = await fetch(
+          `/api/v1/console/v2/contracts/${encodeURIComponent(contract.id)}/terminate`,
+          {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Requested-With': CONSOLE_CSRF_HEADER,
+            },
+            body: JSON.stringify(payload),
+          }
+        );
+
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) {
+          setErrorMsg(data.message || 'Không thể thực hiện thanh lý hợp đồng.');
+          return;
+        }
+        saved = true;
+        setCommitted(true);
       }
 
       await onSuccess();
       onClose();
     } catch {
-      setErrorMsg('Lỗi kết nối máy chủ. Vui lòng kiểm tra lại đường truyền.');
+      setErrorMsg(saved ? 'Đã quyết toán trên máy chủ. Hãy tải lại hồ sơ.' : 'Không nhận được xác nhận từ máy chủ. Vui lòng thử lại.');
     } finally {
       setIsSaving(false);
     }
@@ -348,8 +366,11 @@ export const ContractLiquidationModal: React.FC<ContractLiquidationModalProps> =
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs">
-      <div className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-2xl max-h-[92vh] shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+    <Dialog.Root open={isOpen} onOpenChange={open => { if (!open && !isSaving) onClose(); }}>
+      <Dialog.Portal>
+        <Dialog.Backdrop className="fixed inset-0 z-[150] bg-slate-900/60 backdrop-blur-sm" />
+        <Dialog.Viewport className="fixed inset-0 z-[151] flex items-center justify-center p-3 sm:p-4">
+          <Dialog.Popup from="bottom" className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-2xl max-h-[92dvh] shadow-2xl flex flex-col overflow-hidden outline-none">
         {/* Header */}
         <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/60 dark:bg-slate-900/40">
           <div className="flex items-center gap-3">
@@ -357,22 +378,24 @@ export const ContractLiquidationModal: React.FC<ContractLiquidationModalProps> =
               <Receipt className="w-5 h-5" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
-                  Thanh lý &amp; Quyết toán hợp đồng
-                </h3>
+              <div className="flex flex-wrap items-center gap-2">
+                <Dialog.Title className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
+                  {landlordEarly ? 'Chấm dứt hợp đồng trước hạn' : 'Thanh lý & Quyết toán hợp đồng'}
+                </Dialog.Title>
                 <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
                   {contract.roomCode}
                 </span>
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              <Dialog.Description className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                 HĐ: <strong className="font-mono text-slate-700 dark:text-slate-300">{contract.contractCode}</strong> · Khách: <strong>{contract.tenantName}</strong> ({contract.tenantPhone})
-              </p>
+              </Dialog.Description>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
+            disabled={isSaving}
+            aria-label="Đóng"
             className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
           >
             <X className="w-5 h-5" />
@@ -382,7 +405,7 @@ export const ContractLiquidationModal: React.FC<ContractLiquidationModalProps> =
         {/* Scrollable Form Body */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-5 space-y-5 text-xs">
           {errorMsg && (
-            <div className="p-3 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 rounded-xl flex items-center gap-2">
+            <div role="alert" className="p-3 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 rounded-xl flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
               <span>{errorMsg}</span>
             </div>
@@ -404,10 +427,13 @@ export const ContractLiquidationModal: React.FC<ContractLiquidationModalProps> =
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-slate-600 dark:text-slate-300 font-semibold mb-1">
-                  Ngày thanh lý / Trả phòng *
+                  {landlordEarly ? 'Ngày chấm dứt / Trả phòng *' : 'Ngày thanh lý / Trả phòng *'}
                 </label>
                 <DateInput
                   value={liquidationDate}
+                  aria-label={landlordEarly ? 'Ngày chấm dứt' : 'Ngày thanh lý'}
+                  min={landlordEarly ? contract.startDate : undefined}
+                  max={landlordEarly ? todayIso : undefined}
                   onChange={(val) => {
                     setLiquidationDate(val);
                     setAdditionalInvoiceDueDate(val);
@@ -929,9 +955,9 @@ export const ContractLiquidationModal: React.FC<ContractLiquidationModalProps> =
           <section className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
             <div>
               <label className="block text-slate-600 dark:text-slate-300 font-semibold mb-1">
-                Lý do thanh lý *
+                {landlordEarly ? 'Lý do chấm dứt' : 'Lý do thanh lý *'}
               </label>
-              <select
+              {landlordEarly ? <p className="py-2 font-semibold">{LANDLORD_EARLY_REASON}</p> : <select
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
                 className="w-full h-9 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-semibold"
@@ -942,7 +968,7 @@ export const ContractLiquidationModal: React.FC<ContractLiquidationModalProps> =
                 <option value="Bên cho thuê chấm dứt do vi phạm">Bên cho thuê chấm dứt do vi phạm</option>
                 <option value="Chuyển sang phòng khác">Chuyển sang phòng khác</option>
                 <option value="Khác">Lý do khác</option>
-              </select>
+              </select>}
             </div>
             <div>
               <label className="block text-slate-600 dark:text-slate-300 font-semibold mb-1">
@@ -969,26 +995,25 @@ export const ContractLiquidationModal: React.FC<ContractLiquidationModalProps> =
             >
               Hủy
             </button>
-            <button
+            <Button
               type="submit"
-              disabled={isSaving}
+              disabled={isSaving || (!committed && (isLoadingPreview || isSyncingElectric))}
               className="px-5 py-2.5 text-xs font-bold bg-rose-600 hover:bg-rose-700 active:scale-98 text-white rounded-xl shadow-xs flex items-center gap-2 transition-all disabled:opacity-50"
             >
               {isSaving ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Đang xử lý thanh lý...</span>
-                </>
+                <span role="status"><ShimmeringText text={committed ? 'Đang tải lại hồ sơ…' : 'Đang quyết toán…'} /></span>
               ) : (
                 <>
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>Xác nhận thanh lý &amp; Quyết toán cọc</span>
+                  <span>{committed ? 'Tải lại hồ sơ' : landlordEarly ? 'Xác nhận chấm dứt và quyết toán' : 'Xác nhận thanh lý & Quyết toán cọc'}</span>
                 </>
               )}
-            </button>
+            </Button>
           </div>
         </form>
-      </div>
-    </div>
+          </Dialog.Popup>
+        </Dialog.Viewport>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 };

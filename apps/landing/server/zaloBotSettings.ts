@@ -38,8 +38,68 @@ export async function handleZaloBotSettings(req: IncomingMessage, res: ServerRes
   try {
     const response = await fetch(target, { method: req.method, headers: { Authorization: `Bearer ${apiKey}`, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(15000) });
     const result = await response.json();
-    if (response.ok && req.method === 'POST') {
-      await prisma.consoleAuditLog.create({ data: { orgId: actor.orgId, actorId: actor.id, actorEmail: actor.email, actorRole: actor.role, entityType: 'ZALO_BOT', entityId: actor.orgId, action: body?.action === 'setup' ? 'GENERATE_GROUP_SETUP' : 'CONFIGURE_BOT', summary: body?.action === 'setup' ? 'Tạo mã kết nối nhóm quản trị' : 'Cập nhật kết nối Zalo Bot' } });
+    if (response.ok) {
+      if (req.method === 'POST') {
+        await prisma.consoleAuditLog.create({ data: { orgId: actor.orgId, actorId: actor.id, actorEmail: actor.email, actorRole: actor.role, entityType: 'ZALO_BOT', entityId: actor.orgId, action: body?.action === 'setup' ? 'GENERATE_GROUP_SETUP' : 'CONFIGURE_BOT', summary: body?.action === 'setup' ? 'Tạo mã kết nối nhóm quản trị' : 'Cập nhật kết nối Zalo Bot' } });
+      }
+
+      // If bot is verified / connected: enforce single-active rule
+      if ((req.method === 'POST' && (body?.token || body?.action === 'setup')) || (req.method === 'GET' && result?.botId)) {
+        await prisma.$transaction(async (tx) => {
+          await tx.notificationChannelConfig.updateMany({
+            where: { orgId: actor.orgId, channelType: 'ZALO_BOT' },
+            data: {
+              isEnabled: true,
+              status: 'VERIFIED',
+              targetLabel: 'Zalo Bot',
+              secretHint: '••••••••',
+            },
+          });
+          await tx.notificationChannelConfig.updateMany({
+            where: { orgId: actor.orgId, channelType: { not: 'ZALO_BOT' } },
+            data: {
+              isEnabled: false,
+              status: 'DISABLED',
+            },
+          });
+
+          const existingAuto = await tx.integrationConnection.findUnique({
+            where: { orgId_providerId: { orgId: actor.orgId, providerId: 'SETTLEMENT_AUTOMATION' } },
+          });
+          const autoCaps = existingAuto?.capabilities && typeof existingAuto.capabilities === 'object'
+            ? (existingAuto.capabilities as Record<string, unknown>)
+            : {};
+
+          await tx.integrationConnection.upsert({
+            where: { orgId_providerId: { orgId: actor.orgId, providerId: 'SETTLEMENT_AUTOMATION' } },
+            create: {
+              orgId: actor.orgId,
+              providerId: 'SETTLEMENT_AUTOMATION',
+              category: 'AUTOMATION',
+              displayName: 'Settlement Automation Policy',
+              isEnabled: true,
+              status: 'CONNECTED',
+              capabilities: {
+                ...autoCaps,
+                mode: (autoCaps.mode as string) || 'AUTO_FULL',
+                defaultChannel: 'ZALO_BOT',
+                electricSpikeThresholdKwh: Number(autoCaps.electricSpikeThresholdKwh ?? 2000),
+                waterSpikeThresholdM3: Number(autoCaps.waterSpikeThresholdM3 ?? 100),
+                updatedBy: actor.email || actor.id,
+                updatedAt: new Date().toISOString(),
+              },
+            },
+            update: {
+              capabilities: {
+                ...autoCaps,
+                defaultChannel: 'ZALO_BOT',
+                updatedBy: actor.email || actor.id,
+                updatedAt: new Date().toISOString(),
+              },
+            },
+          });
+        });
+      }
     }
     helpers.sendJson(res, response.status, { ok: response.ok, ...result });
   } catch {

@@ -16,7 +16,7 @@ export function tenantDirectory(tenants: ConsoleTenantDto[], rooms: ConsoleRoomD
     }
     rows.push({ id: `occupant:${occupant.id}`, occupantId: occupant.id, relationToPrimary: occupant.relationToPrimary,
       fullName: occupant.fullName, phone: occupant.phone || '', idNumber: occupant.idNumber || '', email: '', emergencyContact: '', notes: '',
-      residenceRegStatus: occupant.residenceRegStatus, primaryBuildingId: room.buildingId, buildingCode: room.buildingCode,
+      residenceRegStatus: occupant.residenceRegStatus, notificationChannel: 'UNREGISTERED', primaryBuildingId: room.buildingId, buildingCode: room.buildingCode,
       buildingName: room.buildingName, currentRoomId: room.id, currentRoomCode: room.code,
       activeContractCode: contract?.contractCode || (room.activeContract && room.activeContract.id === occupant.contractId ? room.activeContract.contractCode : null),
       activeContractEndDate: null, monthlyRentVnd: null, createdAt: room.updatedAt, updatedAt: room.updatedAt });

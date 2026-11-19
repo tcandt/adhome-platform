@@ -71,7 +71,7 @@ function fillHouseholdTable(xml: string, members: any[], tableIndex: number) {
     || sourceRows[0].insertBefore(document.createElementNS(ns, 'w:trPr'), sourceRows[0].firstChild);
   if (!sourceRows[0].getElementsByTagNameNS(ns, 'tblHeader').length) headerProperties.appendChild(document.createElementNS(ns, 'w:tblHeader'));
   sourceRows.slice(1).forEach(row => table.removeChild(row));
-  for (let index = 0; index < Math.max(sourceRows.length - 1, members.length); index++) {
+  for (let index = 0; index < Math.max(2, members.length); index++) {
     const row = template.cloneNode(true) as typeof template;
     table.appendChild(row);
     const rowProperties = row.getElementsByTagNameNS(ns, 'trPr').item(0) || row.insertBefore(document.createElementNS(ns, 'w:trPr'), row.firstChild);
@@ -194,6 +194,7 @@ export async function convertRentalPdf(buffer: Buffer) {
 export const attachmentLabels: Record<string, string> = {
   ID_FRONT: 'CCCD mặt trước', ID_BACK: 'CCCD mặt sau', TITLE_FRONT: 'Sổ đỏ căn nhà mặt trước', TITLE_BACK: 'Sổ đỏ căn nhà mặt sau',
   BUSINESS_REGISTRATION: 'Giấy chứng nhận đăng ký hộ kinh doanh', SALE_CERTIFICATE: 'Giấy chứng nhận mua bán nhà ở',
+  SIGNED_RESIDENCE_PDF: 'File PDF đã ký xác nhận tạm trú',
 };
 export const requiredResidenceAttachmentKinds = [
   ...identityDocumentKinds,

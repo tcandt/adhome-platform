@@ -22,6 +22,7 @@ import { ContractDocumentLink } from '@/shared/ui/ContractDocumentDialog';
 import { SettlementProgressBar } from '@/shared/ui/SettlementAnimatePrimitives';
 import {
   formatContractDisplayCode,
+  formatVnDate,
   formatWaterBillingLabel,
 } from '@/shared/tokens/designTokens';
 
@@ -43,7 +44,11 @@ export interface ContractListItem {
   electricRateVnd: number;
   waterBillingMethod: string;
   waterRateVnd: number;
+  handoverMeterKwh?: number | null;
+  handoverWaterM3?: number | null;
+  occupantsCount?: number;
   status: string;
+  billingCycle?: string;
   missingDocumentFields?: string[];
   documentStatus?: 'COMPLETE' | 'INCOMPLETE';
 }
@@ -56,6 +61,7 @@ interface ContractsWorkspaceViewProps {
   onOpenExtend: (contract: ContractListItem) => void;
   onOpenTransfer: (contract: ContractListItem) => void;
   onOpenTerminate: (contract: ContractListItem) => void;
+  onOpenEdit?: (contract: ContractListItem) => void;
 }
 
 type ContractStatusFilter = 'ALL' | 'ACTIVE' | 'DRAFT' | 'EXPIRING' | 'TERMINATED';
@@ -109,6 +115,7 @@ export const ContractsWorkspaceView: React.FC<ContractsWorkspaceViewProps> = ({
   onOpenExtend,
   onOpenTransfer,
   onOpenTerminate,
+  onOpenEdit,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [contractStatusFilter, setContractStatusFilter] =
@@ -183,6 +190,14 @@ export const ContractsWorkspaceView: React.FC<ContractsWorkspaceViewProps> = ({
       : []),
     ...(c.status === 'ACTIVE' || c.status === 'EXTENDED' || c.status === 'EXPIRING'
       ? [
+        ...(onOpenEdit
+          ? [
+            {
+              label: 'Sửa thời hạn & điều khoản',
+              onClick: () => onOpenEdit(c),
+            },
+          ]
+          : []),
         {
           label: 'Gia hạn hợp đồng',
           onClick: () => onOpenExtend(c),
@@ -195,6 +210,13 @@ export const ContractsWorkspaceView: React.FC<ContractsWorkspaceViewProps> = ({
           label: 'Thanh lý hợp đồng',
           variant: 'danger' as const,
           onClick: () => onOpenTerminate(c),
+        },
+      ]
+      : onOpenEdit
+      ? [
+        {
+          label: 'Sửa thời hạn & điều khoản',
+          onClick: () => onOpenEdit(c),
         },
       ]
       : []),
@@ -680,14 +702,26 @@ export const ContractsWorkspaceView: React.FC<ContractsWorkspaceViewProps> = ({
                           </div>
                           <div className="flex items-center justify-between gap-2">
                             <span className="text-slate-500 shrink-0">Giá thuê:</span>
-                            <span className="font-bold tabular-nums text-slate-900 dark:text-white whitespace-nowrap">
-                              {c.monthlyRentVnd.toLocaleString('vi-VN')} đ/tháng
-                            </span>
+                            <div className="text-right">
+                              <span className="font-bold tabular-nums text-slate-900 dark:text-white whitespace-nowrap">
+                                {c.monthlyRentVnd.toLocaleString('vi-VN')} đ/tháng
+                              </span>
+                              {c.billingCycle && c.billingCycle !== 'MONTHLY' && (
+                                <div>
+                                  <span className="inline-block rounded px-1.5 py-0.5 text-[9.5px] font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300">
+                                    {c.billingCycle === 'QUARTERLY' ? 'Đóng 3 tháng/lần' :
+                                     c.billingCycle === 'BIANNUAL' ? 'Đóng 6 tháng/lần' :
+                                     c.billingCycle === 'ANNUAL' ? 'Đóng 12 tháng/lần' :
+                                     c.billingCycle === 'BI_MONTHLY' ? 'Đóng 2 tháng/lần' : c.billingCycle}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
                           </div>
                           <div className="flex items-center justify-between gap-2">
                             <span className="text-slate-500 shrink-0">Thời hạn:</span>
                             <span className="font-mono text-slate-700 dark:text-slate-300 text-[10.5px] whitespace-nowrap">
-                              {c.startDate} → {c.endDate}
+                              {formatVnDate(c.startDate)} → {formatVnDate(c.endDate)}
                             </span>
                           </div>
                         </div>
@@ -713,7 +747,10 @@ export const ContractsWorkspaceView: React.FC<ContractsWorkspaceViewProps> = ({
                             </span>
                           ) : (
                             <span className="font-bold text-emerald-600 dark:text-emerald-400 tabular-nums whitespace-nowrap">
-                              {(c.collectedDepositVnd ?? c.depositVnd).toLocaleString('vi-VN')} đ (đủ)
+                              {(c.collectedDepositVnd !== undefined && c.collectedDepositVnd <= c.depositVnd
+                                ? c.collectedDepositVnd
+                                : c.depositVnd
+                              ).toLocaleString('vi-VN')} đ (đủ)
                             </span>
                           )}
                         </div>
@@ -841,7 +878,7 @@ export const ContractsWorkspaceView: React.FC<ContractsWorkspaceViewProps> = ({
                           {/* Col 4: Thời hạn & Tiện ích */}
                           <td className="py-2.5 px-2.5 whitespace-nowrap">
                             <div className="font-mono text-[11px] whitespace-nowrap text-slate-700 dark:text-slate-300">
-                              {c.startDate} → {c.endDate}
+                              {formatVnDate(c.startDate)} → {formatVnDate(c.endDate)}
                             </div>
                             <div className="text-[10.5px] text-slate-500 dark:text-slate-400 flex items-center gap-1 mt-0.5 whitespace-nowrap">
                               <span>
@@ -866,6 +903,16 @@ export const ContractsWorkspaceView: React.FC<ContractsWorkspaceViewProps> = ({
                             <div className="font-bold text-slate-900 dark:text-white">
                               {c.monthlyRentVnd.toLocaleString('vi-VN')} đ/tháng
                             </div>
+                            {c.billingCycle && c.billingCycle !== 'MONTHLY' && (
+                              <div>
+                                <span className="inline-block rounded px-1.5 py-0.5 text-[9.5px] font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300">
+                                  {c.billingCycle === 'QUARTERLY' ? 'Đóng 3 tháng/lần' :
+                                   c.billingCycle === 'BIANNUAL' ? 'Đóng 6 tháng/lần' :
+                                   c.billingCycle === 'ANNUAL' ? 'Đóng 12 tháng/lần' :
+                                   c.billingCycle === 'BI_MONTHLY' ? 'Đóng 2 tháng/lần' : c.billingCycle}
+                                </span>
+                              </div>
+                            )}
                             <div className="text-[10.5px] text-slate-500">
                               <div>Cọc: {c.depositVnd.toLocaleString('vi-VN')} đ</div>
                               {c.collectedDepositVnd !== undefined &&
@@ -880,7 +927,10 @@ export const ContractsWorkspaceView: React.FC<ContractsWorkspaceViewProps> = ({
                                   </div>
                                 ) : (
                                   <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold whitespace-nowrap mt-0.5">
-                                    Thu đủ: {c.collectedDepositVnd.toLocaleString('vi-VN')} đ
+                                    Thu đủ: {(c.collectedDepositVnd !== undefined && c.collectedDepositVnd <= c.depositVnd
+                                      ? c.collectedDepositVnd
+                                      : c.depositVnd
+                                    ).toLocaleString('vi-VN')} đ
                                   </div>
                                 ))}
                             </div>

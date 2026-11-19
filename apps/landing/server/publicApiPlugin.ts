@@ -184,6 +184,14 @@ export async function ensurePostgreSqlSeeded(): Promise<void> {
   seedPromise = (async () => {
     const prisma = getPrismaClient();
 
+    try {
+      await prisma.$executeRawUnsafe(
+        'ALTER TABLE "tenants" ADD COLUMN IF NOT EXISTS "notification_channel" TEXT DEFAULT \'UNREGISTERED\';'
+      );
+    } catch {
+      // Non-blocking additive column migration
+    }
+
     // 1. Seed Primary Organization + Empty SaaS Organization (0..N buildings/floors/rooms proof)
     await prisma.organization.upsert({
       where: { id: DEFAULT_ORG_ID },

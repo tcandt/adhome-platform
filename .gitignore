@@ -10,6 +10,7 @@ node_modules/
 # Production builds
 dist/
 dist-api/
+dist-server/
 build/
 .next/
 out/

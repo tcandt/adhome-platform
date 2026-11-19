@@ -4,6 +4,7 @@ import { readBuildingLandlords, resolveBuildingLandlord } from './buildingLandlo
 import { actorHasPermission, isBuildingAllowedForActor } from './authRbac';
 import { availableDeposit, rentalSettlement, vnd } from './rentalFinance';
 import { compiledResidencePdf, convertRentalPdf, renderRentalDocx, validateDocumentProfile } from './rentalDocuments';
+import { getCurrentVnPeriodKey, shiftPeriodKey, syncLegacyInvoicesForPeriod } from './settlementCenterApi';
 
 const fail = (message: string, statusCode = 422) => { throw Object.assign(new Error(message), { statusCode }); };
 const active = ['DRAFT', 'ACTIVE', 'EXPIRING', 'EXTENDED'];
@@ -78,7 +79,7 @@ export async function handleRentalWorkflow(req: any, res: any, pathname: string,
       const primary = occupants.find((o: any) => o.relationToPrimary === 'PRIMARY');
       const saved = profile?.metadata as any;
       let resolvedProfile = saved || null;
-      if (contract && !saved) resolvedProfile = { ...documentDefaults, tenant: primary ? toPerson(primary) : { fullName: contract.tenant?.fullName || '', phone: contract.tenant?.phone || '', idNumber: contract.tenant?.idNumber || '', birthDate: '', gender: '', address: '' }, members: occupants.filter((o: any) => o !== primary).map(toPerson), signedDate: today(), purpose: 'Để ở', durationText: `${Math.max(1, Math.round((Date.parse(contract.endDate) - Date.parse(contract.startDate)) / 86400000) + 1)} ngày`, leaseTemplate: 'LEASE_1PN' };
+      if (contract && !saved) resolvedProfile = { ...documentDefaults, tenant: primary ? toPerson(primary) : { fullName: contract.tenant?.fullName || '', phone: contract.tenant?.phone || '', idNumber: contract.tenant?.idNumber || '', birthDate: '', gender: '', address: '' }, members: occupants.filter((o: any) => o !== primary).map(toPerson), signedDate: contract.signedAt ? new Date(contract.signedAt).toISOString().slice(0, 10) : (contract.startDate || today()), purpose: 'Để ở', durationText: `${Math.max(1, Math.round((Date.parse(contract.endDate) - Date.parse(contract.startDate)) / 86400000) + 1)} ngày`, leaseTemplate: 'LEASE_1PN' };
       if (saved && contract) {
         resolvedProfile = mergeRentalOccupants(saved, contract.occupants || []);
       }
@@ -220,7 +221,10 @@ export async function handleRentalWorkflow(req: any, res: any, pathname: string,
     if (!['SHARED_ROOM', 'ENTIRE_ROOM'].includes(rentalModel)) fail('Chọn hình thức thuê hợp lệ.');
     if (members.length + 1 > room.maxOccupants) fail('Số người vượt sức chứa phòng.');
     if (rentalModel === 'SHARED_ROOM' && members.length) fail('Mỗi khách ghép phải có hợp đồng riêng; không thêm người ghép vào hợp đồng này.');
-    if (body.intent === 'IMPORT' && (!validDate(body.paidThrough) || !validDate(body.takeoverDate))) fail('Nhập ngày tiếp quản và ngày đã thanh toán đến.');
+    if (body.intent === 'IMPORT') {
+      if (!validDate(body.paidThrough) || !validDate(body.takeoverDate)) fail('Nhập ngày tiếp quản và ngày đã thanh toán đến.');
+      if (body.paidThrough < body.startDate) fail('Ngày đã thanh toán tiền thuê đến không thể trước ngày bắt đầu hợp đồng.');
+    }
     await handleWithIdempotency(prisma, actor.orgId, 'RENTAL_ONBOARDING', req.headers['idempotency-key'], body, res, async () => {
       const result = await prisma.$transaction(async (tx: any) => {
         await tx.$executeRaw`SELECT id FROM "console_rooms" WHERE id = ${room.id} FOR UPDATE`;
@@ -277,6 +281,7 @@ export async function handleRentalWorkflow(req: any, res: any, pathname: string,
             orgId: actor.orgId, buildingId: room.buildingId, roomId: room.id, tenantId: tenant.id, contractCode: code,
             startDate: body.startDate, endDate: body.endDate, rentalModel, monthlyRentVnd: BigInt(monthly), depositVnd: BigInt(amount), occupantsCount: members.length + 1,
             status: body.intent === 'IMPORT' ? 'ACTIVE' : 'DRAFT', moveInDate: body.intent === 'IMPORT' ? body.startDate : null,
+            signedAt: body.intent === 'IMPORT' ? new Date(`${body.startDate}T00:00:00.000Z`) : (body.signedDate ? new Date(`${body.signedDate}T00:00:00.000Z`) : null),
             electricRateVnd: room.electricBillingMode === 'HUNONIC_AUTO' ? 0 : room.electricRateVnd ?? room.building.electricRateVnd ?? org?.defaultElectricRateVnd ?? 3800,
             waterBillingMethod: room.waterBillingMethod || room.building.waterBillingMethod || org?.defaultWaterMethod || 'PER_M3',
             waterRateVnd: room.waterRateVnd ?? room.building.waterRateVnd ?? org?.defaultWaterRateVnd ?? 15000,
@@ -319,9 +324,24 @@ export async function handleRentalWorkflow(req: any, res: any, pathname: string,
         const status = joiningShared ? fresh.occupancyStatus : body.intent === 'IMPORT' ? 'OCCUPIED' : 'RESERVED';
         await tx.consoleRoom.update({ where: { id: room.id }, data: { occupancyStatus: status, ...(body.intent === 'HOLD' ? {} : { rentalModel }) } });
         if (room.publicListingId) await tx.publicRoomListing.update({ where: { id: room.publicListingId }, data: { status, ...(body.intent === 'HOLD' ? {} : { rentalModel }) } });
+        if (body.intent === 'IMPORT' && p) p.signedDate = body.startDate;
         await saveRentalProfile(tx, actor, room, entity.id, p);
         return { entityId: entity.id, intent: body.intent };
       });
+
+      if (result.intent === 'IMPORT') {
+        const curP = getCurrentVnPeriodKey();
+        for (const p of [shiftPeriodKey(curP, -2), shiftPeriodKey(curP, -1), curP]) {
+          await syncLegacyInvoicesForPeriod({
+            prisma,
+            orgId: actor.orgId,
+            scopedBuildingIds: [room.buildingId],
+            periodKey: p,
+            actorEmail: actor.email || 'Phê duyệt thủ công (Tiếp quản hợp đồng)',
+          }).catch(() => null);
+        }
+      }
+
       return { status: 201, body: { ok: true, ...result } };
     });
     return true;

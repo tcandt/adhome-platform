@@ -1,12 +1,25 @@
 import React, { useMemo, useState } from 'react';
 import { Dialog } from '@animate-ui/react/primitives/base-ui/dialog';
+import { Popover } from '@animate-ui/react/primitives/base-ui/popover';
 import {
+  ArrowDownLeft,
+  ArrowUpRight,
   BarChart3,
   Building2,
+  CheckCircle2,
+  ChevronDown,
+  Coins,
   Download,
+  Droplets,
+  FileSpreadsheet,
+  Loader2,
+  Scale,
+  TrendingDown,
   TrendingUp,
   Wallet,
+  Wrench,
   X,
+  Zap,
 } from 'lucide-react';
 import { SettlementProgressBar } from '@/shared/ui/SettlementAnimatePrimitives';
 import {
@@ -15,6 +28,10 @@ import {
   downloadCsvFile,
   useResponsiveViewMode,
 } from '@/shared/ui/WorkspaceToolbarControls';
+import {
+  exportRoomMatrixExcel,
+  type RoomMatrixPayload,
+} from './reportExcelExporter';
 
 export interface ReportBuildingBreakdown {
   buildingId: string;
@@ -29,10 +46,25 @@ export interface ReportBuildingBreakdown {
   receivableVnd: number;
   operatingExpenseVnd?: number;
   netResultVnd?: number;
+  // Bổ sung chi tiết Doanh thu & Thực thu
+  invoicedRentVnd?: number;
+  invoicedElectricVnd?: number;
+  invoicedWaterVnd?: number;
+  invoicedServiceVnd?: number;
+  collectedRentVnd?: number;
+  collectedElectricVnd?: number; // Tổng tiền điện thực thu
+  collectedWaterVnd?: number;    // Tổng tiền nước thực thu
+  collectedServiceVnd?: number;
+  // Bổ sung chi tiết Chi phí
+  electricExpenseVnd?: number;   // Tổng tiền điện đã chi
+  waterExpenseVnd?: number;      // Tổng tiền nước đã chi
+  generalExpenseVnd?: number;    // Chi phí vận hành
+  totalExpenseVnd?: number;      // Tổng chi phí
 }
 
 interface ReportsWorkspaceViewProps {
   breakdown: ReportBuildingBreakdown[];
+  roomMatrixData?: RoomMatrixPayload | null;
   selectedPeriod: string;
   onChangePeriod: (nextPeriod: string) => void;
   shiftPeriodKey: (periodKey: string, deltaMonths: number) => string;
@@ -44,6 +76,7 @@ type SortKey = 'COLLECTED_DESC' | 'RECEIVABLE_DESC' | 'OCCUPANCY_DESC' | 'CODE_A
 
 export const ReportsWorkspaceView: React.FC<ReportsWorkspaceViewProps> = ({
   breakdown,
+  roomMatrixData,
   selectedPeriod,
   onChangePeriod,
   shiftPeriodKey,
@@ -55,6 +88,9 @@ export const ReportsWorkspaceView: React.FC<ReportsWorkspaceViewProps> = ({
   const [debtFilter, setDebtFilter] = useState<'ALL' | 'HAS_DEBT' | 'SETTLED'>('ALL');
   const [sortBy, setSortBy] = useState<SortKey>('COLLECTED_DESC');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
+  const [exportFeedback, setExportFeedback] = useState<string | null>(null);
   const [selectedBuilding, setSelectedBuilding] =
     useState<ReportBuildingBreakdown | null>(null);
 
@@ -93,6 +129,15 @@ export const ReportsWorkspaceView: React.FC<ReportsWorkspaceViewProps> = ({
         acc.collectedVnd += b.collectedVnd;
         acc.receivableVnd += b.receivableVnd;
         acc.operatingExpenseVnd += b.operatingExpenseVnd || 0;
+        acc.collectedElectricVnd += b.collectedElectricVnd || 0;
+        acc.collectedWaterVnd += b.collectedWaterVnd || 0;
+        acc.electricExpenseVnd += b.electricExpenseVnd || 0;
+        acc.waterExpenseVnd += b.waterExpenseVnd || 0;
+        acc.generalExpenseVnd += b.generalExpenseVnd || 0;
+        acc.totalExpenseVnd +=
+          b.totalExpenseVnd !== undefined
+            ? b.totalExpenseVnd
+            : b.operatingExpenseVnd || 0;
         acc.netResultVnd +=
           b.netResultVnd !== undefined
             ? b.netResultVnd
@@ -107,6 +152,12 @@ export const ReportsWorkspaceView: React.FC<ReportsWorkspaceViewProps> = ({
         collectedVnd: 0,
         receivableVnd: 0,
         operatingExpenseVnd: 0,
+        collectedElectricVnd: 0,
+        collectedWaterVnd: 0,
+        electricExpenseVnd: 0,
+        waterExpenseVnd: 0,
+        generalExpenseVnd: 0,
+        totalExpenseVnd: 0,
         netResultVnd: 0,
       }
     );
@@ -121,6 +172,26 @@ export const ReportsWorkspaceView: React.FC<ReportsWorkspaceViewProps> = ({
       ? Math.round((totals.collectedVnd / totals.invoicedVnd) * 100)
       : 0;
 
+  const handleExportExcel = async () => {
+    setIsExportingExcel(true);
+    setIsExportMenuOpen(false);
+    try {
+      await exportRoomMatrixExcel({
+        roomMatrixData,
+        activePeriod: selectedPeriod,
+        breakdown: filteredBreakdown,
+      });
+      setExportFeedback('Đã xuất file Excel báo cáo theo phòng thành công!');
+      setTimeout(() => setExportFeedback(null), 4000);
+    } catch (err) {
+      console.error('Lỗi xuất file Excel:', err);
+      // Fallback
+      handleExportCsv();
+    } finally {
+      setIsExportingExcel(false);
+    }
+  };
+
   const handleExportCsv = () => {
     downloadCsvFile(
       `bao-cao-doanh-thu-${selectedPeriod}.csv`,
@@ -131,13 +202,18 @@ export const ReportsWorkspaceView: React.FC<ReportsWorkspaceViewProps> = ({
         'Tỷ lệ (%)',
         'Tiền thuê HĐ',
         'Đã lập HĐ',
-        'Thực thu',
-        'Công nợ',
-        'Chi phí VH',
+        'Thực thu tổng',
+        'Điện thực thu',
+        'Nước thực thu',
+        'Công nợ chưa thu',
+        'Điện đã chi',
+        'Nước đã chi',
+        'Chi phí vận hành',
+        'Tổng chi phí',
         'Lãi gộp kỳ',
       ],
       filteredBreakdown.map((b) => {
-        const exp = b.operatingExpenseVnd || 0;
+        const exp = b.totalExpenseVnd || b.operatingExpenseVnd || 0;
         const net = b.netResultVnd !== undefined ? b.netResultVnd : b.collectedVnd - exp;
         return [
           b.buildingCode,
@@ -147,7 +223,12 @@ export const ReportsWorkspaceView: React.FC<ReportsWorkspaceViewProps> = ({
           b.contractedRentVnd,
           b.invoicedVnd,
           b.collectedVnd,
+          b.collectedElectricVnd || 0,
+          b.collectedWaterVnd || 0,
           b.receivableVnd,
+          b.electricExpenseVnd || 0,
+          b.waterExpenseVnd || 0,
+          b.generalExpenseVnd || 0,
           exp,
           net,
         ];
@@ -157,6 +238,23 @@ export const ReportsWorkspaceView: React.FC<ReportsWorkspaceViewProps> = ({
 
   return (
     <div data-testid="reports-workspace-view" className="space-y-3">
+      {/* Export feedback toast */}
+      {exportFeedback && (
+        <div className="px-3.5 py-2.5 text-xs bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 rounded-xl flex items-center justify-between shadow-xs animate-in fade-in slide-in-from-top-1 duration-200">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <span className="font-medium">{exportFeedback}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setExportFeedback(null)}
+            className="text-emerald-500 hover:text-emerald-700 dark:hover:text-emerald-300"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Compact Header & Period Stepper */}
       <div className="flex items-center gap-2 rounded-2xl border border-slate-200/90 bg-white p-1.5 sm:px-3 sm:py-2.5 dark:border-slate-800 dark:bg-[#111827]">
         <CompactPeriodStepper
@@ -167,17 +265,84 @@ export const ReportsWorkspaceView: React.FC<ReportsWorkspaceViewProps> = ({
           fullWidth
         />
 
-        <button
-          type="button"
-          data-testid="reports-export-csv"
-          onClick={handleExportCsv}
-          disabled={filteredBreakdown.length === 0}
-          aria-label="Xuất CSV"
-          title="Xuất CSV"
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200 shadow-xs transition-colors"
-        >
-          <Download className="h-4 w-4" />
-        </button>
+        {/* Export Popover Menu (@animate-ui/react Popover) */}
+        <Popover.Root open={isExportMenuOpen} onOpenChange={setIsExportMenuOpen}>
+          <Popover.Trigger
+            type="button"
+            data-testid="reports-export-btn"
+            aria-label="Xuất báo cáo"
+            title="Xuất báo cáo theo phòng hoặc CSV"
+            disabled={filteredBreakdown.length === 0 || isExportingExcel}
+            className="inline-flex h-9 items-center gap-1.5 px-3 rounded-xl border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 disabled:opacity-50 shadow-xs transition-colors text-xs font-semibold shrink-0 cursor-pointer"
+          >
+            {isExportingExcel ? (
+              <Loader2 className="h-4 w-4 animate-spin text-emerald-600 dark:text-emerald-400" />
+            ) : (
+              <FileSpreadsheet className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+            )}
+            <span className="hidden sm:inline">Xuất báo cáo</span>
+            <ChevronDown className="h-3 w-3 opacity-60" />
+          </Popover.Trigger>
+          <Popover.Portal>
+            <Popover.Positioner side="bottom" align="end" sideOffset={6} className="z-[120]">
+              <Popover.Popup className="w-84 rounded-2xl border border-slate-200 bg-white p-2 text-xs shadow-2xl dark:border-slate-800 dark:bg-[#111827] dark:text-slate-200 space-y-1">
+                <div className="px-2.5 py-1.5 font-bold text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                  <span>Tùy chọn xuất báo cáo</span>
+                  <span className="text-[10px] text-emerald-700 dark:text-emerald-300 font-semibold bg-emerald-100 dark:bg-emerald-950/80 px-2 py-0.5 rounded-full">
+                    Kỳ {selectedPeriod}
+                  </span>
+                </div>
+
+                {/* Option 1: Excel Room Matrix (Mẫu chuẩn theo phòng) */}
+                <button
+                  type="button"
+                  data-testid="reports-export-excel-matrix"
+                  onClick={() => void handleExportExcel()}
+                  disabled={isExportingExcel}
+                  className="w-full text-left p-2.5 rounded-xl hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors flex items-start gap-2.5 group cursor-pointer"
+                >
+                  <div className="p-2 rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300 shrink-0 group-hover:scale-105 transition-transform">
+                    <FileSpreadsheet className="h-4 w-4" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                      <span>Báo cáo theo phòng (Excel .xlsx)</span>
+                      <span className="text-[10px] bg-emerald-500 text-white font-semibold px-1 py-0.2 rounded text-center">
+                        Mẫu chuẩn
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight mt-0.5">
+                      Chi tiết mỗi phòng: Tiền thuê, Tiền điện, Tiền nước, Phí MG, Tiền cọc theo ngày & 12 tháng.
+                    </div>
+                  </div>
+                </button>
+
+                {/* Option 2: CSV Tổng hợp tòa nhà */}
+                <button
+                  type="button"
+                  data-testid="reports-export-csv"
+                  onClick={() => {
+                    setIsExportMenuOpen(false);
+                    handleExportCsv();
+                  }}
+                  className="w-full text-left p-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors flex items-start gap-2.5 group cursor-pointer"
+                >
+                  <div className="p-2 rounded-lg bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 shrink-0">
+                    <Download className="h-4 w-4" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-slate-900 dark:text-white">
+                      Bảng tổng hợp tòa nhà (CSV)
+                    </div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight mt-0.5">
+                      Tổng hợp doanh thu, công nợ, chi phí theo từng tòa nhà.
+                    </div>
+                  </div>
+                </button>
+              </Popover.Popup>
+            </Popover.Positioner>
+          </Popover.Portal>
+        </Popover.Root>
       </div>
 
       {/* Unified Single-Row Search + Filter/Sort + 1-Button Toggle + Icon Refresh */}
@@ -350,7 +515,7 @@ export const ReportsWorkspaceView: React.FC<ReportsWorkspaceViewProps> = ({
               b.invoicedVnd > 0
                 ? Math.round((b.collectedVnd / b.invoicedVnd) * 100)
                 : 0;
-            const operatingExp = b.operatingExpenseVnd || 0;
+            const operatingExp = b.totalExpenseVnd || b.operatingExpenseVnd || 0;
             const netResult =
               b.netResultVnd !== undefined
                 ? b.netResultVnd
@@ -422,6 +587,18 @@ export const ReportsWorkspaceView: React.FC<ReportsWorkspaceViewProps> = ({
                   </div>
                 </div>
 
+                {/* Sub-row: Chi tiết Điện - Nước thực thu & Chi phí */}
+                <div className="mt-2 flex items-center justify-between rounded-lg bg-slate-100/80 px-2.5 py-1 text-[10.5px] text-slate-600 dark:bg-slate-800/50 dark:text-slate-300">
+                  <span className="flex items-center gap-1">
+                    <Zap className="h-3 w-3 text-amber-500" />
+                    Thu điện: <strong>{(b.collectedElectricVnd || 0).toLocaleString('vi-VN')} đ</strong>
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Droplets className="h-3 w-3 text-cyan-500" />
+                    Thu nước: <strong>{(b.collectedWaterVnd || 0).toLocaleString('vi-VN')} đ</strong>
+                  </span>
+                </div>
+
                 <div className="mt-2.5 flex items-center gap-2">
                   <SettlementProgressBar
                     value={pctCollected}
@@ -445,22 +622,22 @@ export const ReportsWorkspaceView: React.FC<ReportsWorkspaceViewProps> = ({
           style={{ contain: 'layout inline-size' }}
         >
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[820px] text-left text-xs">
+            <table className="w-full min-w-[880px] text-left text-xs">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50/70 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:border-slate-800 dark:bg-slate-800/40">
                   <th className="px-4 py-3">Tòa nhà</th>
                   <th className="px-3 py-3 text-center">Lấp đầy</th>
                   <th className="px-3 py-3 text-right">Thuê HĐ</th>
                   <th className="px-3 py-3 text-right">Đã lập HĐ</th>
-                  <th className="px-3 py-3 text-right">Thực thu</th>
+                  <th className="px-3 py-3 text-right">Thực thu (Điện/Nước)</th>
                   <th className="px-3 py-3 text-right">Công nợ</th>
-                  <th className="px-3 py-3 text-right">Chi phí VH</th>
+                  <th className="px-3 py-3 text-right">Chi phí (Điện/Nước/VH)</th>
                   <th className="px-4 py-3 text-right">Lãi gộp</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {filteredBreakdown.map((b) => {
-                  const operatingExp = b.operatingExpenseVnd || 0;
+                  const operatingExp = b.totalExpenseVnd || b.operatingExpenseVnd || 0;
                   const netResult =
                     b.netResultVnd !== undefined
                       ? b.netResultVnd
@@ -493,14 +670,24 @@ export const ReportsWorkspaceView: React.FC<ReportsWorkspaceViewProps> = ({
                       <td className="px-3 py-3 whitespace-nowrap text-right font-semibold tabular-nums">
                         {b.invoicedVnd.toLocaleString('vi-VN')} đ
                       </td>
-                      <td className="px-3 py-3 whitespace-nowrap text-right font-bold text-emerald-600 tabular-nums dark:text-emerald-400">
-                        {b.collectedVnd.toLocaleString('vi-VN')} đ
+                      <td className="px-3 py-3 whitespace-nowrap text-right">
+                        <div className="font-bold text-emerald-600 tabular-nums dark:text-emerald-400">
+                          {b.collectedVnd.toLocaleString('vi-VN')} đ
+                        </div>
+                        <div className="text-[10px] text-slate-400 tabular-nums">
+                          ⚡{(b.collectedElectricVnd || 0).toLocaleString('vi-VN')} • 💧{(b.collectedWaterVnd || 0).toLocaleString('vi-VN')}
+                        </div>
                       </td>
                       <td className="px-3 py-3 whitespace-nowrap text-right font-bold text-rose-500 tabular-nums">
                         {b.receivableVnd.toLocaleString('vi-VN')} đ
                       </td>
-                      <td className="px-3 py-3 whitespace-nowrap text-right tabular-nums text-slate-600 dark:text-slate-300">
-                        {operatingExp.toLocaleString('vi-VN')} đ
+                      <td className="px-3 py-3 whitespace-nowrap text-right">
+                        <div className="tabular-nums text-slate-600 dark:text-slate-300 font-semibold">
+                          {operatingExp.toLocaleString('vi-VN')} đ
+                        </div>
+                        <div className="text-[10px] text-slate-400 tabular-nums">
+                          ⚡{(b.electricExpenseVnd || 0).toLocaleString('vi-VN')} • 💧{(b.waterExpenseVnd || 0).toLocaleString('vi-VN')}
+                        </div>
                       </td>
                       <td
                         className={`px-4 py-3 whitespace-nowrap text-right font-extrabold tabular-nums ${
@@ -529,14 +716,24 @@ export const ReportsWorkspaceView: React.FC<ReportsWorkspaceViewProps> = ({
                   <td className="px-3 py-3 whitespace-nowrap text-right tabular-nums">
                     {totals.invoicedVnd.toLocaleString('vi-VN')} đ
                   </td>
-                  <td className="px-3 py-3 whitespace-nowrap text-right text-emerald-600 tabular-nums dark:text-emerald-400">
-                    {totals.collectedVnd.toLocaleString('vi-VN')} đ
+                  <td className="px-3 py-3 whitespace-nowrap text-right">
+                    <div className="text-emerald-600 tabular-nums dark:text-emerald-400">
+                      {totals.collectedVnd.toLocaleString('vi-VN')} đ
+                    </div>
+                    <div className="text-[10px] font-normal text-slate-500 tabular-nums">
+                      ⚡{(totals.collectedElectricVnd || 0).toLocaleString('vi-VN')} • 💧{(totals.collectedWaterVnd || 0).toLocaleString('vi-VN')}
+                    </div>
                   </td>
                   <td className="px-3 py-3 whitespace-nowrap text-right text-rose-600 tabular-nums">
                     {totals.receivableVnd.toLocaleString('vi-VN')} đ
                   </td>
-                  <td className="px-3 py-3 whitespace-nowrap text-right tabular-nums">
-                    {totals.operatingExpenseVnd.toLocaleString('vi-VN')} đ
+                  <td className="px-3 py-3 whitespace-nowrap text-right">
+                    <div className="tabular-nums">
+                      {(totals.totalExpenseVnd || totals.operatingExpenseVnd).toLocaleString('vi-VN')} đ
+                    </div>
+                    <div className="text-[10px] font-normal text-slate-500 tabular-nums">
+                      ⚡{(totals.electricExpenseVnd || 0).toLocaleString('vi-VN')} • 💧{(totals.waterExpenseVnd || 0).toLocaleString('vi-VN')}
+                    </div>
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap text-right tabular-nums">
                     {totals.netResultVnd.toLocaleString('vi-VN')} đ
@@ -560,48 +757,87 @@ export const ReportsWorkspaceView: React.FC<ReportsWorkspaceViewProps> = ({
           <Dialog.Viewport className="fixed inset-0 z-[121] flex items-center justify-center p-4">
             <Dialog.Popup
               data-testid="report-building-detail-dialog"
-              className="relative z-10 flex max-h-[88dvh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-[#111827]"
+              className="relative z-10 flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-[#111827]"
             >
               {selectedBuilding && (() => {
-                const exp = selectedBuilding.operatingExpenseVnd || 0;
-                const net =
-                  selectedBuilding.netResultVnd !== undefined
-                    ? selectedBuilding.netResultVnd
-                    : selectedBuilding.collectedVnd - exp;
+                const b = selectedBuilding;
+                const invoicedTotal = b.invoicedVnd || 0;
+                const collectedTotal = b.collectedVnd || 0;
+                const receivableTotal = b.receivableVnd || 0;
+
+                // Chi tiết Thực thu
+                const collectedElectric = b.collectedElectricVnd || 0;
+                const collectedWater = b.collectedWaterVnd || 0;
+                const collectedRent = b.collectedRentVnd || 0;
+                const collectedService = b.collectedServiceVnd || 0;
+
+                // Chi tiết Đã lập hóa đơn
+                const invoicedElectric = b.invoicedElectricVnd || 0;
+                const invoicedWater = b.invoicedWaterVnd || 0;
+                const invoicedRent = b.invoicedRentVnd || 0;
+                const invoicedService = b.invoicedServiceVnd || 0;
+
+                // Chi tiết Chi phí
+                const electricExp = b.electricExpenseVnd || 0;
+                const waterExp = b.waterExpenseVnd || 0;
+                const generalExp =
+                  b.generalExpenseVnd !== undefined
+                    ? b.generalExpenseVnd
+                    : Math.max(0, (b.operatingExpenseVnd || 0) - (electricExp + waterExp));
+                const totalExp =
+                  b.totalExpenseVnd !== undefined
+                    ? b.totalExpenseVnd
+                    : b.operatingExpenseVnd || (electricExp + waterExp + generalExp);
+
+                // Lãi gộp & Hiệu quả
+                const netProfit =
+                  b.netResultVnd !== undefined
+                    ? b.netResultVnd
+                    : collectedTotal - totalExp;
+
+                // Chênh lệch điện nước
+                const electricSpread = collectedElectric - electricExp;
+                const waterSpread = collectedWater - waterExp;
+
                 const pct =
-                  selectedBuilding.invoicedVnd > 0
-                    ? Math.round(
-                        (selectedBuilding.collectedVnd /
-                          selectedBuilding.invoicedVnd) *
-                          100
-                      )
+                  invoicedTotal > 0
+                    ? Math.round((collectedTotal / invoicedTotal) * 100)
                     : 0;
+
+                const marginPercent =
+                  collectedTotal > 0
+                    ? Math.round((netProfit / collectedTotal) * 100)
+                    : 0;
+
                 return (
                   <>
                     <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-slate-800">
                       <div className="flex items-center gap-2">
-                        <BarChart3 className="h-4 w-4 text-brand-primary" />
-                        <Dialog.Title className="text-sm font-bold text-slate-900 dark:text-white">
-                          Chi tiết P&amp;L — {selectedBuilding.buildingCode}
-                        </Dialog.Title>
+                        <div className="rounded-lg bg-brand-primary/10 p-1.5 text-brand-primary">
+                          <BarChart3 className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <Dialog.Title className="text-sm font-bold text-slate-900 dark:text-white">
+                            Chi tiết P&amp;L — {b.buildingCode}
+                          </Dialog.Title>
+                          <div className="text-[11px] text-slate-500">
+                            {b.buildingName} • Kỳ {selectedPeriod}
+                          </div>
+                        </div>
                       </div>
                       <Dialog.Close className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800">
                         <X className="h-4 w-4" />
                       </Dialog.Close>
                     </div>
 
-                    <div className="space-y-3 overflow-y-auto p-4 text-xs">
-                      <div className="rounded-xl bg-slate-50 px-3.5 py-2.5 dark:bg-slate-800/70">
-                        <div className="font-bold text-slate-900 dark:text-white">
-                          {selectedBuilding.buildingName}
-                        </div>
-                        <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500">
-                          <span>
-                            Lấp đầy {selectedBuilding.occupiedRooms}/
-                            {selectedBuilding.totalRooms} phòng (
-                            {selectedBuilding.occupancyRatePercent}%)
+                    <div className="space-y-3.5 overflow-y-auto p-4 text-xs">
+                      {/* CARD 1: THÔNG TIN TÒA NHÀ & TIẾN ĐỘ THU */}
+                      <div className="rounded-2xl border border-slate-200/90 bg-slate-50/80 p-3.5 dark:border-slate-800 dark:bg-slate-800/50">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="font-semibold text-slate-600 dark:text-slate-300">
+                            Lấp đầy: {b.occupiedRooms}/{b.totalRooms} phòng ({b.occupancyRatePercent}%)
                           </span>
-                          <span className="font-bold text-emerald-600">
+                          <span className="font-extrabold text-emerald-600 dark:text-emerald-400">
                             Thu {pct}%
                           </span>
                         </div>
@@ -612,53 +848,319 @@ export const ReportsWorkspaceView: React.FC<ReportsWorkspaceViewProps> = ({
                             indicatorClassName="bg-emerald-500"
                           />
                         </div>
+                        <div className="mt-3 grid grid-cols-3 gap-2 border-t border-slate-200/70 pt-2.5 text-center text-[11px] dark:border-slate-700/60">
+                          <div>
+                            <div className="text-slate-400">Thuê HĐ</div>
+                            <div className="mt-0.5 font-bold tabular-nums text-slate-800 dark:text-slate-200">
+                              {b.contractedRentVnd.toLocaleString('vi-VN')} đ
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-slate-400">Đã lập HĐ</div>
+                            <div className="mt-0.5 font-bold tabular-nums text-slate-800 dark:text-slate-200">
+                              {invoicedTotal.toLocaleString('vi-VN')} đ
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-slate-400">Công nợ chưa thu</div>
+                            <div
+                              className={`mt-0.5 font-bold tabular-nums ${
+                                receivableTotal > 0 ? 'text-rose-600' : 'text-slate-500'
+                              }`}
+                            >
+                              {receivableTotal.toLocaleString('vi-VN')} đ
+                            </div>
+                          </div>
+                        </div>
                       </div>
 
-                      <div className="divide-y divide-slate-100 rounded-xl border border-slate-100 dark:divide-slate-800 dark:border-slate-800">
-                        <div className="flex items-center justify-between px-3 py-2">
-                          <span className="text-slate-500">Tiền thuê HĐ</span>
-                          <span className="font-semibold tabular-nums">
-                            {selectedBuilding.contractedRentVnd.toLocaleString('vi-VN')} đ
+                      {/* CARD 2: DOANH THU & THỰC THU (TIỀN VÀO) */}
+                      <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/30 p-3.5 dark:border-emerald-900/50 dark:bg-emerald-950/20">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 font-bold text-emerald-800 dark:text-emerald-300">
+                            <TrendingUp className="h-4 w-4 text-emerald-600" />
+                            <span>1. DOANH THU &amp; THỰC THU</span>
+                          </div>
+                          <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-extrabold text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300 tabular-nums">
+                            +{collectedTotal.toLocaleString('vi-VN')} đ
                           </span>
                         </div>
-                        <div className="flex items-center justify-between px-3 py-2">
-                          <span className="text-slate-500">Tổng đã lập hóa đơn</span>
-                          <span className="font-semibold tabular-nums">
-                            {selectedBuilding.invoicedVnd.toLocaleString('vi-VN')} đ
+
+                        <div className="mt-2.5 divide-y divide-emerald-100/70 dark:divide-emerald-900/30">
+                          {/* Tiền phòng */}
+                          <div className="flex items-center justify-between py-1.5">
+                            <div>
+                              <div className="font-medium text-slate-700 dark:text-slate-200">
+                                Tiền thuê phòng
+                              </div>
+                              <div className="text-[10px] text-slate-400 tabular-nums">
+                                Đã lập HĐ: {invoicedRent.toLocaleString('vi-VN')} đ
+                              </div>
+                            </div>
+                            <div className="font-semibold tabular-nums text-slate-900 dark:text-white">
+                              +{collectedRent.toLocaleString('vi-VN')} đ
+                            </div>
+                          </div>
+
+                          {/* Tổng tiền điện thực thu */}
+                          <div className="flex items-center justify-between py-1.5">
+                            <div>
+                              <div className="flex items-center gap-1 font-semibold text-amber-700 dark:text-amber-400">
+                                <Zap className="h-3.5 w-3.5 text-amber-500" />
+                                <span>Tổng tiền điện thực thu</span>
+                              </div>
+                              <div className="text-[10px] text-slate-400 tabular-nums">
+                                Đã lập HĐ: {invoicedElectric.toLocaleString('vi-VN')} đ
+                              </div>
+                            </div>
+                            <div className="font-extrabold text-emerald-600 tabular-nums dark:text-emerald-400">
+                              +{collectedElectric.toLocaleString('vi-VN')} đ
+                            </div>
+                          </div>
+
+                          {/* Tổng tiền nước thực thu */}
+                          <div className="flex items-center justify-between py-1.5">
+                            <div>
+                              <div className="flex items-center gap-1 font-semibold text-cyan-700 dark:text-cyan-400">
+                                <Droplets className="h-3.5 w-3.5 text-cyan-500" />
+                                <span>Tổng tiền nước thực thu</span>
+                              </div>
+                              <div className="text-[10px] text-slate-400 tabular-nums">
+                                Đã lập HĐ: {invoicedWater.toLocaleString('vi-VN')} đ
+                              </div>
+                            </div>
+                            <div className="font-extrabold text-emerald-600 tabular-nums dark:text-emerald-400">
+                              +{collectedWater.toLocaleString('vi-VN')} đ
+                            </div>
+                          </div>
+
+                          {/* Phí dịch vụ & khác nếu có */}
+                          {(invoicedService > 0 || collectedService > 0) && (
+                            <div className="flex items-center justify-between py-1.5">
+                              <div>
+                                <div className="text-slate-600 dark:text-slate-300">
+                                  Phí dịch vụ &amp; khoản khác
+                                </div>
+                                <div className="text-[10px] text-slate-400 tabular-nums">
+                                  Đã lập HĐ: {invoicedService.toLocaleString('vi-VN')} đ
+                                </div>
+                              </div>
+                              <div className="font-semibold tabular-nums text-slate-800 dark:text-slate-200">
+                                +{collectedService.toLocaleString('vi-VN')} đ
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Tổng kết thu */}
+                          <div className="flex items-center justify-between pt-2">
+                            <span className="font-extrabold text-slate-900 dark:text-white">
+                              Tổng thực thu trong kỳ
+                            </span>
+                            <span className="text-sm font-extrabold text-emerald-600 tabular-nums dark:text-emerald-400">
+                              +{collectedTotal.toLocaleString('vi-VN')} đ
+                            </span>
+                          </div>
+
+                          {/* Công nợ chưa thu */}
+                          <div className="flex items-center justify-between pt-1 text-[11px]">
+                            <span className="text-slate-500">
+                              Công nợ chưa thu (Phải thu còn lại)
+                            </span>
+                            <span
+                              className={`font-bold tabular-nums ${
+                                receivableTotal > 0 ? 'text-rose-600' : 'text-slate-500'
+                              }`}
+                            >
+                              {receivableTotal.toLocaleString('vi-VN')} đ
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* CARD 3: CHI PHÍ ĐÃ CHI (TIỀN RA) */}
+                      <div className="rounded-2xl border border-rose-200/80 bg-rose-50/30 p-3.5 dark:border-rose-900/50 dark:bg-rose-950/20">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 font-bold text-rose-800 dark:text-rose-300">
+                            <TrendingDown className="h-4 w-4 text-rose-600" />
+                            <span>2. CHI PHÍ ĐÃ CHI</span>
+                          </div>
+                          <span className="rounded-full bg-rose-100 px-2.5 py-0.5 text-[11px] font-extrabold text-rose-700 dark:bg-rose-900/60 dark:text-rose-300 tabular-nums">
+                            -{totalExp.toLocaleString('vi-VN')} đ
                           </span>
                         </div>
-                        <div className="flex items-center justify-between px-3 py-2">
-                          <span className="text-slate-500">Thực thu trong kỳ</span>
-                          <span className="font-bold text-emerald-600 tabular-nums">
-                            +{selectedBuilding.collectedVnd.toLocaleString('vi-VN')} đ
+
+                        <div className="mt-2.5 divide-y divide-rose-100/70 dark:divide-rose-900/30">
+                          {/* Tổng tiền điện đã chi */}
+                          <div className="flex items-center justify-between py-1.5">
+                            <div>
+                              <div className="flex items-center gap-1 font-semibold text-rose-700 dark:text-rose-400">
+                                <Zap className="h-3.5 w-3.5 text-rose-500" />
+                                <span>Tổng tiền điện đã chi</span>
+                              </div>
+                              <div className="text-[10px] text-slate-400">
+                                Thanh toán EVN / Hóa đơn điện lực
+                              </div>
+                            </div>
+                            <div className="font-bold text-rose-600 tabular-nums dark:text-rose-400">
+                              -{electricExp.toLocaleString('vi-VN')} đ
+                            </div>
+                          </div>
+
+                          {/* Tổng tiền nước đã chi */}
+                          <div className="flex items-center justify-between py-1.5">
+                            <div>
+                              <div className="flex items-center gap-1 font-semibold text-rose-700 dark:text-rose-400">
+                                <Droplets className="h-3.5 w-3.5 text-rose-500" />
+                                <span>Tổng tiền nước đã chi</span>
+                              </div>
+                              <div className="text-[10px] text-slate-400">
+                                Thanh toán đơn vị cấp nước sinh hoạt
+                              </div>
+                            </div>
+                            <div className="font-bold text-rose-600 tabular-nums dark:text-rose-400">
+                              -{waterExp.toLocaleString('vi-VN')} đ
+                            </div>
+                          </div>
+
+                          {/* Chi phí vận hành */}
+                          <div className="flex items-center justify-between py-1.5">
+                            <div>
+                              <div className="flex items-center gap-1 font-semibold text-slate-700 dark:text-slate-300">
+                                <Wrench className="h-3.5 w-3.5 text-amber-600" />
+                                <span>Chi phí vận hành</span>
+                              </div>
+                              <div className="text-[10px] text-slate-400">
+                                Bảo trì, sửa chữa, tạp vụ, internet, rác...
+                              </div>
+                            </div>
+                            <div className="font-bold text-rose-600 tabular-nums dark:text-rose-400">
+                              -{generalExp.toLocaleString('vi-VN')} đ
+                            </div>
+                          </div>
+
+                          {/* Tổng chi phí */}
+                          <div className="flex items-center justify-between pt-2">
+                            <span className="font-extrabold text-slate-900 dark:text-white">
+                              Tổng chi phí trong kỳ
+                            </span>
+                            <span className="text-sm font-extrabold text-rose-600 tabular-nums dark:text-rose-400">
+                              -{totalExp.toLocaleString('vi-VN')} đ
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* CARD 4: ĐỐI SOÁT CHÊNH LỆCH ĐIỆN NƯỚC (HIỆU QUẢ DỊCH VỤ) */}
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-2.5 dark:border-slate-800 dark:bg-slate-800/40">
+                          <div className="flex items-center justify-between text-[11px] font-bold text-slate-800 dark:text-slate-200">
+                            <span className="flex items-center gap-1">
+                              <Zap className="h-3.5 w-3.5 text-amber-500" />
+                              Điện
+                            </span>
+                            <span
+                              className={`rounded px-1.5 py-0.5 text-[10px] font-extrabold ${
+                                electricSpread >= 0
+                                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                                  : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                              }`}
+                            >
+                              {electricSpread >= 0 ? 'Thặng dư' : 'Bù lỗ'}
+                            </span>
+                          </div>
+                          <div className="mt-1.5 space-y-0.5 text-[10.5px] text-slate-500 tabular-nums">
+                            <div className="flex justify-between">
+                              <span>Thu:</span>
+                              <span className="font-medium text-emerald-600">
+                                +{collectedElectric.toLocaleString('vi-VN')} đ
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Chi:</span>
+                              <span className="font-medium text-rose-600">
+                                -{electricExp.toLocaleString('vi-VN')} đ
+                              </span>
+                            </div>
+                          </div>
+                          <div className="mt-1.5 border-t border-slate-200/60 pt-1 flex justify-between text-[11px] font-bold dark:border-slate-700/60">
+                            <span>Chênh lệch:</span>
+                            <span
+                              className={`tabular-nums ${
+                                electricSpread >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                              }`}
+                            >
+                              {electricSpread >= 0 ? '+' : ''}
+                              {electricSpread.toLocaleString('vi-VN')} đ
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-2.5 dark:border-slate-800 dark:bg-slate-800/40">
+                          <div className="flex items-center justify-between text-[11px] font-bold text-slate-800 dark:text-slate-200">
+                            <span className="flex items-center gap-1">
+                              <Droplets className="h-3.5 w-3.5 text-cyan-500" />
+                              Nước
+                            </span>
+                            <span
+                              className={`rounded px-1.5 py-0.5 text-[10px] font-extrabold ${
+                                waterSpread >= 0
+                                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                                  : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                              }`}
+                            >
+                              {waterSpread >= 0 ? 'Thặng dư' : 'Bù lỗ'}
+                            </span>
+                          </div>
+                          <div className="mt-1.5 space-y-0.5 text-[10.5px] text-slate-500 tabular-nums">
+                            <div className="flex justify-between">
+                              <span>Thu:</span>
+                              <span className="font-medium text-emerald-600">
+                                +{collectedWater.toLocaleString('vi-VN')} đ
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Chi:</span>
+                              <span className="font-medium text-rose-600">
+                                -{waterExp.toLocaleString('vi-VN')} đ
+                              </span>
+                            </div>
+                          </div>
+                          <div className="mt-1.5 border-t border-slate-200/60 pt-1 flex justify-between text-[11px] font-bold dark:border-slate-700/60">
+                            <span>Chênh lệch:</span>
+                            <span
+                              className={`tabular-nums ${
+                                waterSpread >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                              }`}
+                            >
+                              {waterSpread >= 0 ? '+' : ''}
+                              {waterSpread.toLocaleString('vi-VN')} đ
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* CARD 5: KẾT QUẢ KINH DOANH — LÃI GỘP */}
+                      <div className="rounded-2xl border-2 border-emerald-500/40 bg-gradient-to-br from-emerald-50/80 via-white to-slate-50 p-4 shadow-sm dark:border-emerald-500/40 dark:from-emerald-950/40 dark:via-[#111827] dark:to-slate-900">
+                        <div className="flex items-center justify-between">
+                          <span className="font-extrabold text-slate-900 dark:text-white">
+                            LÃI GỘP (Thực thu − Chi phí)
+                          </span>
+                          <span className="rounded-full bg-emerald-100/90 px-2 py-0.5 text-[10.5px] font-extrabold text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200">
+                            Tỷ suất: {marginPercent}%
                           </span>
                         </div>
-                        <div className="flex items-center justify-between px-3 py-2">
-                          <span className="text-slate-500">Công nợ chưa thu</span>
-                          <span className="font-bold text-rose-500 tabular-nums">
-                            {selectedBuilding.receivableVnd.toLocaleString('vi-VN')} đ
-                          </span>
+                        <div className="mt-1 text-[11px] text-slate-500 tabular-nums">
+                          Thực thu (+{collectedTotal.toLocaleString('vi-VN')} đ) − Chi phí (-{totalExp.toLocaleString('vi-VN')} đ)
                         </div>
-                        <div className="flex items-center justify-between px-3 py-2">
-                          <span className="text-slate-500">Chi phí vận hành</span>
-                          <span className="font-semibold text-rose-600 tabular-nums">
-                            -{exp.toLocaleString('vi-VN')} đ
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between bg-slate-50/70 px-3 py-2.5 font-extrabold dark:bg-slate-800/40">
-                          <span className="text-slate-900 dark:text-white">
-                            Lãi gộp (Thực thu − Chi phí)
-                          </span>
-                          <span
-                            className={`tabular-nums ${
-                              net >= 0
-                                ? 'text-emerald-600 dark:text-emerald-400'
-                                : 'text-rose-600'
-                            }`}
-                          >
-                            {net >= 0 ? '+' : ''}
-                            {net.toLocaleString('vi-VN')} đ
-                          </span>
+                        <div
+                          className={`mt-2 text-xl font-black tabular-nums sm:text-2xl ${
+                            netProfit >= 0
+                              ? 'text-emerald-600 dark:text-emerald-400'
+                              : 'text-rose-600 dark:text-rose-400'
+                          }`}
+                        >
+                          {netProfit >= 0 ? '+' : ''}
+                          {netProfit.toLocaleString('vi-VN')} đ
                         </div>
                       </div>
                     </div>

@@ -17,6 +17,8 @@ export interface HunonicSyncWorkerOptions {
   triggerType?: "MANUAL_JOB" | "CRON_HOURLY";
   jobId?: string;
   buildingIds?: string[];
+  roomId?: string;
+  meterId?: string;
 }
 
 /** Import one authoritative catalog per job, including devices not yet assigned to a room. */
@@ -67,6 +69,8 @@ export async function executeHunonicBackgroundSync(
         ...(options.buildingIds
           ? { room: { buildingId: { in: options.buildingIds } } }
           : {}),
+        ...(options.meterId ? { id: options.meterId } : {}),
+        ...(options.roomId ? { roomId: options.roomId } : {}),
       },
       include: {
         room: {
@@ -194,11 +198,15 @@ export async function executeHunonicBackgroundSync(
         data: { syncedItems: synced, failedItems: failed },
       });
     }
+    const historyDevices =
+      options.meterId || options.roomId
+        ? devices.filter((d) => meters.some((m) => m.hunonicDeviceId === d.id))
+        : devices;
     const history = await syncHunonicHistory(
       orgId,
       phone,
       session.token,
-      devices,
+      historyDevices.length > 0 ? historyDevices : devices,
     );
     const historyFailed = history.failedDeviceIds.length;
     const snapshot: HunonicJsonSnapshot = {

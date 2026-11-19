@@ -4,7 +4,9 @@ import { assertSecurityConfiguration } from './authRbac';
 import { createApiAndDynamicSeoMiddleware, ensurePostgreSqlSeeded, getPrismaClient } from './publicApiPlugin';
 import { pruneConsoleAuditHistory } from './auditRetention';
 import { executeHunonicBackgroundSync } from './hunonicSyncWorker';
-import { buildSettlementWorkspacePayload } from './settlementCenterApi';
+import { decryptSecret } from './cryptoVault';
+import { formatTransferContent, DEFAULT_TRANSFER_SYNTAX } from './transferContentFormatter';
+export { buildSettlementWorkspacePayload, syncLegacyInvoicesForPeriod } from './settlementCenterApi';
 
 const host = process.env.ADHOME_API_HOST || '127.0.0.1';
 const port = Number(process.env.ADHOME_API_PORT || 8082);
@@ -31,12 +33,16 @@ function buildRoomCodeCandidates(input: string): string[] {
   const set = new Set<string>();
   if (!clean) return [];
   set.add(clean);
-  const withoutP = clean.startsWith('P') ? clean.slice(1) : clean;
-  set.add(withoutP);
-  set.add(`P${withoutP}`);
+  const stripped = clean.replace(/^(?:LK|TOA|TÒA|P)[-.\s]*/i, '');
+  if (stripped) {
+    set.add(stripped);
+    set.add(`P${stripped}`);
+    set.add(`LK${stripped}`);
+  }
 
+  const target = stripped || clean;
   // e.g. 25.01, 25-01, P25-01, 25.1, P25.1, 25_01
-  const sepMatch = withoutP.match(/^(\d+)[-._](\d+)$/);
+  const sepMatch = target.match(/^(\d+)[-._](\d+)$/);
   if (sepMatch) {
     const bld = sepMatch[1];
     const roomNum = parseInt(sepMatch[2], 10);
@@ -45,6 +51,9 @@ function buildRoomCodeCandidates(input: string): string[] {
     set.add(`P${bld}.${roomPad}`);
     set.add(`P${bld}-${roomNum}`);
     set.add(`P${bld}.${roomNum}`);
+    set.add(`LK${bld}-${roomPad}`);
+    set.add(`LK${bld}.${roomPad}`);
+    set.add(`LK${bld}${roomPad}`);
     set.add(`${bld}-${roomPad}`);
     set.add(`${bld}.${roomPad}`);
     set.add(`${bld}${roomPad}`);
@@ -52,7 +61,7 @@ function buildRoomCodeCandidates(input: string): string[] {
   }
 
   // e.g. 2501 (4 digits) or 251 (3 digits)
-  const numMatch = withoutP.match(/^(\d{3,4})$/);
+  const numMatch = target.match(/^(\d{3,4})$/);
   if (numMatch) {
     const digits = numMatch[1];
     const bld = digits.slice(0, 2);
@@ -63,6 +72,9 @@ function buildRoomCodeCandidates(input: string): string[] {
       set.add(`P${bld}.${roomPad}`);
       set.add(`P${bld}-${roomNum}`);
       set.add(`P${bld}.${roomNum}`);
+      set.add(`LK${bld}-${roomPad}`);
+      set.add(`LK${bld}.${roomPad}`);
+      set.add(`LK${bld}${roomPad}`);
       set.add(`${bld}-${roomPad}`);
       set.add(`${bld}.${roomPad}`);
       set.add(`${bld}${roomPad}`);
@@ -115,9 +127,20 @@ async function internalBotApi(req: http.IncomingMessage, res: http.ServerRespons
     try { body = JSON.parse(raw); } catch { json(res, 400, { error: 'invalid_json' }); return true; }
     const orgId = String(body.orgId || '');
     const roomCode = String(body.roomCode || '');
-    const phone = String(body.phone || '');
+    const rawPhones: string[] = Array.isArray(body.phones) && body.phones.length
+      ? body.phones
+      : [body.phone];
+    const validPhones = Array.from(new Set(rawPhones.map(p => String(p || '').trim()))).filter(p => /^0\d{9}$/.test(p));
     const contractCode = String(body.contractCode || '');
-    if (!/^[A-Za-z0-9-]{1,80}$/.test(orgId) || !roomCode || roomCode.length > 64 || !/^0\d{9}$/.test(phone)) { json(res, 400, { error: 'invalid_query' }); return true; }
+    if (!/^[A-Za-z0-9-]{1,80}$/.test(orgId) || !roomCode || roomCode.length > 64 || !validPhones.length) { json(res, 400, { error: 'invalid_query' }); return true; }
+    const searchPhones = new Set<string>();
+    for (const p of validPhones) {
+      searchPhones.add(p);
+      searchPhones.add(`+84${p.slice(1)}`);
+      searchPhones.add(`84${p.slice(1)}`);
+    }
+    const searchPhoneList = Array.from(searchPhones);
+
     const roomCandidates = buildRoomCodeCandidates(roomCode);
     const contracts = await prisma.contract.findMany({
       where: {
@@ -125,7 +148,10 @@ async function internalBotApi(req: http.IncomingMessage, res: http.ServerRespons
         room: {
           code: { in: roomCandidates, mode: 'insensitive' },
         },
-        tenant: { normalizedPhone: phone, isActive: true },
+        OR: [
+          { tenant: { normalizedPhone: { in: validPhones }, isActive: true } },
+          { occupants: { some: { phone: { in: searchPhoneList }, isActive: true } } },
+        ],
         ...(contractCode ? { contractCode: { equals: contractCode, mode: 'insensitive' } } : {}),
         status: { in: ['DRAFT', 'ACTIVE', 'EXPIRING', 'EXTENDED'] },
       },
@@ -189,10 +215,25 @@ async function internalBotApi(req: http.IncomingMessage, res: http.ServerRespons
     const accountName = toAsciiAccountName(paymentAccount?.accountName || fallbackPaymentAccount.accountName);
     const invoiceAmount = invoice ? Number(invoice.totalAmountVnd - invoice.paidAmountVnd) : 0;
     const periodLabel = invoice ? `${invoice.periodKey.slice(5, 7)}/${invoice.periodKey.slice(0, 4)}` : '';
-    const paymentName = contract.tenant.fullName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd')
-      .replace(/[^A-Za-z0-9 ]/g, '').replace(/\s+/g, ' ').trim().toUpperCase();
-    const transferPeriod = invoice ? `${invoice.periodKey.slice(5, 7)}-${invoice.periodKey.slice(0, 4)}` : '';
-    const transferContent = invoice ? `${contract.room.code}${paymentName.replace(/\s+/g, '')}${transferPeriod}` : '';
+    let transferSyntax = DEFAULT_TRANSFER_SYNTAX;
+    if (paymentConnection?.credentialsEncrypted) {
+      const plaintext = decryptSecret(paymentConnection.credentialsEncrypted);
+      if (plaintext) {
+        try {
+          const creds = JSON.parse(plaintext);
+          if (typeof creds.transferSyntax === 'string' && creds.transferSyntax.trim()) {
+            transferSyntax = creds.transferSyntax.trim();
+          }
+        } catch {}
+      }
+    }
+    const transferContent = invoice ? formatTransferContent(transferSyntax, {
+      roomCode: contract.room.code,
+      buildingCode: contract.room.building?.code,
+      tenantName: contract.tenant.fullName,
+      periodKey: invoice.periodKey,
+      invoiceCode: invoice.invoiceCode,
+    }) : '';
     const snapshot = (invoice?.policySnapshot || {}) as Record<string, any>;
     const depositDue = snapshot.type === 'FIRST_COMBINED_INVOICE' ? Number(snapshot.financialSummary?.additionalDepositDue || 0) : 0;
     const invoiceItems = invoice ? [
@@ -240,7 +281,7 @@ async function internalBotApi(req: http.IncomingMessage, res: http.ServerRespons
         include: { room: true }, take: 100 }),
       prisma.paymentTransaction.findMany({
         where: { orgId, verifiedAt: { gte: new Date(Date.now() - 7 * 86400000) } },
-        include: { invoice: { include: { room: true, tenant: true } } },
+        include: { invoice: { include: { room: { include: { building: true } }, tenant: true } } },
         orderBy: { verifiedAt: 'desc' },
         take: 50,
       }),
@@ -252,12 +293,14 @@ async function internalBotApi(req: http.IncomingMessage, res: http.ServerRespons
       payments: paymentTransactions.map(pt => ({
         id: pt.id,
         externalTxId: pt.externalTxId,
+        referenceText: pt.referenceText || '',
         amountVnd: Number(pt.amountVnd),
         payerName: pt.payerName || pt.invoice?.tenant?.fullName || 'Khách thuê',
         providerId: pt.providerId,
         invoiceId: pt.invoiceId,
         invoiceCode: pt.invoice?.invoiceCode || '',
         roomCode: pt.invoice?.room?.code || '',
+        buildingName: pt.invoice?.room?.building?.name || pt.invoice?.room?.building?.code || '',
         tenantId: pt.invoice?.tenantId || '',
         totalAmountVnd: pt.invoice ? Number(pt.invoice.totalAmountVnd) : 0,
         paidAmountVnd: pt.invoice ? Number(pt.invoice.paidAmountVnd) : 0,

@@ -27,7 +27,18 @@ const errorMessages: Record<string, string> = {
   bot_id_change_not_supported: 'Không hỗ trợ đổi Bot ID.',
 };
 
-export function ZaloBotSettings() {
+export interface ZaloBotSettingsProps {
+  channel?: {
+    id: string;
+    channelType: string;
+    displayName: string;
+    isEnabled: boolean;
+    status: string;
+  };
+  onDefaultChanged?: () => void;
+}
+
+export function ZaloBotSettings({ channel, onDefaultChanged }: ZaloBotSettingsProps = {}) {
   const [config, setConfig] = useState<State | null>(null);
   const [token, setToken] = useState('');
   const [command, setCommand] = useState('');
@@ -58,13 +69,68 @@ export function ZaloBotSettings() {
       await load();
       setNotice(data.command ? 'Đã tạo mã kết nối nhóm. Gửi lệnh vào nhóm Zalo có bot.' : body.action === 'templates' ? 'Đã lưu mẫu tin nhắn Zalo Bot.' : 'Zalo đã xác nhận webhook và lưu cấu hình bot.');
       if (body.action === 'templates') setTemplatesOpen(false);
+      onDefaultChanged?.();
     } catch (e) { setError(e instanceof Error ? e.message : 'Không thể kết nối máy chủ.'); }
     finally { setBusy(false); }
   };
-  return <section className="overflow-hidden rounded-xl border border-slate-200/90 bg-white dark:border-slate-800 dark:bg-[#111827]" aria-label="Zalo Bot">
+
+  const isDefaultActive = channel ? channel.isEnabled : Boolean(config?.botId);
+
+  const makeDefault = async () => {
+    setBusy(true);
+    try {
+      const res = await fetch('/api/v1/console/v2/settings/notification-channel', {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': CONSOLE_CSRF_HEADER },
+        body: JSON.stringify({
+          channelType: 'ZALO_BOT',
+          isEnabled: true,
+          secretToken: '••••••••',
+          targetLabel: 'Zalo Bot',
+        }),
+      });
+      if (!res.ok) throw new Error('Không thể đặt Zalo Bot làm kênh mặc định.');
+      setNotice('Đã kích hoạt Zalo Bot làm kênh thông báo mặc định. Các kênh khác đã chuyển sang Inactive.');
+      onDefaultChanged?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Không thể cập nhật kênh.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return <section data-testid="notification-channel-card-ZALO_BOT" className="overflow-hidden rounded-xl border border-slate-200/90 bg-white dark:border-slate-800 dark:bg-[#111827]" aria-label="Zalo Bot">
     <div className="flex min-h-16 items-center justify-between gap-3 px-3 py-2.5">
-      <div className="flex min-w-0 items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400"><Bot className="h-5 w-5" /></span><div className="min-w-0"><h3 className="text-sm font-bold text-slate-900 dark:text-white">Zalo Bot</h3><p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Tin cho cư dân và quản trị</p></div></div>
-      <div className="flex shrink-0 items-center gap-2"><span className={`hidden rounded-full px-2 py-1 text-[10px] font-semibold sm:inline-flex ${config?.botId ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-800'}`}>{config?.botId ? 'Đã kết nối' : 'Chưa kết nối'}</span><SettingsButton type="button" onClick={() => setSettingsOpen(true)}>Thiết lập</SettingsButton></div>
+      <div className="flex min-w-0 items-start gap-3">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400"><Bot className="h-5 w-5" /></span>
+        <div className="min-w-0">
+          <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            Zalo Bot
+            {isDefaultActive && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">Kênh mặc định</span>}
+          </h3>
+          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Tin cho cư dân và quản trị</p>
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        {isDefaultActive ? (
+          <span className="hidden rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 sm:inline-flex">
+            Đang hoạt động · Mặc định
+          </span>
+        ) : (
+          <>
+            <span className="hidden rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-400 sm:inline-flex">
+              Không hoạt động (Inactive)
+            </span>
+            {config?.botId && (
+              <SettingsButton type="button" onClick={() => void makeDefault()}>
+                Đặt làm mặc định
+              </SettingsButton>
+            )}
+          </>
+        )}
+        <SettingsButton type="button" onClick={() => setSettingsOpen(true)}>Thiết lập</SettingsButton>
+      </div>
     </div>
     {settingsOpen && <SettingsDialog title="Zalo Bot" description="Kết nối bot, nhóm quản trị và mẫu thông báo." busy={busy} onClose={() => setSettingsOpen(false)}>
     <div className="space-y-4 px-4 py-4 sm:px-5">

@@ -62,6 +62,7 @@ import {
   getCurrentVnPeriodKey,
   type NavModuleId,
 } from '@/app/navigation/navigationConfig';
+import { formatTransferContent, DEFAULT_TRANSFER_SYNTAX } from '@/shared/utils/transferContentFormatter';
 import { CONSOLE_CSRF_HEADER, useAuth } from '@/app/providers/AuthContext';
 import { useNavigation } from '@/app/providers/NavigationContext';
 import { usePortfolio } from '@/app/providers/PortfolioContext';
@@ -1602,39 +1603,50 @@ export const OperationalModuleWorkspace: React.FC<
 
   const effectiveVietQr = useMemo(() => {
     if (!selectedInvoice) return null;
+    const remaining = Math.max(0, selectedInvoice.totalAmountVnd - selectedInvoice.paidAmountVnd);
+    const amt = invoicePayAmount > 0 ? invoicePayAmount : remaining;
+
+    // Prioritize verified active bank integration account returned by server
+    if (invoiceVietQr && invoiceVietQr.accountNumber && invoiceVietQr.bankCode) {
+      return {
+        providerId: invoiceVietQr.providerId || 'SEPAY',
+        bankCode: invoiceVietQr.bankCode,
+        accountNumber: invoiceVietQr.accountNumber,
+        accountName: invoiceVietQr.accountName,
+        transferContent: invoiceVietQr.transferContent,
+        amountVnd: amt,
+        qrUrl: null,
+      };
+    }
+
     const isLK24 =
       (selectedInvoice.buildingCode || '').toUpperCase().includes('24') ||
       (selectedInvoice.roomCode || '').toUpperCase().includes('24') ||
       (selectedInvoice.invoiceCode || '').toUpperCase().includes('P24');
 
-    const bankCode = invoiceVietQr?.bankCode || 'BIDV';
+    const bankCode = 'BIDV';
     const accountNumber = isLK24
       ? '96247LK32LK24'
-      : (invoiceVietQr?.accountNumber || '96247LK31');
+      : '96247LK31';
     const accountName = isLK24
       ? 'HKD PHAN VAN THE'
-      : (invoiceVietQr?.accountName ? toAsciiNoTone(invoiceVietQr.accountName) : 'HKD NGUYEN DUC TINH');
+      : 'HKD NGUYEN DUC TINH';
 
-    // Meaningful & concise transfer content: <RoomCode><TenantNameASCII><MMYYYY>
-    const roomClean = toAsciiNoTone(selectedInvoice.roomCode || '');
-    const tenantClean = toAsciiNoTone(selectedInvoice.tenantName || '');
-    const periodDigits = (selectedInvoice.periodKey || '2026-11').replace(/[^0-9]/g, '');
-    const formattedPeriod =
-      periodDigits.length === 6
-        ? `${periodDigits.slice(4, 6)}${periodDigits.slice(0, 4)}`
-        : (periodDigits.slice(0, 6) || '112026');
-    const transferContent = roomClean
-      ? `${roomClean}${tenantClean.slice(0, 12)}${formattedPeriod}`
-      : selectedInvoice.invoiceCode.replace(/[^A-Za-z0-9]/g, '').slice(0, 50).toUpperCase();
+    const transferContent = formatTransferContent(DEFAULT_TRANSFER_SYNTAX, {
+      roomCode: selectedInvoice.roomCode,
+      buildingCode: selectedInvoice.buildingCode,
+      tenantName: selectedInvoice.tenantName,
+      periodKey: selectedInvoice.periodKey,
+      invoiceCode: selectedInvoice.invoiceCode,
+    });
 
-    const amt = Math.max(0, selectedInvoice.totalAmountVnd - selectedInvoice.paidAmountVnd);
     return {
       providerId: 'SEPAY',
       bankCode,
       accountNumber,
       accountName,
       transferContent,
-      amountVnd: invoicePayAmount > 0 ? invoicePayAmount : amt,
+      amountVnd: amt,
       qrUrl: null,
     };
   }, [invoiceVietQr, selectedInvoice, invoicePayAmount]);
@@ -1645,7 +1657,8 @@ export const OperationalModuleWorkspace: React.FC<
     const amt = Math.trunc(invoicePayAmount > 0 ? invoicePayAmount : remaining);
     if (!qr?.accountNumber || !qr.bankCode || amt <= 0) return null;
     const holderAscii = toAsciiNoTone(qr.accountName || '').replace(/\s+/g, '+');
-    return `https://vietqr.app/img?bank=${encodeURIComponent(qr.bankCode)}&acc=${encodeURIComponent(qr.accountNumber)}&template=compact&amount=${amt}&des=${encodeURIComponent(qr.transferContent)}&showinfo=true&holder=${holderAscii}`;
+    const template = qr.providerId === 'SEPAY' ? 'compact' : 'compact2';
+    return `https://vietqr.app/img?bank=${encodeURIComponent(qr.bankCode)}&acc=${encodeURIComponent(qr.accountNumber)}&template=${template}&amount=${amt}&des=${encodeURIComponent(qr.transferContent)}&showinfo=true&holder=${holderAscii}`;
   }, [effectiveVietQr, invoicePayAmount, selectedInvoice]);
 
   const invoiceSummary = invoices.reduce(
@@ -1904,6 +1917,24 @@ export const OperationalModuleWorkspace: React.FC<
                 </div>
 
                 <div className="flex flex-1 md:flex-initial items-center justify-between md:justify-end gap-1.5 sm:gap-2 min-w-0">
+                  <AnimatedButton
+                    type="button"
+                    onClick={() => {
+                      setIsPromotionModalOpen(true);
+                      void loadPromotions();
+                    }}
+                    title="Khuyến mãi theo đợt"
+                    aria-label="Khuyến mãi theo đợt"
+                    className="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-rose-200/90 bg-rose-50/70 text-rose-700 shadow-2xs transition-all hover:bg-rose-100/80 active:scale-95 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-900/50"
+                  >
+                    <Gift className="h-4 w-4 text-rose-600 dark:text-rose-400" />
+                    {promotionsList.length > 0 && (
+                      <span className="absolute -top-1 -right-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[9px] font-bold text-white shadow-xs leading-none">
+                        {promotionsList.length}
+                      </span>
+                    )}
+                  </AnimatedButton>
+
                   <CompactMonthPicker
                     value={selectedPeriod}
                     onChange={setSelectedPeriod}
@@ -1911,38 +1942,18 @@ export const OperationalModuleWorkspace: React.FC<
                     className="flex-1 min-w-0 md:flex-initial"
                   />
 
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <AnimatedButton
-                      type="button"
-                      onClick={() => {
-                        setIsPromotionModalOpen(true);
-                        void loadPromotions();
-                      }}
-                      title="Khuyến mãi theo đợt"
-                      aria-label="Khuyến mãi theo đợt"
-                      className="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-rose-200/90 bg-rose-50/70 text-rose-700 shadow-2xs transition-all hover:bg-rose-100/80 active:scale-95 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-900/50"
-                    >
-                      <Gift className="h-4 w-4 text-rose-600 dark:text-rose-400" />
-                      {promotionsList.length > 0 && (
-                        <span className="absolute -top-1 -right-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[9px] font-bold text-white shadow-xs leading-none">
-                          {promotionsList.length}
-                        </span>
-                      )}
-                    </AnimatedButton>
-
-                    <AnimatedButton
-                      type="button"
-                      data-testid="btn-module-refresh"
-                      onClick={() => void loadModuleData(true)}
-                      disabled={isLoading}
-                      title="Đồng bộ lại dữ liệu hóa đơn"
-                      aria-label={isLoading ? 'Đang đồng bộ hóa đơn' : 'Đồng bộ hóa đơn'}
-                      className="inline-flex h-9 w-9 sm:w-auto shrink-0 items-center justify-center gap-1.5 rounded-xl border border-slate-200/90 bg-white px-0 sm:px-3 text-xs font-bold text-slate-700 shadow-2xs transition-all hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                    >
-                      <RefreshCw className={`h-3.5 w-3.5 text-blue-600 dark:text-blue-400 ${isLoading ? 'animate-spin' : ''}`} />
-                      <span className="hidden sm:inline">Đồng bộ</span>
-                    </AnimatedButton>
-                  </div>
+                  <AnimatedButton
+                    type="button"
+                    data-testid="btn-module-refresh"
+                    onClick={() => void loadModuleData(true)}
+                    disabled={isLoading}
+                    title="Đồng bộ lại dữ liệu hóa đơn"
+                    aria-label={isLoading ? 'Đang đồng bộ hóa đơn' : 'Đồng bộ hóa đơn'}
+                    className="inline-flex h-9 w-9 sm:w-auto shrink-0 items-center justify-center gap-1.5 rounded-xl border border-slate-200/90 bg-white px-0 sm:px-3 text-xs font-bold text-slate-700 shadow-2xs transition-all hover:bg-slate-50 disabled:cursor-wait disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 text-blue-600 dark:text-blue-400 ${isLoading ? 'animate-spin' : ''}`} />
+                    <span className="hidden sm:inline">Đồng bộ</span>
+                  </AnimatedButton>
                 </div>
               </div>
 

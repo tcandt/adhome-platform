@@ -65,6 +65,7 @@ export interface SettlementRow {
     fullName: string;
     phone: string;
     email: string;
+    notificationChannel?: 'TELEGRAM' | 'ZALO_BOT' | 'ZALO_OA' | string;
   };
   contract: {
     id: string;
@@ -170,7 +171,7 @@ export interface SettlementRow {
     issuedAt: string | null;
   } | null;
   delivery: {
-    channel: 'ZALO_OA' | 'ZALO_BOT' | 'EMAIL';
+    channel: 'TELEGRAM' | 'ZALO_BOT' | 'ZALO_OA' | 'EMAIL';
     recipientName: string;
     recipientContact: string;
     status: DeliveryWorkflowStatus;
@@ -667,10 +668,12 @@ export function getPaymentStatusBadge(status: PaymentWorkflowStatus): StatusBadg
 
 export function formatChannelLabel(channel: string): string {
   switch (channel) {
-    case 'ZALO_OA':
-      return 'Zalo OA';
+    case 'TELEGRAM':
+      return 'Telegram';
     case 'ZALO_BOT':
       return 'Zalo Bot';
+    case 'ZALO_OA':
+      return 'Zalo OA';
     case 'EMAIL':
       return 'Email';
     default:

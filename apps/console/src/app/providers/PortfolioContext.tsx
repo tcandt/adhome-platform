@@ -91,7 +91,7 @@ interface PortfolioContextType {
   notifications: ConsoleNotificationItemDto[];
   unreadNotificationsCount: number;
   moduleCounts: ConsoleModuleCountsDto;
-  refreshPortfolio: () => Promise<void>;
+  refreshPortfolio: (requireSuccess?: boolean) => Promise<void>;
   markNotificationsRead: (keys: string[]) => Promise<void>;
 
   createBuilding: (dto: CreateBuildingInput) => Promise<ApiActionResult>;
@@ -129,8 +129,13 @@ const PortfolioContext = createContext<PortfolioContextType | undefined>(
 
 export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const { user, isAuthenticated, refreshSession } = useAuth();
-  const { selectedBuildingIds, isBuildingScopeEmpty, setSelectedBuildingIds, selectedPeriod } =
-    useNavigation();
+  const {
+    selectedBuildingIds,
+    isBuildingScopeEmpty,
+    setSelectedBuildingIds,
+    selectedPeriod,
+    selectedPeriodRange,
+  } = useNavigation();
 
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -197,6 +202,10 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       try {
         const params = new URLSearchParams();
         params.set('period', selectedPeriod);
+        if (selectedPeriodRange) {
+          params.set('fromPeriod', selectedPeriodRange.from);
+          params.set('toPeriod', selectedPeriodRange.to);
+        }
         if (selectedBuildingIds.length > 0) {
           params.set('buildings', selectedBuildingIds.join(','));
         }
@@ -257,6 +266,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
             setSelectedBuildingIds(sanitized);
           }
         }
+        return true;
       } catch (err) {
         if (sequence !== bootstrapSequence.current) return;
         setSyncStatus('error');
@@ -271,6 +281,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
       isAuthenticated,
       user,
       selectedPeriod,
+      selectedPeriodRange,
       selectedBuildingIds,
       isBuildingScopeEmpty,
       refreshSession,
@@ -282,8 +293,9 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     void fetchBootstrap(false);
   }, [fetchBootstrap]);
 
-  const refreshPortfolio = useCallback(async () => {
-    await fetchBootstrap(true);
+  const refreshPortfolio = useCallback(async (requireSuccess = false) => {
+    const refreshed = await fetchBootstrap(true);
+    if (requireSuccess && !refreshed) throw new Error('Không tải được dữ liệu vận hành mới nhất.');
   }, [fetchBootstrap]);
 
   const mutateJson = useCallback(

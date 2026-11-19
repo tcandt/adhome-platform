@@ -91,7 +91,10 @@ async function register(client, botId, orgId, update, inboxId, lookup, exists) {
         const conflicts = [];
         for (const row of linked.rows) {
           if (await exists(orgId, row.tenant_id)) conflicts.push(row);
-          else await client.query('DELETE FROM zalo_bot_resident_links WHERE id = $1 AND bot_id = $2', [row.id, botId]);
+          else {
+            await client.query('DELETE FROM zalo_bot_resident_links WHERE id = $1 AND bot_id = $2', [row.id, botId]);
+            await client.query("UPDATE tenants SET notification_channel = 'UNREGISTERED' WHERE id = $1", [row.tenant_id]).catch(() => {});
+          }
         }
         if (conflicts.length) status = 'CONFLICT';
         else {
@@ -100,6 +103,9 @@ async function register(client, botId, orgId, update, inboxId, lookup, exists) {
             [botId, update.chatId, update.userId, tenantId],
           );
           status = inserted.rowCount ? 'VERIFIED' : 'CONFLICT';
+          if (status === 'VERIFIED') {
+            await client.query("UPDATE tenants SET notification_channel = 'ZALO_BOT' WHERE id = $1", [tenantId]).catch(() => {});
+          }
         }
       }
     }

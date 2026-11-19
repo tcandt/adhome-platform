@@ -214,7 +214,7 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
     const p = (payload?.automationPolicy || {}) as Record<string, any>;
     return {
       mode: (p.mode as AutomationMode) || 'AUTO_DRAFT_WAIT_APPROVAL',
-      defaultChannel: (p.defaultChannel as 'TELEGRAM' | 'ZALO_BOT' | 'ZALO_OA' | 'EMAIL') || 'ZALO_OA',
+      defaultChannel: (p.defaultChannel as 'TELEGRAM' | 'ZALO_BOT' | 'ZALO_OA' | 'EMAIL') || 'ZALO_BOT',
     };
   }, [payload]);
 

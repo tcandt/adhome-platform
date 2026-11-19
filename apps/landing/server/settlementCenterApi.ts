@@ -8,6 +8,8 @@ import {
   type AuthoritativeConsoleActor,
 } from './authRbac';
 import { getActiveBillingPromotions, evaluateRoomPromotionDiscounts, type BillingPromotion } from './billingPromotionsApi';
+import { formatTransferContent, DEFAULT_TRANSFER_SYNTAX } from './transferContentFormatter';
+import { decryptSecret } from './cryptoVault';
 
 export type DataStatus = 'COMPLETE' | 'MISSING_DATA' | 'ANOMALY' | 'CALCULATING' | 'ERROR';
 export type InvoiceWorkflowStatus =
@@ -40,7 +42,7 @@ export interface FeeLineItem {
   id: string;
   code: string;
   name: string;
-  category: 'RECURRING_SERVICE' | 'EXTRA_CHARGE' | 'DISCOUNT' | 'ADJUSTMENT';
+  category: 'RECURRING_SERVICE' | 'EXTRA_CHARGE' | 'DISCOUNT' | 'ADJUSTMENT' | 'DEPOSIT';
   quantity: number;
   unitPriceVnd: number;
   amountVnd: number;
@@ -386,6 +388,9 @@ export interface CalculateElectricResult {
   electricVnd: number;
   totalRoomElectricVnd: number;
   formulaNote: string;
+  isDeferred?: boolean;
+  deferredNote?: string | null;
+  deferredPeriodMonth?: number | null;
 }
 
 export function buildCandidateInvoiceCode(
@@ -562,6 +567,9 @@ export interface CalculateWaterResult {
   totalRoomWaterVnd: number;
   displayLabel: string;
   formulaNote: string;
+  isDeferred?: boolean;
+  deferredNote?: string | null;
+  deferredPeriodMonth?: number | null;
 }
 
 export function normalizeWaterMode(rawMode: string | null | undefined): 'PER_PERSON' | 'PER_M3' | 'FIXED_PER_ROOM' {
@@ -793,6 +801,7 @@ export interface CalculateTotalsResult {
   extraChargeVnd: number;
   discountVnd: number;
   adjustmentVnd: number;
+  depositVnd: number;
   currentPeriodDueVnd: number;
   previousDebtVnd: number;
   prepaidCreditVnd: number;
@@ -843,10 +852,13 @@ export function calculateObligationTotals(input: CalculateTotalsInput): Calculat
   const adjustmentVnd = normalizedItems
     .filter((i) => i.category === 'ADJUSTMENT')
     .reduce((sum, i) => sum + i.amountVnd, 0);
+  const depositVnd = normalizedItems
+    .filter((i) => i.category === 'DEPOSIT')
+    .reduce((sum, i) => sum + i.amountVnd, 0);
 
-  // Section 9.1: Tổng phát sinh kỳ này = Tiền phòng + Tiền điện + Tiền nước + Phí dịch vụ + Phí phát sinh - Giảm trừ + Điều chỉnh
+  // Section 9.1: Tổng phát sinh kỳ này = Tiền phòng + Tiền điện + Tiền nước + Phí dịch vụ + Phí phát sinh - Giảm trừ + Điều chỉnh + Tiền cọc
   const currentPeriodDueVnd =
-    roomRentVnd + electricVnd + waterVnd + serviceFeeVnd + extraChargeVnd - discountVnd + adjustmentVnd;
+    roomRentVnd + electricVnd + waterVnd + serviceFeeVnd + extraChargeVnd - discountVnd + adjustmentVnd + depositVnd;
 
   const previousDebtVnd = Math.max(0, Math.round(toSafeNum(input.previousDebtVnd)));
   const prepaidCreditVnd = Math.max(0, Math.round(toSafeNum(input.prepaidCreditVnd)));
@@ -865,6 +877,7 @@ export function calculateObligationTotals(input: CalculateTotalsInput): Calculat
     extraChargeVnd,
     discountVnd,
     adjustmentVnd,
+    depositVnd,
     currentPeriodDueVnd,
     previousDebtVnd,
     prepaidCreditVnd,
@@ -1011,10 +1024,12 @@ export async function buildSettlementWorkspacePayload(params: {
     electricMeters,
     currentInvoices,
     previousUnpaidInvoices,
+    previousPeriodInvoices,
     billingPeriods,
     recentAuditLogs,
     activePromotions,
     orgNotificationChannels,
+    paymentConnections,
   ] = await Promise.all([
     prisma.organization.findUnique({ where: { id: orgId } }),
     prisma.integrationConnection.findUnique({
@@ -1080,6 +1095,13 @@ export async function buildSettlementWorkspacePayload(params: {
         status: { in: ['ISSUED', 'PARTIAL', 'OVERDUE'] },
       },
     }),
+    prisma.invoice.findMany({
+      where: {
+        orgId,
+        buildingId: { in: scopedBuildingIds },
+        periodKey: prevPeriodKey,
+      },
+    }),
     prisma.billingPeriod.findMany({
       where: { orgId, buildingId: { in: scopedBuildingIds } },
       include: { building: true },
@@ -1101,6 +1123,20 @@ export async function buildSettlementWorkspacePayload(params: {
     prisma.notificationChannelConfig.findMany({
       where: { orgId },
     }),
+    prisma.paymentProviderConnection.findMany({
+      where: {
+        orgId,
+        environment: 'LIVE',
+        status: 'VERIFIED',
+        isEnabled: true,
+        OR: [{ buildingId: { in: scopedBuildingIds } }, { buildingId: null }],
+        accounts: { some: {} },
+      },
+      include: {
+        accounts: { orderBy: [{ bankCode: 'asc' }, { accountNumber: 'asc' }] },
+      },
+      orderBy: { updatedAt: 'desc' },
+    }),
   ]);
 
   const autoCfg = parseJsonObject(automationConn?.capabilities);
@@ -1109,7 +1145,8 @@ export async function buildSettlementWorkspacePayload(params: {
       ? autoCfg.mode
       : 'AUTO_DRAFT_WAIT_APPROVAL';
 
-  const enabledChannelConfig = orgNotificationChannels.find((n: any) => n.isEnabled);
+  const activeZaloBot = orgNotificationChannels.find((n: any) => n.channelType === 'ZALO_BOT' && n.isEnabled);
+  const enabledChannelConfig = activeZaloBot || orgNotificationChannels.find((n: any) => n.isEnabled);
   const registeredFromConfig =
     enabledChannelConfig?.channelType === 'ZALO_BOT'
       ? 'ZALO_BOT'
@@ -1123,6 +1160,30 @@ export async function buildSettlementWorkspacePayload(params: {
     autoCfg.defaultChannel === 'EMAIL' || autoCfg.defaultChannel === 'ZALO_BOT' || autoCfg.defaultChannel === 'ZALO_OA'
       ? autoCfg.defaultChannel
       : (registeredFromConfig as 'ZALO_OA' | 'ZALO_BOT') || 'ZALO_BOT';
+
+  const syntaxByBuildingId = new Map<string, string>();
+  let orgDefaultSyntax = DEFAULT_TRANSFER_SYNTAX;
+  for (const conn of paymentConnections) {
+    let syntax = DEFAULT_TRANSFER_SYNTAX;
+    if (conn.credentialsEncrypted) {
+      const plaintext = decryptSecret(conn.credentialsEncrypted);
+      if (plaintext) {
+        try {
+          const creds = JSON.parse(plaintext);
+          if (typeof creds.transferSyntax === 'string' && creds.transferSyntax.trim()) {
+            syntax = creds.transferSyntax.trim();
+          }
+        } catch {}
+      }
+    }
+    if (conn.buildingId) {
+      if (!syntaxByBuildingId.has(conn.buildingId)) {
+        syntaxByBuildingId.set(conn.buildingId, syntax);
+      }
+    } else {
+      orgDefaultSyntax = syntax;
+    }
+  }
 
   let hunonicHistory: HunonicHistoryStore | null = null;
   if (hunonicConn?.credentialsJson) {
@@ -1309,9 +1370,28 @@ export async function buildSettlementWorkspacePayload(params: {
       // Check if tenant moved in after this period ended (e.g. not moved in yet in this month)
       const movedInAfterMonth = Boolean(moveInDateStr && moveInDateStr > monthEndStr);
 
-      // Active utility date range in this period
+      const prevPeriodInvoice = previousPeriodInvoices.find((i: any) => i.contractId === contract.id);
+      const prevInvSnapshot = parseJsonObject(prevPeriodInvoice?.policySnapshot);
+      const hadDeferredUtilitiesFromPrev = Boolean(
+        prevPeriodInvoice &&
+          (prevInvSnapshot.type === 'FIRST_COMBINED_INVOICE' ||
+            (moveInParts && moveInParts.year === prevRange.year && moveInParts.month === prevRange.month)) &&
+          toSafeNum(prevPeriodInvoice.electricVnd) === 0 &&
+          toSafeNum(prevPeriodInvoice.waterVnd) === 0
+      );
+
+      const nextPeriodKey = shiftPeriodKey(periodKey, 1);
+      const nextPeriodMonth = Number(nextPeriodKey.slice(5, 7));
+      const isUtilityDeferred = Boolean(
+        isFirstCombined ||
+          (isNewTenantFirstMonth && isFrozenSnapshot && matchedInvoice && toSafeNum(matchedInvoice.electricVnd) === 0)
+      );
+
+      // Active utility date range in this period (if prev period deferred utilities to this period, include from moveInDateStr)
       const utilityActiveStartStr =
-        moveInDateStr && moveInDateStr >= monthStartStr && moveInDateStr <= monthEndStr
+        hadDeferredUtilitiesFromPrev && moveInDateStr && moveInDateStr < monthStartStr
+          ? moveInDateStr
+          : moveInDateStr && moveInDateStr >= monthStartStr && moveInDateStr <= monthEndStr
           ? moveInDateStr
           : monthStartStr;
       const utilityActiveEndStr =
@@ -1386,7 +1466,9 @@ export async function buildSettlementWorkspacePayload(params: {
           }
           resolvedEndKwh = Number((resolvedStartKwh + sumKwh).toFixed(2));
 
-          if (isPartialMonth) {
+          if (hadDeferredUtilitiesFromPrev) {
+            hunonicKwhCalculationNote = `Điện từ ngày vào ${utilityActiveStartStr.slice(8, 10)}/${prevRange.month} đến hết tháng ${utilityTargetRange.month} (bao gồm kỳ ${prevRange.month} chuyển sang): ${resolvedStartKwh} → ${resolvedEndKwh} kWh (${sumKwh} kWh)`;
+          } else if (isPartialMonth) {
             hunonicKwhCalculationNote = `Điện Tháng ${utilityTargetRange.month}/${utilityTargetRange.year} (tính từ ngày vào ${utilityActiveStartStr.slice(8, 10)}/${utilityTargetRange.month}): ${resolvedStartKwh} → ${resolvedEndKwh} kWh (${sumKwh} kWh)`;
           } else {
             hunonicKwhCalculationNote = `Điện Tháng ${utilityTargetRange.month}/${utilityTargetRange.year} theo API Hunonic: ${resolvedStartKwh} → ${resolvedEndKwh} kWh (${sumKwh} kWh)`;
@@ -1476,6 +1558,24 @@ export async function buildSettlementWorkspacePayload(params: {
         electricCalc.formulaNote = rawKwh > 0
           ? `${rawKwh} kWh × ${electricRateVnd.toLocaleString('vi-VN')} ₫/kWh = ${rawAmount.toLocaleString('vi-VN')} ₫ (Miễn phí tháng 10/2026: 0 ₫)`
           : 'Miễn phí điện tháng đầu (10/2026): 0 ₫';
+      } else if (isUtilityDeferred) {
+        electricCalc.electricVnd = 0;
+        electricCalc.totalRoomElectricVnd = 0;
+        electricCalc.isDeferred = true;
+        electricCalc.deferredNote = `Chuyển thu kỳ ${nextPeriodMonth}`;
+        electricCalc.deferredPeriodMonth = nextPeriodMonth;
+        const rawKwh =
+          electricCalc.consumptionKwh != null && electricCalc.consumptionKwh > 0
+            ? electricCalc.consumptionKwh
+            : resolvedEndKwh != null && resolvedEndKwh > 0
+            ? resolvedEndKwh
+            : 0;
+        if (rawKwh > 0) {
+          const rawAmount = Math.round(rawKwh * electricRateVnd);
+          electricCalc.formulaNote = `${rawKwh} kWh × ${electricRateVnd.toLocaleString('vi-VN')} ₫/kWh = ${rawAmount.toLocaleString('vi-VN')} ₫ (Chuyển thu kỳ ${nextPeriodMonth}: 0 ₫)`;
+        } else {
+          electricCalc.formulaNote = `Chi phí điện thu sau — Chuyển thu kỳ ${nextPeriodMonth}`;
+        }
       } else if (hunonicKwhCalculationNote && electricCalc.status === 'COMPLETE') {
         electricCalc.formulaNote = `${electricCalc.consumptionKwh} kWh × ${electricRateVnd.toLocaleString('vi-VN')} ₫/kWh (${hunonicKwhCalculationNote})`;
       }
@@ -1578,6 +1678,26 @@ export async function buildSettlementWorkspacePayload(params: {
             : 'Khoán phòng';
         waterCalc.displayLabel = `${rateLabel} (Miễn phí tháng 10/2026)`;
         waterCalc.formulaNote = `Miễn phí nước tháng 10/2026 (${waterCalc.mode === 'PER_PERSON' ? `${resolvedOccupantCount || 1} người × ${resolvedWaterUnitRate.toLocaleString('vi-VN')} ₫ = ${rawWaterVnd.toLocaleString('vi-VN')} ₫` : `${rawWaterVnd.toLocaleString('vi-VN')} ₫`}): 0 ₫`;
+      } else if (isUtilityDeferred) {
+        const rawWaterVnd = waterCalc.waterVnd > 0 ? waterCalc.waterVnd : (resolvedOccupantCount || 1) * resolvedWaterUnitRate;
+        waterCalc.waterVnd = 0;
+        waterCalc.totalRoomWaterVnd = 0;
+        waterCalc.isDeferred = true;
+        waterCalc.deferredNote = `Chuyển thu kỳ ${nextPeriodMonth}`;
+        waterCalc.deferredPeriodMonth = nextPeriodMonth;
+        const baseWaterLabel = waterCalc.mode === 'PER_PERSON'
+          ? `${resolvedOccupantCount || 1} người × ${resolvedWaterUnitRate.toLocaleString('vi-VN')} ₫`
+          : waterCalc.mode === 'PER_M3'
+          ? `${waterCalc.consumptionM3 ?? 0} m³`
+          : 'Khoán phòng';
+        waterCalc.displayLabel = `${baseWaterLabel} (Chuyển thu kỳ ${nextPeriodMonth})`;
+        waterCalc.formulaNote = `${baseWaterLabel} = ${rawWaterVnd.toLocaleString('vi-VN')} ₫ (Chi phí thu sau — Chuyển thu kỳ ${nextPeriodMonth}: 0 ₫)`;
+      } else if (hadDeferredUtilitiesFromPrev && waterCalc.mode === 'PER_PERSON') {
+        const singlePeriodWater = (resolvedOccupantCount || 1) * resolvedWaterUnitRate;
+        waterCalc.waterVnd = singlePeriodWater * 2;
+        waterCalc.totalRoomWaterVnd = waterCalc.totalRoomWaterVnd * 2;
+        waterCalc.displayLabel = `${resolvedOccupantCount || 1} người × ${resolvedWaterUnitRate.toLocaleString('vi-VN')} ₫ × 2 kỳ (Bao gồm kỳ ${prevRange.month} chuyển sang)`;
+        waterCalc.formulaNote = `Nước 2 kỳ (${prevRange.month} & ${utilityTargetRange.month}): ${waterCalc.waterVnd.toLocaleString('vi-VN')} ₫`;
       }
 
       // Contract billing cycle check (e.g. 1 month, 3 months, 6 months)
@@ -1619,7 +1739,21 @@ export async function buildSettlementWorkspacePayload(params: {
       let defaultFeeItems: FeeLineItem[] = [];
       if (!isFuturePeriod) {
         if (Array.isArray(settlementMeta.feeItems) && settlementMeta.feeItems.length > 0) {
-          defaultFeeItems = [...settlementMeta.feeItems];
+          defaultFeeItems = settlementMeta.feeItems.map((item: any) => {
+            const isDepositItem =
+              item.category === 'DEPOSIT' ||
+              /cọc/i.test(item.name || '') ||
+              /cọc/i.test(item.reason || '') ||
+              (item.code === 'INITIAL_ADJUSTMENT' && isFirstCombined) ||
+              item.code === 'CONTRACT_DEPOSIT';
+            return {
+              ...item,
+              category: isDepositItem ? ('DEPOSIT' as const) : item.category,
+              name: isDepositItem && (item.name?.includes('Khoản thu/khấu trừ cọc') || item.code === 'INITIAL_ADJUSTMENT')
+                ? 'Tiền cọc hợp đồng'
+                : item.name,
+            };
+          });
         } else if (baseServiceFee > 0) {
           defaultFeeItems.push({
             id: `fee-service-${room.code}`,
@@ -1632,21 +1766,66 @@ export async function buildSettlementWorkspacePayload(params: {
           });
         }
 
+        const breakdownItems = Array.isArray(snapshot.breakdown) ? snapshot.breakdown : [];
+        const depositBreakdown = breakdownItems.filter((b: any) => /cọc/i.test(String(b.label || b.name || '')));
+
         const invoiceAdj = matchedInvoice ? toSafeNum(matchedInvoice.adjustmentVnd) : 0;
         const hasAdj = defaultFeeItems.some((i) => i.category === 'ADJUSTMENT');
-        if (invoiceAdj !== 0 && !hasAdj) {
-          defaultFeeItems.push({
-            id: `fee-adj-${room.code}`,
-            code: 'INITIAL_ADJUSTMENT',
-            name: isFirstCombined
-              ? 'Khoản thu/khấu trừ cọc hợp đồng kỳ đầu (Tách khỏi tiền thuê)'
-              : 'Điều chỉnh kỳ',
-            category: 'ADJUSTMENT' as const,
-            quantity: 1,
-            unitPriceVnd: invoiceAdj,
-            amountVnd: invoiceAdj,
-            reason: isFirstCombined ? 'Cọc hợp đồng kỳ đầu' : 'Điều chỉnh',
+        const hasDeposit = defaultFeeItems.some((i) => i.category === 'DEPOSIT');
+
+        if (depositBreakdown.length > 0 && !hasDeposit) {
+          depositBreakdown.forEach((b: any, bIdx: number) => {
+            const bAmt = toSafeNum(b.amountVnd);
+            if (bAmt !== 0) {
+              defaultFeeItems.push({
+                id: `fee-deposit-${room.code}-${bIdx}`,
+                code: 'CONTRACT_DEPOSIT',
+                name: String(b.label || 'Tiền cọc hợp đồng'),
+                category: 'DEPOSIT' as const,
+                quantity: 1,
+                unitPriceVnd: Math.abs(bAmt),
+                amountVnd: bAmt,
+                reason: 'Cọc hợp đồng theo hóa đơn',
+              });
+            }
           });
+        } else if (invoiceAdj !== 0 && !hasAdj && !hasDeposit) {
+          const isDepositInvoice =
+            isFirstCombined ||
+            snapshot.type === 'FIRST_COMBINED_INVOICE' ||
+            (toSafeNum(contract.depositVnd) > 0 && Math.abs(invoiceAdj - toSafeNum(contract.depositVnd)) < 1000);
+
+          if (isDepositInvoice) {
+            const depositMonths =
+              Number(room.depositMonths) ||
+              (toSafeNum(contract.depositVnd) && toSafeNum(contract.monthlyRentVnd)
+                ? Math.round(toSafeNum(contract.depositVnd) / toSafeNum(contract.monthlyRentVnd))
+                : (invoiceAdj === 9000000 ? 2 : 1));
+            const depositLabel =
+              depositMonths > 1 ? `Tiền cọc hợp đồng (${depositMonths} tháng)` : 'Tiền cọc hợp đồng';
+
+            defaultFeeItems.push({
+              id: `fee-deposit-${room.code}`,
+              code: 'CONTRACT_DEPOSIT',
+              name: depositLabel,
+              category: 'DEPOSIT' as const,
+              quantity: 1,
+              unitPriceVnd: invoiceAdj,
+              amountVnd: invoiceAdj,
+              reason: isFirstCombined ? `Cọc hợp đồng ${depositMonths > 1 ? `${depositMonths} tháng ` : ''}kỳ đầu` : 'Cọc hợp đồng',
+            });
+          } else {
+            defaultFeeItems.push({
+              id: `fee-adj-${room.code}`,
+              code: 'INITIAL_ADJUSTMENT',
+              name: 'Điều chỉnh kỳ',
+              category: 'ADJUSTMENT' as const,
+              quantity: 1,
+              unitPriceVnd: invoiceAdj,
+              amountVnd: invoiceAdj,
+              reason: 'Điều chỉnh kỳ',
+            });
+          }
         }
       }
 
@@ -1992,7 +2171,7 @@ export async function buildSettlementWorkspacePayload(params: {
           fullName: tenant.fullName,
           phone: tenant.phone || '',
           email: tenant.email || '',
-          notificationChannel: registeredDeliveryChannel,
+          notificationChannel: tenantNotificationChannel || 'UNREGISTERED',
         },
         contract: {
           id: contract.id,
@@ -2094,6 +2273,20 @@ export async function buildSettlementWorkspacePayload(params: {
             note: tx.referenceText || '',
           })),
         },
+        transferContent: formatTransferContent(syntaxByBuildingId.get(room.buildingId) || orgDefaultSyntax, {
+          roomCode: room.code,
+          buildingCode: building.code,
+          tenantName: tenant.fullName,
+          periodKey,
+          invoiceCode: matchedInvoice?.invoiceCode || buildCandidateInvoiceCode(
+            periodKey,
+            room.code,
+            contract.contractCode || contract.id,
+            isSharedRoom || orderedRoomContracts.length > 1,
+            contractIndex
+          ),
+        }),
+        transferSyntax: syntaxByBuildingId.get(room.buildingId) || orgDefaultSyntax,
         history: rowHistory,
       });
     }
@@ -2198,6 +2391,7 @@ export async function buildSettlementWorkspacePayload(params: {
         extraChargeVnd: 0,
         discountVnd: 0,
         adjustmentVnd: 0,
+        depositVnd: 0,
         previousDebtVnd: 0,
         currentPeriodDueVnd: 0,
         totalPayableVnd: 0,
@@ -2237,6 +2431,8 @@ export async function buildSettlementWorkspacePayload(params: {
         status: 'UNPAID',
         transactions: [],
       },
+      transferContent: '',
+      transferSyntax: orgDefaultSyntax,
       history: [],
     });
   }
@@ -2424,6 +2620,7 @@ export async function syncLegacyInvoicesForPeriod(params: {
       row.totals.extraChargeVnd -
       row.totals.discountVnd +
       row.totals.adjustmentVnd +
+      (row.totals.depositVnd || 0) +
       row.totals.previousDebtVnd -
       row.totals.prepaidCreditVnd;
     let finalTotalPayable = row.totals.totalPayableVnd;
@@ -3240,6 +3437,7 @@ export async function handleSettlementCenterApi(params: {
         mTotals.extraChargeVnd -
         mTotals.discountVnd +
         mTotals.adjustmentVnd +
+        (mTotals.depositVnd || 0) +
         mTotals.previousDebtVnd -
         mTotals.prepaidCreditVnd;
 
@@ -3490,6 +3688,7 @@ export async function handleSettlementCenterApi(params: {
         row.totals.extraChargeVnd -
         row.totals.discountVnd +
         row.totals.adjustmentVnd +
+        (row.totals.depositVnd || 0) +
         row.totals.previousDebtVnd -
         row.totals.prepaidCreditVnd;
 
@@ -3758,6 +3957,7 @@ export async function handleSettlementCenterApi(params: {
         row.totals.extraChargeVnd -
         row.totals.discountVnd +
         row.totals.adjustmentVnd +
+        (row.totals.depositVnd || 0) +
         row.totals.previousDebtVnd -
         row.totals.prepaidCreditVnd;
 
@@ -4021,6 +4221,7 @@ export async function handleSettlementCenterApi(params: {
         row.totals.extraChargeVnd -
         row.totals.discountVnd +
         row.totals.adjustmentVnd +
+        (row.totals.depositVnd || 0) +
         row.totals.previousDebtVnd -
         row.totals.prepaidCreditVnd;
 

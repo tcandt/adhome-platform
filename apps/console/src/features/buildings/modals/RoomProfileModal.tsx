@@ -331,7 +331,7 @@ export const RoomProfileModal: React.FC<Props> = ({
     const remaining = Math.max(0, Number(invoice.totalAmountVnd) - Number(invoice.paidAmountVnd));
     const rows = breakdown.length > 0
       ? breakdown.map((item: any) => `<tr><td>${safe(item.label)}</td><td>${safe(money(item.amountVnd))}</td></tr>`).join('')
-      : `<tr><td>Tiền thuê</td><td>${safe(money(invoice.roomRentVnd))}</td></tr>${Number(invoice.adjustmentVnd || 0) !== 0 ? `<tr><td>Điều chỉnh / tiền cọc</td><td>${safe(money(invoice.adjustmentVnd))}</td></tr>` : ''}`;
+      : `<tr><td>Tiền thuê</td><td>${safe(money(invoice.roomRentVnd))}</td></tr>${Number(invoice.adjustmentVnd || 0) !== 0 ? `<tr><td>${snapshot.type === 'FIRST_COMBINED_INVOICE' ? 'Cọc hợp đồng' : 'Điều chỉnh'}</td><td>${safe(money(invoice.adjustmentVnd))}</td></tr>` : ''}`;
     const frame = document.createElement('iframe');
     frame.setAttribute('title', `In hóa đơn ${invoice.invoiceCode}`);
     frame.style.position = 'fixed';
@@ -1299,7 +1299,7 @@ export const RoomProfileModal: React.FC<Props> = ({
                     <div className="px-3.5 py-2">
                       {invoiceBreakdown.length > 0 ? invoiceBreakdown.map((item: any, index: number) => <div key={`${item.label}-${index}`} className="flex min-h-8 items-center justify-between gap-3 border-b border-slate-200 py-1.5 dark:border-slate-700"><span className="text-slate-500 dark:text-slate-400">{item.label}</span><strong className="whitespace-nowrap tabular-nums">{Number(item.amountVnd || 0).toLocaleString('vi-VN')} đ</strong></div>) : <>
                         <div className="flex min-h-8 items-center justify-between gap-3 border-b border-slate-200 py-1.5 dark:border-slate-700"><span className="text-slate-500 dark:text-slate-400">Tiền thuê</span><strong className="whitespace-nowrap tabular-nums">{Number(detailInvoice.roomRentVnd || 0).toLocaleString('vi-VN')} đ</strong></div>
-                        {Number(detailInvoice.adjustmentVnd || 0) !== 0 && <div className="flex min-h-8 items-center justify-between gap-3 border-b border-slate-200 py-1.5 dark:border-slate-700"><span className="text-slate-500 dark:text-slate-400">Điều chỉnh / tiền cọc</span><strong className="whitespace-nowrap tabular-nums">{Number(detailInvoice.adjustmentVnd).toLocaleString('vi-VN')} đ</strong></div>}
+                        {Number(detailInvoice.adjustmentVnd || 0) !== 0 && <div className="flex min-h-8 items-center justify-between gap-3 border-b border-slate-200 py-1.5 dark:border-slate-700"><span className="text-slate-500 dark:text-slate-400">{detailInvoice.policySnapshot?.type === 'FIRST_COMBINED_INVOICE' ? 'Cọc hợp đồng' : 'Điều chỉnh'}</span><strong className="whitespace-nowrap tabular-nums">{Number(detailInvoice.adjustmentVnd).toLocaleString('vi-VN')} đ</strong></div>}
                       </>}
                       {invoiceFormula && <p className="my-2 rounded-lg bg-slate-100 px-2.5 py-2 text-center text-[10.5px] leading-4 text-slate-500 dark:bg-slate-800 dark:text-slate-400">{invoiceFormula.replaceAll(/(\d{4})-(\d{2})-(\d{2})/g, '$3/$2/$1')}</p>}
                       <div className="flex min-h-8 items-center justify-between gap-3 border-b border-slate-200 py-1.5 dark:border-slate-700"><span className="text-slate-500 dark:text-slate-400">Tổng hóa đơn</span><strong className="whitespace-nowrap tabular-nums">{Number(detailInvoice.totalAmountVnd).toLocaleString('vi-VN')} đ</strong></div>

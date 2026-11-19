@@ -29,7 +29,7 @@ export interface FeeLineItem {
   id: string;
   code: string;
   name: string;
-  category: 'RECURRING_SERVICE' | 'EXTRA_CHARGE' | 'DISCOUNT' | 'ADJUSTMENT';
+  category: 'RECURRING_SERVICE' | 'EXTRA_CHARGE' | 'DISCOUNT' | 'ADJUSTMENT' | 'DEPOSIT';
   quantity: number;
   unitPriceVnd: number;
   amountVnd: number;
@@ -54,6 +54,7 @@ export interface SettlementRow {
     occupancyStatus: string;
     rentalModel?: string;
     sharedContractCount: number;
+    depositMonths?: number;
   };
   building: {
     id: string;
@@ -108,6 +109,9 @@ export interface SettlementRow {
     lastSyncedAt: string | null;
     inputSource: string;
     updatedBy: string | null;
+    isDeferred?: boolean;
+    deferredNote?: string | null;
+    deferredPeriodMonth?: number | null;
   };
   water: {
     mode: 'PER_PERSON' | 'PER_M3' | 'FIXED_PER_ROOM';
@@ -125,6 +129,9 @@ export interface SettlementRow {
     inputSource: string;
     updatedBy: string | null;
     updatedAt: string | null;
+    isDeferred?: boolean;
+    deferredNote?: string | null;
+    deferredPeriodMonth?: number | null;
   };
   totals: {
     roomRentVnd: number;
@@ -134,6 +141,7 @@ export interface SettlementRow {
     extraChargeVnd: number;
     discountVnd: number;
     adjustmentVnd: number;
+    depositVnd?: number;
     currentPeriodDueVnd: number;
     previousDebtVnd: number;
     prepaidCreditVnd: number;
@@ -204,6 +212,8 @@ export interface SettlementRow {
     weight: number;
     totalWeight: number;
   };
+  transferContent?: string;
+  transferSyntax?: string;
   history: Array<{
     id: string;
     action: string;
@@ -234,6 +244,7 @@ export interface SettlementRoomGroup {
     extraChargeVnd: number;
     discountVnd: number;
     adjustmentVnd: number;
+    depositVnd: number;
     previousDebtVnd: number;
     prepaidCreditVnd: number;
     totalPayableVnd: number;
@@ -296,6 +307,7 @@ export function groupSettlementRowsByRoom(rows: SettlementRow[]): SettlementRoom
         extraChargeVnd: acc.extraChargeVnd + Number(m.totals.extraChargeVnd || 0),
         discountVnd: acc.discountVnd + Number(m.totals.discountVnd || 0),
         adjustmentVnd: acc.adjustmentVnd + Number(m.totals.adjustmentVnd || 0),
+        depositVnd: acc.depositVnd + Number(m.totals.depositVnd || 0),
         previousDebtVnd: acc.previousDebtVnd + Number(m.totals.previousDebtVnd || 0),
         prepaidCreditVnd: acc.prepaidCreditVnd + Number(m.totals.prepaidCreditVnd || 0),
         totalPayableVnd: acc.totalPayableVnd + Number(m.totals.totalPayableVnd || 0),
@@ -311,6 +323,7 @@ export function groupSettlementRowsByRoom(rows: SettlementRow[]): SettlementRoom
         extraChargeVnd: 0,
         discountVnd: 0,
         adjustmentVnd: 0,
+        depositVnd: 0,
         previousDebtVnd: 0,
         prepaidCreditVnd: 0,
         totalPayableVnd: 0,
@@ -676,8 +689,11 @@ export function formatChannelLabel(channel: string): string {
       return 'Zalo OA';
     case 'EMAIL':
       return 'Email';
+    case 'UNREGISTERED':
+    case 'NONE':
+      return 'Chưa đăng ký';
     default:
-      return channel || 'Zalo OA';
+      return channel || 'Chưa đăng ký';
   }
 }
 

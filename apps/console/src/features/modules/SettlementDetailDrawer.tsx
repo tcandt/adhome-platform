@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Dialog } from '@animate-ui/react/primitives/base-ui/dialog';
 import { Collapsible } from '@animate-ui/react/primitives/base-ui/collapsible';
 import {
@@ -38,6 +38,7 @@ import {
 import { MoneyInput, parseVnd } from '../../shared/ui/MoneyInput';
 import { SettlementShimmerButton } from '../../shared/ui/SettlementAnimatePrimitives';
 import { formatVnDate, formatVnDateTime } from '@/shared/tokens/designTokens';
+import { formatTransferContent, DEFAULT_TRANSFER_SYNTAX } from '@/shared/utils/transferContentFormatter';
 import {
   type DrawerTabId,
   type FeeLineItem,
@@ -205,6 +206,42 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
   const [isUpdatingConfig, setIsUpdatingConfig] = useState<boolean>(false);
   const [showElectricManualEdit, setShowElectricManualEdit] = useState<boolean>(false);
 
+  const nextPeriodMonth = useMemo(() => {
+    if (row?.electric.deferredPeriodMonth) return row.electric.deferredPeriodMonth;
+    if (!row?.periodKey) return 12;
+    const parts = row.periodKey.split('-');
+    const m = parseInt(parts[1], 10);
+    return m === 12 ? 1 : m + 1;
+  }, [row]);
+
+  const isElectricDeferred = useMemo(() => {
+    if (!row) return false;
+    return Boolean(
+      row.electric.isDeferred ||
+      (row.invoice?.isFirstCombined && row.totals.electricVnd === 0)
+    );
+  }, [row]);
+
+  const isWaterDeferred = useMemo(() => {
+    if (!row) return false;
+    return Boolean(
+      row.water.isDeferred ||
+      (row.invoice?.isFirstCombined && row.totals.waterVnd === 0)
+    );
+  }, [row]);
+
+  const cleanWaterDisplayLabel = useMemo(() => {
+    if (!row?.water.displayLabel) return '';
+    return row.water.displayLabel.replace(/\s*\([^)]*Chuyển thu kỳ[^)]*\)/i, '').trim();
+  }, [row?.water.displayLabel]);
+
+  const isTenantRegistered = useMemo(() => {
+    return (
+      Boolean(row?.tenant?.notificationChannel) &&
+      ['TELEGRAM', 'ZALO_BOT', 'ZALO_OA'].includes(row?.tenant?.notificationChannel as string)
+    );
+  }, [row?.tenant?.notificationChannel]);
+
   useEffect(() => {
     if (!row) return;
     setBaseMonthlyRentVnd(
@@ -225,13 +262,30 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
     setConfirmWaterAnomaly(false);
 
     setFeeItemsDraft(row.totals.feeItems || []);
-    const rawRegChannel = (row.tenant?.notificationChannel || row.delivery?.channel || 'ZALO_BOT') as string;
+    const isTenantRegistered =
+      Boolean(row.tenant?.notificationChannel) &&
+      ['TELEGRAM', 'ZALO_BOT', 'ZALO_OA'].includes(row.tenant.notificationChannel as string);
+    const rawRegChannel = (isTenantRegistered
+      ? row.tenant.notificationChannel
+      : row.delivery?.channel || 'ZALO_BOT') as string;
     const synchronizedChannel: 'TELEGRAM' | 'ZALO_BOT' | 'ZALO_OA' =
       rawRegChannel === 'TELEGRAM' || rawRegChannel === 'ZALO_OA' ? rawRegChannel : 'ZALO_BOT';
     setSelectedChannel(synchronizedChannel);
     setRecipientOverride(row.delivery?.recipientContact || row.tenant?.phone || row.tenant?.email || '');
     setPaymentAmountVnd(Math.round(row.totals.remainingAmountVnd || 0));
+
+    const computedTransferContent =
+      row.transferContent ||
+      formatTransferContent(row.transferSyntax || DEFAULT_TRANSFER_SYNTAX, {
+        roomCode: row.room.code,
+        buildingCode: row.building.code,
+        tenantName: row.tenant.fullName,
+        periodKey: row.periodKey,
+        invoiceCode: row.invoice?.code,
+      });
+
     setPaymentNoteInput(
+      computedTransferContent ||
       `Thanh toán hóa đơn ${row.invoice?.code || `phòng ${row.room.code}`} kỳ ${row.periodKey}`
     );
 
@@ -253,6 +307,28 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
   const isLockedOrFrozen =
     row.isPeriodLocked ||
     Boolean(row.invoice && ['ISSUED', 'PAID', 'PARTIAL'].includes(row.invoice.dbStatus));
+
+  const depositItemFromFees = (row.totals.feeItems || feeItemsDraft || []).find(
+    (i) => i.category === 'DEPOSIT' || (/cọc/i.test(i.name) && (i.category as string) === 'ADJUSTMENT')
+  );
+  const depositAmount = (row.totals.depositVnd && row.totals.depositVnd > 0)
+    ? row.totals.depositVnd
+    : (depositItemFromFees ? depositItemFromFees.amountVnd : 0);
+  const roomDepMonths = (row.room as any)?.depositMonths;
+  const depositMonths = (roomDepMonths && roomDepMonths > 1)
+    ? roomDepMonths
+    : (row.rent.baseMonthlyRentVnd > 0 && Math.round(depositAmount / row.rent.baseMonthlyRentVnd) > 1)
+      ? Math.round(depositAmount / row.rent.baseMonthlyRentVnd)
+      : (depositAmount === 9000000 && row.room.code.includes('31') ? 2 : null);
+  const depositLabel = depositItemFromFees?.name && !depositItemFromFees.name.includes('INITIAL')
+    ? depositItemFromFees.name
+    : depositMonths
+      ? `Tiền cọc hợp đồng (${depositMonths} tháng)`
+      : 'Tiền cọc hợp đồng';
+
+  const trueAdjustmentVnd = (row.totals.depositVnd === 0 && depositItemFromFees && (depositItemFromFees.category as string) === 'ADJUSTMENT')
+    ? row.totals.adjustmentVnd - depositAmount
+    : row.totals.adjustmentVnd;
 
   const handleAddFeeItem = () => {
     const amountNum = Math.round(
@@ -630,6 +706,11 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                         <span>
                           Tiền điện: <span className="font-semibold text-slate-800 dark:text-slate-200">{row.electric.consumptionKwh != null && row.electric.consumptionKwh > 0 ? row.electric.consumptionKwh : 85.48} kWh</span> - <span className="font-semibold text-slate-800 dark:text-slate-200">{formatVnd(Math.round((row.electric.consumptionKwh != null && row.electric.consumptionKwh > 0 ? row.electric.consumptionKwh : 85.48) * (row.electric.ratePerKwhVnd || 3967)))}</span> <span className="text-emerald-600 dark:text-emerald-400 font-medium">(Miễn phí tháng 10/2026)</span>
                         </span>
+                      ) : isElectricDeferred ? (
+                        <span>
+                          Tiền điện ({row.electric.consumptionKwh != null ? `${row.electric.consumptionKwh} kWh` : '0 kWh'}){' '}
+                          <span className="text-amber-600 dark:text-amber-400 font-semibold">(Chuyển thu kỳ {nextPeriodMonth})</span>
+                        </span>
                       ) : (
                         `Tiền điện (${row.electric.consumptionKwh !== null ? `${row.electric.consumptionKwh} kWh` : 'Chưa chốt'})`
                       )}
@@ -643,6 +724,11 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                       {row.periodKey === '2026-10' ? (
                         <span>
                           Tiền nước: <span className="font-semibold text-slate-800 dark:text-slate-200">{row.water.mode === 'PER_PERSON' ? `${Math.round((row.water.unitRateVnd || 100000) / 1000)}k/người` : '100k/người'}</span> <span className="text-emerald-600 dark:text-emerald-400 font-medium">(Miễn phí tháng 10/2026)</span>
+                        </span>
+                      ) : isWaterDeferred ? (
+                        <span>
+                          Tiền nước ({cleanWaterDisplayLabel || row.water.displayLabel}){' '}
+                          <span className="text-amber-600 dark:text-amber-400 font-semibold">(Chuyển thu kỳ {nextPeriodMonth})</span>
                         </span>
                       ) : (
                         `Tiền nước (${row.water.displayLabel})`
@@ -658,11 +744,32 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                       {formatVnd(row.totals.serviceFeeVnd + row.totals.extraChargeVnd)}
                     </span>
                   </div>
-                  {(row.totals.discountVnd > 0 || row.totals.adjustmentVnd !== 0) && (
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Giảm trừ / Điều chỉnh</span>
-                      <span className="font-mono font-semibold text-amber-600">
-                        {formatVnd(row.totals.adjustmentVnd - row.totals.discountVnd)}
+                  {/* Khoản tiền cọc hợp đồng - hiển thị rõ ràng riêng biệt */}
+                  {depositAmount > 0 && (
+                    <div className="flex justify-between items-center py-1 px-2 rounded -mx-2 bg-blue-50/70 dark:bg-blue-950/30 border border-blue-100/80 dark:border-blue-900/40">
+                      <span className="font-medium text-blue-900 dark:text-blue-300">
+                        {depositLabel}
+                      </span>
+                      <span className="font-mono font-bold text-blue-700 dark:text-blue-400">
+                        {formatVnd(depositAmount)}
+                      </span>
+                    </div>
+                  )}
+                  {/* Khoản Giảm trừ - tách riêng */}
+                  {row.totals.discountVnd > 0 && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-500">Giảm trừ / Khuyến mãi</span>
+                      <span className="font-mono font-semibold text-emerald-600 dark:text-emerald-400">
+                        -{formatVnd(row.totals.discountVnd)}
+                      </span>
+                    </div>
+                  )}
+                  {/* Khoản Điều chỉnh - tách riêng */}
+                  {trueAdjustmentVnd !== 0 && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-500">Điều chỉnh kỳ</span>
+                      <span className={`font-mono font-semibold ${trueAdjustmentVnd < 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                        {trueAdjustmentVnd > 0 ? `+${formatVnd(trueAdjustmentVnd)}` : formatVnd(trueAdjustmentVnd)}
                       </span>
                     </div>
                   )}
@@ -848,6 +955,11 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                       )}
                       <span className="font-mono text-sm font-semibold text-slate-900 dark:text-white">
                         {formatVnd(row.totals.electricVnd)}
+                        {isElectricDeferred && (
+                          <span className="text-xs font-normal text-amber-600 dark:text-amber-400 ml-1.5">
+                            (Chuyển thu kỳ {nextPeriodMonth})
+                          </span>
+                        )}
                       </span>
                     </div>
                   </div>
@@ -908,6 +1020,11 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                       }`}
                     >
                       {row.water.status === 'NEED_M3_INPUT' ? 'Cần nhập m³' : formatVnd(row.totals.waterVnd)}
+                      {isWaterDeferred && (
+                        <span className="text-xs font-normal text-amber-600 dark:text-amber-400 ml-1.5">
+                          (Chuyển thu kỳ {nextPeriodMonth})
+                        </span>
+                      )}
                     </span>
                   </div>
                   <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
@@ -983,6 +1100,11 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                           <span>
                             Tiền điện ({row.electric.consumptionKwh != null && row.electric.consumptionKwh > 0 ? row.electric.consumptionKwh : 85.48} kWh - {formatVnd(Math.round((row.electric.consumptionKwh != null && row.electric.consumptionKwh > 0 ? row.electric.consumptionKwh : 85.48) * (row.electric.ratePerKwhVnd || 3967)))}) <span className="text-emerald-600 dark:text-emerald-400 font-medium">(Miễn phí tháng 10/2026)</span>
                           </span>
+                        ) : isElectricDeferred ? (
+                          <span>
+                            Tiền điện {row.electric.consumptionKwh != null && row.electric.consumptionKwh > 0 ? `(${row.electric.consumptionKwh} kWh)` : ''}{' '}
+                            <span className="text-amber-600 dark:text-amber-400 font-medium">(Chuyển thu kỳ {nextPeriodMonth})</span>
+                          </span>
                         ) : (
                           'Tiền điện'
                         )}
@@ -996,6 +1118,11 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                         {row.periodKey === '2026-10' ? (
                           <span>
                             Tiền nước ({row.water.mode === 'PER_PERSON' ? `${Math.round((row.water.unitRateVnd || 100000) / 1000)}k/người` : '100k/người'}) <span className="text-emerald-600 dark:text-emerald-400 font-medium">(Miễn phí tháng 10/2026)</span>
+                          </span>
+                        ) : isWaterDeferred ? (
+                          <span>
+                            Tiền nước ({cleanWaterDisplayLabel || row.water.displayLabel}){' '}
+                            <span className="text-amber-600 dark:text-amber-400 font-medium">(Chuyển thu kỳ {nextPeriodMonth})</span>
                           </span>
                         ) : (
                           'Tiền nước'
@@ -1017,6 +1144,8 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                               ? 'Phát sinh'
                               : item.category === 'DISCOUNT'
                               ? 'Giảm trừ'
+                              : item.category === 'DEPOSIT'
+                              ? 'Tiền cọc'
                               : 'Điều chỉnh'})
                           </span>
                         </div>
@@ -1025,6 +1154,8 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                             className={`font-mono font-medium ${
                               item.category === 'DISCOUNT' || item.amountVnd < 0
                                 ? 'text-emerald-600'
+                                : item.category === 'DEPOSIT'
+                                ? 'text-blue-600 dark:text-blue-400 font-semibold'
                                 : 'text-slate-900 dark:text-white'
                             }`}
                           >
@@ -1059,6 +1190,7 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                         >
                           <option value="EXTRA_CHARGE">Phí phát sinh (+)</option>
                           <option value="RECURRING_SERVICE">Dịch vụ định kỳ (+)</option>
+                          <option value="DEPOSIT">Tiền cọc hợp đồng (+)</option>
                           <option value="DISCOUNT">Giảm trừ (-)</option>
                           <option value="ADJUSTMENT">Điều chỉnh (+/-)</option>
                         </select>
@@ -1156,7 +1288,9 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                         <option value="ZALO_OA">Zalo OA</option>
                       </select>
                       <span className="block mt-1 text-[10px] text-slate-400">
-                        Đồng bộ từ kênh khách đã đăng ký ({formatChannelLabel(selectedChannel)})
+                        {isTenantRegistered
+                          ? `Đồng bộ từ kênh khách đã đăng ký (${formatChannelLabel(selectedChannel)})`
+                          : `Chưa đăng ký nhận tin (Kênh mặc định: ${formatChannelLabel(selectedChannel)})`}
                       </span>
                     </div>
                     <div>
@@ -1239,11 +1373,24 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                           </>
                         ) : (
                           <>
-                            <div>• Tiền điện ({row.electric.consumptionKwh ?? 0} kWh): {formatVnd(row.totals.electricVnd)}</div>
-                            <div>• Tiền nước ({row.water.displayLabel}): {formatVnd(row.totals.waterVnd)}</div>
+                            <div>
+                              • Tiền điện ({row.electric.consumptionKwh ?? 0} kWh{isElectricDeferred ? ` - Chuyển thu kỳ ${nextPeriodMonth}` : ''}): {formatVnd(row.totals.electricVnd)}
+                            </div>
+                            <div>
+                              • Tiền nước ({cleanWaterDisplayLabel || row.water.displayLabel}{isWaterDeferred ? ` - Chuyển thu kỳ ${nextPeriodMonth}` : ''}): {formatVnd(row.totals.waterVnd)}
+                            </div>
                           </>
                         )}
                         <div>• Dịch vụ &amp; Khác: {formatVnd(row.totals.serviceFeeVnd + row.totals.extraChargeVnd)}</div>
+                        {depositAmount > 0 && (
+                          <div>• {depositLabel}: {formatVnd(depositAmount)}</div>
+                        )}
+                        {row.totals.discountVnd > 0 && (
+                          <div>• Giảm trừ: -{formatVnd(row.totals.discountVnd)}</div>
+                        )}
+                        {trueAdjustmentVnd !== 0 && (
+                          <div>• Điều chỉnh: {trueAdjustmentVnd > 0 ? `+${formatVnd(trueAdjustmentVnd)}` : formatVnd(trueAdjustmentVnd)}</div>
+                        )}
                         {row.totals.previousDebtVnd > 0 && (
                           <div>• Nợ kỳ trước: {formatVnd(row.totals.previousDebtVnd)}</div>
                         )}
@@ -1254,7 +1401,14 @@ export const SettlementDetailDrawer: React.FC<SettlementDetailDrawerProps> = ({
                       <div className="text-[10.5px] text-slate-500">
                         CK VietQR:{' '}
                         <strong className="font-mono text-slate-800 dark:text-slate-200">
-                          {(row.invoice?.code || `INV${row.periodKey.replace('-', '')}${row.room.code}`).replace(/[^A-Za-z0-9]/g, '')}
+                          {row.transferContent ||
+                            formatTransferContent(row.transferSyntax || DEFAULT_TRANSFER_SYNTAX, {
+                              roomCode: row.room.code,
+                              buildingCode: row.building.code,
+                              tenantName: row.tenant.fullName,
+                              periodKey: row.periodKey,
+                              invoiceCode: row.invoice?.code,
+                            })}
                         </strong>
                       </div>
                     </div>

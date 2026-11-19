@@ -60,6 +60,16 @@ async function tenantExists(orgId, tenantId) {
   return Boolean((await response.json()).exists);
 }
 
+async function linkTenantChannel(orgId, tenantId, channel = 'ZALO_BOT') {
+  const key = process.env.ZALO_BOT_ADMIN_API_KEY;
+  if (!key) return;
+  const origin = process.env.ADHOME_CONSOLE_INTERNAL_ORIGIN || 'http://127.0.0.1:8082';
+  await fetch(`${origin}/internal/zalo-bot/link-tenant`, {
+    method: 'POST', headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ orgId, tenantId, channel }), signal: AbortSignal.timeout(5000),
+  }).catch(() => {});
+}
+
 async function register(client, botId, orgId, update, inboxId, lookup, exists) {
   const input = parseRegistration(update.text);
   let status = input ? 'UNAVAILABLE' : 'INVALID_FORMAT';
@@ -93,6 +103,7 @@ async function register(client, botId, orgId, update, inboxId, lookup, exists) {
           if (await exists(orgId, row.tenant_id)) conflicts.push(row);
           else {
             await client.query('DELETE FROM zalo_bot_resident_links WHERE id = $1 AND bot_id = $2', [row.id, botId]);
+            await linkTenantChannel(orgId, row.tenant_id, 'UNREGISTERED').catch(() => {});
             await client.query("UPDATE tenants SET notification_channel = 'UNREGISTERED' WHERE id = $1", [row.tenant_id]).catch(() => {});
           }
         }
@@ -104,6 +115,7 @@ async function register(client, botId, orgId, update, inboxId, lookup, exists) {
           );
           status = inserted.rowCount ? 'VERIFIED' : 'CONFLICT';
           if (status === 'VERIFIED') {
+            await linkTenantChannel(orgId, tenantId, 'ZALO_BOT').catch(() => {});
             await client.query("UPDATE tenants SET notification_channel = 'ZALO_BOT' WHERE id = $1", [tenantId]).catch(() => {});
           }
         }
@@ -121,6 +133,8 @@ async function register(client, botId, orgId, update, inboxId, lookup, exists) {
     [inboxId, botId, update.chatId, status === 'VERIFIED' ? renderTemplate(templates.REGISTRATION_SUCCESS, { roomCode }) : resultMessage(status)],
   );
   if (tenantId && ['VERIFIED', 'ALREADY_VERIFIED'].includes(status)) {
+    await linkTenantChannel(orgId, tenantId, 'ZALO_BOT').catch(() => {});
+    await client.query("UPDATE tenants SET notification_channel = 'ZALO_BOT' WHERE id = $1", [tenantId]).catch(() => {});
     const row = invoice;
     if (row) await client.query(
       `INSERT INTO zalo_bot_resident_outbox (bot_id, chat_id, tenant_id, event_key, event_type, message, media_url, media_caption)

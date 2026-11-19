@@ -6,7 +6,8 @@ import { pruneConsoleAuditHistory } from './auditRetention';
 import { executeHunonicBackgroundSync } from './hunonicSyncWorker';
 import { decryptSecret } from './cryptoVault';
 import { formatTransferContent, DEFAULT_TRANSFER_SYNTAX } from './transferContentFormatter';
-export { buildSettlementWorkspacePayload, syncLegacyInvoicesForPeriod } from './settlementCenterApi';
+import { buildSettlementWorkspacePayload, syncLegacyInvoicesForPeriod } from './settlementCenterApi';
+export { buildSettlementWorkspacePayload, syncLegacyInvoicesForPeriod };
 
 const host = process.env.ADHOME_API_HOST || '127.0.0.1';
 const port = Number(process.env.ADHOME_API_PORT || 8082);
@@ -184,6 +185,10 @@ async function internalBotApi(req: http.IncomingMessage, res: http.ServerRespons
         return true;
       }
     }
+    await prisma.tenant.update({
+      where: { id: contract.tenantId },
+      data: { notificationChannel: 'ZALO_BOT' },
+    }).catch(() => {});
     const invoice = contract.invoices.find(i => i.totalAmountVnd > i.paidAmountVnd);
     const paymentConnections = await prisma.paymentProviderConnection.findMany({
       where: { orgId, environment: 'LIVE', status: 'VERIFIED', isEnabled: true,
@@ -266,6 +271,22 @@ async function internalBotApi(req: http.IncomingMessage, res: http.ServerRespons
     if (!orgId || !tenantId) { json(res, 422, { error: 'invalid_tenant_lookup' }); return true; }
     const tenant = await prisma.tenant.findFirst({ where: { id: tenantId, orgId }, select: { id: true } });
     json(res, 200, { exists: Boolean(tenant) });
+    return true;
+  }
+  if (url.pathname === '/internal/zalo-bot/link-tenant' && req.method === 'POST') {
+    let raw = '';
+    for await (const chunk of req) { raw += chunk; if (raw.length > 4096) { json(res, 413, { error: 'too_large' }); return true; } }
+    let body: any;
+    try { body = JSON.parse(raw); } catch { json(res, 400, { error: 'invalid_json' }); return true; }
+    const orgId = String(body.orgId || '').trim();
+    const tenantId = String(body.tenantId || '').trim();
+    const channel = String(body.channel || 'ZALO_BOT').trim();
+    if (!orgId || !tenantId) { json(res, 422, { error: 'invalid_payload' }); return true; }
+    await prisma.tenant.updateMany({
+      where: { id: tenantId, orgId },
+      data: { notificationChannel: channel },
+    });
+    json(res, 200, { ok: true });
     return true;
   }
   if (url.pathname === '/internal/zalo-bot/notification-candidates' && req.method === 'GET') {

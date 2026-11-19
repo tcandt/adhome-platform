@@ -42,6 +42,7 @@ import {
 } from '@/shared/ui/SettlementAnimatePrimitives';
 import { MoneyInput } from '@/shared/ui/MoneyInput';
 import { DateInput } from '@/shared/ui/DateInput';
+import { formatTransferContent, DEFAULT_TRANSFER_SYNTAX } from '@/shared/utils/transferContentFormatter';
 import { SettlementDetailDrawer } from './SettlementDetailDrawer';
 import {
   type AutomationMode,
@@ -161,7 +162,17 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
     setReconcileTargetRow(row);
     setConfirmPaymentAmountVnd(Math.round(row.totals.remainingAmountVnd || row.totals.totalPayableVnd || 0));
     setConfirmPaymentMethod('MANUAL_CASH');
+    const refContent =
+      row.transferContent ||
+      formatTransferContent(row.transferSyntax || DEFAULT_TRANSFER_SYNTAX, {
+        roomCode: row.room.code,
+        buildingCode: row.building.code,
+        tenantName: row.tenant.fullName,
+        periodKey: row.periodKey,
+        invoiceCode: row.invoice?.code,
+      });
     setConfirmReferenceText(
+      refContent ||
       `Thanh toán hóa đơn ${row.invoice?.code || `phòng ${row.room.code}`} kỳ ${row.periodKey}`
     );
     setConfirmPaymentDate(new Date().toISOString().slice(0, 10));
@@ -1714,7 +1725,16 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                     const invBadge = getInvoiceStatusBadge(row.statuses.invoiceStatus);
                     const delivBadge = getDeliveryStatusBadge(row.statuses.deliveryStatus);
                     const payBadge = getPaymentStatusBadge(row.statuses.paymentStatus);
-                    const netAdj = row.totals.adjustmentVnd - row.totals.discountVnd;
+                    const depositItem = (row.totals.feeItems || []).find(
+                      (i) => i.category === 'DEPOSIT' || (/cọc/i.test(i.name) && (i.category as string) === 'ADJUSTMENT')
+                    );
+                    const depositAmt = (row.totals.depositVnd && row.totals.depositVnd > 0)
+                      ? row.totals.depositVnd
+                      : (depositItem && (depositItem.category as string) === 'ADJUSTMENT' ? depositItem.amountVnd : 0);
+                    const trueAdj = row.totals.depositVnd && row.totals.depositVnd > 0
+                      ? row.totals.adjustmentVnd
+                      : (row.totals.adjustmentVnd - depositAmt);
+                    const netAdj = trueAdj - row.totals.discountVnd;
 
                     return (
                       <tr
@@ -1792,7 +1812,13 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                                 {formatVnd(row.totals.electricVnd)}
                               </div>
                               <div className="text-[10px] font-mono text-slate-400">
-                                {row.electric.consumptionKwh ?? 0} kWh
+                                {row.electric.isDeferred || (row.invoice?.isFirstCombined && row.totals.electricVnd === 0) ? (
+                                  <span className="text-amber-600 dark:text-amber-400 font-medium" title="Chi phí thu sau — Chuyển thu kỳ sau">
+                                    {row.electric.consumptionKwh ?? 0} kWh (Chuyển kỳ {row.electric.deferredPeriodMonth || (Number(row.periodKey.slice(5, 7)) === 12 ? 1 : Number(row.periodKey.slice(5, 7)) + 1)})
+                                  </span>
+                                ) : (
+                                  `${row.electric.consumptionKwh ?? 0} kWh`
+                                )}
                               </div>
                             </div>
                           )}
@@ -1815,11 +1841,17 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                                 {formatVnd(row.totals.waterVnd)}
                               </div>
                               <div className="text-[10px] text-slate-400">
-                                {row.water.mode === 'PER_M3'
-                                  ? `${row.water.consumptionM3 ?? 0} m³`
-                                  : row.water.mode === 'PER_PERSON'
-                                  ? `${row.water.occupantCount} người`
-                                  : 'Khoán'}
+                                {row.water.isDeferred || (row.invoice?.isFirstCombined && row.totals.waterVnd === 0) ? (
+                                  <span className="text-amber-600 dark:text-amber-400 font-medium" title="Chi phí thu sau — Chuyển thu kỳ sau">
+                                    {row.water.mode === 'PER_PERSON' ? `${row.water.occupantCount} ng` : 'Khoán'} (Chuyển kỳ {row.water.deferredPeriodMonth || (Number(row.periodKey.slice(5, 7)) === 12 ? 1 : Number(row.periodKey.slice(5, 7)) + 1)})
+                                  </span>
+                                ) : (
+                                  row.water.mode === 'PER_M3'
+                                    ? `${row.water.consumptionM3 ?? 0} m³`
+                                    : row.water.mode === 'PER_PERSON'
+                                    ? `${row.water.occupantCount} người`
+                                    : 'Khoán'
+                                )}
                               </div>
                             </div>
                           )}
@@ -2348,7 +2380,8 @@ export const SettlementWorkspaceView: React.FC<SettlementWorkspaceViewProps> = (
                                           const memberExtrasAndService =
                                             member.totals.serviceFeeVnd +
                                             member.totals.extraChargeVnd +
-                                            member.totals.adjustmentVnd -
+                                            member.totals.adjustmentVnd +
+                                            (member.totals.depositVnd || 0) -
                                             member.totals.discountVnd +
                                             member.totals.previousDebtVnd -
                                             member.totals.prepaidCreditVnd;
